@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rider Tracker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Rider Tracker 🚴‍♂️</h1>
+        <div class="card" id="main-card">
+            <h2>实时数据</h2>
+            
+            <div class="data-grid">
+                <div class="data-item">
+                    <div class="data-label">心率</div>
+                    <div class="data-display" id="heartRateDisplay">-- <span class="unit">bpm</span></div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">功率</div>
+                    <div class="data-display power-color" id="powerDisplay">-- <span class="unit">W</span></div>
+                </div>
+            </div>
+
+            <!-- 自定义悬浮窗内容选项 -->
+            <div class="settings-panel">
+                <h3>悬浮窗显示内容</h3>
+                <div class="checkbox-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chk-hr" value="hr" checked> <span>心率 (HR)</span>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chk-power" value="power" checked> <span>功率 (Power)</span>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chk-time" value="time"> <span>时间 (Time)</span>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chk-np" value="np" disabled title="正在开发中"> <span>标准化功率 (NP)</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button id="connectHrBtn" class="btn primary">连接心率带</button>
+                <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
+                <button id="pipBtn" class="btn secondary" disabled>开启悬浮窗</button>
+            </div>
+            <div class="status" id="statusText">等待连接...</div>
+        </div>
+    </div>
+
+    <!-- 悬浮窗的 HTML 模板 (默认隐藏) -->
+    <template id="pip-template">
+        <div id="pip-container" class="pip-mode">
+            <div class="pip-data-row" id="pip-dynamic-row">
+                <!-- 这里的子元素将通过 pip.js 动态生成 -->
+            </div>
+        </div>
+    </template>
+
+    <script src="pip.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

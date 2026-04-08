@@ -1,0 +1,158 @@
+:root {
+    --primary: #2ed573;
+    --primary-hover: #27ae60;
+    --secondary: #3742fa;
+    --secondary-hover: #5352ed;
+    --bg: #f0f2f5;
+    --text: #2f3542;
+    --card-bg: #ffffff;
+    --danger: #ff4757;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 50px 20px;
+    margin: 0;
+}
+
+.container { text-align: center; width: 100%; max-width: 500px; }
+.card {
+    background: var(--card-bg);
+    border-radius: 16px;
+    padding: 30px;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+}
+
+.data-display {
+    font-size: 56px;
+    font-weight: bold;
+    color: var(--danger);
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
+}
+.power-color { color: #ffa502; }
+
+.data-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 30px 0;
+}
+.data-item {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 12px;
+}
+.data-label {
+    font-size: 14px;
+    color: #747d8c;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+}
+
+.unit { font-size: 20px; color: #747d8c; font-weight: normal; }
+.controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 20px;}
+
+/* 设置面板样式 */
+.settings-panel {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 15px 20px;
+    margin: 20px 0;
+    text-align: left;
+}
+.settings-panel h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #2f3542;
+    text-transform: uppercase;
+}
+.checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: #57606f;
+    cursor: pointer;
+}
+.checkbox-label input:disabled + span { color: #a4b0be; text-decoration: line-through; }
+.checkbox-label input { cursor: inherit; }
+
+.btn {
+    border: none; padding: 12px 20px; font-size: 15px; border-radius: 8px;
+    cursor: pointer; font-weight: 600; transition: all 0.3s ease; color: white;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.primary { background-color: var(--primary); }
+.btn.primary:hover:not(:disabled) { background-color: var(--primary-hover); }
+.btn.power-btn { background-color: #eccc68; color: #2f3542; }
+.btn.power-btn:hover:not(:disabled) { background-color: #ffa502; color: white; }
+.btn.secondary { background-color: var(--secondary); }
+.btn.secondary:hover:not(:disabled) { background-color: var(--secondary-hover); }
+
+.status { margin-top: 20px; color: #747d8c; font-size: 14px; }
+
+/* ======== 悬浮窗(PiP) 专用暗黑主题样式 ======== */
+.pip-mode {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background-color: #1e272e;
+    color: white;
+    font-family: 'Segoe UI', sans-serif;
+    margin: 0;
+}
+
+/* 强制清除悬浮窗中 body 的默认外边距 */
+body:has(.pip-mode) {
+    margin: 0;
+    padding: 0;
+    background-color: #1e272e;
+    overflow: hidden;
+}
+
+.pip-data-row {
+    display: flex;
+    gap: 40px;
+    align-items: center;
+}
+
+.pip-data {
+    font-size: 56px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.pip-data:nth-child(1) { color: #ff4757; }
+.pip-data:nth-child(2) { color: #ffa502; }
+.pip-data.time-color { color: #2ed573; }
+.pip-data.np-color { color: #3742fa; }
+
+.pip-icon { font-size: 32px; }
+.hr-icon { animation: heartbeat 1s infinite alternate; }
+.power-icon { animation: pulse 1s infinite alternate; }
+.time-icon { font-size: 28px; }
+.pip-unit { font-size: 20px; color: #a4b0be; font-weight: normal;}
+
+@keyframes heartbeat {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.1); }
+}
+@keyframes pulse {
+    0% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
