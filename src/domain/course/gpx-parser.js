@@ -4,11 +4,22 @@ const SEGMENT_BUCKET_METERS = 500;
 
 export function parseGpx(xmlText) {
     const parser = new DOMParser();
-    const xml = parser.parseFromString(xmlText, "application/xml");
+    // 更彻底的 XML 清理：
+    // 1. 移除所有命名空间声明，避免 querySelectorAll 匹配失败
+    // 2. 移除所有 xsi:xxx 属性
+    // 3. 移除所有命名空间前缀（例如将 <gpxtpx:TrackPointExtension> 变成 <TrackPointExtension>）
+    let cleanXmlText = xmlText.replace(/\s+xmlns(:\w+)?="[^"]*?"/g, "");
+    cleanXmlText = cleanXmlText.replace(/\s+xsi:\w+="[^"]*?"/g, "");
+    cleanXmlText = cleanXmlText.replace(/<(\/?)[\w-]+:/g, "<$1");
+    
+    const xml = parser.parseFromString(cleanXmlText, "application/xml");
+    
+    // Some browsers like Chrome don't always create <parsererror> as a direct child, so we query anywhere
     const parserError = xml.querySelector("parsererror");
 
     if (parserError) {
-        throw new Error("GPX 文件解析失败");
+        console.error("XML parse error details:", parserError.textContent);
+        throw new Error("GPX 文件解析失败，可能格式不合法");
     }
 
     const trackPoints = [...xml.querySelectorAll("trkpt, rtept")].map((node, index) => {

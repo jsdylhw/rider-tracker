@@ -61,6 +61,7 @@ const pipController = createPipController({
 createMainView({
     store,
     pipController,
+    onSetUiMode: handleSetUiMode,
     onAddSegment: handleAddSegment,
     onResetRoute: handleResetRoute,
     onToggleHeartRate: handleToggleHeartRate,
@@ -108,6 +109,13 @@ fetch("user-profile.json")
         console.info("未能加载本地 user-profile.json，使用默认设置。", error);
     });
 
+function handleSetUiMode(mode) {
+    store.setState((state) => ({
+        ...state,
+        uiMode: mode
+    }));
+}
+
 function handleAddSegment() {
     store.setState((state) => {
         const routeSegments = sanitizeSegments([
@@ -143,15 +151,15 @@ function handleRemoveRouteSegment(segmentId) {
     });
 }
 
-function handleUpdateSettings(settings) {
-    store.setState((state) => ({
-        ...state,
-        settings: {
-            ...state.settings,
-            ...sanitizeSettings(settings)
-        },
-        statusText: "模拟参数已更新，可直接运行模拟。"
-    }));
+function handleUpdateSettings(partialSettings) {
+    store.setState((state) => {
+        const mergedSettings = { ...state.settings, ...partialSettings };
+        return {
+            ...state,
+            settings: sanitizeSettings(mergedSettings),
+            statusText: "设置已更新。"
+        };
+    });
 }
 
 function handleUpdatePipConfig(key, checked) {
@@ -379,14 +387,10 @@ function handlePowerMeterStatus(status) {
         },
         liveRide: {
             ...state.liveRide,
-            canStart: status.type === "connected"
+            canStart: status.type === "connected" || state.liveRide.isActive // 如果已经在骑行中，允许断开后保持状态
         },
         statusText: status.message
     }));
-
-    if (status.type === "disconnected" && wasActive) {
-        handleStopRide();
-    }
 }
 
 function handlePowerMeterData(data) {
@@ -514,7 +518,16 @@ function createInitialState(session) {
     const routeSegments = sanitizeSegments(defaultRouteSegments);
     const route = buildRoute(routeSegments);
 
+    let initialMode = 'home';
+    const path = window.location.pathname;
+    if (path.includes('simulation.html')) {
+        initialMode = 'simulation';
+    } else if (path.includes('live.html')) {
+        initialMode = 'live';
+    }
+
     return {
+        uiMode: initialMode,
         routeSegments,
         route,
         settings: { ...defaultSettings },

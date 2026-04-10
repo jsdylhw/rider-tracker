@@ -37,8 +37,41 @@ body {
 }
 
 .app-shell {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 24px;
+}
+
+/* 新增的视图层布局样式 */
+.view-section {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.layout-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+    gap: 24px;
+    align-items: start;
+}
+
+.view-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 0;
+    padding: 16px 24px;
+}
+
+.view-header h2 {
+    margin: 0;
+}
+
+.mode-controls {
+    margin-top: 24px;
+    display: flex;
+    gap: 16px;
 }
 
 .card {
@@ -479,10 +512,13 @@ tbody tr:last-child td {
     position: fixed;
     inset: 0;
     z-index: 60;
-    background: rgba(15, 23, 42, 0.72);
-    backdrop-filter: blur(12px);
+    background: #f1f5f9;
     padding: 24px;
     overflow-y: auto;
+}
+
+body.dashboard-open .app-shell {
+    display: none;
 }
 
 .ride-dashboard-inner {
@@ -495,56 +531,71 @@ tbody tr:last-child td {
 .ride-dashboard-header {
     display: flex;
     justify-content: space-between;
-    gap: 16px;
+    gap: 24px;
     flex-wrap: wrap;
-    align-items: start;
-    background: rgba(255, 255, 255, 0.94);
-    border: 1px solid rgba(223, 228, 234, 0.9);
-    border-radius: 24px;
-    padding: 22px 24px;
-    box-shadow: var(--shadow);
-}
-
-.ride-progress-card {
-    background: rgba(255, 255, 255, 0.94);
-    border: 1px solid rgba(223, 228, 234, 0.9);
-    border-radius: 24px;
-    padding: 22px 24px;
-    box-shadow: var(--shadow);
-    display: grid;
-    gap: 12px;
-}
-
-.ride-progress-labels,
-.ride-progress-meta {
-    display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(223, 228, 234, 0.9);
+    border-radius: 24px;
+    padding: 22px 24px;
+    box-shadow: var(--shadow);
 }
 
-.ride-progress-track {
-    width: 100%;
-    height: 14px;
-    border-radius: 999px;
-    background: #e2e8f0;
-    overflow: hidden;
-}
-
-.ride-progress-bar {
-    height: 100%;
-    width: 0%;
-    border-radius: inherit;
-    background: linear-gradient(90deg, #2ed573, #0ea5e9);
-    transition: width 0.3s ease;
+.compact-progress-container {
+    background: #f8fafc;
+    padding: 12px 20px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
 }
 
 .ride-dashboard-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
+    grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr);
     gap: 20px;
     align-items: start;
+}
+
+.ride-dashboard-grid .data-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+}
+
+.ride-dashboard-grid .data-display {
+    font-size: 28px; /* 缩小数字字体 */
+    letter-spacing: -0.5px;
+}
+
+.ride-dashboard-grid .unit {
+    font-size: 14px;
+}
+
+/* 骑行提示框样式 */
+.ride-alerts {
+    position: fixed;
+    top: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.ride-alert-toast {
+    background: #0ea5e9;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 100px;
+    font-weight: 600;
+    font-size: 15px;
+    box-shadow: 0 10px 25px rgba(14, 165, 233, 0.3);
+    animation: alert-slide-down 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes alert-slide-down {
+    0% { transform: translateY(-40px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
 }
 
 .ride-map-card,
