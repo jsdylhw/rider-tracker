@@ -314,6 +314,78 @@ tbody tr:last-child td {
     background-color: #e2e8f0;
 }
 
+/* Device & Ride Buttons Styles */
+.btn-device, .btn-ride {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 1; /* Allow them to stretch evenly */
+    min-width: 120px;
+    white-space: nowrap;
+}
+
+.device-controls {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.ride-controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.card > .ride-controls {
+    width: 100%;
+    margin-top: 12px;
+}
+
+.btn-hr {
+    background-color: #ff6b81;
+    color: white;
+}
+.btn-hr:hover:not(:disabled) {
+    background-color: #ff4757;
+}
+
+.btn-power {
+    background-color: #eccc68;
+    color: #2f3542;
+}
+.btn-power:hover:not(:disabled) {
+    background-color: #ffa502;
+    color: white;
+}
+
+.btn-start {
+    background-color: #2ed573;
+    color: white;
+    font-size: 15px;
+    padding: 14px 20px;
+}
+.btn-start:hover:not(:disabled) {
+    background-color: #26de81;
+}
+
+.btn-stop {
+    background-color: #ff4757;
+    color: white;
+    font-size: 15px;
+    padding: 14px 20px;
+}
+.btn-stop:hover:not(:disabled) {
+    background-color: #ff6b81;
+}
+
+/* Fix disabled state for new buttons */
+.btn-stop:disabled {
+    background-color: #edf2f7;
+    color: #a0aec0;
+}
+
 .data-grid,
 .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -1,0 +1,16 @@
+# 本地文档与配置文件，不提交至版本库
+local-project-docs.md
+user-profile.json
+
+# 系统或编辑器产生的文件
+.DS_Store
+.vscode/
+.idea/
+*.suo
+*.log
+
+# 各种可能生成的依赖或产物文件夹（预留）
+node_modules/
+dist/
+build/
+coverage/

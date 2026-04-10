@@ -87,6 +87,27 @@ store.setState((state) => ({
         : state.statusText
 }));
 
+fetch("user-profile.json")
+    .then((response) => {
+        if (!response.ok) {
+            throw new Error("Local profile not found");
+        }
+        return response.json();
+    })
+    .then((profile) => {
+        store.setState((state) => ({
+            ...state,
+            settings: sanitizeSettings({
+                ...state.settings,
+                ...profile
+            }),
+            statusText: "已加载本地用户配置 user-profile.json"
+        }));
+    })
+    .catch((error) => {
+        console.info("未能加载本地 user-profile.json，使用默认设置。", error);
+    });
+
 function handleAddSegment() {
     store.setState((state) => {
         const routeSegments = sanitizeSegments([

@@ -161,15 +161,30 @@
                         </div>
                     </div>
 
-                    <div class="controls">
-                        <button id="connectHrBtn" class="btn primary">连接心率带</button>
-                        <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
-                        <button id="openRideDashboardBtn" class="btn secondary" disabled>进入骑行界面</button>
+                    <div class="controls device-controls">
+                        <button id="connectHrBtn" class="btn btn-device btn-hr">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+                            连接心率带
+                        </button>
+                        <button id="connectPowerBtn" class="btn btn-device btn-power">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                            连接功率计
+                        </button>
+                        <button id="openRideDashboardBtn" class="btn btn-device secondary" disabled>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                            独立骑行界面
+                        </button>
                     </div>
 
-                    <div class="controls">
-                        <button id="startRideBtn" class="btn secondary">开始骑行</button>
-                        <button id="stopRideBtn" class="btn ghost" disabled>停止骑行</button>
+                    <div class="controls ride-controls">
+                        <button id="startRideBtn" class="btn btn-ride btn-start">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            开始骑行
+                        </button>
+                        <button id="stopRideBtn" class="btn btn-ride btn-stop" disabled>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                            停止骑行
+                        </button>
                     </div>
 
                     <div class="device-status-grid">
@@ -349,9 +364,15 @@
                     <h2 id="rideDashboardTitle">实时骑行界面</h2>
                     <p class="section-subtitle" id="rideDashboardSubtitle">根据实时功率与 GPX 路线推进虚拟骑行。</p>
                 </div>
-                <div class="inline-actions">
-                    <button id="closeRideDashboardBtn" class="btn ghost">返回主界面</button>
-                    <button id="stopRideDashboardBtn" class="btn primary">结束骑行</button>
+                <div class="controls ride-controls">
+                    <button id="closeRideDashboardBtn" class="btn btn-ride ghost">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                        返回主界面
+                    </button>
+                    <button id="stopRideDashboardBtn" class="btn btn-ride btn-stop">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+                        结束骑行
+                    </button>
                 </div>
             </div>
 
