@@ -212,6 +212,29 @@ tbody tr:last-child td {
     line-height: 1.6;
 }
 
+.import-panel {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.route-source-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    color: var(--muted);
+}
+
+.route-source-row strong {
+    color: var(--text);
+    font-size: 15px;
+}
+
 .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -356,6 +379,121 @@ tbody tr:last-child td {
     height: 100%;
 }
 
+.route-map-shell {
+    height: 240px;
+    margin-bottom: 16px;
+}
+
+#routeMapPreview {
+    width: 100%;
+    height: 100%;
+}
+
+.map-canvas {
+    width: 100%;
+    height: 100%;
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.leaflet-container {
+    width: 100%;
+    height: 100%;
+    border-radius: 14px;
+    font-family: inherit;
+}
+
+.ride-dashboard {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(12px);
+    padding: 24px;
+    overflow-y: auto;
+}
+
+.ride-dashboard-inner {
+    max-width: 1360px;
+    margin: 0 auto;
+    display: grid;
+    gap: 20px;
+}
+
+.ride-dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: start;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(223, 228, 234, 0.9);
+    border-radius: 24px;
+    padding: 22px 24px;
+    box-shadow: var(--shadow);
+}
+
+.ride-progress-card {
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(223, 228, 234, 0.9);
+    border-radius: 24px;
+    padding: 22px 24px;
+    box-shadow: var(--shadow);
+    display: grid;
+    gap: 12px;
+}
+
+.ride-progress-labels,
+.ride-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.ride-progress-track {
+    width: 100%;
+    height: 14px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+}
+
+.ride-progress-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #2ed573, #0ea5e9);
+    transition: width 0.3s ease;
+}
+
+.ride-dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.ride-map-card,
+.ride-metrics-column {
+    display: grid;
+    gap: 20px;
+}
+
+.ride-map-large {
+    height: 520px;
+}
+
+#rideDashboardMap {
+    width: 100%;
+    height: 100%;
+}
+
+.ride-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .status {
     margin-top: 16px;
     color: var(--muted);
@@ -468,7 +606,8 @@ body:has(.pip-mode) {
 
 @media (max-width: 1024px) {
     .layout-grid,
-    .hero {
+    .hero,
+    .ride-dashboard-grid {
         grid-template-columns: 1fr;
     }
 }
@@ -485,11 +624,20 @@ body:has(.pip-mode) {
     .form-grid,
     .data-grid,
     .summary-grid,
-    .device-status-grid {
+    .device-status-grid,
+    .ride-summary-grid {
         grid-template-columns: 1fr;
     }
 
     .data-display {
         font-size: 32px;
+    }
+
+    .ride-dashboard {
+        padding: 14px;
+    }
+
+    .ride-map-large {
+        height: 320px;
     }
 }

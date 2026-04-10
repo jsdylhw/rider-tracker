@@ -1,4 +1,5 @@
 import { formatDuration, formatNumber } from "../../shared/format.js";
+import { createMapController } from "../map/map-controller.js";
 
 export function createMainView({
     store,
@@ -6,9 +7,14 @@ export function createMainView({
     onResetRoute,
     onToggleHeartRate,
     onTogglePowerMeter,
+    onOpenRideDashboard,
+    onCloseRideDashboard,
+    onStartRide,
+    onStopRide,
     onRunSimulation,
     onDownloadSession,
     onDownloadFit,
+    onImportGpx,
     onUpdateRouteSegment,
     onRemoveRouteSegment,
     onUpdateSettings,
@@ -20,6 +26,9 @@ export function createMainView({
         routeTableBody: document.getElementById("routeTableBody"),
         addSegmentBtn: document.getElementById("addSegmentBtn"),
         resetRouteBtn: document.getElementById("resetRouteBtn"),
+        gpxFileInput: document.getElementById("gpxFileInput"),
+        routeSourceLabel: document.getElementById("routeSourceLabel"),
+        routeMapPreview: document.getElementById("routeMapPreview"),
         routeSummary: document.getElementById("routeSummary"),
         routeDistanceChip: document.getElementById("routeDistanceChip"),
         routeElevationChip: document.getElementById("routeElevationChip"),
@@ -28,14 +37,39 @@ export function createMainView({
         fitExportForm: document.getElementById("fitExportForm"),
         connectHrBtn: document.getElementById("connectHrBtn"),
         connectPowerBtn: document.getElementById("connectPowerBtn"),
+        openRideDashboardBtn: document.getElementById("openRideDashboardBtn"),
         hrDeviceStatus: document.getElementById("hrDeviceStatus"),
         hrDeviceName: document.getElementById("hrDeviceName"),
         powerDeviceStatus: document.getElementById("powerDeviceStatus"),
         powerDeviceName: document.getElementById("powerDeviceName"),
+        rideStatusLabel: document.getElementById("rideStatusLabel"),
+        rideStatusMeta: document.getElementById("rideStatusMeta"),
+        rideSegmentLabel: document.getElementById("rideSegmentLabel"),
+        rideSegmentMeta: document.getElementById("rideSegmentMeta"),
         liveHeartRateDisplay: document.getElementById("liveHeartRateDisplay"),
         livePowerDisplay: document.getElementById("livePowerDisplay"),
         liveCadenceDisplay: document.getElementById("liveCadenceDisplay"),
         liveAvgPowerDisplay: document.getElementById("liveAvgPowerDisplay"),
+        liveSpeedDisplay: document.getElementById("liveSpeedDisplay"),
+        liveDistanceDisplay: document.getElementById("liveDistanceDisplay"),
+        startRideBtn: document.getElementById("startRideBtn"),
+        stopRideBtn: document.getElementById("stopRideBtn"),
+        rideDashboard: document.getElementById("rideDashboard"),
+        rideDashboardTitle: document.getElementById("rideDashboardTitle"),
+        rideDashboardSubtitle: document.getElementById("rideDashboardSubtitle"),
+        rideProgressHeadline: document.getElementById("rideProgressHeadline"),
+        rideProgressBar: document.getElementById("rideProgressBar"),
+        rideProgressDistance: document.getElementById("rideProgressDistance"),
+        rideProgressSegment: document.getElementById("rideProgressSegment"),
+        rideDashboardMap: document.getElementById("rideDashboardMap"),
+        dashboardAvgHr: document.getElementById("dashboardAvgHr"),
+        dashboardAvgPower: document.getElementById("dashboardAvgPower"),
+        dashboardMaxPower: document.getElementById("dashboardMaxPower"),
+        dashboardTss: document.getElementById("dashboardTss"),
+        dashboardCurrentSpeed: document.getElementById("dashboardCurrentSpeed"),
+        dashboardCurrentGrade: document.getElementById("dashboardCurrentGrade"),
+        closeRideDashboardBtn: document.getElementById("closeRideDashboardBtn"),
+        stopRideDashboardBtn: document.getElementById("stopRideDashboardBtn"),
         runSimulationBtn: document.getElementById("runSimulationBtn"),
         downloadSessionBtn: document.getElementById("downloadSessionBtn"),
         downloadFitBtn: document.getElementById("downloadFitBtn"),
@@ -54,6 +88,11 @@ export function createMainView({
         checkboxInputs: [...document.querySelectorAll(".checkbox-group input")]
     };
 
+    const mapController = createMapController({
+        previewElement: elements.routeMapPreview,
+        dashboardElement: elements.rideDashboardMap
+    });
+
     let lastRenderedSettingsSignature = "";
     let lastRenderedExportSignature = "";
 
@@ -61,9 +100,24 @@ export function createMainView({
     elements.resetRouteBtn.addEventListener("click", onResetRoute);
     elements.connectHrBtn.addEventListener("click", onToggleHeartRate);
     elements.connectPowerBtn.addEventListener("click", onTogglePowerMeter);
+    elements.openRideDashboardBtn.addEventListener("click", onOpenRideDashboard);
+    elements.startRideBtn.addEventListener("click", onStartRide);
+    elements.stopRideBtn.addEventListener("click", onStopRide);
+    elements.closeRideDashboardBtn.addEventListener("click", onCloseRideDashboard);
+    elements.stopRideDashboardBtn.addEventListener("click", onStopRide);
     elements.runSimulationBtn.addEventListener("click", onRunSimulation);
     elements.downloadSessionBtn.addEventListener("click", onDownloadSession);
     elements.downloadFitBtn.addEventListener("click", onDownloadFit);
+    elements.gpxFileInput.addEventListener("change", async (event) => {
+        const [file] = event.target.files ?? [];
+
+        if (!file) {
+            return;
+        }
+
+        await onImportGpx(file);
+        event.target.value = "";
+    });
 
     elements.simulationForm.addEventListener("input", () => {
         onUpdateSettings(readSettingsFromForm(elements.simulationForm));
@@ -84,8 +138,10 @@ export function createMainView({
         renderExportMetadata(state);
         renderRouteTable(state);
         renderRouteSummary(state);
+        renderRouteMap(state);
         renderBle(state);
         renderSession(state);
+        renderRideDashboard(state);
         renderPipControls(state);
     });
 
@@ -126,19 +182,20 @@ export function createMainView({
     }
 
     function renderRouteTable(state) {
+        const readOnly = state.route.source === "gpx";
         elements.routeTableBody.innerHTML = state.routeSegments.map((segment, index) => `
             <tr data-segment-id="${segment.id}">
                 <td>
-                    <input data-field="name" value="${escapeHtml(segment.name)}">
+                    <input data-field="name" value="${escapeHtml(segment.name)}" ${readOnly ? "disabled" : ""}>
                 </td>
                 <td>
-                    <input data-field="distanceKm" type="number" min="0.1" max="200" step="0.1" value="${segment.distanceKm}">
+                    <input data-field="distanceKm" type="number" min="0.1" max="200" step="0.1" value="${segment.distanceKm}" ${readOnly ? "disabled" : ""}>
                 </td>
                 <td>
-                    <input data-field="gradePercent" type="number" min="-15" max="20" step="0.1" value="${segment.gradePercent}">
+                    <input data-field="gradePercent" type="number" min="-15" max="20" step="0.1" value="${segment.gradePercent}" ${readOnly ? "disabled" : ""}>
                 </td>
                 <td class="action-cell">
-                    <button class="remove-segment-btn" data-remove-segment="${segment.id}" ${state.routeSegments.length === 1 ? "disabled" : ""}>×</button>
+                    <button class="remove-segment-btn" data-remove-segment="${segment.id}" ${state.routeSegments.length === 1 || readOnly ? "disabled" : ""}>×</button>
                 </td>
             </tr>
         `).join("");
@@ -159,19 +216,25 @@ export function createMainView({
 
     function renderRouteSummary(state) {
         const route = state.route;
+        elements.routeSourceLabel.textContent = route.source === "gpx" ? `GPX：${route.name}` : "手工路线";
+        elements.addSegmentBtn.disabled = route.source === "gpx";
         elements.routeDistanceChip.textContent = `${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
         elements.routeElevationChip.textContent = `${Math.round(route.totalElevationGainMeters)} m`;
         elements.savedSessionChip.textContent = state.session ? "已更新" : state.hasPersistedSession ? "已恢复" : "未保存";
         elements.routeSummary.innerHTML = `
             <strong>路线概览</strong><br>
-            共 ${route.segments.length} 段，累计距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km，
+            来源：${route.source === "gpx" ? "GPX 导入" : "手工输入"}，共 ${route.segments.length} 段，累计距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km，
             累计爬升 ${Math.round(route.totalElevationGainMeters)} m，
             累计下降 ${Math.round(route.totalDescentMeters)} m。
         `;
     }
 
+    function renderRouteMap(state) {
+        mapController.syncRoute(state.route);
+    }
+
     function renderSession(state) {
-        const session = state.session;
+        const session = state.liveRide.session ?? state.session;
         const summary = session?.summary;
         const records = session?.records ?? [];
 
@@ -184,8 +247,9 @@ export function createMainView({
         elements.currentGradeValue.textContent = `${formatNumber(summary?.currentGradePercent ?? 0, 1)}%`;
         elements.recordCountValue.textContent = String(records.length);
         elements.statusText.textContent = state.statusText;
-        elements.downloadSessionBtn.disabled = !session;
-        elements.downloadFitBtn.disabled = !session;
+        elements.downloadSessionBtn.disabled = !session || state.liveRide.isActive;
+        elements.downloadFitBtn.disabled = !session || state.liveRide.isActive;
+        elements.runSimulationBtn.disabled = state.liveRide.isActive;
 
         renderRecords(records);
         renderChart(records);
@@ -194,21 +258,80 @@ export function createMainView({
     function renderBle(state) {
         const heartRate = state.ble.heartRate;
         const powerMeter = state.ble.powerMeter;
+        const liveRide = state.liveRide;
+        const liveSession = liveRide.session;
+        const currentRecord = liveSession?.records?.at(-1) ?? null;
 
         elements.connectHrBtn.disabled = !state.ble.supported || heartRate.isConnecting;
         elements.connectPowerBtn.disabled = !state.ble.supported || powerMeter.isConnecting;
         elements.connectHrBtn.textContent = heartRate.isConnected ? "断开心率带" : (heartRate.isConnecting ? "连接中心率带..." : "连接心率带");
         elements.connectPowerBtn.textContent = powerMeter.isConnected ? "断开功率计" : (powerMeter.isConnecting ? "连接中功率计..." : "连接功率计");
+        elements.startRideBtn.disabled = !liveRide.canStart || liveRide.isActive;
+        elements.stopRideBtn.disabled = !liveRide.isActive;
+        elements.openRideDashboardBtn.disabled = !liveSession;
 
         elements.hrDeviceStatus.textContent = heartRate.statusLabel;
         elements.hrDeviceName.textContent = heartRate.deviceName;
         elements.powerDeviceStatus.textContent = powerMeter.statusLabel;
         elements.powerDeviceName.textContent = powerMeter.deviceName;
+        elements.rideStatusLabel.textContent = liveRide.isActive ? "骑行中" : (liveRide.lastCompletedAt ? "已结束" : "未开始");
+        elements.rideStatusMeta.textContent = liveRide.statusMeta;
+        elements.rideSegmentLabel.textContent = currentRecord?.segmentName ?? "等待开始";
+        elements.rideSegmentMeta.textContent = currentRecord
+            ? `当前坡度 ${formatNumber(currentRecord.gradePercent, 1)}%，路线进度 ${Math.round(currentRecord.routeProgress * 100)}%`
+            : "速度将按当前路线坡度和实时功率计算。";
 
         elements.liveHeartRateDisplay.innerHTML = `${heartRate.value ?? "--"} <span class="unit">bpm</span>`;
         elements.livePowerDisplay.innerHTML = `${powerMeter.power ?? "--"} <span class="unit">W</span>`;
         elements.liveCadenceDisplay.innerHTML = `${powerMeter.cadence ?? "--"} <span class="unit">rpm</span>`;
         elements.liveAvgPowerDisplay.innerHTML = `${powerMeter.averagePower ?? "--"} <span class="unit">W</span>`;
+        elements.liveSpeedDisplay.innerHTML = `${currentRecord ? formatNumber(currentRecord.speedKph, 1) : "--"} <span class="unit">km/h</span>`;
+        elements.liveDistanceDisplay.innerHTML = `${currentRecord ? formatNumber(currentRecord.distanceKm, 2) : "--"} <span class="unit">km</span>`;
+    }
+
+    function renderRideDashboard(state) {
+        const liveRide = state.liveRide;
+        const session = liveRide.session;
+        const summary = session?.summary;
+        const currentRecord = session?.records?.at(-1) ?? null;
+        const route = session?.route ?? state.route;
+
+        elements.rideDashboard.hidden = !liveRide.dashboardOpen;
+        elements.stopRideDashboardBtn.disabled = !liveRide.isActive;
+
+        if (!session) {
+            elements.rideDashboardTitle.textContent = "实时骑行界面";
+            elements.rideDashboardSubtitle.textContent = "开始骑行后这里会显示实时进度、地图位置与核心训练指标。";
+            elements.rideProgressHeadline.textContent = "0%";
+            elements.rideProgressBar.style.width = "0%";
+            elements.rideProgressDistance.textContent = "0.00 / 0.00 km";
+            elements.rideProgressSegment.textContent = "等待开始";
+            elements.dashboardAvgHr.textContent = "0 bpm";
+            elements.dashboardAvgPower.textContent = "0 W";
+            elements.dashboardMaxPower.textContent = "0 W";
+            elements.dashboardTss.textContent = "0.0";
+            elements.dashboardCurrentSpeed.textContent = "0.0 km/h";
+            elements.dashboardCurrentGrade.textContent = "0.0%";
+            mapController.syncRide(route, null);
+            return;
+        }
+
+        const progressPercent = Math.round((summary?.routeProgress ?? 0) * 100);
+        elements.rideDashboardTitle.textContent = route.name || "实时骑行界面";
+        elements.rideDashboardSubtitle.textContent = liveRide.isActive
+            ? "骑行界面已开启，正在按实时功率推进路线。"
+            : "骑行已结束，可在这里回看本次路线进度和核心指标。";
+        elements.rideProgressHeadline.textContent = `${progressPercent}%`;
+        elements.rideProgressBar.style.width = `${progressPercent}%`;
+        elements.rideProgressDistance.textContent = `${formatNumber(summary?.distanceKm ?? 0, 2)} / ${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
+        elements.rideProgressSegment.textContent = currentRecord?.segmentName ?? "等待开始";
+        elements.dashboardAvgHr.textContent = `${Math.round(summary?.averageHeartRate ?? 0)} bpm`;
+        elements.dashboardAvgPower.textContent = `${Math.round(summary?.averagePower ?? 0)} W`;
+        elements.dashboardMaxPower.textContent = `${Math.round(summary?.maxPower ?? 0)} W`;
+        elements.dashboardTss.textContent = formatNumber(summary?.estimatedTss ?? 0, 1);
+        elements.dashboardCurrentSpeed.textContent = `${formatNumber(summary?.currentSpeedKph ?? 0, 1)} km/h`;
+        elements.dashboardCurrentGrade.textContent = `${formatNumber(summary?.currentGradePercent ?? 0, 1)}%`;
+        mapController.syncRide(route, currentRecord);
     }
 
     function renderRecords(records) {
@@ -285,8 +408,8 @@ function readSettingsFromForm(form) {
 
     return {
         power: Number(formData.get("power")),
-        durationMinutes: Number(formData.get("durationMinutes")),
         mass: Number(formData.get("mass")),
+        ftp: Number(formData.get("ftp")),
         restingHr: Number(formData.get("restingHr")),
         maxHr: Number(formData.get("maxHr")),
         cda: Number(formData.get("cda")),

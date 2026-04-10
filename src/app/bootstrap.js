@@ -4,7 +4,9 @@ import { createPowerMeter } from "../adapters/bluetooth/power-meter.js";
 import { createStore } from "./store/app-store.js";
 import { exportSessionAsFit } from "../adapters/export/fit-exporter.js";
 import { saveLastSession, loadLastSession } from "../adapters/storage/session-storage.js";
+import { parseGpx } from "../domain/course/gpx-parser.js";
 import { buildRoute, sanitizeSegments } from "../domain/course/route-builder.js";
+import { advanceLiveRideSession, createLiveRideSession } from "../domain/session/live-ride-session.js";
 import { simulateRide } from "../domain/session/simulator.js";
 import { downloadBinary, downloadJson, formatDuration, formatNumber } from "../shared/format.js";
 import { createMainView } from "../ui/renderers/main-view.js";
@@ -18,8 +20,8 @@ const defaultRouteSegments = [
 
 const defaultSettings = {
     power: 220,
-    durationMinutes: 45,
     mass: 78,
+    ftp: 250,
     restingHr: 58,
     maxHr: 182,
     cda: 0.32,
@@ -47,6 +49,8 @@ const powerMeter = createPowerMeter({
     onStatus: handlePowerMeterStatus
 });
 
+let liveRideTimerId = null;
+
 const pipController = createPipController({
     button: document.getElementById("pipBtn"),
     template: document.getElementById("pip-template"),
@@ -61,9 +65,14 @@ createMainView({
     onResetRoute: handleResetRoute,
     onToggleHeartRate: handleToggleHeartRate,
     onTogglePowerMeter: handleTogglePowerMeter,
+    onOpenRideDashboard: handleOpenRideDashboard,
+    onCloseRideDashboard: handleCloseRideDashboard,
+    onStartRide: handleStartRide,
+    onStopRide: handleStopRide,
     onRunSimulation: handleRunSimulation,
     onDownloadSession: handleDownloadSession,
     onDownloadFit: handleDownloadFit,
+    onImportGpx: handleImportGpx,
     onUpdateRouteSegment: handleUpdateRouteSegment,
     onRemoveRouteSegment: handleRemoveRouteSegment,
     onUpdateSettings: handleUpdateSettings,
@@ -90,7 +99,7 @@ function handleAddSegment() {
 }
 
 function handleResetRoute() {
-    store.setState((state) => buildStateWithRoute(state, sanitizeSegments(defaultRouteSegments), "已恢复默认路线。"));
+    store.setState((state) => buildStateWithRoute(state, sanitizeSegments(defaultRouteSegments), "已恢复默认手工路线。"));
 }
 
 function handleUpdateRouteSegment(segmentId, field, value) {
@@ -130,6 +139,125 @@ function handleUpdatePipConfig(key, checked) {
         pipConfig: {
             ...state.pipConfig,
             [key]: checked
+        }
+    }));
+}
+
+function handleStartRide() {
+    const state = store.getState();
+
+    if (!state.liveRide.canStart || state.liveRide.isActive) {
+        return;
+    }
+
+    const startedAt = new Date().toISOString();
+    const session = createLiveRideSession({
+        route: state.route,
+        settings: state.settings,
+        startedAt,
+        initialHeartRate: state.ble.heartRate.value
+    });
+    session.exportMetadata = state.exportMetadata;
+
+    clearInterval(liveRideTimerId);
+    liveRideTimerId = window.setInterval(tickLiveRide, 1000);
+
+    store.setState((currentState) => ({
+        ...currentState,
+        liveRide: {
+            ...currentState.liveRide,
+            isActive: true,
+            dashboardOpen: true,
+            session,
+            startedAt,
+            statusMeta: "正在根据实时功率和路线坡度更新速度。"
+        },
+        statusText: "已开始骑行，速度将根据实时功率和当前路线坡度计算。"
+    }));
+}
+
+function handleStopRide() {
+    const state = store.getState();
+
+    if (!state.liveRide.isActive) {
+        return;
+    }
+
+    clearInterval(liveRideTimerId);
+    liveRideTimerId = null;
+
+    const completedSession = state.liveRide.session;
+
+    if (completedSession) {
+        saveLastSession(completedSession);
+    }
+
+    store.setState((currentState) => ({
+        ...currentState,
+        session: completedSession ?? currentState.session,
+        hasPersistedSession: Boolean(completedSession) || currentState.hasPersistedSession,
+        liveRide: {
+            ...currentState.liveRide,
+            isActive: false,
+            dashboardOpen: false,
+            lastCompletedAt: new Date().toISOString(),
+            statusMeta: completedSession
+                ? `骑行结束：${formatNumber(completedSession.summary.distanceKm, 2)} km / 平均速度 ${formatNumber(completedSession.summary.averageSpeedKph, 1)} km/h`
+                : "骑行已停止。"
+        },
+        statusText: completedSession
+            ? `骑行结束：${formatNumber(completedSession.summary.distanceKm, 2)} km / 平均速度 ${formatNumber(completedSession.summary.averageSpeedKph, 1)} km/h`
+            : "骑行已停止。"
+    }));
+}
+
+function handleOpenRideDashboard() {
+    store.setState((state) => ({
+        ...state,
+        liveRide: {
+            ...state.liveRide,
+            dashboardOpen: true
+        }
+    }));
+}
+
+function handleCloseRideDashboard() {
+    store.setState((state) => ({
+        ...state,
+        liveRide: {
+            ...state.liveRide,
+            dashboardOpen: false
+        }
+    }));
+}
+
+function tickLiveRide() {
+    const state = store.getState();
+
+    if (!state.liveRide.isActive || !state.liveRide.session) {
+        clearInterval(liveRideTimerId);
+        liveRideTimerId = null;
+        return;
+    }
+
+    const currentPower = state.ble.powerMeter.power ?? 0;
+    const currentHeartRate = state.ble.heartRate.value;
+    const currentCadence = state.ble.powerMeter.cadence;
+
+    const nextSession = advanceLiveRideSession({
+        session: state.liveRide.session,
+        power: currentPower,
+        heartRate: currentHeartRate,
+        cadence: currentCadence,
+        dt: 1
+    });
+
+    store.setState((currentState) => ({
+        ...currentState,
+        liveRide: {
+            ...currentState.liveRide,
+            session: nextSession,
+            statusMeta: `已骑行 ${formatDuration(nextSession.summary.elapsedSeconds)}，当前速度 ${formatNumber(nextSession.summary.currentSpeedKph, 1)} km/h`
         }
     }));
 }
@@ -209,6 +337,8 @@ function handleHeartRateData(data) {
 }
 
 function handlePowerMeterStatus(status) {
+    const wasActive = store.getState().liveRide.isActive;
+
     store.setState((state) => ({
         ...state,
         ble: {
@@ -226,8 +356,16 @@ function handlePowerMeterStatus(status) {
                 powerTotal: status.type === "disconnected" ? 0 : state.ble.powerMeter.powerTotal
             }
         },
+        liveRide: {
+            ...state.liveRide,
+            canStart: status.type === "connected"
+        },
         statusText: status.message
     }));
+
+    if (status.type === "disconnected" && wasActive) {
+        handleStopRide();
+    }
 }
 
 function handlePowerMeterData(data) {
@@ -262,6 +400,26 @@ function handleUpdateExportMetadata(exportMetadata) {
         },
         statusText: "FIT 导出信息已更新。"
     }));
+}
+
+async function handleImportGpx(file) {
+    try {
+        const xmlText = await file.text();
+        const route = parseGpx(xmlText);
+
+        store.setState((state) => ({
+            ...state,
+            route,
+            routeSegments: route.segments,
+            statusText: `已导入 GPX：${route.name}，距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km`
+        }));
+    } catch (error) {
+        console.error("GPX 导入失败", error);
+        store.setState((state) => ({
+            ...state,
+            statusText: `GPX 导入失败：${extractErrorMessage(error)}`
+        }));
+    }
 }
 
 function handleRunSimulation() {
@@ -340,6 +498,7 @@ function createInitialState(session) {
         route,
         settings: { ...defaultSettings },
         session,
+        liveRide: createInitialLiveRideState(),
         ble: createInitialBleState(),
         exportMetadata: {
             ...defaultExportMetadata,
@@ -368,8 +527,8 @@ function buildStateWithRoute(state, routeSegments, statusText) {
 function sanitizeSettings(settings) {
     return {
         power: clamp(settings.power, 80, 600, defaultSettings.power),
-        durationMinutes: clamp(settings.durationMinutes, 5, 360, defaultSettings.durationMinutes),
         mass: clamp(settings.mass, 40, 150, defaultSettings.mass),
+        ftp: clamp(settings.ftp, 120, 450, defaultSettings.ftp),
         restingHr: clamp(settings.restingHr, 40, 100, defaultSettings.restingHr),
         maxHr: clamp(settings.maxHr, 120, 220, defaultSettings.maxHr),
         cda: clamp(settings.cda, 0.2, 0.8, defaultSettings.cda),
@@ -420,17 +579,33 @@ function extractErrorMessage(error) {
 function buildPipData(state) {
     const lastRecord = state.session?.records.at(-1);
     const summary = state.session?.summary;
+    const liveRecord = state.liveRide.session?.records.at(-1);
+    const liveSummary = state.liveRide.session?.summary;
     const liveHeartRate = state.ble.heartRate.value;
     const livePower = state.ble.powerMeter.power;
     const liveAveragePower = state.ble.powerMeter.averagePower;
 
     return {
-        hr: liveHeartRate !== null ? String(liveHeartRate) : (lastRecord ? String(lastRecord.heartRate) : "--"),
-        power: livePower !== null ? String(livePower) : (lastRecord ? String(lastRecord.power) : "--"),
-        time: summary ? formatDuration(summary.elapsedSeconds) : "00:00",
+        hr: liveHeartRate !== null ? String(liveHeartRate) : (liveRecord ? String(liveRecord.heartRate) : (lastRecord ? String(lastRecord.heartRate) : "--")),
+        power: livePower !== null ? String(livePower) : (liveRecord ? String(liveRecord.power) : (lastRecord ? String(lastRecord.power) : "--")),
+        time: liveSummary
+            ? formatDuration(liveSummary.elapsedSeconds)
+            : (summary ? formatDuration(summary.elapsedSeconds) : "00:00"),
         np: liveAveragePower !== null
             ? String(liveAveragePower)
             : (summary ? String(Math.round(state.settings.power)) : "--")
+    };
+}
+
+function createInitialLiveRideState() {
+    return {
+        isActive: false,
+        canStart: false,
+        dashboardOpen: false,
+        session: null,
+        startedAt: null,
+        lastCompletedAt: null,
+        statusMeta: "连接功率计后即可开始骑行。"
     };
 }
 

@@ -18,6 +18,7 @@ export async function exportSessionAsFit(session, exportMetadata) {
     const maxSpeed = Math.max(...records.map((record) => record.speedKph / 3.6), 0);
     const maxHeartRate = Math.max(...records.map((record) => record.heartRate), 0);
     const maxPower = Math.max(...records.map((record) => record.power), 0);
+    const gradeStats = summarizeGrades(records);
 
     encoder.onMesg(Profile.MesgNum.FILE_ID, {
         type: "activity",
@@ -48,14 +49,22 @@ export async function exportSessionAsFit(session, exportMetadata) {
     });
 
     records.forEach((record) => {
-        encoder.onMesg(Profile.MesgNum.RECORD, {
+        const message = {
             timestamp: new Date(startedAt.getTime() + record.elapsedSeconds * 1000),
             heartRate: record.heartRate,
             distance: record.distanceKm * 1000,
             speed: record.speedKph / 3.6,
             altitude: record.elevationMeters,
-            power: record.power
-        });
+            power: record.power,
+            grade: record.gradePercent
+        };
+
+        if (typeof record.positionLat === "number" && typeof record.positionLong === "number") {
+            message.positionLat = toSemicircles(record.positionLat);
+            message.positionLong = toSemicircles(record.positionLong);
+        }
+
+        encoder.onMesg(Profile.MesgNum.RECORD, message);
     });
 
     encoder.onMesg(Profile.MesgNum.LAP, {
@@ -70,7 +79,10 @@ export async function exportSessionAsFit(session, exportMetadata) {
         avgHeartRate: summary.averageHeartRate,
         maxHeartRate,
         avgPower: Math.round(session.settings.power),
-        maxPower
+        maxPower,
+        avgGrade: gradeStats.avgGrade,
+        maxPosGrade: gradeStats.maxPosGrade,
+        maxNegGrade: gradeStats.maxNegGrade
     });
 
     encoder.onMesg(Profile.MesgNum.SESSION, {
@@ -86,6 +98,13 @@ export async function exportSessionAsFit(session, exportMetadata) {
         maxHeartRate,
         avgPower: Math.round(session.settings.power),
         maxPower,
+        totalDescent: Math.round(session.route?.totalDescentMeters ?? 0),
+        avgGrade: gradeStats.avgGrade,
+        avgPosGrade: gradeStats.avgPosGrade,
+        avgNegGrade: gradeStats.avgNegGrade,
+        maxPosGrade: gradeStats.maxPosGrade,
+        maxNegGrade: gradeStats.maxNegGrade,
+        sportProfileName: metadata.profileName,
         sport: "cycling",
         subSport: "virtualActivity"
     });
@@ -131,7 +150,8 @@ function buildExportMetadata(exportMetadata) {
         activityName,
         repositoryUrl,
         fitDescription: `${description} Source: ${repositoryUrl}`,
-        productName: buildProductName(activityName, repositoryUrl)
+        productName: buildProductName(activityName),
+        profileName: buildProfileName(description, repositoryUrl)
     };
 }
 
@@ -140,7 +160,47 @@ function normalizeText(value, fallback) {
     return text || fallback;
 }
 
-function buildProductName(activityName, repositoryUrl) {
-    const combined = `${activityName} | ${repositoryUrl}`;
-    return combined.slice(0, 80);
+function buildProductName(activityName) {
+    return activityName.slice(0, 80);
+}
+
+function buildProfileName(description, repositoryUrl) {
+    const combined = `${description} | ${repositoryUrl}`;
+    return combined.slice(0, 96);
+}
+
+function summarizeGrades(records) {
+    if (records.length === 0) {
+        return {
+            avgGrade: 0,
+            avgPosGrade: 0,
+            avgNegGrade: 0,
+            maxPosGrade: 0,
+            maxNegGrade: 0
+        };
+    }
+
+    const gradeValues = records.map((record) => Number(record.gradePercent) || 0);
+    const positiveGrades = gradeValues.filter((grade) => grade > 0);
+    const negativeGrades = gradeValues.filter((grade) => grade < 0);
+
+    return {
+        avgGrade: average(gradeValues),
+        avgPosGrade: average(positiveGrades),
+        avgNegGrade: average(negativeGrades),
+        maxPosGrade: positiveGrades.length > 0 ? Math.max(...positiveGrades) : 0,
+        maxNegGrade: negativeGrades.length > 0 ? Math.min(...negativeGrades) : 0
+    };
+}
+
+function average(values) {
+    if (values.length === 0) {
+        return 0;
+    }
+
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function toSemicircles(degrees) {
+    return Math.round((degrees * 2147483648) / 180);
 }
