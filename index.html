@@ -7,60 +7,300 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Rider Tracker 🚴‍♂️</h1>
-        <div class="card" id="main-card">
-            <h2>实时数据</h2>
-            
-            <div class="data-grid">
-                <div class="data-item">
-                    <div class="data-label">心率</div>
-                    <div class="data-display" id="heartRateDisplay">-- <span class="unit">bpm</span></div>
+    <div class="container app-shell">
+        <section class="hero card">
+            <div class="hero-copy">
+                <p class="eyebrow">Virtual Ride Prototype</p>
+                <h1>Rider Tracker 🚴‍♂️</h1>
+                <p class="hero-text">第一阶段先把路线编辑、恒定功率物理模拟、数据记录与浮窗展示打通。</p>
+            </div>
+            <div class="hero-metrics">
+                <div class="metric-chip">
+                    <span>路线距离</span>
+                    <strong id="routeDistanceChip">0.00 km</strong>
                 </div>
-                <div class="data-item">
-                    <div class="data-label">功率</div>
-                    <div class="data-display power-color" id="powerDisplay">-- <span class="unit">W</span></div>
+                <div class="metric-chip">
+                    <span>累计爬升</span>
+                    <strong id="routeElevationChip">0 m</strong>
+                </div>
+                <div class="metric-chip">
+                    <span>最近模拟</span>
+                    <strong id="savedSessionChip">未保存</strong>
+                </div>
+            </div>
+        </section>
+
+        <section class="layout-grid">
+            <div class="column">
+                <div class="card">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>路线轨迹设置</h2>
+                            <p class="section-subtitle">用分段距离和坡度先定义路线剖面，后续可平滑过渡到 GPX 导入。</p>
+                        </div>
+                        <div class="inline-actions">
+                            <button id="addSegmentBtn" class="btn secondary">新增路段</button>
+                            <button id="resetRouteBtn" class="btn ghost">恢复默认</button>
+                        </div>
+                    </div>
+
+                    <div class="table-shell">
+                        <table class="route-table">
+                            <thead>
+                                <tr>
+                                    <th>路段</th>
+                                    <th>距离 km</th>
+                                    <th>坡度 %</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="routeTableBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="route-summary" id="routeSummary"></div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>模拟参数</h2>
+                            <p class="section-subtitle">恒定功率驱动速度演化，并逐秒记录距离、海拔、心率与路段进度。</p>
+                        </div>
+                    </div>
+
+                    <form id="simulationForm" class="form-grid">
+                        <label class="field">
+                            <span>恒定功率 W</span>
+                            <input id="powerInput" name="power" type="number" min="80" max="600" step="5">
+                        </label>
+                        <label class="field">
+                            <span>模拟时长 min</span>
+                            <input id="durationInput" name="durationMinutes" type="number" min="5" max="360" step="5">
+                        </label>
+                        <label class="field">
+                            <span>骑手总质量 kg</span>
+                            <input id="massInput" name="mass" type="number" min="40" max="150" step="1">
+                        </label>
+                        <label class="field">
+                            <span>静息心率 bpm</span>
+                            <input id="restingHrInput" name="restingHr" type="number" min="40" max="100" step="1">
+                        </label>
+                        <label class="field">
+                            <span>最高心率 bpm</span>
+                            <input id="maxHrInput" name="maxHr" type="number" min="120" max="220" step="1">
+                        </label>
+                        <label class="field">
+                            <span>空气阻力 CdA</span>
+                            <input id="cdaInput" name="cda" type="number" min="0.2" max="0.8" step="0.01">
+                        </label>
+                        <label class="field">
+                            <span>滚阻 Crr</span>
+                            <input id="crrInput" name="crr" type="number" min="0.001" max="0.02" step="0.001">
+                        </label>
+                        <label class="field">
+                            <span>风速 m/s</span>
+                            <input id="windSpeedInput" name="windSpeed" type="number" min="-10" max="10" step="0.5">
+                        </label>
+                    </form>
+
+                    <div class="section-title-row subsection-title">
+                        <div>
+                            <h2>FIT 导出信息</h2>
+                            <p class="section-subtitle">导出时附带虚拟骑行说明和仓库来源信息。</p>
+                        </div>
+                    </div>
+
+                    <form id="fitExportForm" class="form-grid">
+                        <label class="field">
+                            <span>活动标题</span>
+                            <input name="activityName" type="text" maxlength="48">
+                        </label>
+                        <label class="field">
+                            <span>仓库地址</span>
+                            <input name="repositoryUrl" type="url">
+                        </label>
+                        <label class="field field-wide">
+                            <span>说明信息</span>
+                            <textarea name="fitDescription" rows="3" maxlength="180"></textarea>
+                        </label>
+                    </form>
+
+                    <div class="controls">
+                        <button id="runSimulationBtn" class="btn primary">运行模拟</button>
+                        <button id="downloadSessionBtn" class="btn power-btn" disabled>导出数据 JSON</button>
+                        <button id="downloadFitBtn" class="btn power-btn" disabled>导出 FIT</button>
+                        <button id="pipBtn" class="btn secondary" disabled>开启悬浮窗</button>
+                    </div>
+                    <div class="status" id="statusText">请先设置路线与模拟参数。</div>
                 </div>
             </div>
 
-            <!-- 自定义悬浮窗内容选项 -->
-            <div class="settings-panel">
-                <h3>悬浮窗显示内容</h3>
-                <div class="checkbox-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="chk-hr" value="hr" checked> <span>心率 (HR)</span>
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="chk-power" value="power" checked> <span>功率 (Power)</span>
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="chk-time" value="time"> <span>时间 (Time)</span>
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="chk-np" value="np" disabled title="正在开发中"> <span>标准化功率 (NP)</span>
-                    </label>
+            <div class="column">
+                <div class="card">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>蓝牙设备</h2>
+                            <p class="section-subtitle">连接心率带与功率计，实时读取心率、踏频和功率，同时保留模拟入口。</p>
+                        </div>
+                    </div>
+
+                    <div class="controls">
+                        <button id="connectHrBtn" class="btn primary">连接心率带</button>
+                        <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
+                    </div>
+
+                    <div class="device-status-grid">
+                        <div class="summary-card">
+                            <span>心率设备</span>
+                            <strong id="hrDeviceStatus">未连接</strong>
+                            <p class="device-meta" id="hrDeviceName">等待连接</p>
+                        </div>
+                        <div class="summary-card">
+                            <span>功率计设备</span>
+                            <strong id="powerDeviceStatus">未连接</strong>
+                            <p class="device-meta" id="powerDeviceName">等待连接</p>
+                        </div>
+                    </div>
+
+                    <div class="data-grid">
+                        <div class="data-item">
+                            <div class="data-label">实时心率</div>
+                            <div class="data-display" id="liveHeartRateDisplay">-- <span class="unit">bpm</span></div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">实时功率</div>
+                            <div class="data-display power-color" id="livePowerDisplay">-- <span class="unit">W</span></div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">实时踏频</div>
+                            <div class="data-display accent-color" id="liveCadenceDisplay">-- <span class="unit">rpm</span></div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">实时均功率</div>
+                            <div class="data-display climb-color" id="liveAvgPowerDisplay">-- <span class="unit">W</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>模拟结果</h2>
+                            <p class="section-subtitle">显示当前会话关键指标，并驱动浮窗展示。</p>
+                        </div>
+                    </div>
+
+                    <div class="data-grid">
+                        <div class="data-item">
+                            <div class="data-label">平均速度</div>
+                            <div class="data-display accent-color" id="avgSpeedDisplay">0.0 <span class="unit">km/h</span></div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">完赛距离</div>
+                            <div class="data-display power-color" id="distanceDisplay">0.00 <span class="unit">km</span></div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">平均心率</div>
+                            <div class="data-display" id="heartRateDisplay">0 <span class="unit">bpm</span></div>
+                        </div>
+                        <div class="data-item">
+                            <div class="data-label">累计爬升</div>
+                            <div class="data-display climb-color" id="elevationDisplay">0 <span class="unit">m</span></div>
+                        </div>
+                    </div>
+
+                    <div class="summary-grid">
+                        <div class="summary-card">
+                            <span>完赛用时</span>
+                            <strong id="elapsedTimeValue">00:00</strong>
+                        </div>
+                        <div class="summary-card">
+                            <span>路线进度</span>
+                            <strong id="routeProgressValue">0%</strong>
+                        </div>
+                        <div class="summary-card">
+                            <span>当前坡度</span>
+                            <strong id="currentGradeValue">0.0%</strong>
+                        </div>
+                        <div class="summary-card">
+                            <span>记录点数</span>
+                            <strong id="recordCountValue">0</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>距离-时间图像</h2>
+                            <p class="section-subtitle">横轴为时间，纵轴为累计距离。</p>
+                        </div>
+                    </div>
+
+                    <div class="chart-shell">
+                        <svg id="distanceChart" viewBox="0 0 640 280" preserveAspectRatio="none"></svg>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>数据记录</h2>
+                            <p class="section-subtitle">保留最近 12 条记录，完整数据可导出 JSON。</p>
+                        </div>
+                    </div>
+
+                    <div class="table-shell">
+                        <table class="records-table">
+                            <thead>
+                                <tr>
+                                    <th>时间</th>
+                                    <th>功率</th>
+                                    <th>速度</th>
+                                    <th>距离</th>
+                                    <th>心率</th>
+                                    <th>坡度</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recordsTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>悬浮窗显示内容</h2>
+                            <p class="section-subtitle">模拟后的核心指标可直接复用现有浮窗能力。</p>
+                        </div>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="chk-hr" value="hr" checked> <span>心率</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="chk-power" value="power" checked> <span>功率</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="chk-time" value="time" checked> <span>时间</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="chk-np" value="np" checked> <span>均功率</span>
+                        </label>
+                    </div>
                 </div>
             </div>
-
-            <div class="controls">
-                <button id="connectHrBtn" class="btn primary">连接心率带</button>
-                <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
-                <button id="pipBtn" class="btn secondary" disabled>开启悬浮窗</button>
-            </div>
-            <div class="status" id="statusText">等待连接...</div>
-        </div>
+        </section>
     </div>
 
-    <!-- 悬浮窗的 HTML 模板 (默认隐藏) -->
     <template id="pip-template">
         <div id="pip-container" class="pip-mode">
-            <div class="pip-data-row" id="pip-dynamic-row">
-                <!-- 这里的子元素将通过 pip.js 动态生成 -->
-            </div>
+            <div class="pip-data-row" id="pip-dynamic-row"></div>
         </div>
     </template>
 
-    <script src="pip.js"></script>
-    <script src="app.js"></script>
+    <script type="module" src="./src/app/bootstrap.js"></script>
 </body>
 </html>
