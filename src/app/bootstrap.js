@@ -54,8 +54,7 @@ let liveRideTimerId = null;
 const pipController = createPipController({
     button: document.getElementById("pipBtn"),
     template: document.getElementById("pip-template"),
-    getData: () => buildPipData(store.getState()),
-    getConfig: () => store.getState().pipConfig
+    getData: () => buildPipData(store.getState())
 });
 
 createMainView({
@@ -611,23 +610,27 @@ function extractErrorMessage(error) {
 }
 
 function buildPipData(state) {
-    const lastRecord = state.session?.records.at(-1);
-    const summary = state.session?.summary;
     const liveRecord = state.liveRide.session?.records.at(-1);
     const liveSummary = state.liveRide.session?.summary;
+    const route = state.liveRide.session?.route ?? state.route;
+    
     const liveHeartRate = state.ble.heartRate.value;
     const livePower = state.ble.powerMeter.power;
-    const liveAveragePower = state.ble.powerMeter.averagePower;
+    const liveCadence = state.ble.powerMeter.cadence;
+
+    const totalDistanceKm = route ? route.totalDistanceMeters / 1000 : 0;
+    const distanceKm = liveSummary?.distanceKm ?? 0;
+    const remainingKm = Math.max(0, totalDistanceKm - distanceKm);
 
     return {
-        hr: liveHeartRate !== null ? String(liveHeartRate) : (liveRecord ? String(liveRecord.heartRate) : (lastRecord ? String(lastRecord.heartRate) : "--")),
-        power: livePower !== null ? String(livePower) : (liveRecord ? String(liveRecord.power) : (lastRecord ? String(lastRecord.power) : "--")),
-        time: liveSummary
-            ? formatDuration(liveSummary.elapsedSeconds)
-            : (summary ? formatDuration(summary.elapsedSeconds) : "00:00"),
-        np: liveAveragePower !== null
-            ? String(liveAveragePower)
-            : (summary ? String(Math.round(state.settings.power)) : "--")
+        distance: formatNumber(distanceKm, 2),
+        remaining: formatNumber(remainingKm, 2),
+        speed: liveSummary ? formatNumber(liveSummary.currentSpeedKph, 1) : "--",
+        power: livePower !== null ? String(livePower) : "--",
+        hr: liveHeartRate !== null ? String(liveHeartRate) : "--",
+        cadence: liveCadence !== null ? String(liveCadence) : "--",
+        route: route,
+        currentRecord: liveRecord ?? null
     };
 }
 

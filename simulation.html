@@ -195,9 +195,19 @@
                         <span>导入 GPX 文件</span>
                         <input id="gpxFileInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
                     </label>
-                    <div class="route-source-row">
-                        <span>当前路线来源</span>
-                        <strong id="routeSourceLabel">手工路线</strong>
+                    <div class="route-source-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <span>当前路线来源：</span>
+                            <strong id="routeSourceLabel">手工路线</strong>
+                        </div>
+                        <div class="map-provider-toggle" style="display: flex; gap: 8px; align-items: center;">
+                            <span style="font-size: 13px; color: var(--muted);">地图底图：</span>
+                            <select id="mapProviderSelect" class="btn" style="padding: 4px 8px; font-size: 13px; border: 1px solid var(--border); background: var(--surface);">
+                                <option value="amap" selected>高德地图 (国内推荐)</option>
+                                <option value="amap_satellite">高德卫星影像</option>
+                                <option value="osm">OpenStreetMap</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
@@ -205,7 +215,19 @@
                     <div id="routeMapPreview" class="map-canvas"></div>
                 </div>
 
-                <div class="table-shell">
+                <div class="card" id="routeElevationCard" style="margin-top: 16px;">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>路线海拔剖面</h2>
+                            <p class="section-subtitle">距离-坡度面积图（按坡度等级着色）。</p>
+                        </div>
+                    </div>
+                    <div class="chart-shell" style="height: 180px; position: relative;">
+                        <svg id="setupElevationChart" viewBox="0 0 640 180" preserveAspectRatio="none" style="width: 100%; height: 100%;"></svg>
+                    </div>
+                </div>
+
+                <div class="table-shell" id="routeTableShell">
                     <table class="route-table">
                         <thead>
                             <tr>
@@ -227,7 +249,12 @@
 
     <template id="pip-template">
         <div id="pip-container" class="pip-mode">
-            <div class="pip-data-row" id="pip-dynamic-row"></div>
+            <div class="pip-metrics-grid" id="pip-metrics-grid">
+                <!-- Data cells will be injected here by JS -->
+            </div>
+            <div class="pip-chart-container" id="pip-chart-container" style="height: 60px; width: 100%; margin-top: 8px;">
+                <svg id="pipElevationChart" viewBox="0 0 320 60" preserveAspectRatio="none" style="width: 100%; height: 100%;"></svg>
+            </div>
         </div>
     </template>
 

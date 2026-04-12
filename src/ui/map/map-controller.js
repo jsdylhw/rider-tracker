@@ -1,12 +1,79 @@
-const DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const DEFAULT_ATTRIBUTION = '&copy; OpenStreetMap contributors';
+const MAP_PROVIDERS = {
+    osm: {
+        url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        attribution: '&copy; OpenStreetMap'
+    },
+    amap: {
+        url: "https://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}",
+        attribution: '&copy; 高德地图'
+    },
+    amap_satellite: {
+        url: "https://webst01.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
+        attribution: '&copy; 高德卫星'
+    }
+};
 
 export function createMapController({ previewElement, dashboardElement }) {
-    const previewMap = createMap(previewElement, { zoomControl: false });
-    const dashboardMap = createMap(dashboardElement, { zoomControl: true });
+    let currentProviderKey = "amap"; // Default to Amap
+    
+    // Store tile layers references so we can update them later
+    let previewTileLayer = null;
+    let dashboardTileLayer = null;
+
+    function createMap(element, options) {
+        if (!element || !window.L) {
+            return null;
+        }
+
+        const map = window.L.map(element, {
+            zoomSnap: 0.25,
+            attributionControl: true,
+            ...options
+        });
+
+        const provider = MAP_PROVIDERS[currentProviderKey];
+        const tileLayer = window.L.tileLayer(provider.url, {
+            maxZoom: 19,
+            attribution: provider.attribution
+        }).addTo(map);
+
+        map.setView([31.2304, 121.4737], 10);
+
+        return { map, tileLayer };
+    }
+
+    const previewData = createMap(previewElement, { zoomControl: false });
+    const dashboardData = createMap(dashboardElement, { zoomControl: true });
+
+    const previewMap = previewData?.map;
+    previewTileLayer = previewData?.tileLayer;
+    
+    const dashboardMap = dashboardData?.map;
+    dashboardTileLayer = dashboardData?.tileLayer;
 
     const previewLayers = createLayerSet(previewMap);
     const dashboardLayers = createLayerSet(dashboardMap);
+
+    function setMapProvider(providerKey) {
+        if (!MAP_PROVIDERS[providerKey] || providerKey === currentProviderKey) {
+            return;
+        }
+        currentProviderKey = providerKey;
+        const provider = MAP_PROVIDERS[currentProviderKey];
+
+        if (previewTileLayer) {
+            previewTileLayer.setUrl(provider.url);
+            previewMap.attributionControl.removeAttribution(previewTileLayer.options.attribution);
+            previewTileLayer.options.attribution = provider.attribution;
+            previewMap.attributionControl.addAttribution(provider.attribution);
+        }
+        if (dashboardTileLayer) {
+            dashboardTileLayer.setUrl(provider.url);
+            dashboardMap.attributionControl.removeAttribution(dashboardTileLayer.options.attribution);
+            dashboardTileLayer.options.attribution = provider.attribution;
+            dashboardMap.attributionControl.addAttribution(provider.attribution);
+        }
+    }
 
     function syncRoute(route) {
         renderRoute(previewMap, previewLayers, route, null);
@@ -20,29 +87,9 @@ export function createMapController({ previewElement, dashboardElement }) {
     return {
         syncRoute,
         syncRide,
+        setMapProvider,
         isReady: Boolean(window.L)
     };
-}
-
-function createMap(element, options) {
-    if (!element || !window.L) {
-        return null;
-    }
-
-    const map = window.L.map(element, {
-        zoomSnap: 0.25,
-        attributionControl: true,
-        ...options
-    });
-
-    window.L.tileLayer(DEFAULT_TILE_URL, {
-        maxZoom: 19,
-        attribution: DEFAULT_ATTRIBUTION
-    }).addTo(map);
-
-    map.setView([31.2304, 121.4737], 10);
-
-    return map;
 }
 
 function createLayerSet(map) {

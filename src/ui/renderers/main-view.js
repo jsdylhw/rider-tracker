@@ -38,6 +38,7 @@ export function createMainView({
         personalSettingsForm: document.getElementById("personalSettingsForm"),
         simPowerForm: document.getElementById("simPowerForm"),
         routeTableBody: document.getElementById("routeTableBody"),
+        routeTableShell: document.getElementById("routeTableShell"),
         addSegmentBtn: document.getElementById("addSegmentBtn"),
         resetRouteBtn: document.getElementById("resetRouteBtn"),
         gpxFileInput: document.getElementById("gpxFileInput"),
@@ -49,6 +50,8 @@ export function createMainView({
         savedSessionChip: document.getElementById("savedSessionChip"),
         simulationForm: document.getElementById("simulationForm"),
         fitExportForm: document.getElementById("fitExportForm"),
+        fitExportFormLive: document.getElementById("fitExportFormLive"),
+        liveFitExportCard: document.getElementById("liveFitExportCard"),
         connectHrBtn: document.getElementById("connectHrBtn"),
         connectPowerBtn: document.getElementById("connectPowerBtn"),
         openRideDashboardBtn: document.getElementById("openRideDashboardBtn"),
@@ -87,6 +90,8 @@ export function createMainView({
         runSimulationBtn: document.getElementById("runSimulationBtn"),
         downloadSessionBtn: document.getElementById("downloadSessionBtn"),
         downloadFitBtn: document.getElementById("downloadFitBtn"),
+        downloadSessionBtnLive: document.getElementById("downloadSessionBtnLive"),
+        downloadFitBtnLive: document.getElementById("downloadFitBtnLive"),
         pipBtn: document.getElementById("pipBtn"),
         statusText: document.getElementById("statusText"),
         avgSpeedDisplay: document.getElementById("avgSpeedDisplay"),
@@ -102,7 +107,10 @@ export function createMainView({
         checkboxInputs: [...document.querySelectorAll(".checkbox-group input")],
         dashboardMetricsGrid: document.getElementById("dashboardMetricsGrid"),
         customizeMetricsBtn: document.getElementById("customizeMetricsBtn"),
-        metricsCustomizer: document.getElementById("metricsCustomizer")
+        metricsCustomizer: document.getElementById("metricsCustomizer"),
+        elevationChart: document.getElementById("elevationChart"),
+        setupElevationChart: document.getElementById("setupElevationChart"),
+        mapProviderSelect: document.getElementById("mapProviderSelect")
     };
 
     // Initialize custom metrics state
@@ -172,6 +180,8 @@ export function createMainView({
     bind(elements.runSimulationBtn, "click", onRunSimulation);
     bind(elements.downloadSessionBtn, "click", onDownloadSession);
     bind(elements.downloadFitBtn, "click", onDownloadFit);
+    bind(elements.downloadSessionBtnLive, "click", onDownloadSession);
+    bind(elements.downloadFitBtnLive, "click", onDownloadFit);
     
     if (elements.gpxFileInput) {
         elements.gpxFileInput.addEventListener("change", async (event) => {
@@ -197,6 +207,12 @@ export function createMainView({
     if (elements.fitExportForm) {
         elements.fitExportForm.addEventListener("input", () => {
             onUpdateExportMetadata(readExportMetadataFromForm(elements.fitExportForm));
+        });
+    }
+
+    if (elements.fitExportFormLive) {
+        elements.fitExportFormLive.addEventListener("input", () => {
+            onUpdateExportMetadata(readExportMetadataFromForm(elements.fitExportFormLive));
         });
     }
 
@@ -235,6 +251,12 @@ export function createMainView({
         renderPipControls(state);
     });
 
+    if (elements.mapProviderSelect) {
+        elements.mapProviderSelect.addEventListener("change", (e) => {
+            mapController.setMapProvider(e.target.value);
+        });
+    }
+
     function renderSettings(state) {
         const signature = JSON.stringify(state.settings);
 
@@ -263,7 +285,6 @@ export function createMainView({
     }
 
     function renderExportMetadata(state) {
-        if (!elements.fitExportForm) return;
         const signature = JSON.stringify(state.exportMetadata);
 
         if (signature === lastRenderedExportSignature) {
@@ -271,10 +292,18 @@ export function createMainView({
         }
 
         Object.entries(state.exportMetadata).forEach(([key, value]) => {
-            const field = elements.fitExportForm.elements.namedItem(key);
+            if (elements.fitExportForm) {
+                const field = elements.fitExportForm.elements.namedItem(key);
+                if (field && document.activeElement !== field) {
+                    field.value = value;
+                }
+            }
 
-            if (field && document.activeElement !== field) {
-                field.value = value;
+            if (elements.fitExportFormLive) {
+                const fieldLive = elements.fitExportFormLive.elements.namedItem(key);
+                if (fieldLive && document.activeElement !== fieldLive) {
+                    fieldLive.value = value;
+                }
             }
         });
 
@@ -323,21 +352,30 @@ export function createMainView({
     }
 
     function renderRouteTable(state) {
-        const readOnly = state.route.source === "gpx";
+        const isGpx = state.route.source === "gpx";
+        
+        if (elements.routeTableShell) {
+            elements.routeTableShell.hidden = isGpx;
+        }
+
+        if (isGpx) {
+            return;
+        }
+
         if (elements.routeTableBody) {
             elements.routeTableBody.innerHTML = state.routeSegments.map((segment, index) => `
                 <tr data-segment-id="${segment.id}">
                     <td>
-                        <input data-field="name" value="${escapeHtml(segment.name)}" ${readOnly ? "disabled" : ""}>
+                        <input data-field="name" value="${escapeHtml(segment.name)}">
                     </td>
                     <td>
-                        <input data-field="distanceKm" type="number" min="0.1" max="200" step="0.1" value="${segment.distanceKm}" ${readOnly ? "disabled" : ""}>
+                        <input data-field="distanceKm" type="number" min="0.1" max="200" step="0.1" value="${segment.distanceKm}">
                     </td>
                     <td>
-                        <input data-field="gradePercent" type="number" min="-15" max="20" step="0.1" value="${segment.gradePercent}" ${readOnly ? "disabled" : ""}>
+                        <input data-field="gradePercent" type="number" min="-15" max="20" step="0.1" value="${segment.gradePercent}">
                     </td>
                     <td class="action-cell">
-                        <button class="remove-segment-btn" data-remove-segment="${segment.id}" ${state.routeSegments.length === 1 || readOnly ? "disabled" : ""}>×</button>
+                        <button class="remove-segment-btn" data-remove-segment="${segment.id}" ${state.routeSegments.length === 1 ? "disabled" : ""}>×</button>
                     </td>
                 </tr>
             `).join("");
@@ -359,15 +397,19 @@ export function createMainView({
 
     function renderRouteSummary(state) {
         const route = state.route;
-        if (elements.routeSourceLabel) elements.routeSourceLabel.textContent = route.source === "gpx" ? `GPX：${route.name}` : "手工路线";
-        if (elements.addSegmentBtn) elements.addSegmentBtn.disabled = route.source === "gpx";
+        const isGpx = route.source === "gpx";
+        if (elements.routeSourceLabel) elements.routeSourceLabel.textContent = isGpx ? `GPX：${route.name}` : "手工路线";
+        if (elements.addSegmentBtn) elements.addSegmentBtn.disabled = isGpx;
         if (elements.routeDistanceChip) elements.routeDistanceChip.textContent = `${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
         if (elements.routeElevationChip) elements.routeElevationChip.textContent = `${Math.round(route.totalElevationGainMeters)} m`;
         if (elements.savedSessionChip) elements.savedSessionChip.textContent = state.session ? "已更新" : state.hasPersistedSession ? "已恢复" : "未保存";
         if (elements.routeSummary) {
+            const sourceText = isGpx ? "GPX 导入" : "手工输入";
+            const segmentsText = isGpx ? "" : `，共 ${route.segments.length} 段`;
+            
             elements.routeSummary.innerHTML = `
                 <strong>路线概览</strong><br>
-                来源：${route.source === "gpx" ? "GPX 导入" : "手工输入"}，共 ${route.segments.length} 段，累计距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km，
+                来源：${sourceText}${segmentsText}，累计距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km，
                 累计爬升 ${Math.round(route.totalElevationGainMeters)} m，
                 累计下降 ${Math.round(route.totalDescentMeters)} m。
             `;
@@ -376,6 +418,7 @@ export function createMainView({
 
     function renderRouteMap(state) {
         mapController.syncRoute(state.route);
+        renderElevationChart(state.route, null);
     }
 
     function renderSession(state) {
@@ -395,6 +438,8 @@ export function createMainView({
         
         if (elements.downloadSessionBtn) elements.downloadSessionBtn.disabled = !session || state.liveRide.isActive;
         if (elements.downloadFitBtn) elements.downloadFitBtn.disabled = !session || state.liveRide.isActive;
+        if (elements.downloadSessionBtnLive) elements.downloadSessionBtnLive.disabled = !session || state.liveRide.isActive;
+        if (elements.downloadFitBtnLive) elements.downloadFitBtnLive.disabled = !session || state.liveRide.isActive;
         if (elements.runSimulationBtn) elements.runSimulationBtn.disabled = state.liveRide.isActive;
 
         renderRecords(records);
@@ -448,6 +493,17 @@ export function createMainView({
         const summary = session?.summary;
         const currentRecord = session?.records?.at(-1) ?? null;
         const route = session?.route ?? state.route;
+        const records = session?.records ?? [];
+
+        const powerMeter = state.ble.powerMeter;
+        const heartRate = state.ble.heartRate;
+
+        // 计算 3s 平均功率
+        let avg3sPower = 0;
+        if (records.length > 0) {
+            const last3 = records.slice(-3);
+            avg3sPower = Math.round(last3.reduce((sum, r) => sum + (r.power || 0), 0) / last3.length);
+        }
 
         elements.rideDashboard.hidden = !liveRide.dashboardOpen;
         if (liveRide.dashboardOpen) {
@@ -457,6 +513,24 @@ export function createMainView({
         }
         
         elements.stopRideDashboardBtn.disabled = !liveRide.isActive;
+
+        if (elements.liveFitExportCard) {
+            // Only show FIT export options if a live ride has completed (not active and has a session)
+            elements.liveFitExportCard.hidden = liveRide.isActive || !session;
+        }
+
+        const metricsData = {
+            currentPower: { label: "实时功率", value: powerMeter?.power ?? 0, unit: "W", color: "power-color" },
+            avg3sPower: { label: "3秒均功率", value: avg3sPower, unit: "W", color: "power-color" },
+            currentHr: { label: "当前心率", value: heartRate?.value ?? 0, unit: "bpm", color: "" },
+            currentSpeed: { label: "当前速度", value: formatNumber(summary?.currentSpeedKph ?? 0, 1), unit: "km/h", color: "accent-color" },
+            currentCadence: { label: "实时踏频", value: powerMeter?.cadence ?? 0, unit: "rpm", color: "accent-color" },
+            avgPower: { label: "平均功率", value: Math.round(summary?.averagePower ?? 0), unit: "W", color: "power-color" },
+            maxPower: { label: "最大功率", value: Math.round(summary?.maxPower ?? 0), unit: "W", color: "power-color" },
+            avgHr: { label: "平均心率", value: Math.round(summary?.averageHeartRate ?? 0), unit: "bpm", color: "" },
+            currentGrade: { label: "当前坡度", value: formatNumber(summary?.currentGradePercent ?? 0, 1), unit: "%", color: "climb-color" },
+            tss: { label: "预估 TSS", value: formatNumber(summary?.estimatedTss ?? 0, 1), unit: "", color: "accent-color" }
+        };
 
         if (!session) {
             alertStates.halfway = false;
@@ -470,12 +544,15 @@ export function createMainView({
             
             const defaultMetricsHtml = Object.entries(customMetricsState)
                 .filter(([key, isEnabled]) => isEnabled)
-                .map(([key]) => `
-                    <div class="data-item">
-                        <div class="data-label">${key === 'tss' ? '预估 TSS' : key.includes('Hr') ? '心率' : key.includes('Power') ? '功率' : '指标'}</div>
-                        <div class="data-display">--</div>
-                    </div>
-                `).join("");
+                .map(([key]) => {
+                    const metric = metricsData[key];
+                    return `
+                        <div class="data-item">
+                            <div class="data-label">${metric.label}</div>
+                            <div class="data-display ${metric.color}">-- <span class="unit">${metric.unit}</span></div>
+                        </div>
+                    `;
+                }).join("");
             
             if (elements.dashboardMetricsGrid) {
                 elements.dashboardMetricsGrid.innerHTML = defaultMetricsHtml;
@@ -510,29 +587,6 @@ export function createMainView({
         elements.rideProgressBar.style.width = `${progressPercent}%`;
         elements.rideProgressDistance.textContent = `${formatNumber(summary?.distanceKm ?? 0, 2)} / ${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
         elements.rideProgressSegment.textContent = currentRecord?.segmentName ?? "等待开始";
-        const powerMeter = state.ble.powerMeter;
-        const heartRate = state.ble.heartRate;
-        const records = session?.records ?? [];
-        
-        // 计算 3s 平均功率
-        let avg3sPower = 0;
-        if (records.length > 0) {
-            const last3 = records.slice(-3);
-            avg3sPower = Math.round(last3.reduce((sum, r) => sum + (r.power || 0), 0) / last3.length);
-        }
-
-        const metricsData = {
-            currentPower: { label: "实时功率", value: powerMeter.power ?? 0, unit: "W", color: "power-color" },
-            avg3sPower: { label: "3秒均功率", value: avg3sPower, unit: "W", color: "power-color" },
-            currentHr: { label: "当前心率", value: heartRate.value ?? 0, unit: "bpm", color: "" },
-            currentSpeed: { label: "当前速度", value: formatNumber(summary?.currentSpeedKph ?? 0, 1), unit: "km/h", color: "accent-color" },
-            currentCadence: { label: "实时踏频", value: powerMeter.cadence ?? 0, unit: "rpm", color: "accent-color" },
-            avgPower: { label: "平均功率", value: Math.round(summary?.averagePower ?? 0), unit: "W", color: "power-color" },
-            maxPower: { label: "最大功率", value: Math.round(summary?.maxPower ?? 0), unit: "W", color: "power-color" },
-            avgHr: { label: "平均心率", value: Math.round(summary?.averageHeartRate ?? 0), unit: "bpm", color: "" },
-            currentGrade: { label: "当前坡度", value: formatNumber(summary?.currentGradePercent ?? 0, 1), unit: "%", color: "climb-color" },
-            tss: { label: "预估 TSS", value: formatNumber(summary?.estimatedTss ?? 0, 1), unit: "", color: "accent-color" }
-        };
 
         elements.dashboardMetricsGrid.innerHTML = Object.entries(customMetricsState)
             .filter(([key, isEnabled]) => isEnabled)
@@ -547,6 +601,102 @@ export function createMainView({
             }).join("");
 
         mapController.syncRide(route, currentRecord);
+        renderElevationChart(route, currentRecord);
+    }
+
+    function renderElevationChart(route, currentRecord) {
+        if (!elements.elevationChart) return;
+
+        if (!route || !route.points || route.points.length === 0) {
+            elements.elevationChart.innerHTML = `
+                <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-size="14">
+                    导入路线后显示坡度图
+                </text>
+            `;
+            return;
+        }
+
+        const width = 640;
+        const height = 180;
+        const paddingBottom = 20;
+        const paddingTop = 20;
+        const innerHeight = height - paddingTop - paddingBottom;
+
+        const totalDist = route.totalDistanceMeters;
+        
+        // 动态计算 Y 轴的零点位置（平路）
+        const maxGrade = Math.max(...route.points.map(p => p.gradePercent), 5); // 至少 5%
+        const minGrade = Math.min(...route.points.map(p => p.gradePercent), -5); // 至少 -5%
+        
+        // 我们想让 Y=0 (平路) 在一个固定的基准线上
+        // 比如图表上半部分画爬坡，下半部分画下坡
+        const gradeRange = maxGrade - minGrade;
+        
+        // 计算 Y=0 的像素位置 (0 坡度对应的 Y)
+        const zeroY = paddingTop + innerHeight * (maxGrade / gradeRange);
+
+        let svgContent = '';
+
+        // Helper to get grade color
+        function getGradeColor(grade) {
+            if (grade >= 10) return '#e11d48'; // 爬墙 (HC)
+            if (grade >= 7) return '#f43f5e';  // 陡坡 (1级)
+            if (grade >= 4) return '#f97316';  // 显著上坡 (2级)
+            if (grade >= 2) return '#fbbf24';  // 缓坡 (3级)
+            if (grade > -2) return '#2dd4bf';  // 平路或微坡
+            return '#38bdf8';                  // 下坡
+        }
+
+        // 画一条 0 坡度的基准线
+        svgContent += `<line x1="0" y1="${zeroY}" x2="${width}" y2="${zeroY}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 4" />`;
+
+        // 遍历所有的点画柱状图/折线面积图
+        let currentX = 0;
+        for (let i = 1; i < route.points.length; i++) {
+            const prevPoint = route.points[i - 1];
+            const currentPoint = route.points[i];
+            
+            const prevX = (prevPoint.distanceMeters / totalDist) * width;
+            const curX = (currentPoint.distanceMeters / totalDist) * width;
+            
+            const prevY = paddingTop + innerHeight * ((maxGrade - prevPoint.gradePercent) / gradeRange);
+            const curY = paddingTop + innerHeight * ((maxGrade - currentPoint.gradePercent) / gradeRange);
+            
+            const color = getGradeColor(currentPoint.gradePercent);
+
+            // 画一个梯形，底边在 zeroY
+            svgContent += `
+                <polygon points="${prevX},${zeroY} ${prevX},${prevY} ${curX},${curY} ${curX},${zeroY}" 
+                         fill="${color}" opacity="0.8" />
+            `;
+            
+            // 顶部的描边
+            svgContent += `
+                <line x1="${prevX}" y1="${prevY}" x2="${curX}" y2="${curY}" 
+                      stroke="${color}" stroke-width="1.5" />
+            `;
+        }
+
+        // Draw current position indicator
+        if (currentRecord) {
+            const posX = (currentRecord.distanceKm * 1000 / totalDist) * width;
+            svgContent += `
+                <!-- 已骑行区域遮罩 -->
+                <rect x="0" y="0" width="${posX}" height="${height}" fill="rgba(0, 0, 0, 0.2)" />
+                <!-- 骑行者标记 -->
+                <line x1="${posX}" y1="0" x2="${posX}" y2="${height}" stroke="var(--text)" stroke-width="2" stroke-dasharray="4 4" />
+                <circle cx="${posX}" cy="${zeroY}" r="5" fill="white" stroke="var(--text)" stroke-width="2" />
+            `;
+        }
+
+        if (elements.elevationChart) {
+            elements.elevationChart.innerHTML = svgContent;
+        }
+        if (elements.setupElevationChart) {
+            // 在设置界面，不需要显示半透明进度遮罩，只显示纯粹的路线图
+            let setupSvgContent = svgContent.replace(/<!-- 已骑行区域遮罩 -->[\s\S]*?<\/circle>/, '');
+            elements.setupElevationChart.innerHTML = setupSvgContent;
+        }
     }
 
     function renderRecords(records) {
@@ -625,14 +775,8 @@ export function createMainView({
     function renderPipControls(state) {
         if (!elements.pipBtn) return;
         const hasLiveData = state.ble.heartRate.value !== null || state.ble.powerMeter.power !== null;
-        elements.pipBtn.disabled = !pipController.isSupported || (!state.session && !hasLiveData);
-        elements.checkboxInputs.forEach((input) => {
-            const checked = Boolean(state.pipConfig[input.value]);
-
-            if (input.checked !== checked) {
-                input.checked = checked;
-            }
-        });
+        const hasRoute = state.route && state.route.segments.length > 0;
+        elements.pipBtn.disabled = !pipController.isSupported || (!state.liveRide.isActive && !state.session && !hasLiveData && !hasRoute);
 
         pipController.render();
         pipController.sync();

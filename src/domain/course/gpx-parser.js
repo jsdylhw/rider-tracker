@@ -42,12 +42,74 @@ export function parseGpx(xmlText) {
 
     const name = xml.querySelector("metadata > name, trk > name, rte > name")?.textContent?.trim() || "GPX 路线";
     const normalizedPoints = normalizeTrackPoints(trackPoints);
-    const segments = buildSummarySegments(normalizedPoints);
+    const smoothedPoints = smoothTrackPoints(normalizedPoints);
+    
+    // 我们不再需要将 GPX 强制切分成多个 500m 的 segment。
+    // 为了兼容旧系统接口，我们将整个 GPX 视为一个单一的 Segment。
+    const totalDistance = smoothedPoints.at(-1).distanceMeters;
+    const elevationDelta = smoothedPoints.at(-1).elevationMeters - smoothedPoints[0].elevationMeters;
+    
+    const segments = [{
+        name: "GPX 全程",
+        distanceMeters: totalDistance,
+        gradePercent: totalDistance > 0 ? clampGrade((elevationDelta / totalDistance) * 100) : 0,
+        elevationDelta: elevationDelta,
+        startDistanceMeters: 0,
+        endDistanceMeters: totalDistance
+    }];
 
     return buildRouteFromTrackPoints({
         name,
-        points: normalizedPoints,
+        points: smoothedPoints,
         segments
+    });
+}
+
+function smoothTrackPoints(points) {
+    // 采用移动窗口平均来平滑海拔和坡度，避免 GPX 噪点导致坡度剧烈跳动
+    const windowSize = 5; // 前后各 2 个点
+    const smoothed = [];
+
+    for (let i = 0; i < points.length; i++) {
+        let sumElevation = 0;
+        let count = 0;
+        
+        for (let j = Math.max(0, i - Math.floor(windowSize / 2)); j <= Math.min(points.length - 1, i + Math.floor(windowSize / 2)); j++) {
+            sumElevation += points[j].elevationMeters;
+            count++;
+        }
+        
+        smoothed.push({
+            ...points[i],
+            elevationMeters: sumElevation / count
+        });
+    }
+
+    // 重新计算平滑后的坡度
+    return smoothed.map((point, index) => {
+        if (index === 0) {
+            return { ...point, gradePercent: 0 };
+        }
+        
+        const previousPoint = smoothed[index - 1];
+        const distanceDelta = point.distanceMeters - previousPoint.distanceMeters;
+        const elevationDelta = point.elevationMeters - previousPoint.elevationMeters;
+        
+        // 为避免极小距离导致坡度异常，我们往前找一个距离差大于 10 米的点来计算坡度
+        let calcPrevIndex = index - 1;
+        let distDiff = distanceDelta;
+        while (distDiff < 10 && calcPrevIndex > 0) {
+            calcPrevIndex--;
+            distDiff = point.distanceMeters - smoothed[calcPrevIndex].distanceMeters;
+        }
+        
+        const calcEleDelta = point.elevationMeters - smoothed[calcPrevIndex].elevationMeters;
+        const gradePercent = distDiff > 0 ? (calcEleDelta / distDiff) * 100 : 0;
+
+        return {
+            ...point,
+            gradePercent: clampGrade(gradePercent)
+        };
     });
 }
 

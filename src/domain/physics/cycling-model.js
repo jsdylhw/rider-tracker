@@ -46,19 +46,57 @@ export function simulateStep({
     durationSeconds,
     dt
 }) {
-    const targetSpeed = resolveSpeedTarget({
-        power,
-        gradePercent,
-        mass: settings.mass,
-        crr: settings.crr,
-        cda: settings.cda,
-        windSpeed: settings.windSpeed
-    });
+    const mass = settings.mass;
+    const crr = settings.crr;
+    const cda = settings.cda;
+    const windSpeed = settings.windSpeed;
+    const effectivePower = Math.max(0, power) * (1 - DRIVETRAIN_LOSS);
 
-    const responseFactor = Math.min(1, dt / 5);
-    const nextSpeed = Math.max(0, speed + (targetSpeed - speed) * responseFactor);
-    const nextDistanceMeters = distanceMeters + nextSpeed * dt;
+    // 计算当前速度下的各种阻力
     const slopeRatio = gradePercent / 100;
+    const cosBeta = 1 / Math.sqrt(slopeRatio * slopeRatio + 1);
+    const sinBeta = slopeRatio * cosBeta;
+
+    const gravityForce = mass * GRAVITY * sinBeta;
+    const rollingForce = mass * GRAVITY * crr * cosBeta;
+    const relativeWind = speed + windSpeed;
+    // 只有当相对风速为正（迎风或自己速度快）时才有空气阻力
+    const airForce = relativeWind > 0 ? 0.5 * AIR_DENSITY * cda * relativeWind * relativeWind : 0;
+    
+    const totalResistiveForce = gravityForce + rollingForce + airForce;
+
+    // F = m * a => a = F / m
+    // 推力 F_drive = Power / v (注意当速度非常低时，推力会无限大，因此要做限制)
+    // 为避免除以0，我们假设一个极小的最小速度，或者如果速度接近0且有踩踏功率，给予一个启动加速度
+    let driveForce = 0;
+    
+    if (speed > 1.0) {
+        // 当速度大于 1m/s (3.6km/h) 时，使用标准的 P = F*v 公式
+        driveForce = effectivePower / speed;
+    } else if (effectivePower > 0) {
+        // 当速度非常低时，如果还用 P/v，推力会极大（比如 v=0.01 时推力大到飞起）
+        // 这样会导致极大的加速度，结果就是高功率在一开始的 1 秒内直接“瞬移”甚至超速，然后因为超出空气阻力上限又掉速
+        // 所以我们限制一个启动期的最大推力，或者假定一个最小参考速度进行推力封顶
+        driveForce = effectivePower / 1.0; 
+    }
+
+    const netForce = driveForce - totalResistiveForce;
+    const acceleration = netForce / mass;
+
+    // v = v0 + a * t
+    let nextSpeed = speed + acceleration * dt;
+    
+    // 如果没有踩踏且受到极大的负向力，速度最多降到0，不能变负
+    if (nextSpeed < 0) {
+        nextSpeed = 0;
+    }
+
+    // 限制最大速度 (比如下坡时不踩踏也可能会无限加速，这里做一个合理的极速限制 120km/h = 33.3 m/s)
+    if (nextSpeed > 33.3) {
+        nextSpeed = 33.3;
+    }
+
+    const nextDistanceMeters = distanceMeters + nextSpeed * dt;
     const elevationDelta = nextSpeed * dt * slopeRatio;
     const nextElevationMeters = elevationMeters + elevationDelta;
     const nextAscentMeters = ascentMeters + Math.max(0, elevationDelta);

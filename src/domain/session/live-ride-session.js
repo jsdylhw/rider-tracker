@@ -21,8 +21,9 @@ export function createLiveRideSession({ route, settings, startedAt, initialHeart
 
 export function advanceLiveRideSession({ session, power, heartRate, cadence, dt = 1 }) {
     const elapsedSeconds = session.records.length + dt;
-    const segment = getSegmentAtDistance(session.route, session.physicsState.distanceMeters);
-    const gradePercent = segment?.gradePercent ?? 0;
+    const routeSample = getRouteSampleAtDistance(session.route, session.physicsState.distanceMeters);
+    const gradePercent = routeSample.gradePercent ?? 0;
+    
     const nextState = simulateStep({
         ...session.physicsState,
         power,
@@ -38,8 +39,8 @@ export function advanceLiveRideSession({ session, power, heartRate, cadence, dt 
     const progressRatio = session.route.totalDistanceMeters > 0
         ? Math.min(1, nextState.distanceMeters / session.route.totalDistanceMeters)
         : 0;
-    const routeSample = getRouteSampleAtDistance(session.route, nextState.distanceMeters);
-    const elevationMeters = routeSample.elevationMeters ?? nextState.elevationMeters;
+    const nextRouteSample = getRouteSampleAtDistance(session.route, nextState.distanceMeters);
+    const elevationMeters = nextRouteSample.elevationMeters ?? nextState.elevationMeters;
 
     const record = {
         elapsedSeconds,
@@ -52,10 +53,10 @@ export function advanceLiveRideSession({ session, power, heartRate, cadence, dt 
         gradePercent,
         elevationMeters,
         ascentMeters: nextState.ascentMeters,
-        segmentName: segment?.name ?? "终点后",
+        segmentName: getSegmentAtDistance(session.route, nextState.distanceMeters)?.name ?? "终点后",
         routeProgress: progressRatio,
-        positionLat: routeSample.latitude,
-        positionLong: routeSample.longitude
+        positionLat: nextRouteSample.latitude,
+        positionLong: nextRouteSample.longitude
     };
 
     const records = [...session.records, record];

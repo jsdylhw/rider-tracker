@@ -14,8 +14,8 @@ export function simulateRide({ route, settings }) {
     };
 
     for (let elapsedSeconds = 1; elapsedSeconds <= maxSimulationSeconds; elapsedSeconds += 1) {
-        const segment = getSegmentAtDistance(route, state.distanceMeters);
-        const gradePercent = segment?.gradePercent ?? 0;
+        const routeSample = getRouteSampleAtDistance(route, state.distanceMeters);
+        const gradePercent = routeSample.gradePercent ?? 0;
 
         state = simulateStep({
             ...state,
@@ -30,8 +30,8 @@ export function simulateRide({ route, settings }) {
         const progressRatio = route.totalDistanceMeters > 0
             ? Math.min(1, state.distanceMeters / route.totalDistanceMeters)
             : 0;
-        const routeSample = getRouteSampleAtDistance(route, state.distanceMeters);
-        const elevationMeters = routeSample.elevationMeters ?? state.elevationMeters;
+        const nextRouteSample = getRouteSampleAtDistance(route, state.distanceMeters);
+        const elevationMeters = nextRouteSample.elevationMeters ?? state.elevationMeters;
 
         records.push({
             elapsedSeconds,
@@ -43,10 +43,10 @@ export function simulateRide({ route, settings }) {
             gradePercent,
             elevationMeters,
             ascentMeters: state.ascentMeters,
-            segmentName: segment?.name ?? "终点后",
+            segmentName: getSegmentAtDistance(route, state.distanceMeters)?.name ?? "终点后",
             routeProgress: progressRatio,
-            positionLat: routeSample.latitude,
-            positionLong: routeSample.longitude
+            positionLat: nextRouteSample.latitude,
+            positionLong: nextRouteSample.longitude
         });
 
         if (route.totalDistanceMeters > 0 && state.distanceMeters >= route.totalDistanceMeters) {

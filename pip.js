@@ -1,4 +1,4 @@
-export function createPipController({ button, template, getData, getConfig }) {
+export function createPipController({ button, template, getData }) {
     let pipWindow = null;
 
     function render() {
@@ -6,56 +6,154 @@ export function createPipController({ button, template, getData, getConfig }) {
             return;
         }
 
-        const container = pipWindow.document.getElementById("pip-dynamic-row");
+        const container = pipWindow.document.getElementById("pip-metrics-grid");
 
         if (!container) {
             return;
         }
 
-        const config = getConfig();
-        const parts = [];
-
-        if (config.hr) {
-            parts.push(`
-                <div class="pip-data">
-                    <span class="pip-icon">❤️</span>
-                    <span id="pipHeartRate">--</span>
-                    <span class="pip-unit">bpm</span>
-                </div>
-            `);
-        }
-
-        if (config.power) {
-            parts.push(`
-                <div class="pip-data">
-                    <span class="pip-icon">⚡</span>
-                    <span id="pipPower">--</span>
-                    <span class="pip-unit">W</span>
-                </div>
-            `);
-        }
-
-        if (config.time) {
-            parts.push(`
-                <div class="pip-data time-color">
-                    <span class="pip-icon">⏱️</span>
-                    <span id="pipTime">00:00</span>
-                </div>
-            `);
-        }
-
-        if (config.np) {
-            parts.push(`
-                <div class="pip-data np-color">
-                    <span class="pip-icon">AVG</span>
-                    <span id="pipNp">--</span>
-                    <span class="pip-unit">W</span>
-                </div>
-            `);
-        }
-
-        container.innerHTML = parts.join("");
+        // Setup layout structure with 6 metrics: Distance/Remaining, Speed, Power, HR, Cadence
+        container.innerHTML = `
+            <style>
+                body {
+                    margin: 0;
+                    padding: 8px;
+                    background-color: var(--surface);
+                    color: var(--text);
+                    font-family: system-ui, -apple-system, sans-serif;
+                }
+                .pip-metrics-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 8px;
+                }
+                .pip-metric {
+                    background: var(--background);
+                    border-radius: 6px;
+                    padding: 6px;
+                    text-align: center;
+                    border: 1px solid var(--border);
+                }
+                .pip-metric-label {
+                    font-size: 10px;
+                    color: var(--muted);
+                    margin-bottom: 2px;
+                }
+                .pip-metric-val {
+                    font-size: 16px;
+                    font-weight: bold;
+                }
+                .pip-metric-unit {
+                    font-size: 10px;
+                    color: var(--muted);
+                    font-weight: normal;
+                }
+                .power-color { color: var(--primary); }
+                .hr-color { color: var(--danger); }
+                .accent-color { color: var(--accent); }
+            </style>
+            
+            <!-- Row 1 -->
+            <div class="pip-metric" style="grid-column: span 2;">
+                <div class="pip-metric-label">骑行距离 / 剩余</div>
+                <div class="pip-metric-val"><span id="pipDist">--</span> <span class="pip-metric-unit">/ <span id="pipRem">--</span> km</span></div>
+            </div>
+            <div class="pip-metric">
+                <div class="pip-metric-label">实时速度</div>
+                <div class="pip-metric-val accent-color"><span id="pipSpeed">--</span> <span class="pip-metric-unit">km/h</span></div>
+            </div>
+            
+            <!-- Row 2 -->
+            <div class="pip-metric">
+                <div class="pip-metric-label">实时功率</div>
+                <div class="pip-metric-val power-color"><span id="pipPower">--</span> <span class="pip-metric-unit">W</span></div>
+            </div>
+            <div class="pip-metric">
+                <div class="pip-metric-label">心率</div>
+                <div class="pip-metric-val hr-color"><span id="pipHr">--</span> <span class="pip-metric-unit">bpm</span></div>
+            </div>
+            <div class="pip-metric">
+                <div class="pip-metric-label">踏频</div>
+                <div class="pip-metric-val accent-color"><span id="pipCadence">--</span> <span class="pip-metric-unit">rpm</span></div>
+            </div>
+        `;
+        
         sync();
+    }
+
+    function renderElevationChart(route, currentRecord) {
+        if (!pipWindow) return;
+        const chartEl = pipWindow.document.getElementById("pipElevationChart");
+        if (!chartEl) return;
+
+        if (!route || !route.points || route.points.length === 0) {
+            chartEl.innerHTML = `
+                <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-size="12">
+                    暂无路线数据
+                </text>
+            `;
+            return;
+        }
+
+        const width = 320;
+        const height = 60;
+        const paddingBottom = 10;
+        const paddingTop = 10;
+        const innerHeight = height - paddingTop - paddingBottom;
+
+        const totalDist = route.totalDistanceMeters;
+        
+        const maxGrade = Math.max(...route.points.map(p => p.gradePercent), 5); 
+        const minGrade = Math.min(...route.points.map(p => p.gradePercent), -5); 
+        const gradeRange = maxGrade - minGrade;
+        const zeroY = paddingTop + innerHeight * (maxGrade / gradeRange);
+
+        let svgContent = '';
+
+        function getGradeColor(grade) {
+            if (grade >= 10) return '#e11d48'; // HC
+            if (grade >= 7) return '#f43f5e';  // Cat 1
+            if (grade >= 4) return '#f97316';  // Cat 2
+            if (grade >= 2) return '#fbbf24';  // Cat 3
+            if (grade > -2) return '#2dd4bf';  // Flat
+            return '#38bdf8';                  // Descent
+        }
+
+        svgContent += `<line x1="0" y1="${zeroY}" x2="${width}" y2="${zeroY}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2 2" />`;
+
+        for (let i = 1; i < route.points.length; i++) {
+            const prevPoint = route.points[i - 1];
+            const currentPoint = route.points[i];
+            
+            const prevX = (prevPoint.distanceMeters / totalDist) * width;
+            const curX = (currentPoint.distanceMeters / totalDist) * width;
+            
+            const prevY = paddingTop + innerHeight * ((maxGrade - prevPoint.gradePercent) / gradeRange);
+            const curY = paddingTop + innerHeight * ((maxGrade - currentPoint.gradePercent) / gradeRange);
+            
+            const color = getGradeColor(currentPoint.gradePercent);
+
+            svgContent += `
+                <polygon points="${prevX},${zeroY} ${prevX},${prevY} ${curX},${curY} ${curX},${zeroY}" 
+                         fill="${color}" opacity="0.8" />
+            `;
+            
+            svgContent += `
+                <line x1="${prevX}" y1="${prevY}" x2="${curX}" y2="${curY}" 
+                      stroke="${color}" stroke-width="1" />
+            `;
+        }
+
+        if (currentRecord) {
+            const posX = (currentRecord.distanceKm * 1000 / totalDist) * width;
+            svgContent += `
+                <rect x="0" y="0" width="${posX}" height="${height}" fill="rgba(0, 0, 0, 0.2)" />
+                <line x1="${posX}" y1="0" x2="${posX}" y2="${height}" stroke="var(--text)" stroke-width="1.5" stroke-dasharray="2 2" />
+                <circle cx="${posX}" cy="${zeroY}" r="3" fill="white" stroke="var(--text)" stroke-width="1.5" />
+            `;
+        }
+
+        chartEl.innerHTML = svgContent;
     }
 
     function sync() {
@@ -65,26 +163,21 @@ export function createPipController({ button, template, getData, getConfig }) {
 
         const data = getData();
 
-        const hrEl = pipWindow.document.getElementById("pipHeartRate");
+        const distEl = pipWindow.document.getElementById("pipDist");
+        const remEl = pipWindow.document.getElementById("pipRem");
+        const speedEl = pipWindow.document.getElementById("pipSpeed");
         const powerEl = pipWindow.document.getElementById("pipPower");
-        const timeEl = pipWindow.document.getElementById("pipTime");
-        const npEl = pipWindow.document.getElementById("pipNp");
+        const hrEl = pipWindow.document.getElementById("pipHr");
+        const cadenceEl = pipWindow.document.getElementById("pipCadence");
 
-        if (hrEl) {
-            hrEl.innerText = data.hr;
-        }
+        if (distEl) distEl.innerText = data.distance;
+        if (remEl) remEl.innerText = data.remaining;
+        if (speedEl) speedEl.innerText = data.speed;
+        if (powerEl) powerEl.innerText = data.power;
+        if (hrEl) hrEl.innerText = data.hr;
+        if (cadenceEl) cadenceEl.innerText = data.cadence;
 
-        if (powerEl) {
-            powerEl.innerText = data.power;
-        }
-
-        if (timeEl) {
-            timeEl.innerText = data.time;
-        }
-
-        if (npEl) {
-            npEl.innerText = data.np;
-        }
+        renderElevationChart(data.route, data.currentRecord);
     }
 
     function refreshButtonState() {
@@ -93,19 +186,28 @@ export function createPipController({ button, template, getData, getConfig }) {
         }
 
         button.innerText = pipWindow ? "关闭悬浮窗" : "开启悬浮窗";
-        button.style.backgroundColor = pipWindow ? "var(--danger)" : "var(--secondary)";
+        if (pipWindow) {
+            button.classList.add("danger");
+            button.classList.remove("secondary");
+            button.style.backgroundColor = "var(--danger)";
+        } else {
+            button.classList.add("secondary");
+            button.classList.remove("danger");
+            button.style.backgroundColor = "var(--secondary)";
+        }
     }
 
     async function open() {
         pipWindow = await window.documentPictureInPicture.requestWindow({
             width: 320,
-            height: 140,
+            height: 180,
             disallowReturnToOpener: true
         });
 
         const pipContent = template.content.cloneNode(true);
         pipWindow.document.body.append(pipContent);
 
+        // 复制主页面的样式到画中画窗口
         [...document.styleSheets].forEach((styleSheet) => {
             try {
                 const cssRules = [...styleSheet.cssRules].map((rule) => rule.cssText).join("");
