@@ -1,4 +1,4 @@
-import { parseGpx } from "../../src/domain/course/gpx-parser.js";
+import { parseGpx } from "../../src/domain/route/gpx-parser.js";
 import { assertApprox, assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
 
 const BASIC_GPX = `<?xml version="1.0" encoding="UTF-8"?>

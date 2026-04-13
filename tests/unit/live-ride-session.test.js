@@ -1,5 +1,5 @@
-import { buildRouteFromTrackPoints } from "../../src/domain/course/route-builder.js";
-import { advanceLiveRideSession, createLiveRideSession } from "../../src/domain/session/live-ride-session.js";
+import { buildRouteFromTrackPoints } from "../../src/domain/route/route-builder.js";
+import { advanceLiveRideSession, createLiveRideSession } from "../../src/domain/ride/live-ride-session.js";
 import {
     assert,
     assertApprox,

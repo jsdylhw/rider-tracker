@@ -1,4 +1,4 @@
-import { getRouteSampleAtDistance, getSegmentAtDistance } from "../course/route-builder.js";
+import { getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
 import { simulateStep } from "../physics/cycling-model.js";
 
 export function simulateRide({ route, settings }) {

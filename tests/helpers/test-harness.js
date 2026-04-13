@@ -33,7 +33,8 @@ export async function runSuites(suites) {
 
     for (const suite of suites) {
         for (const test of suite.tests) {
-            const startedAt = performance.now();
+            // For Node.js environments
+            const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
             try {
                 await test.run();
@@ -41,14 +42,14 @@ export async function runSuites(suites) {
                     suite: suite.name,
                     test: test.name,
                     status: "passed",
-                    durationMs: performance.now() - startedAt
+                    durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - now
                 });
             } catch (error) {
                 results.push({
                     suite: suite.name,
                     test: test.name,
                     status: "failed",
-                    durationMs: performance.now() - startedAt,
+                    durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - now,
                     error
                 });
             }
@@ -61,6 +62,22 @@ export async function runSuites(suites) {
 export function renderResults(results, mountNode) {
     const passedCount = results.filter((result) => result.status === "passed").length;
     const failed = results.filter((result) => result.status === "failed");
+
+    // If running in Node.js (no DOM)
+    if (!mountNode) {
+        console.log("\n================ TEST RESULTS ================\n");
+        console.log(`Passed ${passedCount} / ${results.length} tests\n`);
+        
+        failed.forEach(result => {
+            console.error(`❌ FAILED: ${result.suite} / ${result.test}`);
+            console.error(`   ${result.error.message}\n`);
+        });
+        
+        if (failed.length > 0) {
+            process.exit(1);
+        }
+        return;
+    }
 
     mountNode.innerHTML = `
         <section class="summary ${failed.length === 0 ? "success" : "failed"}">
