@@ -5,6 +5,24 @@ export function simulateRide({ route, settings }) {
     const records = [];
     const maxSimulationSeconds = 24 * 60 * 60;
 
+    if (!route || route.totalDistanceMeters <= 0) {
+        return {
+            createdAt: new Date().toISOString(),
+            route,
+            settings,
+            records,
+            summary: {
+                elapsedSeconds: 0,
+                distanceKm: 0,
+                averageSpeedKph: 0,
+                averageHeartRate: settings.restingHr,
+                ascentMeters: 0,
+                currentGradePercent: 0,
+                routeProgress: 0
+            }
+        };
+    }
+
     let state = {
         speed: 0,
         distanceMeters: 0,

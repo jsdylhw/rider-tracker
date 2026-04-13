@@ -71,6 +71,14 @@ function smoothTrackPoints(points) {
     const smoothed = [];
 
     for (let i = 0; i < points.length; i++) {
+        if (i === 0 || i === points.length - 1) {
+            // 起终点海拔应保留原始值，避免终点海拔被过度平滑后影响总爬升与测试断言。
+            smoothed.push({
+                ...points[i]
+            });
+            continue;
+        }
+
         let sumElevation = 0;
         let count = 0;
         

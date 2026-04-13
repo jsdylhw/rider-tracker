@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rider Tracker Tests</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: Arial, sans-serif;
+            background: #f8fafc;
+            color: #1f2937;
+        }
+
+        .summary,
+        .result {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin-bottom: 16px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+        }
+
+        .summary.success {
+            border-left: 6px solid #22c55e;
+        }
+
+        .summary.failed {
+            border-left: 6px solid #ef4444;
+        }
+
+        .result.passed {
+            border-left: 4px solid #22c55e;
+        }
+
+        .result.failed {
+            border-left: 4px solid #ef4444;
+        }
+
+        .result-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        pre {
+            margin: 12px 0 0;
+            padding: 12px;
+            border-radius: 8px;
+            background: #0f172a;
+            color: #e2e8f0;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <main id="app">测试运行中...</main>
+    <script type="module" src="./test-runner.js"></script>
+</body>
+</html>
