@@ -8,6 +8,7 @@ export function createRouteService({ store }) {
     function buildStateWithRoute(state, routeSegments, statusText) {
         return {
             ...state,
+            routeSelectionConfirmed: false,
             routeSegments,
             route: buildRoute(routeSegments),
             statusText
@@ -54,6 +55,7 @@ export function createRouteService({ store }) {
 
             store.setState((state) => ({
                 ...state,
+                routeSelectionConfirmed: false,
                 route,
                 routeSegments: route.segments,
                 statusText: `已导入 GPX：${route.name}，距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km`

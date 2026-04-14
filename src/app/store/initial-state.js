@@ -31,6 +31,8 @@ export function createInitialState(session) {
 
     return {
         uiMode: "home",
+        routeSelectionConfirmed: false,
+        showLiveDeviceModal: false,
         routeSegments,
         route,
         settings: { ...defaultSettings },

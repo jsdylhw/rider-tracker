@@ -34,6 +34,10 @@ export function createDeviceRenderer({
         if (elements.startRideBtn) elements.startRideBtn.disabled = !liveRide.canStart || liveRide.isActive;
         if (elements.stopRideBtn) elements.stopRideBtn.disabled = !liveRide.isActive;
         if (elements.openRideDashboardBtn) elements.openRideDashboardBtn.disabled = false;
+        if (elements.liveDeviceModal) elements.liveDeviceModal.hidden = !state.showLiveDeviceModal;
+        if (elements.openLiveDeviceModalBtn) {
+            elements.openLiveDeviceModalBtn.textContent = liveRide.isActive ? "设备已连接" : "连接骑行设备";
+        }
 
         if (elements.hrDeviceStatus) elements.hrDeviceStatus.textContent = heartRate.statusLabel;
         if (elements.hrDeviceName) elements.hrDeviceName.textContent = heartRate.deviceName;

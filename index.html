@@ -14,11 +14,7 @@
                 <div class="hero-copy">
                     <p class="eyebrow">Virtual Ride Prototype</p>
                     <h1>Rider Tracker 🚴‍♂️</h1>
-                    <p class="hero-text">轻量级Web虚拟骑行项目。请在下方配置基础数据，或选择进入功能模块。</p>
-                    <div class="controls mode-controls">
-                        <button id="goToSimBtn" class="btn primary">运行模拟</button>
-                        <button id="goToLiveBtn" class="btn secondary">开始虚拟骑行</button>
-                    </div>
+                    <p class="hero-text">一个基于路线坡度、蓝牙功率计和心率带的虚拟骑行原型。先配置个人数据和训练线路，再选择进入模拟骑行或虚拟骑行。</p>
                 </div>
                 <div class="hero-metrics">
                     <div class="metric-chip">
@@ -38,7 +34,7 @@
 
             <section class="layout-grid">
                 <div class="column">
-                    <div class="card">
+                    <div id="homeProfileCard" class="card">
                         <div class="section-title-row">
                             <div>
                                 <h2>个人基础数据</h2>
@@ -57,7 +53,7 @@
                     </div>
                 </div>
                 <div class="column">
-                    <div class="card">
+                    <div id="homeHistoryCard" class="card">
                         <div class="section-title-row">
                             <div>
                                 <h2>历史骑行记录</h2>
@@ -66,6 +62,30 @@
                         </div>
                         <div id="historyContainer" class="route-summary">
                             暂无历史记录。
+                        </div>
+                    </div>
+
+                    <div id="homeModeChoiceCard" class="card" hidden>
+                        <div class="section-title-row">
+                            <div>
+                                <h2>训练模式选择</h2>
+                                <p class="section-subtitle">线路已确认，下一步请选择进入模拟骑行还是虚拟骑行。</p>
+                            </div>
+                        </div>
+                        <div class="controls mode-controls">
+                            <button id="enterSimulationModeBtn" class="btn primary">进入模拟骑行</button>
+                            <button id="enterLiveModeBtn" class="btn secondary">进入虚拟骑行</button>
+                            <button id="editRouteBtn" class="btn ghost">重新选择线路</button>
+                        </div>
+                        <div class="summary-grid" style="margin-top: 16px;">
+                            <div class="summary-card">
+                                <span>当前线路</span>
+                                <strong id="homeRouteName">待确认</strong>
+                            </div>
+                            <div class="summary-card">
+                                <span>线路距离</span>
+                                <strong id="homeRouteDistance">0.00 km</strong>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -197,12 +217,13 @@
                 </div>
 
                 <div class="column">
+                    <div id="homeRouteSlot"></div>
                     <div id="routeCardContainer">
                         <div id="routeCard" class="card">
                             <div class="section-title-row">
                                 <div>
                                     <h2>路线轨迹设置</h2>
-                                    <p class="section-subtitle">支持手工路线和 GPX 导入；导入后会生成轨迹、距离、海拔与坡度信息。</p>
+                                    <p class="section-subtitle">支持手工路线和 GPX 导入；首页仅聚焦线路配置，不显示地图。</p>
                                 </div>
                                 <div class="inline-actions">
                                     <button id="addSegmentBtn" class="btn secondary">新增路段</button>
@@ -228,11 +249,11 @@
                                 </label>
                             </div>
 
-                            <div class="chart-shell route-map-shell">
+                            <div id="routeMapShell" class="chart-shell route-map-shell">
                                 <div id="routeMapPreview" class="map-canvas"></div>
                             </div>
 
-                            <div class="chart-shell">
+                            <div id="setupElevationChartShell" class="chart-shell">
                                 <svg id="setupElevationChart" viewBox="0 0 640 180" preserveAspectRatio="none"></svg>
                             </div>
 
@@ -251,6 +272,9 @@
                             </div>
 
                             <div id="routeSummary" class="route-summary">路线概览待生成。</div>
+                            <div class="controls" style="margin-top: 16px;">
+                                <button id="confirmRouteBtn" class="btn primary">确认线路</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -285,35 +309,52 @@
 
             <section class="layout-grid">
                 <div class="column" id="live-col-1">
+                    <div id="liveDeviceModal" class="device-modal" hidden>
+                        <div class="device-modal-card card">
+                            <div class="section-title-row">
+                                <div>
+                                    <h2>连接骑行设备</h2>
+                                    <p class="section-subtitle">请先连接功率计和心率带，再开始虚拟骑行。</p>
+                                </div>
+                                <button id="closeLiveDeviceModalBtn" class="btn ghost">稍后</button>
+                            </div>
+                            <div class="controls">
+                                <button id="connectHrBtn" class="btn primary">连接心率带</button>
+                                <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
+                            </div>
+                            <div class="device-status-grid">
+                                <div class="summary-card">
+                                    <span>心率设备</span>
+                                    <strong id="hrDeviceStatus">未连接</strong>
+                                    <p class="device-meta" id="hrDeviceName">等待连接</p>
+                                </div>
+                                <div class="summary-card">
+                                    <span>功率设备</span>
+                                    <strong id="powerDeviceStatus">未连接</strong>
+                                    <p class="device-meta" id="powerDeviceName">等待连接</p>
+                                </div>
+                            </div>
+                            <div class="controls">
+                                <button id="startRideBtn" class="btn primary">开始骑行</button>
+                                <button id="stopRideBtn" class="btn ghost" disabled>停止骑行</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card">
                         <div class="section-title-row">
                             <div>
                                 <h2>设备连接与骑行控制</h2>
-                                <p class="section-subtitle">连接设备、开始骑行，并在需要时进入骑行大屏。</p>
+                                <p class="section-subtitle">虚拟骑行时查看状态、进入骑行大屏和控制 PiP。</p>
                             </div>
                         </div>
                         <div class="controls">
-                            <button id="connectHrBtn" class="btn primary">连接心率带</button>
-                            <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
+                            <button id="openLiveDeviceModalBtn" class="btn primary">连接骑行设备</button>
                             <button id="openRideDashboardBtn" class="btn secondary">进入骑行界面</button>
-                        </div>
-                        <div class="controls">
-                            <button id="startRideBtn" class="btn primary">开始骑行</button>
-                            <button id="stopRideBtn" class="btn ghost" disabled>停止骑行</button>
                             <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
                         </div>
 
                         <div class="device-status-grid">
-                            <div class="summary-card">
-                                <span>心率设备</span>
-                                <strong id="hrDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="hrDeviceName">等待连接</p>
-                            </div>
-                            <div class="summary-card">
-                                <span>功率设备</span>
-                                <strong id="powerDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="powerDeviceName">等待连接</p>
-                            </div>
                             <div class="summary-card">
                                 <span>骑行状态</span>
                                 <strong id="rideStatusLabel">未开始</strong>
