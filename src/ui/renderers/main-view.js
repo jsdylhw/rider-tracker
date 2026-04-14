@@ -25,6 +25,7 @@ export function createMainView({
     onRunSimulation,
     onDownloadSession,
     onDownloadFit,
+    onUploadFit,
     onImportGpx,
     onUpdateRouteSegment,
     onRemoveRouteSegment,
@@ -93,8 +94,6 @@ export function createMainView({
         liveAvgPowerDisplay: document.getElementById("liveAvgPowerDisplay"),
         liveSpeedDisplay: document.getElementById("liveSpeedDisplay"),
         liveDistanceDisplay: document.getElementById("liveDistanceDisplay"),
-        startRideBtn: document.getElementById("startRideBtn"),
-        stopRideBtn: document.getElementById("stopRideBtn"),
         rideDashboard: document.getElementById("rideDashboard"),
         rideDashboardTitle: document.getElementById("rideDashboardTitle"),
         rideDashboardSubtitle: document.getElementById("rideDashboardSubtitle"),
@@ -109,6 +108,7 @@ export function createMainView({
         dashboardTss: document.getElementById("dashboardTss"),
         dashboardCurrentSpeed: document.getElementById("dashboardCurrentSpeed"),
         dashboardCurrentGrade: document.getElementById("dashboardCurrentGrade"),
+        startRideDashboardBtn: document.getElementById("startRideDashboardBtn"),
         closeRideDashboardBtn: document.getElementById("closeRideDashboardBtn"),
         stopRideDashboardBtn: document.getElementById("stopRideDashboardBtn"),
         runSimulationBtn: document.getElementById("runSimulationBtn"),
@@ -136,6 +136,7 @@ export function createMainView({
     elements.fitExportForm = document.getElementById("fitExportForm");
     elements.downloadSessionBtn = document.getElementById("downloadSessionBtn");
     elements.downloadFitBtn = document.getElementById("downloadFitBtn");
+    elements.uploadFitBtn = document.getElementById("uploadFitBtn");
 
     let lastRenderedSettingsSignature = "";
 
@@ -186,6 +187,7 @@ export function createMainView({
     }
 
     bind(elements.closeRideDashboardBtn, "click", onCloseRideDashboard);
+    bind(elements.startRideDashboardBtn, "click", onStartRide);
     bind(elements.stopRideDashboardBtn, "click", onStopRide);
     elements.goHomeBtns.forEach((button) => bind(button, "click", () => onSetUiMode("home")));
     bind(elements.goToSimBtn, "click", onEnterSimulationMode);
@@ -193,6 +195,7 @@ export function createMainView({
     bind(elements.runSimulationBtn, "click", onRunSimulation);
     bind(elements.downloadSessionBtn, "click", onDownloadSession);
     bind(elements.downloadFitBtn, "click", onDownloadFit);
+    bind(elements.uploadFitBtn, "click", onUploadFit);
 
     if (elements.personalSettingsForm) {
         elements.personalSettingsForm.addEventListener("input", () => {
@@ -263,6 +266,9 @@ export function createMainView({
         
         if (elements.downloadSessionBtn) elements.downloadSessionBtn.disabled = !session || state.liveRide.isActive;
         if (elements.downloadFitBtn) elements.downloadFitBtn.disabled = !session || state.liveRide.isActive;
+        if (elements.uploadFitBtn) {
+            elements.uploadFitBtn.disabled = !session || state.liveRide.isActive || !state.exportMetadata.uploadEndpoint;
+        }
         if (elements.runSimulationBtn) elements.runSimulationBtn.disabled = state.liveRide.isActive;
         if (elements.exportCardContainer && state.uiMode === "live") {
             elements.exportCardContainer.hidden = state.liveRide.isActive || !session;

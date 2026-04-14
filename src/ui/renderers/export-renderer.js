@@ -37,7 +37,8 @@ export function createExportRenderer({
         return {
             activityName: String(formData.get("activityName") ?? ""),
             fitDescription: String(formData.get("fitDescription") ?? ""),
-            repositoryUrl: String(formData.get("repositoryUrl") ?? "")
+            repositoryUrl: String(formData.get("repositoryUrl") ?? ""),
+            uploadEndpoint: String(formData.get("uploadEndpoint") ?? "")
         };
     }
 

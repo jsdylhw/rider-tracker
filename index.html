@@ -136,8 +136,6 @@
                         </form>
                         <div class="controls">
                             <button id="runSimulationBtn" class="btn primary">运行模拟</button>
-                            <button id="downloadSessionBtn" class="btn power-btn" disabled>导出 JSON</button>
-                            <button id="downloadFitBtn" class="btn secondary" disabled>导出 FIT</button>
                         </div>
                     </div>
 
@@ -351,17 +349,13 @@
                         <div class="section-title-row">
                             <div>
                                 <h2>设备连接与骑行控制</h2>
-                                <p class="section-subtitle">连接设备后开始骑行，实时功率和速度会与当前路线梯度联动。</p>
+                                <p class="section-subtitle">先连接设备，再进入骑行页面进行开始/结束控制。</p>
                             </div>
                         </div>
                         <div class="controls">
                             <button id="connectHrBtn" class="btn primary">连接心率带</button>
                             <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
                             <button id="openRideDashboardBtn" class="btn secondary">进入骑行界面</button>
-                        </div>
-                        <div class="controls">
-                            <button id="startRideBtn" class="btn primary">开始骑行</button>
-                            <button id="stopRideBtn" class="btn ghost" disabled>停止骑行</button>
                             <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
                         </div>
 
@@ -456,6 +450,7 @@
             <div class="controls">
                 <button id="downloadSessionBtn" class="btn power-btn" disabled>导出 JSON</button>
                 <button id="downloadFitBtn" class="btn secondary" disabled>导出 FIT</button>
+                <button id="uploadFitBtn" class="btn primary" disabled>上传 FIT</button>
             </div>
             <form id="fitExportForm" class="form-grid">
                 <label class="field">
@@ -465,6 +460,10 @@
                 <label class="field">
                     <span>仓库地址</span>
                     <input name="repositoryUrl" type="url">
+                </label>
+                <label class="field">
+                    <span>上传接口地址</span>
+                    <input name="uploadEndpoint" type="url" placeholder="https://api.example.com/upload-fit">
                 </label>
                 <label class="field field-wide">
                     <span>说明信息</span>
@@ -484,8 +483,9 @@
                 </div>
                 <div class="inline-actions">
                     <button id="customizeMetricsBtn" class="btn secondary">自定义面板</button>
+                    <button id="startRideDashboardBtn" class="btn primary">开始骑行</button>
+                    <button id="stopRideDashboardBtn" class="btn ghost">结束骑行</button>
                     <button id="closeRideDashboardBtn" class="btn ghost">返回页面</button>
-                    <button id="stopRideDashboardBtn" class="btn primary">结束骑行</button>
                 </div>
             </div>
 

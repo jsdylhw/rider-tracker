@@ -125,3 +125,36 @@
 - 训练模式摘要区改为动态目标项：按模式显示 `目标阻力 / 目标功率 / 目标模拟坡度`
 - 更新 `workout-renderer.js`，根据 `trainerControlMode` 动态渲染目标标签与数值单位
 - 更新 PiP 显示：目标控制卡改为动态标签与单位，支持三种模式一致展示
+
+### FIT 上传接口接入
+
+- 新增 `src/adapters/upload/fit-upload-client.js`，支持通过 `multipart/form-data` 上传 FIT 文件
+- 在 `export-service.js` 新增 `uploadFit()`：生成 FIT 后上传，并附加固定说明“这个FIT通过我这个开源骑行项目生成”
+- 扩展导出元信息，新增 `uploadEndpoint`（上传接口地址）
+- 更新导出卡 UI：新增“上传 FIT”按钮与“上传接口地址”输入框
+- 在 `main-view.js` / `bootstrap.js` 完成上传事件接线与按钮可用态控制
+
+### 上传消息文案优化
+
+- 将上传接口中的 `message` 改为正式英文说明
+- 消息自动附带项目仓库链接：优先使用表单中的 `repositoryUrl`，未填写时回退到默认 GitHub 地址
+
+### Strava 后端接口新增
+
+- 新建 `server/` 后端服务（Node + Express），补齐 Strava OAuth 与 FIT 上传链路
+- 新增接口：`/api/strava/auth/start`、`/api/strava/auth/callback`、`/api/strava/connection`、`/api/strava/upload-fit`、`/api/strava/upload-status/:uploadId`
+- 新增 `server/src/token-store.js`，用本地 JSON 文件持久化 `access_token / refresh_token`
+- 新增 `server/src/strava-client.js`，封装 Strava 授权、刷新 token、上传和状态查询
+- 新增 `server/.env.example` 与 `server/README.md`，提供本地启动与前端对接说明
+
+### 骑行控制入口调整
+
+- 将“开始骑行 / 结束骑行”操作入口收敛到骑行大屏（Dashboard）中
+- `live` 页面设备卡移除开始/停止按钮，仅保留设备连接与“进入骑行界面”
+- 在大屏头部新增“开始骑行”按钮，并保留“结束骑行”按钮
+- 更新 `main-view.js` 事件绑定与 `dashboard-renderer.js` 按钮可用态控制
+
+### 模拟页导出入口去重
+
+- 移除“模拟参数”卡片中的 `导出 JSON / 导出 FIT` 按钮
+- 统一使用“会话导出”卡片承载导出与元信息填写，避免按路线模拟页出现重复 FIT 导出入口
