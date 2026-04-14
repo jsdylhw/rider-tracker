@@ -142,8 +142,8 @@ export function createPipController({ button, template, getData }) {
                         <div class="pip-grade-value accent-color"><span id="pipLookaheadGrade">--</span><span class="pip-metric-unit">%</span></div>
                     </div>
                     <div class="pip-grade-card">
-                        <div class="pip-metric-label">目标模拟坡度</div>
-                        <div class="pip-grade-value power-color"><span id="pipTargetGrade">--</span><span class="pip-metric-unit">%</span></div>
+                        <div id="pipTargetLabel" class="pip-metric-label">目标控制值</div>
+                        <div class="pip-grade-value power-color"><span id="pipTargetGrade">--</span><span id="pipTargetUnit" class="pip-metric-unit">%</span></div>
                     </div>
                 </div>
                 <svg id="pipElevationChart" class="pip-grade-svg" viewBox="0 0 320 72" preserveAspectRatio="none"></svg>
@@ -237,6 +237,8 @@ export function createPipController({ button, template, getData }) {
         const currentGradeEl = pipWindow.document.getElementById("pipCurrentGrade");
         const lookaheadGradeEl = pipWindow.document.getElementById("pipLookaheadGrade");
         const targetGradeEl = pipWindow.document.getElementById("pipTargetGrade");
+        const targetLabelEl = pipWindow.document.getElementById("pipTargetLabel");
+        const targetUnitEl = pipWindow.document.getElementById("pipTargetUnit");
         const controlStatusEl = pipWindow.document.getElementById("pipControlStatus");
 
         if (distEl) distEl.innerText = data.distance;
@@ -248,7 +250,9 @@ export function createPipController({ button, template, getData }) {
         if (modeEl) modeEl.innerText = data.modeLabel;
         if (currentGradeEl) currentGradeEl.innerText = data.currentGrade;
         if (lookaheadGradeEl) lookaheadGradeEl.innerText = data.lookaheadGrade;
-        if (targetGradeEl) targetGradeEl.innerText = data.targetTrainerGrade;
+        if (targetLabelEl) targetLabelEl.innerText = data.targetControlLabel ?? "目标控制值";
+        if (targetUnitEl) targetUnitEl.innerText = data.targetControlUnit ?? "%";
+        if (targetGradeEl) targetGradeEl.innerText = data.targetControlValue ?? data.targetTrainerGrade;
         if (controlStatusEl) controlStatusEl.innerText = data.controlStatus;
 
         renderElevationChart(data.route, data.currentRecord);

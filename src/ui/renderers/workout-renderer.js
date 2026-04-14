@@ -1,4 +1,5 @@
 import { getWorkoutModeLabel, WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
+import { TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { formatNumber } from "../../shared/format.js";
 
 export function createWorkoutRenderer({
@@ -59,7 +60,11 @@ export function createWorkoutRenderer({
         }
 
         if (elements.targetTrainerGradeValue) {
-            elements.targetTrainerGradeValue.textContent = `${formatNumber(runtime.targetTrainerGradePercent ?? 0, 1)}%`;
+            elements.targetTrainerGradeValue.textContent = resolveTrainerTargetValue(runtime);
+        }
+
+        if (elements.trainerTargetLabel) {
+            elements.trainerTargetLabel.textContent = resolveTrainerTargetLabel(runtime);
         }
 
         if (elements.workoutControlStatus) {
@@ -92,4 +97,28 @@ function readWorkoutConfig(form) {
         maxDownhillPercent: Number(formData.get("maxDownhillPercent")),
         smoothingFactor: Number(formData.get("smoothingFactor"))
     };
+}
+
+function resolveTrainerTargetLabel(runtime) {
+    if (runtime.trainerControlMode === TRAINER_CONTROL_MODES.RESISTANCE) {
+        return "目标阻力";
+    }
+
+    if (runtime.trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
+        return "目标功率";
+    }
+
+    return "目标模拟坡度";
+}
+
+function resolveTrainerTargetValue(runtime) {
+    if (runtime.trainerControlMode === TRAINER_CONTROL_MODES.RESISTANCE) {
+        return `${formatNumber(runtime.targetResistanceLevel ?? 0, 0)}%`;
+    }
+
+    if (runtime.trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
+        return `${formatNumber(runtime.targetErgPowerWatts ?? 0, 0)}W`;
+    }
+
+    return `${formatNumber(runtime.targetTrainerGradePercent ?? 0, 1)}%`;
 }

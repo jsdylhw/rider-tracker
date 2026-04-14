@@ -301,14 +301,15 @@
                         <div class="section-title-row">
                             <div>
                                 <h2>训练模式</h2>
-                                <p class="section-subtitle">若选择坡度模拟，系统会直接使用当前路线的实时梯度生成目标模拟坡度。</p>
+                                <p class="section-subtitle">开始骑行前选择模式：自由骑行（固定阻力）/ 固定功率（ERG）/ 坡度模拟（SIM）。骑行开始后控制模式锁定。</p>
                             </div>
                         </div>
                         <form id="workoutModeForm" class="form-grid">
                             <label class="field">
                                 <span>当前模式</span>
                                 <select id="workoutModeSelect" name="mode">
-                                    <option value="free-ride">自由骑行</option>
+                                    <option value="free-ride">自由骑行（固定阻力）</option>
+                                    <option value="fixed-power">固定功率（ERG）</option>
                                     <option value="grade-sim">坡度模拟</option>
                                 </select>
                             </label>
@@ -336,14 +337,14 @@
                         <div class="summary-grid">
                             <div class="summary-card">
                                 <span>当前模式</span>
-                                <strong id="workoutModeLabel">自由骑行</strong>
+                                <strong id="workoutModeLabel">自由骑行（固定阻力）</strong>
                             </div>
                             <div class="summary-card">
-                                <span>目标模拟坡度</span>
-                                <strong id="targetTrainerGradeValue">0.0%</strong>
+                                <span id="trainerTargetLabel">目标阻力</span>
+                                <strong id="targetTrainerGradeValue">35%</strong>
                             </div>
                         </div>
-                        <div id="workoutControlStatus" class="route-summary">自由骑行模式：不下发坡度模拟指令。</div>
+                        <div id="workoutControlStatus" class="route-summary">固定阻力待命：阻力等级 35%（开始骑行前已锁定控制模式）。</div>
                     </div>
 
                     <div class="card">

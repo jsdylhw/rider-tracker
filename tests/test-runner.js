@@ -5,9 +5,12 @@ import { suite as physicsSuite } from "./unit/cycling-model.test.js";
 import { suite as simulatorSuite } from "./unit/simulator.test.js";
 import { suite as liveRideSuite } from "./unit/live-ride-session.test.js";
 import { suite as gradeSimSuite } from "./unit/grade-sim-mode.test.js";
+import { suite as ergSuite } from "./unit/erg-mode.test.js";
+import { suite as resistanceSuite } from "./unit/resistance-mode.test.js";
+import { suite as trainerCommandSuite } from "./unit/trainer-command.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
-const suites = [routeSuite, gpxSuite, physicsSuite, simulatorSuite, liveRideSuite, gradeSimSuite];
+const suites = [routeSuite, gpxSuite, physicsSuite, simulatorSuite, liveRideSuite, gradeSimSuite, ergSuite, resistanceSuite, trainerCommandSuite];
 
 runSuites(suites).then((results) => {
     renderResults(results, app);

@@ -60,8 +60,8 @@ export function simulateStep({
     const gravityForce = mass * GRAVITY * sinBeta;
     const rollingForce = mass * GRAVITY * crr * cosBeta;
     const relativeWind = speed + windSpeed;
-    // 只有当相对风速为正（迎风或自己速度快）时才有空气阻力
-    const airForce = relativeWind > 0 ? 0.5 * AIR_DENSITY * cda * relativeWind * relativeWind : 0;
+    // 空气力按相对风速方向计算：逆风增阻，强顺风可产生助推
+    const airForce = calculateAirForce(relativeWind, cda);
     
     const totalResistiveForce = gravityForce + rollingForce + airForce;
 
@@ -123,9 +123,13 @@ function calculateResistivePower({ speed, mass, crr, cda, windSpeed, cosBeta, si
     const gravityForce = mass * GRAVITY * sinBeta;
     const rollingForce = mass * GRAVITY * crr * cosBeta;
     const relativeWind = speed + windSpeed;
-    const airForce = 0.5 * AIR_DENSITY * cda * relativeWind * relativeWind;
+    const airForce = calculateAirForce(relativeWind, cda);
     const totalForce = gravityForce + rollingForce + airForce;
     return Math.max(0, totalForce * speed);
+}
+
+function calculateAirForce(relativeWind, cda) {
+    return 0.5 * AIR_DENSITY * cda * relativeWind * Math.abs(relativeWind);
 }
 
 function updateHeartRate({

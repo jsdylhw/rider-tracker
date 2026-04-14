@@ -1,12 +1,17 @@
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 import { buildGradeSimulationState } from "../../domain/workout/grade-sim-mode.js";
+import { buildErgControlState } from "../../domain/workout/erg-mode.js";
+import { buildResistanceControlState } from "../../domain/workout/resistance-mode.js";
+import { resolveTrainerControlModeForWorkoutMode, TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { clamp } from "../../shared/utils/common.js";
 
 export function createWorkoutService({ store }) {
     function updateWorkoutMode(mode) {
         const normalizedMode = mode === WORKOUT_MODES.GRADE_SIM
             ? WORKOUT_MODES.GRADE_SIM
-            : WORKOUT_MODES.FREE_RIDE;
+            : mode === WORKOUT_MODES.FIXED_POWER
+                ? WORKOUT_MODES.FIXED_POWER
+                : WORKOUT_MODES.FREE_RIDE;
 
         store.setState((state) => ({
             ...state,
@@ -52,15 +57,19 @@ export function createWorkoutService({ store }) {
 }
 
 function deriveRuntime(state, mode, gradeSimulation) {
-    if (mode !== WORKOUT_MODES.GRADE_SIM) {
-        return {
-            available: false,
-            currentGradePercent: 0,
-            lookaheadGradePercent: 0,
-            targetTrainerGradePercent: 0,
-            pendingTrainerCommand: null,
-            controlStatus: "自由骑行模式：不下发坡度模拟指令。"
-        };
+    const trainerControlMode = resolveTrainerControlModeForWorkoutMode(mode);
+
+    if (trainerControlMode === TRAINER_CONTROL_MODES.RESISTANCE) {
+        return buildResistanceControlState({
+            active: false
+        });
+    }
+
+    if (trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
+        return buildErgControlState({
+            targetPowerWatts: state.settings.power,
+            active: false
+        });
     }
 
     const liveDistanceMeters = (state.liveRide.session?.summary?.distanceKm ?? 0) * 1000;
@@ -68,7 +77,8 @@ function deriveRuntime(state, mode, gradeSimulation) {
         route: state.liveRide.session?.route ?? state.route,
         distanceMeters: liveDistanceMeters,
         previousTargetGradePercent: state.workout.runtime.targetTrainerGradePercent ?? 0,
-        config: gradeSimulation
+        config: gradeSimulation,
+        active: false
     });
 
     return state.liveRide.isActive
@@ -77,7 +87,7 @@ function deriveRuntime(state, mode, gradeSimulation) {
             ...preview,
             pendingTrainerCommand: null,
             controlStatus: preview.available
-                ? `坡度模拟待命：已基于当前路线实时梯度生成目标模拟坡度，开始骑行后即可用于 trainer 控制。`
+                ? `坡度模拟待命：已基于当前路线实时梯度生成目标模拟坡度，开始骑行后按预先锁定模式下发 trainer 指令。`
                 : preview.controlStatus
         };
 }

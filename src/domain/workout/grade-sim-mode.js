@@ -1,8 +1,21 @@
 import { getRouteSampleAtDistance } from "../route/route-builder.js";
+import {
+    createTrainerCommand,
+    TRAINER_COMMAND_TYPES,
+    TRAINER_CONTROL_MODES
+} from "./trainer-command.js";
 
 const DEFAULT_LOOKAHEAD_STEP_METERS = 20;
 
-export function buildGradeSimulationState({ route, distanceMeters, previousTargetGradePercent = 0, config }) {
+export function buildGradeSimulationState({
+    route,
+    distanceMeters,
+    previousTargetGradePercent = 0,
+    config,
+    active = false,
+    rideId = null,
+    commandSequence = 0
+}) {
     if (!route || route.totalDistanceMeters <= 0) {
         return createUnavailableState("未选择路线，无法计算坡度模拟。");
     }
@@ -21,14 +34,26 @@ export function buildGradeSimulationState({ route, distanceMeters, previousTarge
 
     return {
         available: true,
+        trainerControlMode: TRAINER_CONTROL_MODES.SIM,
         currentGradePercent,
         lookaheadGradePercent,
         targetTrainerGradePercent,
-        pendingTrainerCommand: {
-            type: "set-sim-grade",
-            gradePercent: targetTrainerGradePercent
-        },
-        controlStatus: `坡度模拟中：直接使用当前路线实时梯度。当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}`
+        targetErgPowerWatts: null,
+        targetResistanceLevel: null,
+        pendingTrainerCommand: active
+            ? createTrainerCommand({
+                controlMode: TRAINER_CONTROL_MODES.SIM,
+                type: TRAINER_COMMAND_TYPES.SET_SIM_GRADE,
+                payload: {
+                    gradePercent: targetTrainerGradePercent
+                },
+                rideId,
+                sequence: commandSequence
+            })
+            : null,
+        controlStatus: active
+            ? `坡度模拟中：当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}（开始骑行前已锁定控制模式）。`
+            : `坡度模拟待命：当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，预估目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}（开始骑行前已锁定控制模式）。`
     };
 }
 
@@ -69,9 +94,12 @@ function clampGrade(value, minDownhillPercent, maxUphillPercent) {
 function createUnavailableState(controlStatus) {
     return {
         available: false,
+        trainerControlMode: TRAINER_CONTROL_MODES.SIM,
         currentGradePercent: 0,
         lookaheadGradePercent: 0,
         targetTrainerGradePercent: 0,
+        targetErgPowerWatts: null,
+        targetResistanceLevel: null,
         pendingTrainerCommand: null,
         controlStatus
     };

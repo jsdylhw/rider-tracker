@@ -77,3 +77,51 @@
 
 - 新增 `project-structure.md`
 - 总结当前项目的根目录结构、`src` 分层、核心模块、业务流、状态结构与后续建议
+
+### 物理速度场景测试补充
+
+- 在 `tests/unit/cycling-model.test.js` 新增 0% 平路、3% 上坡、-3% 下坡场景下的多功率速度测试
+- 覆盖不同功率（120/180/240/300W）在同坡度下速度随功率单调上升的断言
+- 覆盖同一功率下速度关系断言：`3% 上坡 < 0% 平路 < -3% 下坡`
+
+### 模拟结果会话优先级修复
+
+- 修复 `main-view.js` 会话选择逻辑：在 `simulation/home` 页面优先显示 `state.session`，仅在 `live` 页面优先显示 `liveRide.session`
+- 避免“整段模拟后仍显示实时骑行旧会话”的速度/汇总混淆问题
+
+### 风速物理模型修复
+
+- 修复 `cycling-model.js` 中风速处理不一致的问题：`simulateStep` 与 `resolveSpeedTarget` 统一为空气力有方向计算
+- 空气力改为 `0.5 * rho * CdA * v_air * |v_air|`，支持逆风增阻与强顺风助推
+- 新增风速方向测试：平路同功率下 `顺风速度 > 无风速度 > 逆风速度`
+
+### 物理模型文档补充
+
+- 新增根目录 `physics.md`，整理当前速度/坡度/风速物理模型公式与参数解释
+- 增加不同功率与坡度的速度对照表、220W 坡度速度图（ASCII）与风速影响表
+- 增加调参建议与推荐流程，便于后续按体感和目标场景做参数校准
+
+### Trainer Command 协议升级（预骑行锁定模式）
+
+- 新增 `src/domain/workout/trainer-command.js`：定义统一协议字段（`protocolVersion`、`decisionPolicy`、`controlMode`、`type`、`payload`、`rideId`、`sequence`）
+- 新增 `src/domain/workout/erg-mode.js`：补充 ERG 命令构建（`set-erg-power`）
+- 升级 `grade-sim-mode.js`：SIM 命令改为统一协议结构（`set-sim-grade`）
+- 调整 `ride-service.js`：在 `startRide` 时按训练模式锁定 `trainerControlMode`，骑行中只按锁定模式下发命令，不再中途切换
+- 调整 `workout-service.js` 与初始状态：预览态支持 ERG/SIM 协议结构
+- 新增/更新测试：`erg-mode.test.js`、`grade-sim-mode.test.js`、`test-runner.js`
+
+### 三种训练模式协议落地
+
+- 将训练模式扩展为三种：`自由骑行（固定阻力）`、`固定功率（ERG）`、`坡度模拟（SIM）`
+- 新增 `src/domain/workout/resistance-mode.js`，支持固定阻力命令 `set-resistance`
+- 升级 `trainer-command.js`：新增 `TRAINER_CONTROL_MODES.RESISTANCE` 与 `TRAINER_COMMAND_TYPES.SET_RESISTANCE`
+- 更新 `workout-service.js` / `ride-service.js`：按三种模式在骑行开始前锁定控制模式，骑行中按锁定模式下发命令
+- 更新 `index.html` 训练模式下拉与说明文案，明确“开骑后模式锁定”
+- 新增测试：`tests/unit/resistance-mode.test.js`、`tests/unit/trainer-command.test.js`
+
+### 三态训练模式 UI 同步
+
+- 更新训练模式卡片文案与默认显示，默认展示为“自由骑行（固定阻力）”
+- 训练模式摘要区改为动态目标项：按模式显示 `目标阻力 / 目标功率 / 目标模拟坡度`
+- 更新 `workout-renderer.js`，根据 `trainerControlMode` 动态渲染目标标签与数值单位
+- 更新 PiP 显示：目标控制卡改为动态标签与单位，支持三种模式一致展示

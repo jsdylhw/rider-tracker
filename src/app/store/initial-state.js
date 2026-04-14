@@ -1,5 +1,6 @@
 import { buildRoute, sanitizeSegments } from "../../domain/route/route-builder.js";
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
+import { TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { clamp, normalizeText } from "../../shared/utils/common.js";
 
 export const defaultRouteSegments = [
@@ -81,6 +82,8 @@ function createInitialLiveRideState() {
         canStart: false,
         dashboardOpen: false,
         session: null,
+        trainerControlMode: null,
+        commandSequence: 0,
         startedAt: null,
         lastCompletedAt: null,
         statusMeta: "连接功率计后即可开始骑行。"
@@ -99,11 +102,14 @@ function createInitialWorkoutState() {
         },
         runtime: {
             available: false,
+            trainerControlMode: TRAINER_CONTROL_MODES.RESISTANCE,
             currentGradePercent: 0,
             lookaheadGradePercent: 0,
             targetTrainerGradePercent: 0,
+            targetErgPowerWatts: null,
+            targetResistanceLevel: 35,
             pendingTrainerCommand: null,
-            controlStatus: "自由骑行模式：不下发坡度模拟指令。"
+            controlStatus: "固定阻力待命：阻力等级 35%（开始骑行前已锁定控制模式）。"
         }
     };
 }

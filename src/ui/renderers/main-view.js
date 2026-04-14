@@ -75,6 +75,7 @@ export function createMainView({
         maxDownhillInput: document.getElementById("maxDownhillInput"),
         gradeSmoothingInput: document.getElementById("gradeSmoothingInput"),
         workoutModeLabel: document.getElementById("workoutModeLabel"),
+        trainerTargetLabel: document.getElementById("trainerTargetLabel"),
         targetTrainerGradeValue: document.getElementById("targetTrainerGradeValue"),
         workoutControlStatus: document.getElementById("workoutControlStatus"),
         openRideDashboardBtn: document.getElementById("openRideDashboardBtn"),
@@ -244,7 +245,9 @@ export function createMainView({
     }
 
     function renderSession(state) {
-        const session = state.liveRide.session ?? state.session;
+        const session = state.uiMode === "live"
+            ? (state.liveRide.session ?? state.session)
+            : state.session;
         const summary = session?.summary;
         const records = session?.records ?? [];
 

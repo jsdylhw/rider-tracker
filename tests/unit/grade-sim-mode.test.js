@@ -1,5 +1,6 @@
 import { buildRouteFromTrackPoints } from "../../src/domain/route/route-builder.js";
 import { buildGradeSimulationState } from "../../src/domain/workout/grade-sim-mode.js";
+import { TRAINER_CONTROL_MODES, TRAINER_COMMAND_TYPES } from "../../src/domain/workout/trainer-command.js";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../helpers/test-harness.js";
 
 const config = {
@@ -62,7 +63,10 @@ export const suite = {
                     route: createGradeRoute(),
                     distanceMeters: 80,
                     previousTargetGradePercent: 0,
-                    config
+                    config,
+                    active: true,
+                    rideId: "ride-test",
+                    commandSequence: 7
                 });
 
                 assertEqual(result.available, true);
@@ -70,6 +74,12 @@ export const suite = {
                 assertGreaterThan(result.lookaheadGradePercent, 0);
                 assertGreaterThan(result.targetTrainerGradePercent, 0);
                 assertLessThan(result.targetTrainerGradePercent, config.maxUphillPercent + 0.001);
+                assertEqual(result.pendingTrainerCommand.protocolVersion, 1);
+                assertEqual(result.pendingTrainerCommand.decisionPolicy, "pre-ride-locked");
+                assertEqual(result.pendingTrainerCommand.controlMode, TRAINER_CONTROL_MODES.SIM);
+                assertEqual(result.pendingTrainerCommand.type, TRAINER_COMMAND_TYPES.SET_SIM_GRADE);
+                assertEqual(result.pendingTrainerCommand.rideId, "ride-test");
+                assertEqual(result.pendingTrainerCommand.sequence, 7);
             }
         },
         {
