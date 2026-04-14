@@ -280,6 +280,10 @@ tbody tr:last-child td {
     backdrop-filter: blur(8px);
 }
 
+.device-modal[hidden] {
+    display: none !important;
+}
+
 .device-modal-card {
     width: min(720px, 100%);
     margin: 0;
