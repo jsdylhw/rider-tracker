@@ -64,7 +64,7 @@ export function getSegmentAtDistance(route, distanceMeters) {
     return current ?? route.segments.at(-1) ?? null;
 }
 
-export function buildRouteFromTrackPoints({ name, points, segments }) {
+export function buildRouteFromTrackPoints({ name, points, segments, hasElevationData = true }) {
     const safePoints = points.map((point, index) => ({
         latitude: point.latitude,
         longitude: point.longitude,
@@ -97,7 +97,8 @@ export function buildRouteFromTrackPoints({ name, points, segments }) {
         totalDistanceMeters,
         totalElevationGainMeters,
         totalDescentMeters,
-        points: safePoints
+        points: safePoints,
+        hasElevationData
     });
 }
 
@@ -135,7 +136,7 @@ export function getRouteSampleAtDistance(route, distanceMeters) {
     };
 }
 
-function createRouteObject({ source, name, segments, totalDistanceMeters, totalElevationGainMeters, totalDescentMeters, points }) {
+function createRouteObject({ source, name, segments, totalDistanceMeters, totalElevationGainMeters, totalDescentMeters, points, hasElevationData = true }) {
     return {
         source,
         name,
@@ -143,7 +144,8 @@ function createRouteObject({ source, name, segments, totalDistanceMeters, totalE
         points,
         totalDistanceMeters,
         totalElevationGainMeters,
-        totalDescentMeters
+        totalDescentMeters,
+        hasElevationData
     };
 }
 

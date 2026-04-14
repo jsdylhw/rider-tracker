@@ -37,6 +37,80 @@ export const suite = {
             }
         },
         {
+            name: "resolveSpeedTarget rises with power on flat, 3% climb and -3% descent",
+            run() {
+                const powers = [120, 180, 240, 300];
+                const grades = [0, 3, -3];
+
+                for (const gradePercent of grades) {
+                    const speeds = powers.map((power) => resolveSpeedTarget({
+                        power,
+                        gradePercent,
+                        mass: settings.mass,
+                        crr: settings.crr,
+                        cda: settings.cda,
+                        windSpeed: 0
+                    }));
+
+                    for (let index = 1; index < speeds.length; index += 1) {
+                        assertGreaterThan(
+                            speeds[index],
+                            speeds[index - 1],
+                            `Expected higher power to yield higher speed at grade ${gradePercent}%`
+                        );
+                    }
+                }
+            }
+        },
+        {
+            name: "resolveSpeedTarget keeps climb < flat < descent for multiple power levels at +/-3%",
+            run() {
+                const powers = [120, 180, 240, 300];
+
+                for (const power of powers) {
+                    const climb = resolveSpeedTarget({ power, gradePercent: 3, mass: settings.mass, crr: settings.crr, cda: settings.cda, windSpeed: 0 });
+                    const flat = resolveSpeedTarget({ power, gradePercent: 0, mass: settings.mass, crr: settings.crr, cda: settings.cda, windSpeed: 0 });
+                    const descent = resolveSpeedTarget({ power, gradePercent: -3, mass: settings.mass, crr: settings.crr, cda: settings.cda, windSpeed: 0 });
+
+                    assertLessThan(climb, flat, `Expected climb speed to be lower than flat at power ${power}W`);
+                    assertGreaterThan(descent, flat, `Expected descent speed to be higher than flat at power ${power}W`);
+                }
+            }
+        },
+        {
+            name: "resolveSpeedTarget responds to wind direction on flat route",
+            run() {
+                const power = 220;
+                const tailwind = resolveSpeedTarget({
+                    power,
+                    gradePercent: 0,
+                    mass: settings.mass,
+                    crr: settings.crr,
+                    cda: settings.cda,
+                    windSpeed: -4
+                });
+                const calm = resolveSpeedTarget({
+                    power,
+                    gradePercent: 0,
+                    mass: settings.mass,
+                    crr: settings.crr,
+                    cda: settings.cda,
+                    windSpeed: 0
+                });
+                const headwind = resolveSpeedTarget({
+                    power,
+                    gradePercent: 0,
+                    mass: settings.mass,
+                    crr: settings.crr,
+                    cda: settings.cda,
+                    windSpeed: 4
+                });
+
+                assertGreaterThan(tailwind, calm, "Expected tailwind to increase speed");
+                assertGreaterThan(calm, headwind, "Expected headwind to decrease speed");
+            }
+        },
+        {
             name: "simulateStep accumulates distance and ascent on uphill efforts",
             run() {
                 const next = simulateStep({

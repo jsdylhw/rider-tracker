@@ -1,5 +1,5 @@
-import { parseGpx } from "../../src/domain/course/gpx-parser.js";
-import { assertApprox, assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
+import { parseGpx } from "../../src/domain/route/gpx-parser.js";
+import { assertApprox, assertEqual, assertGreaterThan, assertLessThan } from "../helpers/test-harness.js";
 
 const BASIC_GPX = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">
@@ -23,6 +23,19 @@ const NAMESPACED_GPX = `<?xml version="1.0" encoding="UTF-8"?>
         <gpxtpx:TrackPointExtension></gpxtpx:TrackPointExtension>
       </trkpt>
       <trkpt lat="30.001" lon="120.002"><ele>12</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>`;
+
+const NO_ELEVATION_GPX = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.0" creator="test" xmlns="http://www.topografix.com/GPX/1/0">
+  <trk>
+    <name>No Elevation Route</name>
+    <trkseg>
+      <trkpt lat="32.05539" lon="118.87645"></trkpt>
+      <trkpt lat="32.05542" lon="118.87638"></trkpt>
+      <trkpt lat="32.05556" lon="118.87613"></trkpt>
+      <trkpt lat="32.057198" lon="118.873927"></trkpt>
     </trkseg>
   </trk>
 </gpx>`;
@@ -52,6 +65,19 @@ export const suite = {
                 assertEqual(route.points.length, 2);
                 assertApprox(route.points[1].latitude, 30.001, 0.000001);
                 assertApprox(route.points[1].longitude, 120.002, 0.000001);
+            }
+        },
+        {
+            name: "parseGpx keeps zero elevation and zero grade when GPX has no elevation data",
+            run() {
+                const route = parseGpx(NO_ELEVATION_GPX);
+
+                assertEqual(route.hasElevationData, false);
+                assertEqual(route.totalElevationGainMeters, 0);
+                assertEqual(route.totalDescentMeters, 0);
+                assertEqual(route.segments[0].gradePercent, 0);
+                assertEqual(route.points[0].elevationMeters, 0);
+                assertLessThan(Math.max(...route.points.map((point) => Math.abs(point.gradePercent))), 0.001);
             }
         },
         {

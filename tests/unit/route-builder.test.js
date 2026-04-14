@@ -4,7 +4,7 @@ import {
     getRouteSampleAtDistance,
     getSegmentAtDistance,
     sanitizeSegments
-} from "../../src/domain/course/route-builder.js";
+} from "../../src/domain/route/route-builder.js";
 import {
     assert,
     assertApprox,
