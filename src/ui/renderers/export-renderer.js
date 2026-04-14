@@ -10,12 +10,6 @@ export function createExportRenderer({
                 onUpdateExportMetadata(readExportMetadataFromForm(elements.fitExportForm));
             });
         }
-
-        if (elements.fitExportFormLive) {
-            elements.fitExportFormLive.addEventListener("input", () => {
-                onUpdateExportMetadata(readExportMetadataFromForm(elements.fitExportFormLive));
-            });
-        }
     }
 
     function render(state) {
@@ -30,13 +24,6 @@ export function createExportRenderer({
                 const field = elements.fitExportForm.elements.namedItem(key);
                 if (field && document.activeElement !== field) {
                     field.value = value;
-                }
-            }
-
-            if (elements.fitExportFormLive) {
-                const fieldLive = elements.fitExportFormLive.elements.namedItem(key);
-                if (fieldLive && document.activeElement !== fieldLive) {
-                    fieldLive.value = value;
                 }
             }
         });

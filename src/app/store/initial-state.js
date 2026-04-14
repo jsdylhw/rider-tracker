@@ -29,16 +29,8 @@ export function createInitialState(session) {
     const routeSegments = sanitizeSegments(defaultRouteSegments);
     const route = buildRoute(routeSegments);
 
-    let initialMode = 'home';
-    const path = window.location.pathname;
-    if (path.includes('simulation.html')) {
-        initialMode = 'simulation';
-    } else if (path.includes('live.html')) {
-        initialMode = 'live';
-    }
-
     return {
-        uiMode: initialMode,
+        uiMode: "home",
         routeSegments,
         route,
         settings: { ...defaultSettings },

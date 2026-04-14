@@ -96,10 +96,6 @@ export function createDashboardRenderer({
             elements.stopRideDashboardBtn.disabled = !liveRide.isActive;
         }
 
-        if (elements.liveFitExportCard) {
-            elements.liveFitExportCard.hidden = liveRide.isActive || !session;
-        }
-
         const metricsData = {
             currentPower: { label: "实时功率", value: powerMeter?.power ?? 0, unit: "W", color: "power-color" },
             avg3sPower: { label: "3秒均功率", value: avg3sPower, unit: "W", color: "power-color" },

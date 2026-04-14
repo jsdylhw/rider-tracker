@@ -38,6 +38,9 @@ export function createMainView({
         liveCol1: document.getElementById("live-col-1"),
         routeCardContainer: document.getElementById("routeCardContainer"),
         routeCard: document.getElementById("routeCard"),
+        exportCardContainer: document.getElementById("exportCardContainer"),
+        liveExportSlot: document.getElementById("liveExportSlot"),
+        exportCardTemplate: document.getElementById("export-card-template"),
         historyContainer: document.getElementById("historyContainer"),
         personalSettingsForm: document.getElementById("personalSettingsForm"),
         simPowerForm: document.getElementById("simPowerForm"),
@@ -53,9 +56,6 @@ export function createMainView({
         routeElevationChip: document.getElementById("routeElevationChip"),
         savedSessionChip: document.getElementById("savedSessionChip"),
         simulationForm: document.getElementById("simulationForm"),
-        fitExportForm: document.getElementById("fitExportForm"),
-        fitExportFormLive: document.getElementById("fitExportFormLive"),
-        liveFitExportCard: document.getElementById("liveFitExportCard"),
         connectHrBtn: document.getElementById("connectHrBtn"),
         connectPowerBtn: document.getElementById("connectPowerBtn"),
         openRideDashboardBtn: document.getElementById("openRideDashboardBtn"),
@@ -92,10 +92,6 @@ export function createMainView({
         closeRideDashboardBtn: document.getElementById("closeRideDashboardBtn"),
         stopRideDashboardBtn: document.getElementById("stopRideDashboardBtn"),
         runSimulationBtn: document.getElementById("runSimulationBtn"),
-        downloadSessionBtn: document.getElementById("downloadSessionBtn"),
-        downloadFitBtn: document.getElementById("downloadFitBtn"),
-        downloadSessionBtnLive: document.getElementById("downloadSessionBtnLive"),
-        downloadFitBtnLive: document.getElementById("downloadFitBtnLive"),
         pipBtn: document.getElementById("pipBtn"),
         statusText: document.getElementById("statusText"),
         avgSpeedDisplay: document.getElementById("avgSpeedDisplay"),
@@ -116,6 +112,12 @@ export function createMainView({
         setupElevationChart: document.getElementById("setupElevationChart"),
         mapProviderSelect: document.getElementById("mapProviderSelect")
     };
+
+    mountSharedExportCard();
+
+    elements.fitExportForm = document.getElementById("fitExportForm");
+    elements.downloadSessionBtn = document.getElementById("downloadSessionBtn");
+    elements.downloadFitBtn = document.getElementById("downloadFitBtn");
 
     let lastRenderedSettingsSignature = "";
 
@@ -160,11 +162,12 @@ export function createMainView({
 
     bind(elements.closeRideDashboardBtn, "click", onCloseRideDashboard);
     bind(elements.stopRideDashboardBtn, "click", onStopRide);
+    bind(elements.goToSimBtn, "click", () => onSetUiMode("simulation"));
+    bind(elements.goToLiveBtn, "click", () => onSetUiMode("live"));
+    elements.goHomeBtns.forEach((button) => bind(button, "click", () => onSetUiMode("home")));
     bind(elements.runSimulationBtn, "click", onRunSimulation);
     bind(elements.downloadSessionBtn, "click", onDownloadSession);
     bind(elements.downloadFitBtn, "click", onDownloadFit);
-    bind(elements.downloadSessionBtnLive, "click", onDownloadSession);
-    bind(elements.downloadFitBtnLive, "click", onDownloadFit);
 
     if (elements.personalSettingsForm) {
         elements.personalSettingsForm.addEventListener("input", () => {
@@ -232,11 +235,22 @@ export function createMainView({
         if (mode === 'simulation' && elements.simCol1 && elements.routeCardContainer) {
             elements.simCol1.insertBefore(elements.routeCardContainer, elements.simCol1.firstChild);
             elements.routeCardContainer.hidden = false;
+            if (elements.exportCardContainer) {
+                elements.simCol1.appendChild(elements.exportCardContainer);
+                elements.exportCardContainer.hidden = false;
+            }
         } else if (mode === 'live' && elements.liveCol1 && elements.routeCardContainer) {
             elements.liveCol1.insertBefore(elements.routeCardContainer, elements.liveCol1.firstChild);
             elements.routeCardContainer.hidden = false;
+            if (elements.liveExportSlot && elements.exportCardContainer) {
+                elements.liveExportSlot.appendChild(elements.exportCardContainer);
+                elements.exportCardContainer.hidden = !state.session && !state.liveRide.session;
+            }
         } else if (elements.routeCardContainer) {
             elements.routeCardContainer.hidden = true;
+            if (elements.exportCardContainer) {
+                elements.exportCardContainer.hidden = true;
+            }
         }
 
         if (mode === 'home' && elements.historyContainer) {
@@ -279,9 +293,10 @@ export function createMainView({
         
         if (elements.downloadSessionBtn) elements.downloadSessionBtn.disabled = !session || state.liveRide.isActive;
         if (elements.downloadFitBtn) elements.downloadFitBtn.disabled = !session || state.liveRide.isActive;
-        if (elements.downloadSessionBtnLive) elements.downloadSessionBtnLive.disabled = !session || state.liveRide.isActive;
-        if (elements.downloadFitBtnLive) elements.downloadFitBtnLive.disabled = !session || state.liveRide.isActive;
         if (elements.runSimulationBtn) elements.runSimulationBtn.disabled = state.liveRide.isActive;
+        if (elements.exportCardContainer && state.uiMode === "live") {
+            elements.exportCardContainer.hidden = state.liveRide.isActive || !session;
+        }
 
         renderRecords(records);
         renderChart(records);
@@ -377,15 +392,22 @@ export function createMainView({
 
 function readSettingsFromForm(form) {
     const formData = new FormData(form);
+    const result = {};
 
-    return {
-        power: Number(formData.get("power")),
-        mass: Number(formData.get("mass")),
-        ftp: Number(formData.get("ftp")),
-        restingHr: Number(formData.get("restingHr")),
-        maxHr: Number(formData.get("maxHr")),
-        cda: Number(formData.get("cda")),
-        crr: Number(formData.get("crr")),
-        windSpeed: Number(formData.get("windSpeed"))
-    };
+    ["power", "mass", "ftp", "restingHr", "maxHr", "cda", "crr", "windSpeed"].forEach((key) => {
+        if (form.elements.namedItem(key)) {
+            result[key] = Number(formData.get(key));
+        }
+    });
+
+    return result;
+}
+
+function mountSharedExportCard() {
+    const container = document.getElementById("exportCardContainer");
+    const template = document.getElementById("export-card-template");
+
+    if (container && template && container.childElementCount === 0) {
+        container.appendChild(template.content.cloneNode(true));
+    }
 }
