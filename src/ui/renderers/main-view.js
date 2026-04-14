@@ -4,6 +4,7 @@ import { createRouteRenderer } from "./route-renderer.js";
 import { createDashboardRenderer } from "./dashboard-renderer.js";
 import { createExportRenderer } from "./export-renderer.js";
 import { createDeviceRenderer } from "./device-renderer.js";
+import { createLayoutCoordinator } from "./layout-coordinator.js";
 
 export function createMainView({
     store,
@@ -113,8 +114,6 @@ export function createMainView({
         mapProviderSelect: document.getElementById("mapProviderSelect")
     };
 
-    mountSharedExportCard();
-
     elements.fitExportForm = document.getElementById("fitExportForm");
     elements.downloadSessionBtn = document.getElementById("downloadSessionBtn");
     elements.downloadFitBtn = document.getElementById("downloadFitBtn");
@@ -156,6 +155,8 @@ export function createMainView({
         onStopRide
     });
 
+    const layoutCoordinator = createLayoutCoordinator({ elements });
+
     function bind(el, event, handler) {
         if (el) el.addEventListener(event, handler);
     }
@@ -194,7 +195,7 @@ export function createMainView({
     });
 
     store.subscribe((state) => {
-        renderUiMode(state);
+        layoutCoordinator.render(state);
         renderSettings(state);
         routeRenderer.render(state);
         dashboardRenderer.render(state);
@@ -223,57 +224,6 @@ export function createMainView({
         });
 
         lastRenderedSettingsSignature = signature;
-    }
-
-    function renderUiMode(state) {
-        const mode = state.uiMode;
-        
-        if (elements.viewHome) elements.viewHome.hidden = mode !== 'home';
-        if (elements.viewSimulation) elements.viewSimulation.hidden = mode !== 'simulation';
-        if (elements.viewLive) elements.viewLive.hidden = mode !== 'live';
-
-        if (mode === 'simulation' && elements.simCol1 && elements.routeCardContainer) {
-            elements.simCol1.insertBefore(elements.routeCardContainer, elements.simCol1.firstChild);
-            elements.routeCardContainer.hidden = false;
-            if (elements.exportCardContainer) {
-                elements.simCol1.appendChild(elements.exportCardContainer);
-                elements.exportCardContainer.hidden = false;
-            }
-        } else if (mode === 'live' && elements.liveCol1 && elements.routeCardContainer) {
-            elements.liveCol1.insertBefore(elements.routeCardContainer, elements.liveCol1.firstChild);
-            elements.routeCardContainer.hidden = false;
-            if (elements.liveExportSlot && elements.exportCardContainer) {
-                elements.liveExportSlot.appendChild(elements.exportCardContainer);
-                elements.exportCardContainer.hidden = !state.session && !state.liveRide.session;
-            }
-        } else if (elements.routeCardContainer) {
-            elements.routeCardContainer.hidden = true;
-            if (elements.exportCardContainer) {
-                elements.exportCardContainer.hidden = true;
-            }
-        }
-
-        if (mode === 'home' && elements.historyContainer) {
-            const summary = state.session?.summary;
-            if (summary) {
-                elements.historyContainer.innerHTML = `
-                    <div style="display: grid; gap: 12px; margin-top: 8px;">
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: var(--muted);">总距离</span>
-                            <strong>${formatNumber(summary.distanceKm, 2)} km</strong>
-                        </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: var(--muted);">总用时</span>
-                            <strong>${formatDuration(summary.elapsedSeconds)}</strong>
-                        </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: var(--muted);">平均速度</span>
-                            <strong>${formatNumber(summary.averageSpeedKph, 1)} km/h</strong>
-                        </div>
-                    </div>
-                `;
-            }
-        }
     }
 
     function renderSession(state) {
@@ -401,13 +351,4 @@ function readSettingsFromForm(form) {
     });
 
     return result;
-}
-
-function mountSharedExportCard() {
-    const container = document.getElementById("exportCardContainer");
-    const template = document.getElementById("export-card-template");
-
-    if (container && template && container.childElementCount === 0) {
-        container.appendChild(template.content.cloneNode(true));
-    }
 }

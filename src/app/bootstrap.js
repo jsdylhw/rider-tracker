@@ -2,7 +2,7 @@ import { createStore } from "./store/app-store.js";
 import { createInitialState } from "./store/initial-state.js";
 import { loadLastSession } from "../adapters/storage/session-storage.js";
 import { createMainView } from "../ui/renderers/main-view.js";
-import { createPipController } from "../../pip.js";
+import { createPipController } from "../ui/pip/pip-controller.js";
 import { formatDuration, formatNumber } from "../shared/format.js";
 
 import { createUserService } from "./services/user-service.js";

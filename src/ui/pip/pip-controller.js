@@ -12,7 +12,6 @@ export function createPipController({ button, template, getData }) {
             return;
         }
 
-        // Setup layout structure with 6 metrics: Distance/Remaining, Speed, Power, HR, Cadence
         container.innerHTML = `
             <style>
                 body {
@@ -52,8 +51,6 @@ export function createPipController({ button, template, getData }) {
                 .hr-color { color: var(--danger); }
                 .accent-color { color: var(--accent); }
             </style>
-            
-            <!-- Row 1 -->
             <div class="pip-metric" style="grid-column: span 2;">
                 <div class="pip-metric-label">骑行距离 / 剩余</div>
                 <div class="pip-metric-val"><span id="pipDist">--</span> <span class="pip-metric-unit">/ <span id="pipRem">--</span> km</span></div>
@@ -62,8 +59,6 @@ export function createPipController({ button, template, getData }) {
                 <div class="pip-metric-label">实时速度</div>
                 <div class="pip-metric-val accent-color"><span id="pipSpeed">--</span> <span class="pip-metric-unit">km/h</span></div>
             </div>
-            
-            <!-- Row 2 -->
             <div class="pip-metric">
                 <div class="pip-metric-label">实时功率</div>
                 <div class="pip-metric-val power-color"><span id="pipPower">--</span> <span class="pip-metric-unit">W</span></div>
@@ -77,7 +72,7 @@ export function createPipController({ button, template, getData }) {
                 <div class="pip-metric-val accent-color"><span id="pipCadence">--</span> <span class="pip-metric-unit">rpm</span></div>
             </div>
         `;
-        
+
         sync();
     }
 
@@ -102,45 +97,37 @@ export function createPipController({ button, template, getData }) {
         const innerHeight = height - paddingTop - paddingBottom;
 
         const totalDist = route.totalDistanceMeters;
-        
-        const maxGrade = Math.max(...route.points.map(p => p.gradePercent), 5); 
-        const minGrade = Math.min(...route.points.map(p => p.gradePercent), -5); 
+        const maxGrade = Math.max(...route.points.map((point) => point.gradePercent), 5);
+        const minGrade = Math.min(...route.points.map((point) => point.gradePercent), -5);
         const gradeRange = maxGrade - minGrade;
         const zeroY = paddingTop + innerHeight * (maxGrade / gradeRange);
 
-        let svgContent = '';
+        let svgContent = "";
 
         function getGradeColor(grade) {
-            if (grade >= 10) return '#e11d48'; // HC
-            if (grade >= 7) return '#f43f5e';  // Cat 1
-            if (grade >= 4) return '#f97316';  // Cat 2
-            if (grade >= 2) return '#fbbf24';  // Cat 3
-            if (grade > -2) return '#2dd4bf';  // Flat
-            return '#38bdf8';                  // Descent
+            if (grade >= 10) return "#e11d48";
+            if (grade >= 7) return "#f43f5e";
+            if (grade >= 4) return "#f97316";
+            if (grade >= 2) return "#fbbf24";
+            if (grade > -2) return "#2dd4bf";
+            return "#38bdf8";
         }
 
         svgContent += `<line x1="0" y1="${zeroY}" x2="${width}" y2="${zeroY}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2 2" />`;
 
-        for (let i = 1; i < route.points.length; i++) {
+        for (let i = 1; i < route.points.length; i += 1) {
             const prevPoint = route.points[i - 1];
             const currentPoint = route.points[i];
-            
+
             const prevX = (prevPoint.distanceMeters / totalDist) * width;
             const curX = (currentPoint.distanceMeters / totalDist) * width;
-            
             const prevY = paddingTop + innerHeight * ((maxGrade - prevPoint.gradePercent) / gradeRange);
             const curY = paddingTop + innerHeight * ((maxGrade - currentPoint.gradePercent) / gradeRange);
-            
             const color = getGradeColor(currentPoint.gradePercent);
 
             svgContent += `
-                <polygon points="${prevX},${zeroY} ${prevX},${prevY} ${curX},${curY} ${curX},${zeroY}" 
-                         fill="${color}" opacity="0.8" />
-            `;
-            
-            svgContent += `
-                <line x1="${prevX}" y1="${prevY}" x2="${curX}" y2="${curY}" 
-                      stroke="${color}" stroke-width="1" />
+                <polygon points="${prevX},${zeroY} ${prevX},${prevY} ${curX},${curY} ${curX},${zeroY}" fill="${color}" opacity="0.8" />
+                <line x1="${prevX}" y1="${prevY}" x2="${curX}" y2="${curY}" stroke="${color}" stroke-width="1" />
             `;
         }
 
@@ -162,7 +149,6 @@ export function createPipController({ button, template, getData }) {
         }
 
         const data = getData();
-
         const distEl = pipWindow.document.getElementById("pipDist");
         const remEl = pipWindow.document.getElementById("pipRem");
         const speedEl = pipWindow.document.getElementById("pipSpeed");
@@ -186,6 +172,7 @@ export function createPipController({ button, template, getData }) {
         }
 
         button.innerText = pipWindow ? "关闭悬浮窗" : "开启悬浮窗";
+
         if (pipWindow) {
             button.classList.add("danger");
             button.classList.remove("secondary");
@@ -207,7 +194,6 @@ export function createPipController({ button, template, getData }) {
         const pipContent = template.content.cloneNode(true);
         pipWindow.document.body.append(pipContent);
 
-        // 复制主页面的样式到画中画窗口
         [...document.styleSheets].forEach((styleSheet) => {
             try {
                 const cssRules = [...styleSheet.cssRules].map((rule) => rule.cssText).join("");
