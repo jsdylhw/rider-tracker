@@ -1,4 +1,5 @@
 import { buildRoute, sanitizeSegments } from "../../domain/route/route-builder.js";
+import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 import { clamp, normalizeText } from "../../shared/utils/common.js";
 
 export const defaultRouteSegments = [
@@ -34,6 +35,7 @@ export function createInitialState(session) {
         routeSegments,
         route,
         settings: { ...defaultSettings },
+        workout: createInitialWorkoutState(),
         session,
         liveRide: createInitialLiveRideState(),
         ble: createInitialBleState(),
@@ -82,6 +84,27 @@ function createInitialLiveRideState() {
         startedAt: null,
         lastCompletedAt: null,
         statusMeta: "连接功率计后即可开始骑行。"
+    };
+}
+
+function createInitialWorkoutState() {
+    return {
+        mode: WORKOUT_MODES.FREE_RIDE,
+        gradeSimulation: {
+            difficultyPercent: 75,
+            lookaheadMeters: 120,
+            maxUphillPercent: 10,
+            maxDownhillPercent: -3,
+            smoothingFactor: 0.35
+        },
+        runtime: {
+            available: false,
+            currentGradePercent: 0,
+            lookaheadGradePercent: 0,
+            targetTrainerGradePercent: 0,
+            pendingTrainerCommand: null,
+            controlStatus: "自由骑行模式：不下发坡度模拟指令。"
+        }
     };
 }
 

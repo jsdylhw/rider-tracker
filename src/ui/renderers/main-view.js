@@ -5,12 +5,15 @@ import { createDashboardRenderer } from "./dashboard-renderer.js";
 import { createExportRenderer } from "./export-renderer.js";
 import { createDeviceRenderer } from "./device-renderer.js";
 import { createLayoutCoordinator } from "./layout-coordinator.js";
+import { createWorkoutRenderer } from "./workout-renderer.js";
 
 export function createMainView({
     store,
     onSetUiMode,
     onEnterSimulationMode,
     onEnterLiveMode,
+    onUpdateWorkoutMode,
+    onUpdateGradeSimulationConfig,
     onAddSegment,
     onResetRoute,
     onToggleHeartRate,
@@ -64,6 +67,16 @@ export function createMainView({
         simulationForm: document.getElementById("simulationForm"),
         connectHrBtn: document.getElementById("connectHrBtn"),
         connectPowerBtn: document.getElementById("connectPowerBtn"),
+        workoutModeForm: document.getElementById("workoutModeForm"),
+        workoutModeSelect: document.getElementById("workoutModeSelect"),
+        gradeDifficultyInput: document.getElementById("gradeDifficultyInput"),
+        gradeLookaheadInput: document.getElementById("gradeLookaheadInput"),
+        maxUphillInput: document.getElementById("maxUphillInput"),
+        maxDownhillInput: document.getElementById("maxDownhillInput"),
+        gradeSmoothingInput: document.getElementById("gradeSmoothingInput"),
+        workoutModeLabel: document.getElementById("workoutModeLabel"),
+        targetTrainerGradeValue: document.getElementById("targetTrainerGradeValue"),
+        workoutControlStatus: document.getElementById("workoutControlStatus"),
         openRideDashboardBtn: document.getElementById("openRideDashboardBtn"),
         hrDeviceStatus: document.getElementById("hrDeviceStatus"),
         hrDeviceName: document.getElementById("hrDeviceName"),
@@ -159,6 +172,11 @@ export function createMainView({
         onStartRide,
         onStopRide
     });
+    const workoutRenderer = createWorkoutRenderer({
+        elements,
+        onUpdateWorkoutMode,
+        onUpdateGradeSimulationConfig
+    });
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
 
@@ -199,6 +217,7 @@ export function createMainView({
         routeRenderer.render(state);
         dashboardRenderer.render(state);
         exportRenderer.render(state);
+        workoutRenderer.render(state);
         deviceRenderer.render(state);
         renderSession(state);
         renderPipControls(state);

@@ -20,12 +20,18 @@ export function createLayoutCoordinator({ elements }) {
             if (elements.routeMapShell) {
                 elements.routeMapShell.hidden = true;
             }
+            if (elements.setupElevationChartShell) {
+                elements.setupElevationChartShell.hidden = true;
+            }
         } else if (mode === "simulation" && elements.simCol1 && elements.routeCardContainer) {
             elements.simCol1.insertBefore(elements.routeCardContainer, elements.simCol1.firstChild);
             elements.routeCardContainer.hidden = false;
 
             if (elements.routeMapShell) {
                 elements.routeMapShell.hidden = false;
+            }
+            if (elements.setupElevationChartShell) {
+                elements.setupElevationChartShell.hidden = false;
             }
 
             if (elements.exportCardContainer) {
@@ -37,7 +43,10 @@ export function createLayoutCoordinator({ elements }) {
             elements.routeCardContainer.hidden = false;
 
             if (elements.routeMapShell) {
-                elements.routeMapShell.hidden = false;
+                elements.routeMapShell.hidden = true;
+            }
+            if (elements.setupElevationChartShell) {
+                elements.setupElevationChartShell.hidden = true;
             }
 
             if (elements.liveExportSlot && elements.exportCardContainer) {
@@ -53,6 +62,9 @@ export function createLayoutCoordinator({ elements }) {
 
             if (elements.routeMapShell) {
                 elements.routeMapShell.hidden = false;
+            }
+            if (elements.setupElevationChartShell) {
+                elements.setupElevationChartShell.hidden = false;
             }
         }
 

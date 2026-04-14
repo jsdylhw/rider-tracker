@@ -4,6 +4,7 @@ import { loadLastSession } from "../adapters/storage/session-storage.js";
 import { createMainView } from "../ui/renderers/main-view.js";
 import { createPipController } from "../ui/pip/pip-controller.js";
 import { formatDuration, formatNumber } from "../shared/format.js";
+import { getWorkoutModeLabel } from "../domain/workout/workout-mode.js";
 
 import { createUserService } from "./services/user-service.js";
 import { createRouteService } from "./services/route-service.js";
@@ -11,6 +12,7 @@ import { createRideService } from "./services/ride-service.js";
 import { createDeviceService } from "./services/device-service.js";
 import { createExportService } from "./services/export-service.js";
 import { createUiService } from "./services/ui-service.js";
+import { createWorkoutService } from "./services/workout-service.js";
 
 // 1. 初始化状态与 Store
 const persistedSession = loadLastSession();
@@ -23,6 +25,7 @@ const rideService = createRideService({ store });
 const deviceService = createDeviceService({ store });
 const exportService = createExportService({ store });
 const uiService = createUiService({ store });
+const workoutService = createWorkoutService({ store });
 
 // 3. 创建控制器与视图
 const pipController = createPipController({
@@ -37,6 +40,7 @@ const pipController = createPipController({
         const liveHeartRate = state.ble.heartRate.value;
         const livePower = state.ble.powerMeter.power;
         const liveCadence = state.ble.powerMeter.cadence;
+        const workoutRuntime = state.workout.runtime;
 
         const totalDistanceKm = route ? route.totalDistanceMeters / 1000 : 0;
         const distanceKm = liveSummary?.distanceKm ?? 0;
@@ -49,6 +53,11 @@ const pipController = createPipController({
             power: livePower !== null ? String(livePower) : "--",
             hr: liveHeartRate !== null ? String(liveHeartRate) : "--",
             cadence: liveCadence !== null ? String(liveCadence) : "--",
+            modeLabel: getWorkoutModeLabel(state.workout.mode),
+            currentGrade: formatNumber(workoutRuntime.currentGradePercent ?? liveSummary?.currentGradePercent ?? 0, 1),
+            lookaheadGrade: formatNumber(workoutRuntime.lookaheadGradePercent ?? 0, 1),
+            targetTrainerGrade: formatNumber(workoutRuntime.targetTrainerGradePercent ?? 0, 1),
+            controlStatus: workoutRuntime.controlStatus,
             route: route,
             currentRecord: liveRecord ?? null
         };
@@ -61,6 +70,8 @@ createMainView({
     onSetUiMode: uiService.setUiMode,
     onEnterSimulationMode: uiService.enterSimulationMode,
     onEnterLiveMode: uiService.enterLiveMode,
+    onUpdateWorkoutMode: workoutService.updateWorkoutMode,
+    onUpdateGradeSimulationConfig: workoutService.updateGradeSimulationConfig,
     onAddSegment: routeService.addSegment,
     onResetRoute: routeService.resetRoute,
     onToggleHeartRate: deviceService.toggleHeartRate,

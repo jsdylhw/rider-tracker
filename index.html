@@ -288,8 +288,69 @@
                     <div class="card">
                         <div class="section-title-row">
                             <div>
+                                <h2>路线坡度预览</h2>
+                                <p class="section-subtitle">先通过这张主坡度图查看当前已选路线的实时梯度和骑行位置。</p>
+                            </div>
+                        </div>
+                        <div class="chart-shell">
+                            <svg id="elevationChart" viewBox="0 0 640 180" preserveAspectRatio="none"></svg>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="section-title-row">
+                            <div>
+                                <h2>训练模式</h2>
+                                <p class="section-subtitle">若选择坡度模拟，系统会直接使用当前路线的实时梯度生成目标模拟坡度。</p>
+                            </div>
+                        </div>
+                        <form id="workoutModeForm" class="form-grid">
+                            <label class="field">
+                                <span>当前模式</span>
+                                <select id="workoutModeSelect" name="mode">
+                                    <option value="free-ride">自由骑行</option>
+                                    <option value="grade-sim">坡度模拟</option>
+                                </select>
+                            </label>
+                            <label class="field">
+                                <span>模拟难度 %</span>
+                                <input id="gradeDifficultyInput" name="difficultyPercent" type="number" min="30" max="150" step="5">
+                            </label>
+                            <label class="field">
+                                <span>前瞻距离 m</span>
+                                <input id="gradeLookaheadInput" name="lookaheadMeters" type="number" min="30" max="500" step="10">
+                            </label>
+                            <label class="field">
+                                <span>最大上坡 %</span>
+                                <input id="maxUphillInput" name="maxUphillPercent" type="number" min="3" max="20" step="0.5">
+                            </label>
+                            <label class="field">
+                                <span>最大下坡 %</span>
+                                <input id="maxDownhillInput" name="maxDownhillPercent" type="number" min="-10" max="0" step="0.5">
+                            </label>
+                            <label class="field">
+                                <span>平滑系数</span>
+                                <input id="gradeSmoothingInput" name="smoothingFactor" type="number" min="0.05" max="1" step="0.05">
+                            </label>
+                        </form>
+                        <div class="summary-grid">
+                            <div class="summary-card">
+                                <span>当前模式</span>
+                                <strong id="workoutModeLabel">自由骑行</strong>
+                            </div>
+                            <div class="summary-card">
+                                <span>目标模拟坡度</span>
+                                <strong id="targetTrainerGradeValue">0.0%</strong>
+                            </div>
+                        </div>
+                        <div id="workoutControlStatus" class="route-summary">自由骑行模式：不下发坡度模拟指令。</div>
+                    </div>
+
+                    <div class="card">
+                        <div class="section-title-row">
+                            <div>
                                 <h2>设备连接与骑行控制</h2>
-                                <p class="section-subtitle">在虚拟骑行页面中连接设备、开始骑行并打开骑行大屏。</p>
+                                <p class="section-subtitle">连接设备后开始骑行，实时功率和速度会与当前路线梯度联动。</p>
                             </div>
                         </div>
                         <div class="controls">
@@ -355,18 +416,6 @@
                     </div>
 
                     <div id="liveExportSlot"></div>
-
-                    <div class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>路线坡度预览</h2>
-                                <p class="section-subtitle">与骑行进度联动显示当前所处路线位置。</p>
-                            </div>
-                        </div>
-                        <div class="chart-shell">
-                            <svg id="elevationChart" viewBox="0 0 640 180" preserveAspectRatio="none"></svg>
-                        </div>
-                    </div>
                 </div>
 
                 <div class="column">

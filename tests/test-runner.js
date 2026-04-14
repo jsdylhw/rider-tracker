@@ -4,9 +4,10 @@ import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
 import { suite as simulatorSuite } from "./unit/simulator.test.js";
 import { suite as liveRideSuite } from "./unit/live-ride-session.test.js";
+import { suite as gradeSimSuite } from "./unit/grade-sim-mode.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
-const suites = [routeSuite, gpxSuite, physicsSuite, simulatorSuite, liveRideSuite];
+const suites = [routeSuite, gpxSuite, physicsSuite, simulatorSuite, liveRideSuite, gradeSimSuite];
 
 runSuites(suites).then((results) => {
     renderResults(results, app);

@@ -16,30 +16,45 @@ export function createPipController({ button, template, getData }) {
             <style>
                 body {
                     margin: 0;
-                    padding: 8px;
+                    padding: 10px;
                     background-color: var(--surface);
                     color: var(--text);
                     font-family: system-ui, -apple-system, sans-serif;
                 }
                 .pip-metrics-grid {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                }
+                .pip-section {
+                    background: var(--background);
+                    border-radius: 8px;
+                    padding: 8px;
+                    border: 1px solid var(--border);
+                }
+                .pip-section-title {
+                    font-size: 11px;
+                    color: var(--muted);
+                    margin-bottom: 6px;
+                }
+                .pip-training-grid {
                     display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 8px;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 6px;
                 }
                 .pip-metric {
-                    background: var(--background);
+                    background: rgba(255, 255, 255, 0.02);
                     border-radius: 6px;
-                    padding: 6px;
+                    padding: 6px 4px;
                     text-align: center;
-                    border: 1px solid var(--border);
                 }
                 .pip-metric-label {
                     font-size: 10px;
                     color: var(--muted);
-                    margin-bottom: 2px;
+                    margin-bottom: 3px;
                 }
                 .pip-metric-val {
-                    font-size: 16px;
+                    font-size: 15px;
                     font-weight: bold;
                 }
                 .pip-metric-unit {
@@ -47,30 +62,93 @@ export function createPipController({ button, template, getData }) {
                     color: var(--muted);
                     font-weight: normal;
                 }
+                .pip-grade-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 6px;
+                    margin-bottom: 8px;
+                }
+                .pip-grade-card {
+                    border-radius: 6px;
+                    padding: 6px 4px;
+                    text-align: center;
+                    background: rgba(255, 255, 255, 0.02);
+                }
+                .pip-grade-value {
+                    font-size: 16px;
+                    font-weight: 700;
+                }
+                .pip-status {
+                    margin-top: 8px;
+                    font-size: 10px;
+                    color: var(--muted);
+                    line-height: 1.4;
+                    min-height: 28px;
+                }
+                .pip-grade-svg {
+                    width: 100%;
+                    height: 72px;
+                    display: block;
+                    background: rgba(15, 23, 42, 0.24);
+                    border-radius: 6px;
+                }
                 .power-color { color: var(--primary); }
                 .hr-color { color: var(--danger); }
                 .accent-color { color: var(--accent); }
+                .climb-color { color: #f97316; }
             </style>
-            <div class="pip-metric" style="grid-column: span 2;">
-                <div class="pip-metric-label">骑行距离 / 剩余</div>
-                <div class="pip-metric-val"><span id="pipDist">--</span> <span class="pip-metric-unit">/ <span id="pipRem">--</span> km</span></div>
-            </div>
-            <div class="pip-metric">
-                <div class="pip-metric-label">实时速度</div>
-                <div class="pip-metric-val accent-color"><span id="pipSpeed">--</span> <span class="pip-metric-unit">km/h</span></div>
-            </div>
-            <div class="pip-metric">
-                <div class="pip-metric-label">实时功率</div>
-                <div class="pip-metric-val power-color"><span id="pipPower">--</span> <span class="pip-metric-unit">W</span></div>
-            </div>
-            <div class="pip-metric">
-                <div class="pip-metric-label">心率</div>
-                <div class="pip-metric-val hr-color"><span id="pipHr">--</span> <span class="pip-metric-unit">bpm</span></div>
-            </div>
-            <div class="pip-metric">
-                <div class="pip-metric-label">踏频</div>
-                <div class="pip-metric-val accent-color"><span id="pipCadence">--</span> <span class="pip-metric-unit">rpm</span></div>
-            </div>
+            <section class="pip-section">
+                <div class="pip-section-title">训练数据</div>
+                <div class="pip-training-grid">
+                    <div class="pip-metric">
+                        <div class="pip-metric-label">模式</div>
+                        <div class="pip-metric-val"><span id="pipMode">--</span></div>
+                    </div>
+                    <div class="pip-metric">
+                        <div class="pip-metric-label">实时速度</div>
+                        <div class="pip-metric-val accent-color"><span id="pipSpeed">--</span> <span class="pip-metric-unit">km/h</span></div>
+                    </div>
+                    <div class="pip-metric">
+                        <div class="pip-metric-label">骑行距离</div>
+                        <div class="pip-metric-val"><span id="pipDist">--</span> <span class="pip-metric-unit">km</span></div>
+                    </div>
+                    <div class="pip-metric">
+                        <div class="pip-metric-label">实时功率</div>
+                        <div class="pip-metric-val power-color"><span id="pipPower">--</span> <span class="pip-metric-unit">W</span></div>
+                    </div>
+                    <div class="pip-metric">
+                        <div class="pip-metric-label">心率</div>
+                        <div class="pip-metric-val hr-color"><span id="pipHr">--</span> <span class="pip-metric-unit">bpm</span></div>
+                    </div>
+                    <div class="pip-metric">
+                        <div class="pip-metric-label">踏频</div>
+                        <div class="pip-metric-val accent-color"><span id="pipCadence">--</span> <span class="pip-metric-unit">rpm</span></div>
+                    </div>
+                    <div class="pip-metric" style="grid-column: span 3;">
+                        <div class="pip-metric-label">剩余距离</div>
+                        <div class="pip-metric-val"><span id="pipRem">--</span> <span class="pip-metric-unit">km</span></div>
+                    </div>
+                </div>
+            </section>
+            <section class="pip-section">
+                <div class="pip-section-title">实时坡度</div>
+                <div class="pip-grade-grid">
+                    <div class="pip-grade-card">
+                        <div class="pip-metric-label">当前坡度</div>
+                        <div class="pip-grade-value climb-color"><span id="pipCurrentGrade">--</span><span class="pip-metric-unit">%</span></div>
+                    </div>
+                    <div class="pip-grade-card">
+                        <div class="pip-metric-label">前方坡度</div>
+                        <div class="pip-grade-value accent-color"><span id="pipLookaheadGrade">--</span><span class="pip-metric-unit">%</span></div>
+                    </div>
+                    <div class="pip-grade-card">
+                        <div class="pip-metric-label">目标模拟坡度</div>
+                        <div class="pip-grade-value power-color"><span id="pipTargetGrade">--</span><span class="pip-metric-unit">%</span></div>
+                    </div>
+                </div>
+                <svg id="pipElevationChart" class="pip-grade-svg" viewBox="0 0 320 72" preserveAspectRatio="none"></svg>
+                <div id="pipControlStatus" class="pip-status">--</div>
+            </section>
         `;
 
         sync();
@@ -91,7 +169,7 @@ export function createPipController({ button, template, getData }) {
         }
 
         const width = 320;
-        const height = 60;
+        const height = 72;
         const paddingBottom = 10;
         const paddingTop = 10;
         const innerHeight = height - paddingTop - paddingBottom;
@@ -155,6 +233,11 @@ export function createPipController({ button, template, getData }) {
         const powerEl = pipWindow.document.getElementById("pipPower");
         const hrEl = pipWindow.document.getElementById("pipHr");
         const cadenceEl = pipWindow.document.getElementById("pipCadence");
+        const modeEl = pipWindow.document.getElementById("pipMode");
+        const currentGradeEl = pipWindow.document.getElementById("pipCurrentGrade");
+        const lookaheadGradeEl = pipWindow.document.getElementById("pipLookaheadGrade");
+        const targetGradeEl = pipWindow.document.getElementById("pipTargetGrade");
+        const controlStatusEl = pipWindow.document.getElementById("pipControlStatus");
 
         if (distEl) distEl.innerText = data.distance;
         if (remEl) remEl.innerText = data.remaining;
@@ -162,6 +245,11 @@ export function createPipController({ button, template, getData }) {
         if (powerEl) powerEl.innerText = data.power;
         if (hrEl) hrEl.innerText = data.hr;
         if (cadenceEl) cadenceEl.innerText = data.cadence;
+        if (modeEl) modeEl.innerText = data.modeLabel;
+        if (currentGradeEl) currentGradeEl.innerText = data.currentGrade;
+        if (lookaheadGradeEl) lookaheadGradeEl.innerText = data.lookaheadGrade;
+        if (targetGradeEl) targetGradeEl.innerText = data.targetTrainerGrade;
+        if (controlStatusEl) controlStatusEl.innerText = data.controlStatus;
 
         renderElevationChart(data.route, data.currentRecord);
     }
@@ -187,7 +275,7 @@ export function createPipController({ button, template, getData }) {
     async function open() {
         pipWindow = await window.documentPictureInPicture.requestWindow({
             width: 320,
-            height: 180,
+            height: 240,
             disallowReturnToOpener: true
         });
 
