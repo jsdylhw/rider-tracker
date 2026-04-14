@@ -1,20 +1,16 @@
 import { buildRouteFromTrackPoints } from "./route-builder.js";
 
 const SEGMENT_BUCKET_METERS = 500;
+const MIN_GRADE_WINDOW_METERS = 30;
+const MAX_REASONABLE_GRADE_PERCENT = 20;
 
 export function parseGpx(xmlText) {
     const parser = new DOMParser();
-    // 更彻底的 XML 清理：
-    // 1. 移除所有命名空间声明，避免 querySelectorAll 匹配失败
-    // 2. 移除所有 xsi:xxx 属性
-    // 3. 移除所有命名空间前缀（例如将 <gpxtpx:TrackPointExtension> 变成 <TrackPointExtension>）
     let cleanXmlText = xmlText.replace(/\s+xmlns(:\w+)?="[^"]*?"/g, "");
     cleanXmlText = cleanXmlText.replace(/\s+xsi:\w+="[^"]*?"/g, "");
     cleanXmlText = cleanXmlText.replace(/<(\/?)[\w-]+:/g, "<$1");
-    
+
     const xml = parser.parseFromString(cleanXmlText, "application/xml");
-    
-    // Some browsers like Chrome don't always create <parsererror> as a direct child, so we query anywhere
     const parserError = xml.querySelector("parsererror");
 
     if (parserError) {
@@ -22,102 +18,36 @@ export function parseGpx(xmlText) {
         throw new Error("GPX 文件解析失败，可能格式不合法");
     }
 
-    const trackPoints = [...xml.querySelectorAll("trkpt, rtept")].map((node, index) => {
-        const latitude = Number(node.getAttribute("lat"));
-        const longitude = Number(node.getAttribute("lon"));
-        const elevationNode = node.querySelector("ele");
-        const elevationMeters = elevationNode ? Number(elevationNode.textContent) : 0;
+    const rawTrackPoints = [...xml.querySelectorAll("trkpt, rtept")]
+        .map((node, index) => {
+            const latitude = Number(node.getAttribute("lat"));
+            const longitude = Number(node.getAttribute("lon"));
+            const elevationMeters = parseElevation(node.querySelector("ele")?.textContent);
 
-        return {
-            latitude,
-            longitude,
-            elevationMeters: Number.isFinite(elevationMeters) ? elevationMeters : 0,
-            name: `轨迹点 ${index + 1}`
-        };
-    }).filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+            return {
+                latitude,
+                longitude,
+                elevationMeters,
+                name: `轨迹点 ${index + 1}`
+            };
+        })
+        .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
 
-    if (trackPoints.length < 2) {
+    if (rawTrackPoints.length < 2) {
         throw new Error("GPX 文件至少需要包含两个有效轨迹点");
     }
 
     const name = xml.querySelector("metadata > name, trk > name, rte > name")?.textContent?.trim() || "GPX 路线";
-    const normalizedPoints = normalizeTrackPoints(trackPoints);
-    const smoothedPoints = smoothTrackPoints(normalizedPoints);
-    
-    // 我们不再需要将 GPX 强制切分成多个 500m 的 segment。
-    // 为了兼容旧系统接口，我们将整个 GPX 视为一个单一的 Segment。
-    const totalDistance = smoothedPoints.at(-1).distanceMeters;
-    const elevationDelta = smoothedPoints.at(-1).elevationMeters - smoothedPoints[0].elevationMeters;
-    
-    const segments = [{
-        name: "GPX 全程",
-        distanceMeters: totalDistance,
-        gradePercent: totalDistance > 0 ? clampGrade((elevationDelta / totalDistance) * 100) : 0,
-        elevationDelta: elevationDelta,
-        startDistanceMeters: 0,
-        endDistanceMeters: totalDistance
-    }];
+    const { points: elevationResolvedPoints, hasElevationData } = resolveElevationData(rawTrackPoints);
+    const normalizedPoints = normalizeTrackPoints(elevationResolvedPoints);
+    const smoothedPoints = smoothTrackPoints(normalizedPoints, hasElevationData);
+    const segments = buildSummarySegments(smoothedPoints, hasElevationData);
 
     return buildRouteFromTrackPoints({
         name,
         points: smoothedPoints,
-        segments
-    });
-}
-
-function smoothTrackPoints(points) {
-    // 采用移动窗口平均来平滑海拔和坡度，避免 GPX 噪点导致坡度剧烈跳动
-    const windowSize = 5; // 前后各 2 个点
-    const smoothed = [];
-
-    for (let i = 0; i < points.length; i++) {
-        if (i === 0 || i === points.length - 1) {
-            // 起终点海拔应保留原始值，避免终点海拔被过度平滑后影响总爬升与测试断言。
-            smoothed.push({
-                ...points[i]
-            });
-            continue;
-        }
-
-        let sumElevation = 0;
-        let count = 0;
-        
-        for (let j = Math.max(0, i - Math.floor(windowSize / 2)); j <= Math.min(points.length - 1, i + Math.floor(windowSize / 2)); j++) {
-            sumElevation += points[j].elevationMeters;
-            count++;
-        }
-        
-        smoothed.push({
-            ...points[i],
-            elevationMeters: sumElevation / count
-        });
-    }
-
-    // 重新计算平滑后的坡度
-    return smoothed.map((point, index) => {
-        if (index === 0) {
-            return { ...point, gradePercent: 0 };
-        }
-        
-        const previousPoint = smoothed[index - 1];
-        const distanceDelta = point.distanceMeters - previousPoint.distanceMeters;
-        const elevationDelta = point.elevationMeters - previousPoint.elevationMeters;
-        
-        // 为避免极小距离导致坡度异常，我们往前找一个距离差大于 10 米的点来计算坡度
-        let calcPrevIndex = index - 1;
-        let distDiff = distanceDelta;
-        while (distDiff < 10 && calcPrevIndex > 0) {
-            calcPrevIndex--;
-            distDiff = point.distanceMeters - smoothed[calcPrevIndex].distanceMeters;
-        }
-        
-        const calcEleDelta = point.elevationMeters - smoothed[calcPrevIndex].elevationMeters;
-        const gradePercent = distDiff > 0 ? (calcEleDelta / distDiff) * 100 : 0;
-
-        return {
-            ...point,
-            gradePercent: clampGrade(gradePercent)
-        };
+        segments,
+        hasElevationData
     });
 }
 
@@ -128,6 +58,7 @@ function normalizeTrackPoints(points) {
         if (index === 0) {
             return {
                 ...point,
+                elevationMeters: point.elevationMeters ?? 0,
                 distanceMeters: 0,
                 gradePercent: 0
             };
@@ -136,21 +67,75 @@ function normalizeTrackPoints(points) {
         const previousPoint = points[index - 1];
         const distanceMeters = haversineDistance(previousPoint.latitude, previousPoint.longitude, point.latitude, point.longitude);
         cumulativeDistance += distanceMeters;
-        const elevationDelta = point.elevationMeters - previousPoint.elevationMeters;
-        const gradePercent = distanceMeters > 0 ? (elevationDelta / distanceMeters) * 100 : 0;
 
         return {
             ...point,
+            elevationMeters: point.elevationMeters ?? 0,
             distanceMeters: cumulativeDistance,
-            gradePercent: clampGrade(gradePercent)
+            gradePercent: 0
         };
     });
 }
 
-function buildSummarySegments(points) {
+function smoothTrackPoints(points, hasElevationData) {
+    if (!hasElevationData) {
+        return points.map((point) => ({
+            ...point,
+            elevationMeters: 0,
+            gradePercent: 0
+        }));
+    }
+
+    const windowSize = 5;
+    const smoothed = [];
+
+    for (let i = 0; i < points.length; i += 1) {
+        if (i === 0 || i === points.length - 1) {
+            smoothed.push({ ...points[i] });
+            continue;
+        }
+
+        let sumElevation = 0;
+        let count = 0;
+
+        for (
+            let j = Math.max(0, i - Math.floor(windowSize / 2));
+            j <= Math.min(points.length - 1, i + Math.floor(windowSize / 2));
+            j += 1
+        ) {
+            sumElevation += points[j].elevationMeters;
+            count += 1;
+        }
+
+        smoothed.push({
+            ...points[i],
+            elevationMeters: sumElevation / count
+        });
+    }
+
+    return smoothed.map((point, index) => ({
+        ...point,
+        gradePercent: index === 0 ? 0 : calculateWindowedGrade(smoothed, index)
+    }));
+}
+
+function buildSummarySegments(points, hasElevationData) {
+    if (!hasElevationData) {
+        const totalDistanceMeters = points.at(-1)?.distanceMeters ?? 0;
+
+        return [{
+            name: "GPX 全程",
+            distanceMeters: totalDistanceMeters,
+            gradePercent: 0,
+            elevationDelta: 0,
+            startDistanceMeters: 0,
+            endDistanceMeters: totalDistanceMeters
+        }];
+    }
+
     const segments = [];
     let bucketStart = points[0];
-    let bucketGradeTotal = 0;
+    let bucketElevationDelta = 0;
     let bucketDistance = 0;
     let segmentIndex = 1;
 
@@ -161,7 +146,7 @@ function buildSummarySegments(points) {
         const deltaElevation = currentPoint.elevationMeters - previousPoint.elevationMeters;
 
         bucketDistance += deltaDistance;
-        bucketGradeTotal += deltaElevation;
+        bucketElevationDelta += deltaElevation;
 
         const shouldFlush = bucketDistance >= SEGMENT_BUCKET_METERS || index === points.length - 1;
 
@@ -169,20 +154,18 @@ function buildSummarySegments(points) {
             continue;
         }
 
-        const gradePercent = bucketDistance > 0 ? clampGrade((bucketGradeTotal / bucketDistance) * 100) : 0;
-
         segments.push({
             name: `GPX 路段 ${segmentIndex}`,
             distanceMeters: bucketDistance,
-            gradePercent,
-            elevationDelta: bucketGradeTotal,
+            gradePercent: bucketDistance > 0 ? clampGrade((bucketElevationDelta / bucketDistance) * 100) : 0,
+            elevationDelta: bucketElevationDelta,
             startDistanceMeters: bucketStart.distanceMeters,
             endDistanceMeters: currentPoint.distanceMeters
         });
 
         bucketStart = currentPoint;
         bucketDistance = 0;
-        bucketGradeTotal = 0;
+        bucketElevationDelta = 0;
         segmentIndex += 1;
     }
 
@@ -204,5 +187,118 @@ function toRadians(value) {
 }
 
 function clampGrade(gradePercent) {
-    return Math.min(25, Math.max(-25, gradePercent));
+    if (!Number.isFinite(gradePercent)) {
+        return 0;
+    }
+
+    return Math.min(MAX_REASONABLE_GRADE_PERCENT, Math.max(-MAX_REASONABLE_GRADE_PERCENT, gradePercent));
+}
+
+function parseElevation(value) {
+    if (value === undefined || value === null || String(value).trim() === "") {
+        return null;
+    }
+
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveElevationData(points) {
+    const knownIndexes = points
+        .map((point, index) => Number.isFinite(point.elevationMeters) ? index : -1)
+        .filter((index) => index >= 0);
+
+    if (knownIndexes.length === 0) {
+        return {
+            hasElevationData: false,
+            points: points.map((point) => ({
+                ...point,
+                elevationMeters: 0
+            }))
+        };
+    }
+
+    if (knownIndexes.length === points.length) {
+        return {
+            hasElevationData: true,
+            points
+        };
+    }
+
+    const resolved = points.map((point) => ({ ...point }));
+
+    for (let index = 0; index < resolved.length; index += 1) {
+        if (Number.isFinite(resolved[index].elevationMeters)) {
+            continue;
+        }
+
+        const previousKnownIndex = findNearestKnownIndex(knownIndexes, index, -1);
+        const nextKnownIndex = findNearestKnownIndex(knownIndexes, index, 1);
+
+        if (previousKnownIndex === null && nextKnownIndex === null) {
+            resolved[index].elevationMeters = 0;
+        } else if (previousKnownIndex === null) {
+            resolved[index].elevationMeters = resolved[nextKnownIndex].elevationMeters;
+        } else if (nextKnownIndex === null) {
+            resolved[index].elevationMeters = resolved[previousKnownIndex].elevationMeters;
+        } else {
+            const prevPoint = resolved[previousKnownIndex];
+            const nextPoint = resolved[nextKnownIndex];
+            const ratio = (index - previousKnownIndex) / (nextKnownIndex - previousKnownIndex);
+            resolved[index].elevationMeters = prevPoint.elevationMeters + (nextPoint.elevationMeters - prevPoint.elevationMeters) * ratio;
+        }
+    }
+
+    return {
+        hasElevationData: true,
+        points: resolved
+    };
+}
+
+function findNearestKnownIndex(knownIndexes, index, direction) {
+    if (direction < 0) {
+        for (let cursor = knownIndexes.length - 1; cursor >= 0; cursor -= 1) {
+            if (knownIndexes[cursor] < index) {
+                return knownIndexes[cursor];
+            }
+        }
+
+        return null;
+    }
+
+    for (let cursor = 0; cursor < knownIndexes.length; cursor += 1) {
+        if (knownIndexes[cursor] > index) {
+            return knownIndexes[cursor];
+        }
+    }
+
+    return null;
+}
+
+function calculateWindowedGrade(points, index) {
+    const previousIndex = findPointByDistanceWindow(points, index, -1, MIN_GRADE_WINDOW_METERS);
+    const nextIndex = findPointByDistanceWindow(points, index, 1, MIN_GRADE_WINDOW_METERS);
+    const startIndex = previousIndex ?? index;
+    const endIndex = nextIndex ?? index;
+
+    if (startIndex === endIndex) {
+        return 0;
+    }
+
+    const distanceDelta = points[endIndex].distanceMeters - points[startIndex].distanceMeters;
+    const elevationDelta = points[endIndex].elevationMeters - points[startIndex].elevationMeters;
+
+    return distanceDelta > 0 ? clampGrade((elevationDelta / distanceDelta) * 100) : 0;
+}
+
+function findPointByDistanceWindow(points, index, direction, targetDistance) {
+    const originDistance = points[index].distanceMeters;
+
+    for (let cursor = index + direction; cursor >= 0 && cursor < points.length; cursor += direction) {
+        if (Math.abs(points[cursor].distanceMeters - originDistance) >= targetDistance) {
+            return cursor;
+        }
+    }
+
+    return null;
 }

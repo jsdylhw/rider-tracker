@@ -49,6 +49,10 @@ body {
     gap: 24px;
 }
 
+.view-section[hidden] {
+    display: none !important;
+}
+
 .layout-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));

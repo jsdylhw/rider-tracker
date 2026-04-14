@@ -94,12 +94,15 @@ export function createRouteRenderer({
         if (elements.routeSummary) {
             const sourceText = isGpx ? "GPX 导入" : "手工输入";
             const segmentsText = isGpx ? "" : `，共 ${route.segments.length} 段`;
+            const elevationWarning = isGpx && route.hasElevationData === false
+                ? "<br><span style=\"color: var(--danger);\">提示：当前 GPX 不含海拔数据，系统不会计算有效坡度，爬升与坡度图按 0 处理。</span>"
+                : "";
             
             elements.routeSummary.innerHTML = `
                 <strong>路线概览</strong><br>
                 来源：${sourceText}${segmentsText}，累计距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km，
                 累计爬升 ${Math.round(route.totalElevationGainMeters)} m，
-                累计下降 ${Math.round(route.totalDescentMeters)} m。
+                累计下降 ${Math.round(route.totalDescentMeters)} m。${elevationWarning}
             `;
         }
     }
@@ -120,6 +123,17 @@ export function createRouteRenderer({
             `;
             if (elements.elevationChart) elements.elevationChart.innerHTML = emptyState;
             if (elements.setupElevationChart) elements.setupElevationChart.innerHTML = emptyState;
+            return;
+        }
+
+        if (route.hasElevationData === false) {
+            const noElevationState = `
+                <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-size="14">
+                    当前 GPX 不包含海拔数据，无法生成有效坡度图
+                </text>
+            `;
+            if (elements.elevationChart) elements.elevationChart.innerHTML = noElevationState;
+            if (elements.setupElevationChart) elements.setupElevationChart.innerHTML = noElevationState;
             return;
         }
 
