@@ -2,24 +2,7 @@ export function createUiService({ store }) {
     function setUiMode(mode) {
         store.setState((state) => ({
             ...state,
-            uiMode: mode,
-            showLiveDeviceModal: mode === "live" ? state.showLiveDeviceModal : false
-        }));
-    }
-
-    function confirmRouteSelection() {
-        store.setState((state) => ({
-            ...state,
-            routeSelectionConfirmed: true,
-            statusText: `已选择路线：${state.route.name || "当前路线"}`
-        }));
-    }
-
-    function reopenRouteSelection() {
-        store.setState((state) => ({
-            ...state,
-            routeSelectionConfirmed: false,
-            statusText: "已返回路线选择，请继续调整个人数据和训练线路。"
+            uiMode: mode
         }));
     }
 
@@ -27,7 +10,7 @@ export function createUiService({ store }) {
         store.setState((state) => ({
             ...state,
             uiMode: "simulation",
-            showLiveDeviceModal: false
+            statusText: "已进入模拟骑行，请选择路线并设置模拟参数。"
         }));
     }
 
@@ -35,23 +18,7 @@ export function createUiService({ store }) {
         store.setState((state) => ({
             ...state,
             uiMode: "live",
-            showLiveDeviceModal: true,
-            statusText: "请先连接功率计和心率带，再开始虚拟骑行。"
-        }));
-    }
-
-    function openLiveDeviceModal() {
-        store.setState((state) => ({
-            ...state,
-            showLiveDeviceModal: true,
-            statusText: "请先连接功率计和心率带，再开始虚拟骑行。"
-        }));
-    }
-
-    function closeLiveDeviceModal() {
-        store.setState((state) => ({
-            ...state,
-            showLiveDeviceModal: false
+            statusText: "已进入虚拟骑行，请选择路线并连接骑行设备。"
         }));
     }
 
@@ -67,12 +34,8 @@ export function createUiService({ store }) {
 
     return {
         setUiMode,
-        confirmRouteSelection,
-        reopenRouteSelection,
         enterSimulationMode,
         enterLiveMode,
-        openLiveDeviceModal,
-        closeLiveDeviceModal,
         updatePipConfig
     };
 }

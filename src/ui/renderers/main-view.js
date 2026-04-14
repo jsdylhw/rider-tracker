@@ -9,12 +9,8 @@ import { createLayoutCoordinator } from "./layout-coordinator.js";
 export function createMainView({
     store,
     onSetUiMode,
-    onConfirmRouteSelection,
-    onReopenRouteSelection,
     onEnterSimulationMode,
     onEnterLiveMode,
-    onOpenLiveDeviceModal,
-    onCloseLiveDeviceModal,
     onAddSegment,
     onResetRoute,
     onToggleHeartRate,
@@ -38,17 +34,11 @@ export function createMainView({
         viewHome: document.getElementById("view-home"),
         viewSimulation: document.getElementById("view-simulation"),
         viewLive: document.getElementById("view-live"),
+        goToSimBtn: document.getElementById("goToSimBtn"),
+        goToLiveBtn: document.getElementById("goToLiveBtn"),
         goHomeBtns: [...document.querySelectorAll(".go-home-btn")],
         homeProfileCard: document.getElementById("homeProfileCard"),
         homeHistoryCard: document.getElementById("homeHistoryCard"),
-        homeModeChoiceCard: document.getElementById("homeModeChoiceCard"),
-        homeRouteSlot: document.getElementById("homeRouteSlot"),
-        homeRouteName: document.getElementById("homeRouteName"),
-        homeRouteDistance: document.getElementById("homeRouteDistance"),
-        confirmRouteBtn: document.getElementById("confirmRouteBtn"),
-        editRouteBtn: document.getElementById("editRouteBtn"),
-        enterSimulationModeBtn: document.getElementById("enterSimulationModeBtn"),
-        enterLiveModeBtn: document.getElementById("enterLiveModeBtn"),
         simCol1: document.getElementById("sim-col-1"),
         liveCol1: document.getElementById("live-col-1"),
         routeCardContainer: document.getElementById("routeCardContainer"),
@@ -74,9 +64,6 @@ export function createMainView({
         simulationForm: document.getElementById("simulationForm"),
         connectHrBtn: document.getElementById("connectHrBtn"),
         connectPowerBtn: document.getElementById("connectPowerBtn"),
-        openLiveDeviceModalBtn: document.getElementById("openLiveDeviceModalBtn"),
-        closeLiveDeviceModalBtn: document.getElementById("closeLiveDeviceModalBtn"),
-        liveDeviceModal: document.getElementById("liveDeviceModal"),
         openRideDashboardBtn: document.getElementById("openRideDashboardBtn"),
         hrDeviceStatus: document.getElementById("hrDeviceStatus"),
         hrDeviceName: document.getElementById("hrDeviceName"),
@@ -182,12 +169,8 @@ export function createMainView({
     bind(elements.closeRideDashboardBtn, "click", onCloseRideDashboard);
     bind(elements.stopRideDashboardBtn, "click", onStopRide);
     elements.goHomeBtns.forEach((button) => bind(button, "click", () => onSetUiMode("home")));
-    bind(elements.confirmRouteBtn, "click", onConfirmRouteSelection);
-    bind(elements.editRouteBtn, "click", onReopenRouteSelection);
-    bind(elements.enterSimulationModeBtn, "click", onEnterSimulationMode);
-    bind(elements.enterLiveModeBtn, "click", onEnterLiveMode);
-    bind(elements.openLiveDeviceModalBtn, "click", onOpenLiveDeviceModal);
-    bind(elements.closeLiveDeviceModalBtn, "click", onCloseLiveDeviceModal);
+    bind(elements.goToSimBtn, "click", onEnterSimulationMode);
+    bind(elements.goToLiveBtn, "click", onEnterLiveMode);
     bind(elements.runSimulationBtn, "click", onRunSimulation);
     bind(elements.downloadSessionBtn, "click", onDownloadSession);
     bind(elements.downloadFitBtn, "click", onDownloadFit);

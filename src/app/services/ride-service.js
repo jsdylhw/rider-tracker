@@ -27,7 +27,6 @@ export function createRideService({ store }) {
 
         store.setState((currentState) => ({
             ...currentState,
-            showLiveDeviceModal: false,
             liveRide: {
                 ...currentState.liveRide,
                 isActive: true,

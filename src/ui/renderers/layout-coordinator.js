@@ -10,36 +10,15 @@ export function createLayoutCoordinator({ elements }) {
         if (elements.viewSimulation) elements.viewSimulation.hidden = mode !== "simulation";
         if (elements.viewLive) elements.viewLive.hidden = mode !== "live";
 
-        if (mode === "home" && elements.homeRouteSlot && elements.routeCardContainer) {
-            elements.homeRouteSlot.appendChild(elements.routeCardContainer);
-            elements.routeCardContainer.hidden = false;
-
-            if (elements.routeMapShell) {
-                elements.routeMapShell.hidden = true;
+        if (mode === "home") {
+            if (elements.routeCardContainer) {
+                elements.routeCardContainer.hidden = true;
             }
-
-            if (elements.homeProfileCard) {
-                elements.homeProfileCard.hidden = state.routeSelectionConfirmed;
-            }
-
-            if (elements.homeHistoryCard) {
-                elements.homeHistoryCard.hidden = state.routeSelectionConfirmed;
-            }
-
-            if (elements.homeModeChoiceCard) {
-                elements.homeModeChoiceCard.hidden = !state.routeSelectionConfirmed;
-            }
-
-            if (elements.homeRouteName) {
-                elements.homeRouteName.textContent = state.route.name || "当前路线";
-            }
-
-            if (elements.homeRouteDistance) {
-                elements.homeRouteDistance.textContent = `${formatNumber(state.route.totalDistanceMeters / 1000, 2)} km`;
-            }
-
             if (elements.exportCardContainer) {
                 elements.exportCardContainer.hidden = true;
+            }
+            if (elements.routeMapShell) {
+                elements.routeMapShell.hidden = true;
             }
         } else if (mode === "simulation" && elements.simCol1 && elements.routeCardContainer) {
             elements.simCol1.insertBefore(elements.routeCardContainer, elements.simCol1.firstChild);

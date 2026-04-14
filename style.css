@@ -268,27 +268,6 @@ tbody tr:last-child td {
     font-size: 15px;
 }
 
-.device-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 55;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    background: rgba(15, 23, 42, 0.58);
-    backdrop-filter: blur(8px);
-}
-
-.device-modal[hidden] {
-    display: none !important;
-}
-
-.device-modal-card {
-    width: min(720px, 100%);
-    margin: 0;
-}
-
 .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
