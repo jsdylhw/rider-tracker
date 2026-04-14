@@ -13,6 +13,7 @@ export function createMainView({
     onReopenRouteSelection,
     onEnterSimulationMode,
     onEnterLiveMode,
+    onOpenLiveDeviceModal,
     onCloseLiveDeviceModal,
     onAddSegment,
     onResetRoute,
@@ -185,7 +186,7 @@ export function createMainView({
     bind(elements.editRouteBtn, "click", onReopenRouteSelection);
     bind(elements.enterSimulationModeBtn, "click", onEnterSimulationMode);
     bind(elements.enterLiveModeBtn, "click", onEnterLiveMode);
-    bind(elements.openLiveDeviceModalBtn, "click", onEnterLiveMode);
+    bind(elements.openLiveDeviceModalBtn, "click", onOpenLiveDeviceModal);
     bind(elements.closeLiveDeviceModalBtn, "click", onCloseLiveDeviceModal);
     bind(elements.runSimulationBtn, "click", onRunSimulation);
     bind(elements.downloadSessionBtn, "click", onDownloadSession);

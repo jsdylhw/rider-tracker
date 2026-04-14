@@ -40,6 +40,14 @@ export function createUiService({ store }) {
         }));
     }
 
+    function openLiveDeviceModal() {
+        store.setState((state) => ({
+            ...state,
+            showLiveDeviceModal: true,
+            statusText: "请先连接功率计和心率带，再开始虚拟骑行。"
+        }));
+    }
+
     function closeLiveDeviceModal() {
         store.setState((state) => ({
             ...state,
@@ -63,6 +71,7 @@ export function createUiService({ store }) {
         reopenRouteSelection,
         enterSimulationMode,
         enterLiveMode,
+        openLiveDeviceModal,
         closeLiveDeviceModal,
         updatePipConfig
     };

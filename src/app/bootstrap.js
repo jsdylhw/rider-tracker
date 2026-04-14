@@ -63,6 +63,7 @@ createMainView({
     onReopenRouteSelection: uiService.reopenRouteSelection,
     onEnterSimulationMode: uiService.enterSimulationMode,
     onEnterLiveMode: uiService.enterLiveMode,
+    onOpenLiveDeviceModal: uiService.openLiveDeviceModal,
     onCloseLiveDeviceModal: uiService.closeLiveDeviceModal,
     onAddSegment: routeService.addSegment,
     onResetRoute: routeService.resetRoute,
