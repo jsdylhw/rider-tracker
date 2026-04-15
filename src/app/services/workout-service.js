@@ -50,9 +50,34 @@ export function createWorkoutService({ store }) {
         });
     }
 
+    function updateErgTargetPower(powerWatts) {
+        store.setState((state) => {
+            const normalizedPower = clamp(Number(powerWatts), 80, 600, state.settings.power);
+            const nextSettings = {
+                ...state.settings,
+                power: normalizedPower
+            };
+
+            return {
+                ...state,
+                settings: nextSettings,
+                workout: {
+                    ...state.workout,
+                    runtime: deriveRuntime(
+                        { ...state, settings: nextSettings },
+                        state.workout.mode,
+                        state.workout.gradeSimulation
+                    )
+                },
+                statusText: `目标功率已更新为 ${Math.round(normalizedPower)} W`
+            };
+        });
+    }
+
     return {
         updateWorkoutMode,
-        updateGradeSimulationConfig
+        updateGradeSimulationConfig,
+        updateErgTargetPower
     };
 }
 

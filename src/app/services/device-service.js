@@ -1,5 +1,6 @@
 import { createHeartRateMonitor } from "../../adapters/bluetooth/heart-rate-monitor.js";
 import { createPowerMeter } from "../../adapters/bluetooth/power-meter.js";
+import { createTrainerFtms } from "../../adapters/bluetooth/trainer-ftms.js";
 
 function mapStatusLabel(type) {
     if (type === "connected") {
@@ -95,6 +96,19 @@ export function createDeviceService({ store }) {
         }
     });
 
+    const trainerFtms = createTrainerFtms({
+        onStatus: (status) => {
+            store.setState((state) => ({
+                ...state,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: status.message
+                },
+                statusText: status.message
+            }));
+        }
+    });
+
     async function toggleHeartRate() {
         try {
             await heartRateMonitor.toggle();
@@ -119,6 +133,16 @@ export function createDeviceService({ store }) {
     async function togglePowerMeter() {
         try {
             await powerMeter.toggle();
+            // 如果功率计连上了，尝试同步连接 FTMS 控制通道
+            if (powerMeter.isConnected && !trainerFtms.isConnected) {
+                try {
+                    await trainerFtms.connect();
+                } catch (e) {
+                    console.log("未找到可用的 FTMS 控制服务，可能是单边功率计", e);
+                }
+            } else if (!powerMeter.isConnected && trainerFtms.isConnected) {
+                await trainerFtms.disconnect();
+            }
         } catch (error) {
             console.error("功率计连接失败", error);
             store.setState((state) => ({
@@ -137,8 +161,72 @@ export function createDeviceService({ store }) {
         }
     }
 
+    async function setTrainerGrade(gradePercent) {
+        if (!trainerFtms.isConnected) {
+            const message = "坡度模拟未下发：智能骑行台控制未连接。";
+            store.setState((state) => ({
+                ...state,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: message
+                },
+                statusText: message
+            }));
+            throw new Error(message);
+        }
+
+        try {
+            await trainerFtms.setTargetGrade(gradePercent);
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            const message = `坡度模拟下发失败：${reason}`;
+            store.setState((state) => ({
+                ...state,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: message
+                },
+                statusText: message
+            }));
+            throw error;
+        }
+    }
+
+    async function setTrainerPower(powerWatts) {
+        if (!trainerFtms.isConnected) {
+            const message = "ERG 指令未下发：智能骑行台控制未连接。";
+            store.setState((state) => ({
+                ...state,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: message
+                },
+                statusText: message
+            }));
+            throw new Error(message);
+        }
+
+        try {
+            await trainerFtms.setTargetPower(powerWatts);
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            const message = `ERG 指令下发失败：${reason}`;
+            store.setState((state) => ({
+                ...state,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: message
+                },
+                statusText: message
+            }));
+            throw error;
+        }
+    }
+
     return {
         toggleHeartRate,
-        togglePowerMeter
+        togglePowerMeter,
+        setTrainerGrade,
+        setTrainerPower
     };
 }

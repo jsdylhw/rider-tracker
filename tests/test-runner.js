@@ -8,9 +8,23 @@ import { suite as gradeSimSuite } from "./unit/grade-sim-mode.test.js";
 import { suite as ergSuite } from "./unit/erg-mode.test.js";
 import { suite as resistanceSuite } from "./unit/resistance-mode.test.js";
 import { suite as trainerCommandSuite } from "./unit/trainer-command.test.js";
+import { suite as workoutServiceSuite } from "./unit/workout-service.test.js";
+import { suite as ergLiveFlowSuite } from "./integration/erg-live-flow.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
-const suites = [routeSuite, gpxSuite, physicsSuite, simulatorSuite, liveRideSuite, gradeSimSuite, ergSuite, resistanceSuite, trainerCommandSuite];
+const suites = [
+    routeSuite,
+    gpxSuite,
+    physicsSuite,
+    simulatorSuite,
+    liveRideSuite,
+    gradeSimSuite,
+    ergSuite,
+    resistanceSuite,
+    trainerCommandSuite,
+    workoutServiceSuite,
+    ergLiveFlowSuite
+];
 
 runSuites(suites).then((results) => {
     renderResults(results, app);

@@ -14,6 +14,7 @@ export function createMainView({
     onEnterLiveMode,
     onUpdateWorkoutMode,
     onUpdateGradeSimulationConfig,
+    onUpdateErgTargetPower,
     onAddSegment,
     onResetRoute,
     onToggleHeartRate,
@@ -70,11 +71,13 @@ export function createMainView({
         connectPowerBtn: document.getElementById("connectPowerBtn"),
         workoutModeForm: document.getElementById("workoutModeForm"),
         workoutModeSelect: document.getElementById("workoutModeSelect"),
+        workoutModeRadios: [...document.querySelectorAll('input[name="workoutMode"]')],
         gradeDifficultyInput: document.getElementById("gradeDifficultyInput"),
         gradeLookaheadInput: document.getElementById("gradeLookaheadInput"),
         maxUphillInput: document.getElementById("maxUphillInput"),
         maxDownhillInput: document.getElementById("maxDownhillInput"),
         gradeSmoothingInput: document.getElementById("gradeSmoothingInput"),
+        ergTargetPowerInput: document.getElementById("ergTargetPowerInput"),
         workoutModeLabel: document.getElementById("workoutModeLabel"),
         trainerTargetLabel: document.getElementById("trainerTargetLabel"),
         targetTrainerGradeValue: document.getElementById("targetTrainerGradeValue"),
@@ -129,6 +132,7 @@ export function createMainView({
         customizeMetricsBtn: document.getElementById("customizeMetricsBtn"),
         metricsCustomizer: document.getElementById("metricsCustomizer"),
         elevationChart: document.getElementById("elevationChart"),
+        liveElevationCard: document.getElementById("liveElevationCard"),
         setupElevationChart: document.getElementById("setupElevationChart"),
         mapProviderSelect: document.getElementById("mapProviderSelect")
     };
@@ -142,7 +146,8 @@ export function createMainView({
 
     const mapController = createMapController({
         previewElement: elements.routeMapPreview,
-        dashboardElement: elements.rideDashboardMap
+        dashboardElement: elements.rideDashboardMap,
+        initialProviderKey: elements.mapProviderSelect?.value
     });
 
     const routeRenderer = createRouteRenderer({
@@ -177,7 +182,8 @@ export function createMainView({
     const workoutRenderer = createWorkoutRenderer({
         elements,
         onUpdateWorkoutMode,
-        onUpdateGradeSimulationConfig
+        onUpdateGradeSimulationConfig,
+        onUpdateErgTargetPower
     });
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
@@ -273,15 +279,17 @@ export function createMainView({
         if (elements.exportCardContainer && state.uiMode === "live") {
             elements.exportCardContainer.hidden = state.liveRide.isActive || !session;
         }
+        if (elements.liveElevationCard) {
+            // Live 模式下，无论是否在骑行中，只要有路线就显示坡度图
+            elements.liveElevationCard.hidden = !session?.route && !state.route;
+        }
 
         renderRecords(records);
         renderChart(records);
         
         // Ensure route chart on dashboard gets the current record pointer
-        if (state.liveRide.dashboardOpen) {
-            const currentRecord = session?.records?.at(-1) ?? null;
-            routeRenderer.renderElevationChart(session?.route ?? state.route, currentRecord);
-        }
+        const currentRecord = session?.records?.at(-1) ?? null;
+        routeRenderer.renderElevationChart(session?.route ?? state.route, currentRecord);
     }
 
     function renderRecords(records) {

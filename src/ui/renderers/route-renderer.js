@@ -27,6 +27,7 @@ export function createRouteRenderer({
             });
         }
         if (elements.mapProviderSelect) {
+            mapController.setMapProvider(elements.mapProviderSelect.value);
             elements.mapProviderSelect.addEventListener("change", (e) => {
                 mapController.setMapProvider(e.target.value);
             });

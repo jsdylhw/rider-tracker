@@ -13,8 +13,8 @@ const MAP_PROVIDERS = {
     }
 };
 
-export function createMapController({ previewElement, dashboardElement }) {
-    let currentProviderKey = "amap"; // Default to Amap
+export function createMapController({ previewElement, dashboardElement, initialProviderKey = "amap" }) {
+    let currentProviderKey = MAP_PROVIDERS[initialProviderKey] ? initialProviderKey : "amap";
     
     // Store tile layers references so we can update them later
     let previewTileLayer = null;

@@ -15,16 +15,26 @@ import { createExportService } from "./services/export-service.js";
 import { createUiService } from "./services/ui-service.js";
 import { createWorkoutService } from "./services/workout-service.js";
 
+await mountLivePageIntoIndex();
+
 // 1. 初始化状态与 Store
 const persistedSession = loadLastSession();
 const store = createStore(createInitialState(persistedSession));
+const inferredInitialUiMode = inferInitialUiMode();
+
+if (inferredInitialUiMode !== store.getState().uiMode) {
+    store.setState((state) => ({
+        ...state,
+        uiMode: inferredInitialUiMode
+    }));
+}
 
 // 2. 创建业务服务 (Services)
 const userService = createUserService({ store });
 const routeService = createRouteService({ store });
-const rideService = createRideService({ store });
 const deviceService = createDeviceService({ store });
 const exportService = createExportService({ store });
+const rideService = createRideService({ store, deviceService, exportService });
 const uiService = createUiService({ store });
 const workoutService = createWorkoutService({ store });
 
@@ -77,6 +87,7 @@ createMainView({
     onEnterLiveMode: uiService.enterLiveMode,
     onUpdateWorkoutMode: workoutService.updateWorkoutMode,
     onUpdateGradeSimulationConfig: workoutService.updateGradeSimulationConfig,
+    onUpdateErgTargetPower: workoutService.updateErgTargetPower,
     onAddSegment: routeService.addSegment,
     onResetRoute: routeService.resetRoute,
     onToggleHeartRate: deviceService.toggleHeartRate,
@@ -106,6 +117,62 @@ if (persistedSession) {
 }
 
 userService.loadUserProfile();
+
+async function mountLivePageIntoIndex() {
+    const hasHomeView = Boolean(document.getElementById("view-home"));
+    const hasSimulationView = Boolean(document.getElementById("view-simulation"));
+    const hasLiveView = Boolean(document.getElementById("view-live"));
+
+    // Only index.html hosts all views and needs dynamic mounting.
+    if (!hasHomeView || !hasSimulationView || !hasLiveView) {
+        return;
+    }
+
+    try {
+        const response = await fetch("live.html", { cache: "no-store" });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+
+        replaceByIdFromDoc(doc, "view-live");
+        replaceByIdFromDoc(doc, "rideDashboard");
+        replaceByIdFromDoc(doc, "pip-template");
+    } catch (error) {
+        console.warn("挂载 live.html 失败，回退使用 index.html 内置 live 视图。", error);
+    }
+}
+
+function replaceByIdFromDoc(sourceDoc, id) {
+    const currentNode = document.getElementById(id);
+    const incomingNode = sourceDoc.getElementById(id);
+
+    if (!currentNode || !incomingNode) {
+        return;
+    }
+
+    const clonedNode = document.importNode(incomingNode, true);
+    currentNode.replaceWith(clonedNode);
+}
+
+function inferInitialUiMode() {
+    const hasHomeView = Boolean(document.getElementById("view-home"));
+    const hasSimulationView = Boolean(document.getElementById("view-simulation"));
+    const hasLiveView = Boolean(document.getElementById("view-live"));
+
+    // For standalone pages like live.html, auto-enter corresponding mode.
+    if (!hasHomeView && hasLiveView && !hasSimulationView) {
+        return "live";
+    }
+    if (!hasHomeView && hasSimulationView && !hasLiveView) {
+        return "simulation";
+    }
+
+    return "home";
+}
 
 function resolvePipTrainerTarget(runtime) {
     if (runtime.trainerControlMode === TRAINER_CONTROL_MODES.RESISTANCE) {

@@ -5,7 +5,8 @@ import { formatNumber } from "../../shared/format.js";
 export function createWorkoutRenderer({
     elements,
     onUpdateWorkoutMode,
-    onUpdateGradeSimulationConfig
+    onUpdateGradeSimulationConfig,
+    onUpdateErgTargetPower
 }) {
     let lastSignature = "";
 
@@ -15,6 +16,23 @@ export function createWorkoutRenderer({
                 const mode = elements.workoutModeSelect?.value ?? WORKOUT_MODES.FREE_RIDE;
                 onUpdateWorkoutMode(mode);
                 onUpdateGradeSimulationConfig(readWorkoutConfig(elements.workoutModeForm));
+            });
+        }
+
+        if (elements.ergTargetPowerInput) {
+            elements.ergTargetPowerInput.addEventListener("input", (event) => {
+                onUpdateErgTargetPower(Number(event.target.value));
+            });
+        }
+        
+        // Handle new radio buttons for live.html
+        if (elements.workoutModeRadios) {
+            elements.workoutModeRadios.forEach(radio => {
+                radio.addEventListener("change", (e) => {
+                    if (e.target.checked) {
+                        onUpdateWorkoutMode(e.target.value);
+                    }
+                });
             });
         }
     }
@@ -32,9 +50,16 @@ export function createWorkoutRenderer({
         const { workout } = state;
         const { gradeSimulation, runtime } = workout;
         const isGradeSim = workout.mode === WORKOUT_MODES.GRADE_SIM;
+        const isErg = workout.mode === WORKOUT_MODES.FIXED_POWER;
 
         if (elements.workoutModeSelect && document.activeElement !== elements.workoutModeSelect) {
             elements.workoutModeSelect.value = workout.mode;
+        }
+
+        if (elements.workoutModeRadios) {
+            elements.workoutModeRadios.forEach(radio => {
+                radio.checked = (radio.value === workout.mode);
+            });
         }
 
         syncNumberField(elements.gradeDifficultyInput, gradeSimulation.difficultyPercent);
@@ -54,6 +79,13 @@ export function createWorkoutRenderer({
                 field.disabled = !isGradeSim;
             }
         });
+
+        if (elements.ergTargetPowerInput) {
+            if (document.activeElement !== elements.ergTargetPowerInput) {
+                elements.ergTargetPowerInput.value = Math.round(state.settings.power ?? 0);
+            }
+            elements.ergTargetPowerInput.disabled = !isErg;
+        }
 
         if (elements.workoutModeLabel) {
             elements.workoutModeLabel.textContent = getWorkoutModeLabel(workout.mode);

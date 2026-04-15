@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Street View Demo - 法国 Mont Ventoux</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8fafc;
+            color: #334155;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        h1 { margin-top: 0; }
+        
+        .api-input-group {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        button:hover { background-color: #1d4ed8; }
+        
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        /* 街景容器，必须要有明确的宽高 */
+        #pano {
+            width: 100%;
+            height: 400px;
+            background-color: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>法国 Mont Ventoux (冯杜山) 街景体验</h1>
+        <p>1. 在下方输入你的 Google Maps API Key（需要开通 Maps JavaScript API）。<br>
+           2. 点击“加载 API”后，即可看到环法自行车赛著名爬坡路段 Mont Ventoux 的街景。<br>
+           3. 点击“模拟向前骑行”，观察街景如何平滑过渡而不产生额外加载费用。
+        </p>
+
+        <div class="api-input-group">
+            <input type="text" id="apiKeyInput" placeholder="在此粘贴你的 Google API Key (AIzaSy...)">
+            <button id="loadApiBtn">加载 API</button>
+        </div>
+
+        <div class="controls" id="controls" style="display: none;">
+            <button id="moveForwardBtn">🚴 模拟向前骑行 (沿公路爬坡)</button>
+            <button id="turnLeftBtn">↩️ 向左看</button>
+            <button id="turnRightBtn">↪️ 向右看</button>
+        </div>
+
+        <div id="pano">
+            等待输入 API Key 并加载...
+        </div>
+    </div>
+
+    <script>
+        let panorama;
+        
+        // 初始位置：法国 Mont Ventoux (冯杜山) 经典爬坡路段
+        let currentLat = 44.1738;
+        let currentLng = 5.2789;
+        let currentHeading = 60; // 初始视角面向爬坡方向
+
+        document.getElementById('loadApiBtn').addEventListener('click', () => {
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+            if (!apiKey) {
+                alert("请输入 API Key！");
+                return;
+            }
+
+            // 动态加载 Google Maps 脚本
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=initStreetView`;
+            script.async = true;
+            script.defer = true;
+            
+            // 暴露全局回调函数供 Google API 加载完成后调用
+            window.initStreetView = () => {
+                document.getElementById('pano').innerHTML = ''; // 清除提示文字
+                document.getElementById('controls').style.display = 'flex'; // 显示控制按钮
+                
+                // 初始化街景全景图对象
+                panorama = new google.maps.StreetViewPanorama(
+                    document.getElementById("pano"),
+                    {
+                        position: { lat: currentLat, lng: currentLng },
+                        pov: {
+                            heading: currentHeading,
+                            pitch: 0, // 俯仰角，0为平视
+                        },
+                        zoom: 1, // 变焦级别
+                        
+                        // 隐藏一些没必要的 UI 控件，让体验更沉浸
+                        addressControl: false,
+                        showRoadLabels: false,
+                        linksControl: true, // 允许点击地上的箭头移动
+                        panControl: true,
+                        enableCloseButton: false
+                    }
+                );
+            };
+
+            script.onerror = () => {
+                alert("API 加载失败，请检查网络连接（需要科学上网）或 API Key 是否正确。");
+            };
+
+            document.body.appendChild(script);
+            document.getElementById('loadApiBtn').disabled = true;
+            document.getElementById('loadApiBtn').textContent = "加载中...";
+        });
+
+        // 模拟骑行逻辑：只更新位置，不重新创建 panorama 对象
+        document.getElementById('moveForwardBtn').addEventListener('click', () => {
+            if (!panorama) return;
+            
+            // 简单的经纬度偏移（模拟沿山路向东北方向移动一点点）
+            // 在实际项目中，这里会根据 live-ride-session 传来的真实 GPS 坐标更新
+            currentLat += 0.0001; 
+            currentLng += 0.0002;
+            
+            // 核心 API：动态更新位置，这就是 1 小时只算 1 次加载的秘密
+            panorama.setPosition({ lat: currentLat, lng: currentLng });
+        });
+
+        document.getElementById('turnLeftBtn').addEventListener('click', () => {
+            if (!panorama) return;
+            currentHeading = (currentHeading - 30) % 360;
+            panorama.setPov({ heading: currentHeading, pitch: 0 });
+        });
+
+        document.getElementById('turnRightBtn').addEventListener('click', () => {
+            if (!panorama) return;
+            currentHeading = (currentHeading + 30) % 360;
+            panorama.setPov({ heading: currentHeading, pitch: 0 });
+        });
+    </script>
+</body>
+</html>

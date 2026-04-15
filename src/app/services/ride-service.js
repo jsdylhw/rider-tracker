@@ -8,7 +8,7 @@ import { resolveTrainerControlModeForWorkoutMode, TRAINER_CONTROL_MODES } from "
 import { saveLastSession } from "../../adapters/storage/session-storage.js";
 import { formatDuration, formatNumber } from "../../shared/format.js";
 
-export function createRideService({ store }) {
+export function createRideService({ store, deviceService, exportService }) {
     let liveRideTimerId = null;
 
     function startRide() {
@@ -88,6 +88,13 @@ export function createRideService({ store }) {
                 ? `骑行结束：${formatNumber(completedSession.summary.distanceKm, 2)} km / 平均速度 ${formatNumber(completedSession.summary.averageSpeedKph, 1)} km/h`
                 : "骑行已停止。"
         }));
+
+        // Trigger automatic FIT download for real rides that have recorded distance
+        if (completedSession && completedSession.summary.distanceKm > 0) {
+            setTimeout(() => {
+                exportService.downloadFit();
+            }, 500); // Small delay to let UI state settle
+        }
     }
 
     function tickLiveRide() {
@@ -131,6 +138,25 @@ export function createRideService({ store }) {
                 rideId,
                 commandSequence: nextCommandSequence
             });
+
+        // 触发蓝牙命令发送
+        if (workoutRuntime.pendingTrainerCommand) {
+            const cmd = workoutRuntime.pendingTrainerCommand;
+            const controlMode = cmd.controlMode ?? cmd.mode;
+            const targetGradePercent = cmd.targetGradePercent ?? cmd.payload?.gradePercent;
+            const targetPowerWatts = cmd.targetPowerWatts ?? cmd.payload?.targetPowerWatts;
+
+            if (controlMode === TRAINER_CONTROL_MODES.SIM && targetGradePercent !== undefined) {
+                void deviceService.setTrainerGrade(targetGradePercent).catch((error) => {
+                    console.error("[RideService] 下发 trainer 坡度命令失败:", error);
+                });
+            } else if (controlMode === TRAINER_CONTROL_MODES.ERG && targetPowerWatts !== undefined) {
+                void deviceService.setTrainerPower(targetPowerWatts).catch((error) => {
+                    console.error("[RideService] 下发 trainer ERG 命令失败:", error);
+                });
+            }
+            workoutRuntime.pendingTrainerCommand = null;
+        }
 
         store.setState((currentState) => ({
             ...currentState,
