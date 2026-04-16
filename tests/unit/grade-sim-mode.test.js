@@ -57,7 +57,7 @@ export const suite = {
             }
         },
         {
-            name: "buildGradeSimulationState computes bounded target grade for climbs",
+            name: "buildGradeSimulationState sets target grade equal to current grade (with clamp)",
             run() {
                 const result = buildGradeSimulationState({
                     route: createGradeRoute(),
@@ -72,8 +72,7 @@ export const suite = {
                 assertEqual(result.available, true);
                 assertGreaterThan(result.currentGradePercent, 0);
                 assertGreaterThan(result.lookaheadGradePercent, 0);
-                assertGreaterThan(result.targetTrainerGradePercent, 0);
-                assertLessThan(result.targetTrainerGradePercent, config.maxUphillPercent + 0.001);
+                assertEqual(result.targetTrainerGradePercent, result.currentGradePercent);
                 assertEqual(result.pendingTrainerCommand.protocolVersion, 1);
                 assertEqual(result.pendingTrainerCommand.decisionPolicy, "pre-ride-locked");
                 assertEqual(result.pendingTrainerCommand.controlMode, TRAINER_CONTROL_MODES.SIM);
@@ -83,7 +82,7 @@ export const suite = {
             }
         },
         {
-            name: "buildGradeSimulationState respects downhill clamp and smoothing",
+            name: "buildGradeSimulationState respects downhill clamp",
             run() {
                 const route = buildRouteFromTrackPoints({
                     name: "Downhill",
@@ -100,12 +99,11 @@ export const suite = {
                 const result = buildGradeSimulationState({
                     route,
                     distanceMeters: 20,
-                    previousTargetGradePercent: -1,
+                    previousTargetGradePercent: 0,
                     config
                 });
 
-                assertLessThan(result.targetTrainerGradePercent, 0);
-                assertGreaterThan(result.targetTrainerGradePercent, config.maxDownhillPercent - 0.001);
+                assertEqual(result.targetTrainerGradePercent, config.maxDownhillPercent);
             }
         }
     ]

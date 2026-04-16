@@ -96,11 +96,11 @@ function createInitialWorkoutState() {
     return {
         mode: WORKOUT_MODES.FREE_RIDE,
         gradeSimulation: {
-            difficultyPercent: 75,
+            difficultyPercent: 100,
             lookaheadMeters: 120,
-            maxUphillPercent: 10,
+            maxUphillPercent: 20,
             maxDownhillPercent: -3,
-            smoothingFactor: 0.35
+            smoothingFactor: 0.7
         },
         runtime: {
             available: false,
@@ -139,6 +139,13 @@ function createInitialBleState() {
             averagePower: null,
             sampleCount: 0,
             powerTotal: 0,
+            lastUpdated: null
+        },
+        trainer: {
+            isConnecting: false,
+            isConnected: false,
+            statusLabel: bluetoothSupported ? "未连接" : "不支持",
+            deviceName: bluetoothSupported ? "等待连接" : "当前浏览器不支持 Web Bluetooth",
             lastUpdated: null
         }
     };

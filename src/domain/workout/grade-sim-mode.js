@@ -27,10 +27,11 @@ export function buildGradeSimulationState({
     const currentSample = getRouteSampleAtDistance(route, distanceMeters);
     const currentGradePercent = currentSample.gradePercent ?? 0;
     const lookaheadGradePercent = calculateLookaheadGrade(route, distanceMeters, config.lookaheadMeters);
-    const blendedGrade = blendGrades(currentGradePercent, lookaheadGradePercent);
-    const difficultyScaledGrade = blendedGrade * (config.difficultyPercent / 100);
-    const boundedTargetGrade = clampGrade(difficultyScaledGrade, config.maxDownhillPercent, config.maxUphillPercent);
-    const targetTrainerGradePercent = smoothGrade(previousTargetGradePercent, boundedTargetGrade, config.smoothingFactor);
+    const targetTrainerGradePercent = clampGrade(
+        currentGradePercent,
+        config.maxDownhillPercent,
+        config.maxUphillPercent
+    );
 
     return {
         available: true,
@@ -52,8 +53,8 @@ export function buildGradeSimulationState({
             })
             : null,
         controlStatus: active
-            ? `坡度模拟中：当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}（开始骑行前已锁定控制模式）。`
-            : `坡度模拟待命：当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，预估目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}（开始骑行前已锁定控制模式）。`
+            ? `坡度模拟中：当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}（实时跟随当前坡度）。`
+            : `坡度模拟待命：当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，预估目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}（实时跟随当前坡度）。`
     };
 }
 
@@ -77,14 +78,6 @@ function calculateLookaheadGrade(route, distanceMeters, lookaheadMeters) {
     }
 
     return totalWeight > 0 ? totalWeightedGrade / totalWeight : 0;
-}
-
-function blendGrades(currentGradePercent, lookaheadGradePercent) {
-    return currentGradePercent * 0.65 + lookaheadGradePercent * 0.35;
-}
-
-function smoothGrade(previousTargetGradePercent, nextTargetGradePercent, smoothingFactor) {
-    return previousTargetGradePercent + (nextTargetGradePercent - previousTargetGradePercent) * smoothingFactor;
 }
 
 function clampGrade(value, minDownhillPercent, maxUphillPercent) {

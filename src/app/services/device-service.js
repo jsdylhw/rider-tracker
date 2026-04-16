@@ -100,6 +100,17 @@ export function createDeviceService({ store }) {
         onStatus: (status) => {
             store.setState((state) => ({
                 ...state,
+                ble: {
+                    ...state.ble,
+                    trainer: {
+                        ...state.ble.trainer,
+                        isConnecting: status.type === "connecting",
+                        isConnected: status.type === "connected",
+                        statusLabel: mapStatusLabel(status.type),
+                        deviceName: status.deviceName ?? (status.type === "disconnected" ? "等待连接" : status.message),
+                        lastUpdated: Date.now()
+                    }
+                },
                 liveRide: {
                     ...state.liveRide,
                     statusMeta: status.message
@@ -133,16 +144,6 @@ export function createDeviceService({ store }) {
     async function togglePowerMeter() {
         try {
             await powerMeter.toggle();
-            // 如果功率计连上了，尝试同步连接 FTMS 控制通道
-            if (powerMeter.isConnected && !trainerFtms.isConnected) {
-                try {
-                    await trainerFtms.connect();
-                } catch (e) {
-                    console.log("未找到可用的 FTMS 控制服务，可能是单边功率计", e);
-                }
-            } else if (!powerMeter.isConnected && trainerFtms.isConnected) {
-                await trainerFtms.disconnect();
-            }
         } catch (error) {
             console.error("功率计连接失败", error);
             store.setState((state) => ({
@@ -157,6 +158,31 @@ export function createDeviceService({ store }) {
                     }
                 },
                 statusText: `功率计连接失败：${error.message}`
+            }));
+        }
+    }
+
+    async function toggleTrainer() {
+        try {
+            if (trainerFtms.isConnected) {
+                await trainerFtms.disconnect();
+            } else {
+                await trainerFtms.connect();
+            }
+        } catch (error) {
+            console.error("骑行台连接失败", error);
+            store.setState((state) => ({
+                ...state,
+                ble: {
+                    ...state.ble,
+                    trainer: {
+                        ...state.ble.trainer,
+                        isConnecting: false,
+                        statusLabel: "连接失败",
+                        deviceName: error.message
+                    }
+                },
+                statusText: `骑行台连接失败：${error.message}`
             }));
         }
     }
@@ -176,7 +202,18 @@ export function createDeviceService({ store }) {
         }
 
         try {
-            await trainerFtms.setTargetGrade(gradePercent);
+            const result = await trainerFtms.setTargetGrade(gradePercent);
+            if (result?.status === "unconfirmed") {
+                const message = `坡度命令未确认（可能已生效）：${gradePercent.toFixed(1)}% (${result.path})`;
+                store.setState((state) => ({
+                    ...state,
+                    liveRide: {
+                        ...state.liveRide,
+                        statusMeta: message
+                    },
+                    statusText: message
+                }));
+            }
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             const message = `坡度模拟下发失败：${reason}`;
@@ -226,6 +263,7 @@ export function createDeviceService({ store }) {
     return {
         toggleHeartRate,
         togglePowerMeter,
+        toggleTrainer,
         setTrainerGrade,
         setTrainerPower
     };

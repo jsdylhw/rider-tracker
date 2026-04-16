@@ -1,0 +1,129 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b1220;
+  --card: #111a2e;
+  --text: #e5edf8;
+  --muted: #96a6c0;
+  --line: #243251;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  --primary: #38bdf8;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.shell {
+  width: min(920px, calc(100% - 32px));
+  margin: 24px auto;
+  display: grid;
+  gap: 16px;
+}
+
+h1, h2 {
+  margin: 0 0 8px;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #1d2b47;
+  color: var(--text);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.btn.primary {
+  background: #1b3b6f;
+  border-color: #335d99;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status {
+  color: var(--muted);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.metric {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.metric .label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metric .value {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.metric .unit {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.grade-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 120px;
+  align-items: center;
+  gap: 10px;
+}
+
+.grade-row input[type="number"] {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f1a30;
+  color: var(--text);
+  padding: 7px 9px;
+}
+
+.log {
+  margin: 0;
+  min-height: 160px;
+  max-height: 320px;
+  overflow: auto;
+  background: #091323;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

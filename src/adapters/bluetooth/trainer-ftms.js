@@ -28,6 +28,7 @@ export function createTrainerFtms({ onStatus }) {
     let controlPointChar = null;
     let pendingResponse = null;
     let commandQueue = Promise.resolve();
+    let allowInclinationFallback = true;
 
     async function connect() {
         if (!navigator.bluetooth) {
@@ -44,6 +45,7 @@ export function createTrainerFtms({ onStatus }) {
             const server = await device.gatt.connect();
             const service = await server.getPrimaryService(FTMS_SERVICE);
             controlPointChar = await service.getCharacteristic(FTMS_CONTROL_POINT);
+            allowInclinationFallback = true;
 
             device.addEventListener("gattserverdisconnected", handleDisconnected);
 
@@ -110,7 +112,7 @@ export function createTrainerFtms({ onStatus }) {
         }
     }
 
-    async function sendCommand(buffer, { expectedRequestOpcode, timeoutMs = 2500 } = {}) {
+    async function sendCommand(buffer, { expectedRequestOpcode, timeoutMs = 4000 } = {}) {
         const commandBytes = new Uint8Array(buffer);
         return enqueueCommand(async () => {
             if (!controlPointChar) {
@@ -185,6 +187,19 @@ export function createTrainerFtms({ onStatus }) {
         }
     }
 
+    function isInclinationUnsupported(error) {
+        return String(error?.message ?? "").includes("opcode 0x3")
+            && String(error?.message ?? "").includes("0x02");
+    }
+
+    function isInclinationTimeout(error) {
+        return String(error?.message ?? "").includes("命令超时（opcode 0x3）");
+    }
+
+    function isSimulationTimeout(error) {
+        return String(error?.message ?? "").includes("命令超时（opcode 0x11）");
+    }
+
     /**
      * 坡度模拟请求
      * Opcode: 0x03 (Set Target Inclination)
@@ -197,8 +212,14 @@ export function createTrainerFtms({ onStatus }) {
         try {
             // 优先使用 Indoor Bike Simulation（0x11），兼容主流骑行台的 Sim 模式。
             await sendIndoorBikeSimulation(clampedGrade);
-            return;
+            return { status: "confirmed", path: "0x11" };
         } catch (error) {
+            if (isSimulationTimeout(error)) {
+                return { status: "unconfirmed", path: "0x11", reason: error.message };
+            }
+            if (!allowInclinationFallback) {
+                throw new Error(`FTMS 0x11 下发失败，且 0x03 回退已禁用: ${error.message}`);
+            }
             console.warn("[FTMS] 0x11 模拟命令失败，回退到 0x03 Inclination。", error);
         }
 
@@ -209,9 +230,21 @@ export function createTrainerFtms({ onStatus }) {
         view.setInt16(1, inclinationValue, true);
 
         console.log(`[FTMS] Sending Inclination Fallback: ${clampedGrade}% (Value: ${inclinationValue})`);
-        await sendCommand(new Uint8Array(buffer), {
-            expectedRequestOpcode: FTMS_OPCODES.SET_TARGET_INCLINATION
-        });
+        try {
+            await sendCommand(new Uint8Array(buffer), {
+                expectedRequestOpcode: FTMS_OPCODES.SET_TARGET_INCLINATION
+            });
+            return { status: "confirmed", path: "0x03-fallback" };
+        } catch (error) {
+            if (isInclinationUnsupported(error)) {
+                allowInclinationFallback = false;
+                throw new Error(`骑行台不支持稳定的 0x03 回退（已自动禁用回退）: ${error.message}`);
+            }
+            if (isInclinationTimeout(error)) {
+                return { status: "unconfirmed", path: "0x03-fallback", reason: error.message };
+            }
+            throw error;
+        }
     }
 
     /**

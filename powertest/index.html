@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PowerTest - 坡度模拟 Demo</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="shell">
+    <h1>PowerTest: 功率计 + 坡度模拟</h1>
+    <p class="hint">目标：连接外部功率计，连接 FTMS 骑行台，手动调节坡度 -10% 到 +10%。</p>
+
+    <section class="card">
+      <h2>设备连接</h2>
+      <div class="row">
+        <button id="connectPowerMeterBtn" class="btn">连接功率计</button>
+        <span id="powerMeterStatus" class="status">未连接</span>
+      </div>
+      <div class="row">
+        <button id="connectTrainerBtn" class="btn">连接骑行台 (FTMS)</button>
+        <span id="trainerStatus" class="status">未连接</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>实时功率数据</h2>
+      <div class="metrics">
+        <div class="metric">
+          <div class="label">实时功率</div>
+          <div class="value"><span id="powerValue">--</span><span class="unit">W</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">实时踏频</div>
+          <div class="value"><span id="cadenceValue">--</span><span class="unit">rpm</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">设备速度</div>
+          <div class="value"><span id="deviceSpeedValue">--</span><span class="unit">km/h</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">模型速度</div>
+          <div class="value"><span id="modelSpeedValue">--</span><span class="unit">km/h</span></div>
+        </div>
+        <div class="metric">
+          <div class="label">采样时间</div>
+          <div class="value" id="sampleTime">--</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>坡度模拟控制</h2>
+      <div class="grade-row">
+        <label for="gradeSlider">目标坡度 (%)</label>
+        <input id="gradeSlider" type="range" min="-10" max="10" step="0.1" value="0">
+        <input id="gradeInput" type="number" min="-10" max="10" step="0.1" value="0">
+      </div>
+      <div class="row">
+        <button id="sendGradeBtn" class="btn primary" disabled>发送坡度到骑行台</button>
+        <span id="gradeSendStatus" class="status">等待连接骑行台</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>日志</h2>
+      <pre id="logPanel" class="log"></pre>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

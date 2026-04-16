@@ -19,6 +19,7 @@ export function createMainView({
     onResetRoute,
     onToggleHeartRate,
     onTogglePowerMeter,
+    onToggleTrainer,
     onOpenRideDashboard,
     onCloseRideDashboard,
     onStartRide,
@@ -69,6 +70,7 @@ export function createMainView({
         simulationForm: document.getElementById("simulationForm"),
         connectHrBtn: document.getElementById("connectHrBtn"),
         connectPowerBtn: document.getElementById("connectPowerBtn"),
+        connectTrainerBtn: document.getElementById("connectTrainerBtn"),
         workoutModeForm: document.getElementById("workoutModeForm"),
         workoutModeSelect: document.getElementById("workoutModeSelect"),
         workoutModeRadios: [...document.querySelectorAll('input[name="workoutMode"]')],
@@ -87,6 +89,8 @@ export function createMainView({
         hrDeviceName: document.getElementById("hrDeviceName"),
         powerDeviceStatus: document.getElementById("powerDeviceStatus"),
         powerDeviceName: document.getElementById("powerDeviceName"),
+        trainerDeviceStatus: document.getElementById("trainerDeviceStatus"),
+        trainerDeviceName: document.getElementById("trainerDeviceName"),
         rideStatusLabel: document.getElementById("rideStatusLabel"),
         rideStatusMeta: document.getElementById("rideStatusMeta"),
         rideSegmentLabel: document.getElementById("rideSegmentLabel"),
@@ -134,6 +138,9 @@ export function createMainView({
         elevationChart: document.getElementById("elevationChart"),
         liveElevationCard: document.getElementById("liveElevationCard"),
         setupElevationChart: document.getElementById("setupElevationChart"),
+        rideDashboardElevationChart: document.getElementById("rideDashboardElevationChart"),
+        trainerPushGradeValue: document.getElementById("trainerPushGradeValue"),
+        trainerPushGradeMeta: document.getElementById("trainerPushGradeMeta"),
         mapProviderSelect: document.getElementById("mapProviderSelect")
     };
 
@@ -175,6 +182,7 @@ export function createMainView({
         elements,
         onToggleHeartRate,
         onTogglePowerMeter,
+        onToggleTrainer,
         onOpenRideDashboard,
         onStartRide,
         onStopRide

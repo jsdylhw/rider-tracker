@@ -355,6 +355,7 @@
                         <div class="controls">
                             <button id="connectHrBtn" class="btn primary">连接心率带</button>
                             <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
+                            <button id="connectTrainerBtn" class="btn secondary">连接骑行台</button>
                             <button id="openRideDashboardBtn" class="btn secondary">进入骑行界面</button>
                             <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
                         </div>
@@ -371,9 +372,19 @@
                                 <p class="device-meta" id="powerDeviceName">等待连接</p>
                             </div>
                             <div class="summary-card">
+                                <span>骑行台控制</span>
+                                <strong id="trainerDeviceStatus">未连接</strong>
+                                <p class="device-meta" id="trainerDeviceName">等待连接</p>
+                            </div>
+                            <div class="summary-card">
                                 <span>骑行状态</span>
                                 <strong id="rideStatusLabel">未开始</strong>
                                 <p class="device-meta" id="rideStatusMeta">连接功率计后即可开始骑行。</p>
+                            </div>
+                            <div class="summary-card">
+                                <span>推送坡度</span>
+                                <strong id="trainerPushGradeValue">0.0%</strong>
+                                <p class="device-meta" id="trainerPushGradeMeta">等待骑行开始后推送</p>
                             </div>
                             <div class="summary-card">
                                 <span>当前路段</span>
@@ -502,6 +513,7 @@
                     <label><input type="checkbox" value="currentHr" checked> 当前心率</label>
                     <label><input type="checkbox" value="currentSpeed" checked> 当前速度</label>
                     <label><input type="checkbox" value="currentCadence" checked> 当前踏频</label>
+                    <label><input type="checkbox" value="pushedGrade" checked> 推送坡度</label>
                     <label><input type="checkbox" value="avgPower"> 平均功率</label>
                     <label><input type="checkbox" value="maxPower"> 最大功率</label>
                     <label><input type="checkbox" value="avgHr"> 平均心率</label>
@@ -546,6 +558,18 @@
                             </div>
                         </div>
                         <div id="dashboardMetricsGrid" class="data-grid"></div>
+                    </div>
+                </div>
+
+                <div class="card" id="liveElevationCard" style="grid-column: 1 / -1;">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>路线海拔剖面</h2>
+                            <p class="section-subtitle">距离-坡度图（含当前骑行位置）。</p>
+                        </div>
+                    </div>
+                    <div class="chart-shell" style="height: 180px; position: relative;">
+                        <svg id="rideDashboardElevationChart" viewBox="0 0 640 180" preserveAspectRatio="none" style="width: 100%; height: 100%;"></svg>
                     </div>
                 </div>
             </div>

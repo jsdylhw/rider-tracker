@@ -4,6 +4,7 @@ export function createDeviceRenderer({
     elements,
     onToggleHeartRate,
     onTogglePowerMeter,
+    onToggleTrainer,
     onOpenRideDashboard,
     onStartRide,
     onStopRide
@@ -11,6 +12,7 @@ export function createDeviceRenderer({
     function bindEvents() {
         if (elements.connectHrBtn) elements.connectHrBtn.addEventListener("click", onToggleHeartRate);
         if (elements.connectPowerBtn) elements.connectPowerBtn.addEventListener("click", onTogglePowerMeter);
+        if (elements.connectTrainerBtn) elements.connectTrainerBtn.addEventListener("click", onToggleTrainer);
         if (elements.openRideDashboardBtn) elements.openRideDashboardBtn.addEventListener("click", onOpenRideDashboard);
         if (elements.startRideBtn) elements.startRideBtn.addEventListener("click", onStartRide);
         if (elements.stopRideBtn) elements.stopRideBtn.addEventListener("click", onStopRide);
@@ -19,9 +21,11 @@ export function createDeviceRenderer({
     function render(state) {
         const heartRate = state.ble.heartRate;
         const powerMeter = state.ble.powerMeter;
+        const trainer = state.ble.trainer;
         const liveRide = state.liveRide;
         const liveSession = liveRide.session;
         const currentRecord = liveSession?.records?.at(-1) ?? null;
+        const workoutRuntime = state.workout.runtime;
 
         if (elements.connectHrBtn) {
             elements.connectHrBtn.disabled = !state.ble.supported || heartRate.isConnecting;
@@ -31,6 +35,10 @@ export function createDeviceRenderer({
             elements.connectPowerBtn.disabled = !state.ble.supported || powerMeter.isConnecting;
             elements.connectPowerBtn.textContent = powerMeter.isConnected ? "断开功率计" : (powerMeter.isConnecting ? "连接中功率计..." : "连接功率计");
         }
+        if (elements.connectTrainerBtn) {
+            elements.connectTrainerBtn.disabled = !state.ble.supported || trainer.isConnecting;
+            elements.connectTrainerBtn.textContent = trainer.isConnected ? "断开骑行台" : (trainer.isConnecting ? "连接中骑行台..." : "连接骑行台");
+        }
         if (elements.startRideBtn) elements.startRideBtn.disabled = !liveRide.canStart || liveRide.isActive;
         if (elements.stopRideBtn) elements.stopRideBtn.disabled = !liveRide.isActive;
         if (elements.openRideDashboardBtn) elements.openRideDashboardBtn.disabled = false;
@@ -39,8 +47,18 @@ export function createDeviceRenderer({
         if (elements.hrDeviceName) elements.hrDeviceName.textContent = heartRate.deviceName;
         if (elements.powerDeviceStatus) elements.powerDeviceStatus.textContent = powerMeter.statusLabel;
         if (elements.powerDeviceName) elements.powerDeviceName.textContent = powerMeter.deviceName;
+        if (elements.trainerDeviceStatus) elements.trainerDeviceStatus.textContent = trainer.statusLabel;
+        if (elements.trainerDeviceName) elements.trainerDeviceName.textContent = trainer.deviceName;
         if (elements.rideStatusLabel) elements.rideStatusLabel.textContent = liveRide.isActive ? "骑行中" : (liveRide.lastCompletedAt ? "已结束" : "未开始");
         if (elements.rideStatusMeta) elements.rideStatusMeta.textContent = liveRide.statusMeta;
+        if (elements.trainerPushGradeValue) {
+            elements.trainerPushGradeValue.textContent = `${formatNumber(workoutRuntime.targetTrainerGradePercent ?? 0, 1)}%`;
+        }
+        if (elements.trainerPushGradeMeta) {
+            elements.trainerPushGradeMeta.textContent = liveRide.isActive
+                ? `序列 #${liveRide.commandSequence ?? 0} · ${workoutRuntime.controlStatus ?? "等待控制状态"}`
+                : "等待骑行开始后推送";
+        }
         if (elements.rideSegmentLabel) elements.rideSegmentLabel.textContent = currentRecord?.segmentName ?? "等待开始";
         if (elements.rideSegmentMeta) {
             elements.rideSegmentMeta.textContent = currentRecord

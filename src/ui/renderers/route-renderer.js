@@ -114,7 +114,7 @@ export function createRouteRenderer({
     }
 
     function renderElevationChart(route, currentRecord) {
-        if (!elements.elevationChart && !elements.setupElevationChart) return;
+        if (!elements.elevationChart && !elements.setupElevationChart && !elements.rideDashboardElevationChart) return;
 
         if (!route || !route.points || route.points.length === 0) {
             const emptyState = `
@@ -124,6 +124,7 @@ export function createRouteRenderer({
             `;
             if (elements.elevationChart) elements.elevationChart.innerHTML = emptyState;
             if (elements.setupElevationChart) elements.setupElevationChart.innerHTML = emptyState;
+            if (elements.rideDashboardElevationChart) elements.rideDashboardElevationChart.innerHTML = emptyState;
             return;
         }
 
@@ -135,6 +136,7 @@ export function createRouteRenderer({
             `;
             if (elements.elevationChart) elements.elevationChart.innerHTML = noElevationState;
             if (elements.setupElevationChart) elements.setupElevationChart.innerHTML = noElevationState;
+            if (elements.rideDashboardElevationChart) elements.rideDashboardElevationChart.innerHTML = noElevationState;
             return;
         }
 
@@ -203,6 +205,9 @@ export function createRouteRenderer({
 
         if (elements.elevationChart) {
             elements.elevationChart.innerHTML = fullSvgContent;
+        }
+        if (elements.rideDashboardElevationChart) {
+            elements.rideDashboardElevationChart.innerHTML = fullSvgContent;
         }
         if (elements.setupElevationChart) {
             elements.setupElevationChart.innerHTML = svgContent;
