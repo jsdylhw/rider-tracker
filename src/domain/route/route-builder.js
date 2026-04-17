@@ -103,12 +103,15 @@ export function buildRouteFromTrackPoints({ name, points, segments, hasElevation
 }
 
 export function getRouteSampleAtDistance(route, distanceMeters) {
+    // 检查是否已经骑完路线
+    const isFinished = distanceMeters >= route.totalDistanceMeters;
+
     if (!route.points || route.points.length === 0) {
         return {
             latitude: null,
             longitude: null,
             elevationMeters: 0,
-            gradePercent: getSegmentAtDistance(route, distanceMeters)?.gradePercent ?? 0
+            gradePercent: isFinished ? 0 : (getSegmentAtDistance(route, distanceMeters)?.gradePercent ?? 0)
         };
     }
 
@@ -122,7 +125,7 @@ export function getRouteSampleAtDistance(route, distanceMeters) {
             latitude: nextPoint?.latitude ?? null,
             longitude: nextPoint?.longitude ?? null,
             elevationMeters: nextPoint?.elevationMeters ?? 0,
-            gradePercent: nextPoint?.gradePercent ?? getSegmentAtDistance(route, distanceMeters)?.gradePercent ?? 0
+            gradePercent: isFinished ? 0 : (nextPoint?.gradePercent ?? getSegmentAtDistance(route, distanceMeters)?.gradePercent ?? 0)
         };
     }
 
@@ -132,7 +135,7 @@ export function getRouteSampleAtDistance(route, distanceMeters) {
         latitude: interpolate(previousPoint.latitude, nextPoint.latitude, ratio),
         longitude: interpolate(previousPoint.longitude, nextPoint.longitude, ratio),
         elevationMeters: interpolate(previousPoint.elevationMeters, nextPoint.elevationMeters, ratio),
-        gradePercent: interpolate(previousPoint.gradePercent, nextPoint.gradePercent, ratio)
+        gradePercent: isFinished ? 0 : interpolate(previousPoint.gradePercent, nextPoint.gradePercent, ratio)
     };
 }
 

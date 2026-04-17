@@ -4,10 +4,18 @@ import { TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { clamp, normalizeText } from "../../shared/utils/common.js";
 
 export const defaultRouteSegments = [
-    { name: "热身缓坡", distanceKm: 2.5, gradePercent: 1.5 },
-    { name: "主爬坡", distanceKm: 4.2, gradePercent: 4.8 },
-    { name: "山顶起伏", distanceKm: 3.1, gradePercent: -1.2 },
-    { name: "收尾平路", distanceKm: 2.8, gradePercent: 0.3 }
+    { name: "平路 0%", distanceKm: 0.1, gradePercent: 0 },
+    { name: "爬坡 1%", distanceKm: 0.1, gradePercent: 1 },
+    { name: "爬坡 2%", distanceKm: 0.1, gradePercent: 2 },
+    { name: "爬坡 3%", distanceKm: 0.1, gradePercent: 3 },
+    { name: "爬坡 4%", distanceKm: 0.1, gradePercent: 4 },
+    { name: "爬坡 5%", distanceKm: 0.1, gradePercent: 5 },
+    { name: "缓降 4%", distanceKm: 0.1, gradePercent: 4 },
+    { name: "缓降 3%", distanceKm: 0.1, gradePercent: 3 },
+    { name: "缓降 2%", distanceKm: 0.1, gradePercent: 2 },
+    { name: "缓降 1%", distanceKm: 0.1, gradePercent: 1 },
+    { name: "平路 0%", distanceKm: 0.1, gradePercent: 0 },
+    { name: "下坡 -1%", distanceKm: 0.1, gradePercent: -1 }
 ];
 
 export const defaultSettings = {

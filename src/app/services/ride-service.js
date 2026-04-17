@@ -146,6 +146,8 @@ export function createRideService({ store, deviceService, exportService }) {
             const targetGradePercent = cmd.targetGradePercent ?? cmd.payload?.gradePercent;
             const targetPowerWatts = cmd.targetPowerWatts ?? cmd.payload?.targetPowerWatts;
 
+            console.log(`[Ride Log] Distance: ${nextSession.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${nextSession.summary.currentGradePercent.toFixed(1)}% | Power: ${currentPower}W | Cadence: ${currentCadence}rpm | Speed: ${nextSession.summary.currentSpeedKph.toFixed(1)}km/h | Next Target Grade: ${targetGradePercent?.toFixed(2)}%`);
+
             if (controlMode === TRAINER_CONTROL_MODES.SIM && targetGradePercent !== undefined) {
                 void deviceService.setTrainerGrade(targetGradePercent).catch((error) => {
                     console.error("[RideService] 下发 trainer 坡度命令失败:", error);
@@ -156,6 +158,11 @@ export function createRideService({ store, deviceService, exportService }) {
                 });
             }
             workoutRuntime.pendingTrainerCommand = null;
+        } else {
+            // 每隔约 5 秒打一次常规日志，防止刷屏
+            if (nextSession.physicsState.elapsedSeconds % 5 === 0) {
+                console.log(`[Ride Log] Distance: ${nextSession.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${nextSession.summary.currentGradePercent.toFixed(1)}% | Target Grade: ${workoutRuntime.targetTrainerGradePercent?.toFixed(2)}% | Power: ${currentPower}W | Cadence: ${currentCadence}rpm | Speed: ${nextSession.summary.currentSpeedKph.toFixed(1)}km/h`);
+            }
         }
 
         store.setState((currentState) => ({

@@ -57,7 +57,7 @@ export const suite = {
             }
         },
         {
-            name: "buildGradeSimulationState sets target grade equal to current grade (with clamp)",
+            name: "buildGradeSimulationState scales and smooths target grade",
             run() {
                 const result = buildGradeSimulationState({
                     route: createGradeRoute(),
@@ -72,7 +72,11 @@ export const suite = {
                 assertEqual(result.available, true);
                 assertGreaterThan(result.currentGradePercent, 0);
                 assertGreaterThan(result.lookaheadGradePercent, 0);
-                assertEqual(result.targetTrainerGradePercent, result.currentGradePercent);
+                
+                const rawGrade = (result.currentGradePercent * config.smoothingFactor) + (result.lookaheadGradePercent * (1 - config.smoothingFactor));
+                const expectedGrade = Math.min(config.maxUphillPercent, Math.max(config.maxDownhillPercent, rawGrade * (config.difficultyPercent / 100)));
+                
+                assertEqual(result.targetTrainerGradePercent, expectedGrade);
                 assertEqual(result.pendingTrainerCommand.protocolVersion, 1);
                 assertEqual(result.pendingTrainerCommand.decisionPolicy, "pre-ride-locked");
                 assertEqual(result.pendingTrainerCommand.controlMode, TRAINER_CONTROL_MODES.SIM);

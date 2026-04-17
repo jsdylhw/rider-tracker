@@ -112,61 +112,49 @@ export function createTrainerFtms({ onStatus }) {
         }
     }
 
-    async function sendCommand(buffer, { expectedRequestOpcode, timeoutMs = 4000 } = {}) {
-        const commandBytes = new Uint8Array(buffer);
-        return enqueueCommand(async () => {
-            if (!controlPointChar) {
-                throw new Error("FTMS Control Point 未连接");
-            }
+    let isCommandPending = false;
+    let cmdQueue = [];
 
-            const requestOpcode = expectedRequestOpcode ?? commandBytes[0];
-            try {
-                await controlPointChar.writeValueWithResponse(buffer);
-                console.log("[FTMS] Sent Command:", commandBytes);
-                const response = await waitForResponse(requestOpcode, timeoutMs);
-                return response;
-            } catch (error) {
-                console.error("[FTMS] Failed to send command:", error);
-                throw error;
-            }
-        });
+    async function processCommandQueue() {
+        if (isCommandPending || cmdQueue.length === 0) return;
+
+        isCommandPending = true;
+        const { buffer, expectedRequestOpcode, resolve, reject } = cmdQueue.shift();
+
+        try {
+            // 给骑行台硬件预留处理时间，防止指令过密
+            await new Promise(r => setTimeout(r, 200));
+
+            await controlPointChar.writeValueWithResponse(buffer);
+            console.log(`[FTMS] Sent Command:`, new Uint8Array(buffer));
+            
+            // 简单等待一小段时间让它生效，不强制等待 Notification 
+            // 因为有些骑行台在频繁下发时不会对每条指令都返回 0x80
+            await new Promise(r => setTimeout(r, 100));
+            resolve();
+        } catch (error) {
+            console.error("[FTMS] Failed to send command:", error);
+            reject(error);
+        } finally {
+            isCommandPending = false;
+            // 继续处理队列中的下一个指令
+            processCommandQueue();
+        }
     }
 
-    function enqueueCommand(task) {
-        const queuedTask = commandQueue.then(task, task);
-        commandQueue = queuedTask.catch(() => undefined);
-        return queuedTask;
-    }
-
-    function waitForResponse(requestOpcode, timeoutMs) {
-        if (pendingResponse) {
-            return Promise.reject(new Error("FTMS 控制点忙，等待上一个命令响应中。"));
+    async function sendCommand(buffer, { expectedRequestOpcode } = {}) {
+        if (!controlPointChar) {
+            console.warn("Cannot send command: FTMS Control Point not connected.");
+            return;
         }
 
         return new Promise((resolve, reject) => {
-            const timeoutId = window.setTimeout(() => {
-                if (pendingResponse?.requestOpcode === requestOpcode) {
-                    pendingResponse = null;
-                }
-                reject(new Error(`FTMS 命令超时（opcode 0x${requestOpcode.toString(16)}）`));
-            }, timeoutMs);
-
-            pendingResponse = {
-                requestOpcode,
-                timeoutId,
-                resolve: (response) => {
-                    if (response.requestOpcode !== requestOpcode) {
-                        reject(new Error(`FTMS 响应 opcode 不匹配，期望 0x${requestOpcode.toString(16)}，收到 0x${response.requestOpcode.toString(16)}`));
-                        return;
-                    }
-                    if (response.result !== FTMS_RESPONSE_RESULT.SUCCESS) {
-                        reject(new Error(`FTMS 命令失败（opcode 0x${requestOpcode.toString(16)}，result ${formatResultCode(response.result)}）`));
-                        return;
-                    }
-                    resolve(response);
-                },
-                reject
-            };
+            // 如果队列太长（说明堵塞严重），清空之前的旧指令，只保留最新的一条
+            if (cmdQueue.length > 2) {
+                cmdQueue = cmdQueue.slice(-1);
+            }
+            cmdQueue.push({ buffer, expectedRequestOpcode, resolve, reject });
+            processCommandQueue();
         });
     }
 

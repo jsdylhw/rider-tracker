@@ -27,8 +27,14 @@ export function buildGradeSimulationState({
     const currentSample = getRouteSampleAtDistance(route, distanceMeters);
     const currentGradePercent = currentSample.gradePercent ?? 0;
     const lookaheadGradePercent = calculateLookaheadGrade(route, distanceMeters, config.lookaheadMeters);
+    
+    // 应用平滑因子和骑行台真实度 (Trainer Difficulty)
+    const rawTargetGrade = (currentGradePercent * config.smoothingFactor) + (lookaheadGradePercent * (1 - config.smoothingFactor));
+    const difficultyRatio = (config.difficultyPercent ?? 100) / 100;
+    const scaledGrade = rawTargetGrade * difficultyRatio;
+
     const targetTrainerGradePercent = clampGrade(
-        currentGradePercent,
+        scaledGrade,
         config.maxDownhillPercent,
         config.maxUphillPercent
     );
@@ -41,7 +47,7 @@ export function buildGradeSimulationState({
         targetTrainerGradePercent,
         targetErgPowerWatts: null,
         targetResistanceLevel: null,
-        pendingTrainerCommand: active
+        pendingTrainerCommand: active && Math.abs(targetTrainerGradePercent - previousTargetGradePercent) >= 0.05
             ? createTrainerCommand({
                 controlMode: TRAINER_CONTROL_MODES.SIM,
                 type: TRAINER_COMMAND_TYPES.SET_SIM_GRADE,
