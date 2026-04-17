@@ -117,6 +117,7 @@ export function createMainView({
         dashboardCurrentGrade: document.getElementById("dashboardCurrentGrade"),
         startRideDashboardBtn: document.getElementById("startRideDashboardBtn"),
         closeRideDashboardBtn: document.getElementById("closeRideDashboardBtn"),
+        immersiveBackBtn: document.getElementById("immersiveBackBtn"),
         stopRideDashboardBtn: document.getElementById("stopRideDashboardBtn"),
         runSimulationBtn: document.getElementById("runSimulationBtn"),
         pipBtn: document.getElementById("pipBtn"),
@@ -142,7 +143,14 @@ export function createMainView({
         trainerPushGradeValue: document.getElementById("trainerPushGradeValue"),
         trainerPushGradeMeta: document.getElementById("trainerPushGradeMeta"),
         mapProviderSelect: document.getElementById("mapProviderSelect"),
-        deviceControlsPanel: document.getElementById("deviceControlsPanel")
+        deviceControlsPanel: document.getElementById("deviceControlsPanel"),
+        loadStreetViewBtn: document.getElementById("loadStreetViewBtn"),
+        streetViewApiKey: document.getElementById("streetViewApiKey"),
+        immersiveStreetViewBtn: document.getElementById("immersiveStreetViewBtn"),
+        streetViewContainer: document.getElementById("streetViewContainer"),
+        svPano1: document.getElementById("svPano1"),
+        svPano2: document.getElementById("svPano2"),
+        streetViewTrajectorySvg: document.getElementById("streetViewTrajectorySvg")
     };
 
     elements.fitExportForm = document.getElementById("fitExportForm");

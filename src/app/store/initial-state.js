@@ -36,6 +36,8 @@ export const defaultExportMetadata = {
     uploadEndpoint: ""
 };
 
+export const STREET_VIEW_UPDATE_INTERVAL_MS = 3000;
+
 export function createInitialState(session) {
     const routeSegments = sanitizeSegments(defaultRouteSegments);
     const route = buildRoute(routeSegments);

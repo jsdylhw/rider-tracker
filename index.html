@@ -402,6 +402,9 @@
                 </div>
                 <div class="inline-actions">
                     <button id="customizeMetricsBtn" class="btn secondary">自定义面板</button>
+                    <input type="text" id="streetViewApiKey" placeholder="Google Maps API Key" class="streetview-key-input">
+                    <button id="loadStreetViewBtn" class="btn secondary">加载街景</button>
+                    <button id="immersiveStreetViewBtn" class="btn secondary" hidden>进入沉浸街景</button>
                     <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
                     <button id="startRideDashboardBtn" class="btn primary">开始骑行</button>
                     <button id="stopRideDashboardBtn" class="btn ghost">结束骑行</button>
@@ -523,28 +526,38 @@
                 </div>
             </div>
 
-            <div class="ride-dashboard-grid">
-                <div class="card ride-map-card">
+            <div id="rideDashboardGrid" class="ride-dashboard-grid">
+                <div id="rideStreetViewStage" class="card ride-map-card">
                     <div class="section-title-row">
                         <div>
-                            <h2>实时位置</h2>
-                            <p class="section-subtitle">当前位置与已骑行路段会在地图上实时更新。</p>
+                            <h2>实时位置与街景主视图</h2>
+                            <p class="section-subtitle">沉浸模式下将优先展示街景全屏，地图仅作为后备显示。</p>
                         </div>
                     </div>
-                    <div class="chart-shell ride-map-large">
-                        <div id="rideDashboardMap" class="map-canvas"></div>
-                    </div>
-                </div>
+                    <div class="chart-shell ride-map-large" style="position: relative;">
+                        <!-- 原平面地图 -->
+                        <div id="rideDashboardMap" class="map-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;"></div>
+                        
+                        <!-- 街景双缓冲容器 -->
+                        <div id="streetViewContainer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; display: none;">
+                            <div id="svPano1" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; transition: opacity 0.8s ease-in-out; opacity: 1; z-index: 2;"></div>
+                            <div id="svPano2" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; transition: opacity 0.8s ease-in-out; opacity: 0; z-index: 1;"></div>
+                        </div>
 
-                <div class="ride-metrics-column">
-                    <div class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>骑行指标</h2>
-                                <p class="section-subtitle">默认展示的实时训练指标，可通过上方自定义面板调整。</p>
+                        <div id="streetViewHud" class="streetview-hud">
+                            <button id="immersiveBackBtn" class="btn ghost">返回页面</button>
+                            <div id="immersiveMetricsCard" class="streetview-hud-card">
+                                <h3>实时骑行数据</h3>
+                                <div id="dashboardMetricsGrid" class="data-grid"></div>
+                            </div>
+                            <div id="trajectoryCard" class="streetview-hud-card">
+                                <h3>路线总览</h3>
+                                <p class="section-subtitle">无底图 + 当前位置</p>
+                                <div class="chart-shell" style="height: 180px; position: relative;">
+                                    <svg id="streetViewTrajectorySvg" viewBox="0 0 300 180" preserveAspectRatio="none" style="width: 100%; height: 100%;"></svg>
+                                </div>
                             </div>
                         </div>
-                        <div id="dashboardMetricsGrid" class="data-grid"></div>
                     </div>
                 </div>
 

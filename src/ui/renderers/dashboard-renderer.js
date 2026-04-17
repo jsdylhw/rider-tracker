@@ -22,6 +22,8 @@ export function createDashboardRenderer({
         halfway: false,
         last3k: false
     };
+    let streetViewLoaded = false;
+    let immersiveStreetViewMode = false;
 
     function showRideAlert(message) {
         let container = document.getElementById("rideAlertsContainer");
@@ -50,6 +52,81 @@ export function createDashboardRenderer({
             elements.customizeMetricsBtn.addEventListener("click", () => {
                 if (elements.metricsCustomizer) {
                     elements.metricsCustomizer.hidden = !elements.metricsCustomizer.hidden;
+                }
+            });
+        }
+
+        if (elements.loadStreetViewBtn) {
+            elements.loadStreetViewBtn.addEventListener("click", () => {
+                const apiKey = elements.streetViewApiKey?.value?.trim();
+                if (!apiKey) {
+                    alert("请输入 Google Maps API Key");
+                    return;
+                }
+                
+                if (elements.loadStreetViewBtn.disabled) return;
+                elements.loadStreetViewBtn.disabled = true;
+                elements.loadStreetViewBtn.textContent = "加载中...";
+                streetViewLoaded = false;
+
+                window.gm_authFailure = () => {
+                    alert("API Key 验证失败，请检查 Key 与配额设置。");
+                    streetViewLoaded = false;
+                    elements.loadStreetViewBtn.disabled = false;
+                    elements.loadStreetViewBtn.textContent = "加载街景";
+                    if (elements.immersiveStreetViewBtn) {
+                        elements.immersiveStreetViewBtn.hidden = true;
+                    }
+                };
+
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=initLiveStreetView`;
+                script.async = true;
+                script.defer = true;
+                
+                window.initLiveStreetView = () => {
+                    elements.loadStreetViewBtn.textContent = "街景已开启";
+                    elements.streetViewContainer.style.display = "block";
+                    streetViewLoaded = true;
+                    mapController.enableStreetView({
+                        container1: elements.svPano1,
+                        container2: elements.svPano2
+                    });
+                };
+
+                script.onerror = () => {
+                    alert("API 加载失败，请检查网络连接或 API Key。");
+                    streetViewLoaded = false;
+                    elements.loadStreetViewBtn.disabled = false;
+                    elements.loadStreetViewBtn.textContent = "加载街景";
+                    if (elements.immersiveStreetViewBtn) {
+                        elements.immersiveStreetViewBtn.hidden = true;
+                    }
+                };
+
+                document.body.appendChild(script);
+            });
+        }
+
+        if (elements.immersiveStreetViewBtn) {
+            elements.immersiveStreetViewBtn.addEventListener("click", () => {
+                if (!streetViewLoaded) {
+                    alert("请先输入 API Key 并点击“加载街景”。");
+                    return;
+                }
+                immersiveStreetViewMode = !immersiveStreetViewMode;
+                elements.rideDashboard?.classList.toggle("immersive-street-view", immersiveStreetViewMode);
+                elements.immersiveStreetViewBtn.textContent = immersiveStreetViewMode ? "退出沉浸模式" : "进入沉浸街景";
+            });
+        }
+
+        if (elements.immersiveBackBtn) {
+            elements.immersiveBackBtn.addEventListener("click", () => {
+                immersiveStreetViewMode = false;
+                elements.rideDashboard?.classList.remove("immersive-street-view");
+                document.body.classList.remove("immersive-street-view-active");
+                if (elements.immersiveStreetViewBtn) {
+                    elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
                 }
             });
         }
@@ -102,6 +179,22 @@ export function createDashboardRenderer({
         if (elements.deviceControlsPanel) {
             elements.deviceControlsPanel.style.display = liveRide.isActive ? "none" : "grid";
         }
+        if (elements.rideDashboard) {
+            elements.rideDashboard.classList.toggle("immersive-street-view", immersiveStreetViewMode);
+        }
+        document.body.classList.toggle("immersive-street-view-active", immersiveStreetViewMode && liveRide.dashboardOpen);
+        if (elements.immersiveStreetViewBtn) {
+            const canShow = liveRide.isActive && streetViewLoaded;
+            elements.immersiveStreetViewBtn.hidden = !canShow;
+            if (!canShow && immersiveStreetViewMode) {
+                immersiveStreetViewMode = false;
+                elements.rideDashboard?.classList.remove("immersive-street-view");
+                document.body.classList.remove("immersive-street-view-active");
+            }
+            if (!immersiveStreetViewMode) {
+                elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
+            }
+        }
 
         const metricsData = {
             currentPower: { label: "实时功率", value: powerMeter?.power ?? 0, unit: "W", color: "power-color" },
@@ -140,9 +233,12 @@ export function createDashboardRenderer({
                 }).join("");
             
             if (elements.dashboardMetricsGrid) {
-                elements.dashboardMetricsGrid.innerHTML = defaultMetricsHtml;
+                elements.dashboardMetricsGrid.innerHTML = immersiveStreetViewMode
+                    ? getImmersiveMetricsHtml(metricsData)
+                    : defaultMetricsHtml;
             }
 
+            renderTrajectoryOverview(route, null);
             mapController.syncRide(route, null);
             return;
         }
@@ -173,20 +269,79 @@ export function createDashboardRenderer({
         if (elements.rideProgressSegment) elements.rideProgressSegment.textContent = currentRecord?.segmentName ?? "等待开始";
 
         if (elements.dashboardMetricsGrid) {
-            elements.dashboardMetricsGrid.innerHTML = Object.entries(customMetricsState)
-                .filter(([key, isEnabled]) => isEnabled)
-                .map(([key]) => {
-                    const metric = metricsData[key];
-                    return `
-                        <div class="data-item">
-                            <div class="data-label">${metric.label}</div>
-                            <div class="data-display ${metric.color}">${metric.value} <span class="unit">${metric.unit}</span></div>
-                        </div>
-                    `;
-                }).join("");
+            elements.dashboardMetricsGrid.innerHTML = immersiveStreetViewMode
+                ? getImmersiveMetricsHtml(metricsData)
+                : Object.entries(customMetricsState)
+                    .filter(([key, isEnabled]) => isEnabled)
+                    .map(([key]) => {
+                        const metric = metricsData[key];
+                        return `
+                            <div class="data-item">
+                                <div class="data-label">${metric.label}</div>
+                                <div class="data-display ${metric.color}">${metric.value} <span class="unit">${metric.unit}</span></div>
+                            </div>
+                        `;
+                    }).join("");
         }
 
+        renderTrajectoryOverview(route, currentRecord);
         mapController.syncRide(route, currentRecord);
+    }
+
+    function getImmersiveMetricsHtml(metricsData) {
+        const immersiveKeys = ["currentSpeed", "currentPower", "currentGrade", "currentCadence", "currentHr"];
+        return immersiveKeys.map((key) => {
+            const metric = metricsData[key];
+            return `
+                <div class="data-item">
+                    <div class="data-label">${metric.label}</div>
+                    <div class="data-display ${metric.color}">${metric.value} <span class="unit">${metric.unit}</span></div>
+                </div>
+            `;
+        }).join("");
+    }
+
+    function renderTrajectoryOverview(route, currentRecord) {
+        if (!elements.streetViewTrajectorySvg) return;
+
+        const points = (route?.points ?? []).filter((p) => typeof p.latitude === "number" && typeof p.longitude === "number");
+        if (points.length < 2) {
+            elements.streetViewTrajectorySvg.innerHTML = `
+                <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-size="12">
+                    暂无轨迹数据
+                </text>
+            `;
+            return;
+        }
+
+        const width = 300;
+        const height = 180;
+        const padding = 14;
+        const lats = points.map((p) => p.latitude);
+        const lngs = points.map((p) => p.longitude);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        const latRange = Math.max(maxLat - minLat, 1e-9);
+        const lngRange = Math.max(maxLng - minLng, 1e-9);
+
+        const toX = (lng) => padding + ((lng - minLng) / lngRange) * (width - padding * 2);
+        const toY = (lat) => height - padding - ((lat - minLat) / latRange) * (height - padding * 2);
+
+        const polyline = points.map((p) => `${toX(p.longitude).toFixed(1)},${toY(p.latitude).toFixed(1)}`).join(" ");
+        const start = points[0];
+        const end = points.at(-1);
+        const currentLat = typeof currentRecord?.positionLat === "number" ? currentRecord.positionLat : end.latitude;
+        const currentLng = typeof currentRecord?.positionLong === "number" ? currentRecord.positionLong : end.longitude;
+
+        elements.streetViewTrajectorySvg.innerHTML = `
+            <rect x="0" y="0" width="${width}" height="${height}" fill="#0f172a" rx="10"></rect>
+            <polyline points="${polyline}" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></polyline>
+            <circle cx="${toX(start.longitude).toFixed(1)}" cy="${toY(start.latitude).toFixed(1)}" r="4.2" fill="#22c55e"></circle>
+            <circle cx="${toX(end.longitude).toFixed(1)}" cy="${toY(end.latitude).toFixed(1)}" r="4.2" fill="#ef4444"></circle>
+            <circle cx="${toX(currentLng).toFixed(1)}" cy="${toY(currentLat).toFixed(1)}" r="5.3" fill="#f8fafc" stroke="#2563eb" stroke-width="2.2"></circle>
+        `;
     }
 
     return {
