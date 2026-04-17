@@ -99,6 +99,9 @@ export function createDashboardRenderer({
         if (elements.startRideDashboardBtn) {
             elements.startRideDashboardBtn.disabled = !liveRide.canStart || liveRide.isActive;
         }
+        if (elements.deviceControlsPanel) {
+            elements.deviceControlsPanel.style.display = liveRide.isActive ? "none" : "grid";
+        }
 
         const metricsData = {
             currentPower: { label: "实时功率", value: powerMeter?.power ?? 0, unit: "W", color: "power-color" },

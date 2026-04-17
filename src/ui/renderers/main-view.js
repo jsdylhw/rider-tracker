@@ -141,7 +141,8 @@ export function createMainView({
         rideDashboardElevationChart: document.getElementById("rideDashboardElevationChart"),
         trainerPushGradeValue: document.getElementById("trainerPushGradeValue"),
         trainerPushGradeMeta: document.getElementById("trainerPushGradeMeta"),
-        mapProviderSelect: document.getElementById("mapProviderSelect")
+        mapProviderSelect: document.getElementById("mapProviderSelect"),
+        deviceControlsPanel: document.getElementById("deviceControlsPanel")
     };
 
     elements.fitExportForm = document.getElementById("fitExportForm");

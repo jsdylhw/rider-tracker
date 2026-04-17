@@ -263,6 +263,7 @@
                     <p class="hero-text">连接功率计与心率带后，按路线坡度推进虚拟位置并同步地图与指标。</p>
                     <div class="controls mode-controls">
                         <button class="btn ghost go-home-btn">返回首页</button>
+                        <button id="openRideDashboardBtn" class="btn primary">进入骑行界面</button>
                     </div>
                 </div>
                 <div class="hero-metrics">
@@ -345,100 +346,7 @@
                         <div id="workoutControlStatus" class="route-summary">固定阻力待命：阻力等级 35%（开始骑行前已锁定控制模式）。</div>
                     </div>
 
-                    <div class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>设备连接与骑行控制</h2>
-                                <p class="section-subtitle">先连接设备，再进入骑行页面进行开始/结束控制。</p>
-                            </div>
-                        </div>
-                        <div class="controls">
-                            <button id="connectHrBtn" class="btn primary">连接心率带</button>
-                            <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
-                            <button id="connectTrainerBtn" class="btn secondary">连接骑行台</button>
-                            <button id="openRideDashboardBtn" class="btn secondary">进入骑行界面</button>
-                            <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
-                        </div>
-
-                        <div class="device-status-grid">
-                            <div class="summary-card">
-                                <span>心率设备</span>
-                                <strong id="hrDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="hrDeviceName">等待连接</p>
-                            </div>
-                            <div class="summary-card">
-                                <span>功率设备</span>
-                                <strong id="powerDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="powerDeviceName">等待连接</p>
-                            </div>
-                            <div class="summary-card">
-                                <span>骑行台控制</span>
-                                <strong id="trainerDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="trainerDeviceName">等待连接</p>
-                            </div>
-                            <div class="summary-card">
-                                <span>骑行状态</span>
-                                <strong id="rideStatusLabel">未开始</strong>
-                                <p class="device-meta" id="rideStatusMeta">连接功率计后即可开始骑行。</p>
-                            </div>
-                            <div class="summary-card">
-                                <span>推送坡度</span>
-                                <strong id="trainerPushGradeValue">0.0%</strong>
-                                <p class="device-meta" id="trainerPushGradeMeta">等待骑行开始后推送</p>
-                            </div>
-                            <div class="summary-card">
-                                <span>当前路段</span>
-                                <strong id="rideSegmentLabel">等待开始</strong>
-                                <p class="device-meta" id="rideSegmentMeta">速度将按当前路线坡度和实时功率计算。</p>
-                            </div>
-                        </div>
-
-                        <div class="data-grid">
-                            <div class="data-item">
-                                <div class="data-label">实时心率</div>
-                                <div class="data-display" id="liveHeartRateDisplay">-- <span class="unit">bpm</span></div>
-                            </div>
-                            <div class="data-item">
-                                <div class="data-label">实时功率</div>
-                                <div class="data-display power-color" id="livePowerDisplay">-- <span class="unit">W</span></div>
-                            </div>
-                            <div class="data-item">
-                                <div class="data-label">实时踏频</div>
-                                <div class="data-display accent-color" id="liveCadenceDisplay">-- <span class="unit">rpm</span></div>
-                            </div>
-                            <div class="data-item">
-                                <div class="data-label">实时均功率</div>
-                                <div class="data-display climb-color" id="liveAvgPowerDisplay">-- <span class="unit">W</span></div>
-                            </div>
-                            <div class="data-item">
-                                <div class="data-label">实时速度</div>
-                                <div class="data-display accent-color" id="liveSpeedDisplay">-- <span class="unit">km/h</span></div>
-                            </div>
-                            <div class="data-item">
-                                <div class="data-label">实时距离</div>
-                                <div class="data-display power-color" id="liveDistanceDisplay">-- <span class="unit">km</span></div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div id="liveExportSlot"></div>
-                </div>
-
-                <div class="column">
-                    <div class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>PiP 显示项</h2>
-                                <p class="section-subtitle">控制悬浮窗中显示的指标。</p>
-                            </div>
-                        </div>
-                        <div class="checkbox-group">
-                            <label><input type="checkbox" value="hr" checked> 心率</label>
-                            <label><input type="checkbox" value="power" checked> 功率</label>
-                            <label><input type="checkbox" value="time" checked> 时间</label>
-                            <label><input type="checkbox" value="np" checked> 进度</label>
-                        </div>
-                    </div>
                 </div>
             </section>
         </div>
@@ -446,7 +354,7 @@
 
     <template id="pip-template">
         <div id="pip-container" class="pip-mode">
-            <div class="pip-data-row" id="pip-dynamic-row"></div>
+            <div class="pip-metrics-grid" id="pip-metrics-grid"></div>
         </div>
     </template>
 
@@ -494,6 +402,7 @@
                 </div>
                 <div class="inline-actions">
                     <button id="customizeMetricsBtn" class="btn secondary">自定义面板</button>
+                    <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
                     <button id="startRideDashboardBtn" class="btn primary">开始骑行</button>
                     <button id="stopRideDashboardBtn" class="btn ghost">结束骑行</button>
                     <button id="closeRideDashboardBtn" class="btn ghost">返回页面</button>
@@ -519,6 +428,84 @@
                     <label><input type="checkbox" value="avgHr"> 平均心率</label>
                     <label><input type="checkbox" value="currentGrade" checked> 当前坡度</label>
                     <label><input type="checkbox" value="tss"> TSS</label>
+                </div>
+            </div>
+
+            <div id="deviceControlsPanel" class="layout-grid" style="margin-bottom: 1.5rem;">
+                <div class="column column-main">
+                    <div class="card">
+                        <div class="section-title-row">
+                            <div>
+                                <h2>设备连接与骑行控制</h2>
+                                <p class="section-subtitle">管理心率带、功率计与骑行台的连接状态，或开启悬浮窗。</p>
+                            </div>
+                        </div>
+                        <div class="controls">
+                            <button id="connectHrBtn" class="btn primary">连接心率带</button>
+                            <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
+                            <button id="connectTrainerBtn" class="btn secondary">连接骑行台</button>
+                        </div>
+
+                        <div class="device-status-grid">
+                            <div class="summary-card">
+                                <span>心率设备</span>
+                                <strong id="hrDeviceStatus">未连接</strong>
+                                <p class="device-meta" id="hrDeviceName">等待连接</p>
+                            </div>
+                            <div class="summary-card">
+                                <span>功率设备</span>
+                                <strong id="powerDeviceStatus">未连接</strong>
+                                <p class="device-meta" id="powerDeviceName">等待连接</p>
+                            </div>
+                            <div class="summary-card">
+                                <span>骑行台控制</span>
+                                <strong id="trainerDeviceStatus">未连接</strong>
+                                <p class="device-meta" id="trainerDeviceName">等待连接</p>
+                            </div>
+                            <div class="summary-card">
+                                <span>骑行状态</span>
+                                <strong id="rideStatusLabel">未开始</strong>
+                                <p class="device-meta" id="rideStatusMeta">连接功率计后即可开始骑行。</p>
+                            </div>
+                            <div class="summary-card">
+                                <span>推送坡度</span>
+                                <strong id="trainerPushGradeValue">0.0%</strong>
+                                <p class="device-meta" id="trainerPushGradeMeta">等待骑行开始后推送</p>
+                            </div>
+                            <div class="summary-card">
+                                <span>当前路段</span>
+                                <strong id="rideSegmentLabel">等待开始</strong>
+                                <p class="device-meta" id="rideSegmentMeta">速度将按当前路线坡度和实时功率计算。</p>
+                            </div>
+                        </div>
+                        
+                        <div class="data-grid" style="display: none;">
+                            <!-- Hidden redundant data grid for DOM compatibility -->
+                            <div class="data-display" id="liveHeartRateDisplay"></div>
+                            <div class="data-display" id="livePowerDisplay"></div>
+                            <div class="data-display" id="liveCadenceDisplay"></div>
+                            <div class="data-display" id="liveAvgPowerDisplay"></div>
+                            <div class="data-display" id="liveSpeedDisplay"></div>
+                            <div class="data-display" id="liveDistanceDisplay"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="column">
+                    <div class="card">
+                        <div class="section-title-row">
+                            <div>
+                                <h2>PiP 显示项</h2>
+                                <p class="section-subtitle">控制悬浮窗中显示的指标。</p>
+                            </div>
+                        </div>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" value="hr" checked> 心率</label>
+                            <label><input type="checkbox" value="power" checked> 功率</label>
+                            <label><input type="checkbox" value="time" checked> 时间</label>
+                            <label><input type="checkbox" value="np" checked> 进度</label>
+                        </div>
+                    </div>
                 </div>
             </div>
 
