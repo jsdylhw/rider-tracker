@@ -1,5 +1,8 @@
 const FTMS_SERVICE = "00001826-0000-1000-8000-00805f9b34fb";
 const FTMS_CONTROL_POINT = "00002ad9-0000-1000-8000-00805f9b34fb";
+const FTMS_FEATURE = "00002acc-0000-1000-8000-00805f9b34fb";
+const SUPPORTED_INCLINATION_RANGE = "00002ad5-0000-1000-8000-00805f9b34fb";
+const SUPPORTED_POWER_RANGE = "00002ad8-0000-1000-8000-00805f9b34fb";
 const FTMS_RESPONSE_OPCODE = 0x80;
 
 const FTMS_OPCODES = {
@@ -25,10 +28,22 @@ const DEFAULT_SIMULATION_CONFIG = {
 
 export function createTrainerFtms({ onStatus }) {
     let device = null;
+    let ftmsService = null;
     let controlPointChar = null;
     let pendingResponse = null;
     let commandQueue = Promise.resolve();
     let allowInclinationFallback = true;
+    let controlPointListener = null;
+    let disconnectListener = null;
+    let capabilities = {
+        simulationSupported: true,
+        inclinationSupported: true,
+        powerSupported: true,
+        minInclinePercent: -15,
+        maxInclinePercent: 20,
+        minPowerWatts: 0,
+        maxPowerWatts: 2000
+    };
 
     async function connect() {
         if (!navigator.bluetooth) {
@@ -43,19 +58,23 @@ export function createTrainerFtms({ onStatus }) {
             });
 
             const server = await device.gatt.connect();
-            const service = await server.getPrimaryService(FTMS_SERVICE);
-            controlPointChar = await service.getCharacteristic(FTMS_CONTROL_POINT);
+            ftmsService = await server.getPrimaryService(FTMS_SERVICE);
+            controlPointChar = await ftmsService.getCharacteristic(FTMS_CONTROL_POINT);
             allowInclinationFallback = true;
+            await hydrateCapabilities();
 
-            device.addEventListener("gattserverdisconnected", handleDisconnected);
+            disconnectListener = handleDisconnected;
+            device.addEventListener("gattserverdisconnected", disconnectListener);
 
             // FTMS Control Point requires us to subscribe to indications first before sending commands
             await controlPointChar.startNotifications();
-            controlPointChar.addEventListener("characteristicvaluechanged", handleControlPointResponse);
+            controlPointListener = handleControlPointResponse;
+            controlPointChar.addEventListener("characteristicvaluechanged", controlPointListener);
 
             // Send "Request Control" command and ensure trainer accepted it.
             await sendCommand(new Uint8Array([FTMS_OPCODES.REQUEST_CONTROL]), {
-                expectedRequestOpcode: FTMS_OPCODES.REQUEST_CONTROL
+                expectedRequestOpcode: FTMS_OPCODES.REQUEST_CONTROL,
+                awaitResponse: true
             });
 
             onStatus({
@@ -83,9 +102,18 @@ export function createTrainerFtms({ onStatus }) {
             pendingResponse.reject(new Error("智能骑行台连接已断开"));
             pendingResponse = null;
         }
+        if (controlPointChar && controlPointListener) {
+            controlPointChar.removeEventListener("characteristicvaluechanged", controlPointListener);
+        }
+        if (device && disconnectListener) {
+            device.removeEventListener("gattserverdisconnected", disconnectListener);
+        }
         commandQueue = Promise.resolve();
         device = null;
+        ftmsService = null;
         controlPointChar = null;
+        controlPointListener = null;
+        disconnectListener = null;
         onStatus({ type: "disconnected", message: "智能骑行台已断开" });
     }
 
@@ -131,7 +159,7 @@ export function createTrainerFtms({ onStatus }) {
             // 简单等待一小段时间让它生效，不强制等待 Notification 
             // 因为有些骑行台在频繁下发时不会对每条指令都返回 0x80
             await new Promise(r => setTimeout(r, 100));
-            resolve();
+            await resolve();
         } catch (error) {
             console.error("[FTMS] Failed to send command:", error);
             reject(error);
@@ -142,10 +170,9 @@ export function createTrainerFtms({ onStatus }) {
         }
     }
 
-    async function sendCommand(buffer, { expectedRequestOpcode } = {}) {
+    async function sendCommand(buffer, { expectedRequestOpcode, awaitResponse = false, responseTimeoutMs = 1500 } = {}) {
         if (!controlPointChar) {
-            console.warn("Cannot send command: FTMS Control Point not connected.");
-            return;
+            throw new Error("FTMS Control Point 未连接");
         }
 
         return new Promise((resolve, reject) => {
@@ -153,8 +180,51 @@ export function createTrainerFtms({ onStatus }) {
             if (cmdQueue.length > 2) {
                 cmdQueue = cmdQueue.slice(-1);
             }
-            cmdQueue.push({ buffer, expectedRequestOpcode, resolve, reject });
+            cmdQueue.push({
+                buffer,
+                expectedRequestOpcode,
+                resolve: async () => {
+                    if (!awaitResponse) {
+                        resolve();
+                        return;
+                    }
+                    try {
+                        const response = await waitForResponse(expectedRequestOpcode, responseTimeoutMs);
+                        if (response.result !== FTMS_RESPONSE_RESULT.SUCCESS) {
+                            throw new Error(`FTMS 返回失败（opcode 0x${expectedRequestOpcode?.toString(16)}): ${formatResultCode(response.result)}`);
+                        }
+                        resolve(response);
+                    } catch (error) {
+                        reject(error);
+                    }
+                },
+                reject
+            });
             processCommandQueue();
+        });
+    }
+
+    function waitForResponse(expectedRequestOpcode, timeoutMs) {
+        if (pendingResponse) {
+            return Promise.reject(new Error("已有未完成的 FTMS 响应等待"));
+        }
+
+        return new Promise((resolve, reject) => {
+            const timeoutId = window.setTimeout(() => {
+                pendingResponse = null;
+                reject(new Error(`命令超时（opcode 0x${expectedRequestOpcode?.toString(16)})`));
+            }, timeoutMs);
+
+            pendingResponse = {
+                timeoutId,
+                resolve: (result) => {
+                    if (typeof expectedRequestOpcode === "number" && result.requestOpcode !== expectedRequestOpcode) {
+                        return;
+                    }
+                    resolve(result);
+                },
+                reject
+            };
         });
     }
 
@@ -195,10 +265,13 @@ export function createTrainerFtms({ onStatus }) {
      * 例如：5.5% -> 55 (0x0037)
      */
     async function setTargetGrade(gradePercent) {
-        // 限制坡度在 -15% 到 +20% 之间
-        const clampedGrade = Math.max(-15, Math.min(20, gradePercent));
+        // 按设备支持范围限制坡度
+        const clampedGrade = Math.max(capabilities.minInclinePercent, Math.min(capabilities.maxInclinePercent, gradePercent));
         try {
             // 优先使用 Indoor Bike Simulation（0x11），兼容主流骑行台的 Sim 模式。
+            if (!capabilities.simulationSupported) {
+                throw new Error("设备不支持 0x11 Simulation");
+            }
             await sendIndoorBikeSimulation(clampedGrade);
             return { status: "confirmed", path: "0x11" };
         } catch (error) {
@@ -241,7 +314,7 @@ export function createTrainerFtms({ onStatus }) {
      * 参数: Power (SINT16, 精度 1W)
      */
     async function setTargetPower(powerWatts) {
-        const clampedPower = Math.max(0, Math.min(2000, powerWatts));
+        const clampedPower = Math.max(capabilities.minPowerWatts, Math.min(capabilities.maxPowerWatts, powerWatts));
         
         const buffer = new ArrayBuffer(3);
         const view = new DataView(buffer);
@@ -272,6 +345,51 @@ export function createTrainerFtms({ onStatus }) {
         await sendCommand(new Uint8Array(buffer), {
             expectedRequestOpcode: FTMS_OPCODES.SET_INDOOR_BIKE_SIMULATION
         });
+    }
+
+    async function hydrateCapabilities() {
+        capabilities = {
+            simulationSupported: true,
+            inclinationSupported: true,
+            powerSupported: true,
+            minInclinePercent: -15,
+            maxInclinePercent: 20,
+            minPowerWatts: 0,
+            maxPowerWatts: 2000
+        };
+
+        if (!ftmsService) {
+            return;
+        }
+
+        try {
+            const featureChar = await ftmsService.getCharacteristic(FTMS_FEATURE);
+            const featureValue = await featureChar.readValue();
+            const targetFlags = featureValue.getUint32(4, true);
+            capabilities.powerSupported = !!(targetFlags & (1 << 3));
+            capabilities.inclinationSupported = !!(targetFlags & (1 << 1));
+            capabilities.simulationSupported = !!(targetFlags & (1 << 13));
+        } catch {
+            // Some trainers don't expose feature characteristic reliably.
+        }
+
+        try {
+            const inclineRangeChar = await ftmsService.getCharacteristic(SUPPORTED_INCLINATION_RANGE);
+            const v = await inclineRangeChar.readValue();
+            capabilities.minInclinePercent = v.getInt16(0, true) / 10;
+            capabilities.maxInclinePercent = v.getInt16(2, true) / 10;
+        } catch {
+            // keep defaults
+        }
+
+        try {
+            const powerRangeChar = await ftmsService.getCharacteristic(SUPPORTED_POWER_RANGE);
+            const v = await powerRangeChar.readValue();
+            capabilities.minPowerWatts = v.getInt16(0, true);
+            capabilities.maxPowerWatts = v.getInt16(2, true);
+        } catch {
+            // keep defaults
+        }
     }
 
     return {

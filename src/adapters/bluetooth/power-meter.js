@@ -9,6 +9,9 @@ const INDOOR_BIKE_DATA = "00002ad2-0000-1000-8000-00805f9b34fb";
 
 export function createPowerMeter({ onData, onStatus }) {
     let device = null;
+    let cpChar = null;
+    let cscChar = null;
+    let indoorBikeChar = null;
     
     let currentPower = null;
     let currentCadence = null;
@@ -52,7 +55,7 @@ export function createPowerMeter({ onData, onStatus }) {
             // 1. 尝试连接 FTMS (智能骑行台服务)，它通常直接包含功率和踏频
             try {
                 const ftmsService = await server.getPrimaryService(FTMS_SERVICE);
-                const indoorBikeChar = await ftmsService.getCharacteristic(INDOOR_BIKE_DATA);
+                indoorBikeChar = await ftmsService.getCharacteristic(INDOOR_BIKE_DATA);
                 await indoorBikeChar.startNotifications();
                 indoorBikeChar.addEventListener("characteristicvaluechanged", handleIndoorBikeData);
                 foundServices.push("FTMS");
@@ -61,7 +64,7 @@ export function createPowerMeter({ onData, onStatus }) {
             // 2. 尝试连接传统的 Cycling Power 服务
             try {
                 const cpService = await server.getPrimaryService(CYCLING_POWER_SERVICE);
-                const cpChar = await cpService.getCharacteristic(CYCLING_POWER_MEASUREMENT);
+                cpChar = await cpService.getCharacteristic(CYCLING_POWER_MEASUREMENT);
                 await cpChar.startNotifications();
                 cpChar.addEventListener("characteristicvaluechanged", handlePowerMeasurement);
                 foundServices.push("Power");
@@ -70,7 +73,7 @@ export function createPowerMeter({ onData, onStatus }) {
             // 3. 尝试连接独立的 CSC (速度与踏频) 服务
             try {
                 const cscService = await server.getPrimaryService(CSC_SERVICE);
-                const cscChar = await cscService.getCharacteristic(CSC_MEASUREMENT);
+                cscChar = await cscService.getCharacteristic(CSC_MEASUREMENT);
                 await cscChar.startNotifications();
                 cscChar.addEventListener("characteristicvaluechanged", handleCscMeasurement);
                 foundServices.push("CSC");
@@ -94,6 +97,19 @@ export function createPowerMeter({ onData, onStatus }) {
     }
 
     async function disconnect() {
+        clearTimeout(cadenceTimeout);
+        if (cpChar) {
+            cpChar.removeEventListener("characteristicvaluechanged", handlePowerMeasurement);
+        }
+        if (cscChar) {
+            cscChar.removeEventListener("characteristicvaluechanged", handleCscMeasurement);
+        }
+        if (indoorBikeChar) {
+            indoorBikeChar.removeEventListener("characteristicvaluechanged", handleIndoorBikeData);
+        }
+        if (device) {
+            device.removeEventListener("gattserverdisconnected", handleDisconnected);
+        }
         if (device?.gatt?.connected) {
             device.gatt.disconnect();
         }
@@ -101,7 +117,11 @@ export function createPowerMeter({ onData, onStatus }) {
     }
 
     function handleDisconnected() {
+        clearTimeout(cadenceTimeout);
         device = null;
+        cpChar = null;
+        cscChar = null;
+        indoorBikeChar = null;
         previousCrankSamples = { cp: null, csc: null };
         onStatus({ type: "disconnected", message: "设备已断开" });
     }
