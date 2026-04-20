@@ -1,4 +1,5 @@
 import { runSuites, renderResults } from "./helpers/test-harness.js";
+import { installDomParserPolyfill } from "./helpers/dom-parser-polyfill.js";
 import { suite as routeSuite } from "./unit/route-builder.test.js";
 import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
@@ -10,8 +11,13 @@ import { suite as resistanceSuite } from "./unit/resistance-mode.test.js";
 import { suite as trainerCommandSuite } from "./unit/trainer-command.test.js";
 import { suite as workoutServiceSuite } from "./unit/workout-service.test.js";
 import { suite as ergLiveFlowSuite } from "./integration/erg-live-flow.test.js";
+import { suite as gpxFixturesSuite } from "./integration/gpx-fixtures.test.js";
+import { suite as rideRegressionSuite } from "./integration/ride-regression.test.js";
+import { suite as streetviewUiSuite } from "./integration/streetview-ui.test.js";
+import { suite as routeRendererImportSuite } from "./unit/route-renderer-import.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
+installDomParserPolyfill();
 const suites = [
     routeSuite,
     gpxSuite,
@@ -23,7 +29,11 @@ const suites = [
     resistanceSuite,
     trainerCommandSuite,
     workoutServiceSuite,
-    ergLiveFlowSuite
+    ergLiveFlowSuite,
+    gpxFixturesSuite,
+    rideRegressionSuite,
+    streetviewUiSuite,
+    routeRendererImportSuite
 ];
 
 runSuites(suites).then((results) => {

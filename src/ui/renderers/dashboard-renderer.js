@@ -57,7 +57,7 @@ export function createDashboardRenderer({
         }
 
         if (elements.loadStreetViewBtn) {
-            elements.loadStreetViewBtn.addEventListener("click", () => {
+            elements.loadStreetViewBtn.addEventListener("click", async () => {
                 const apiKey = elements.streetViewApiKey?.value?.trim();
                 if (!apiKey) {
                     alert("请输入 Google Maps API Key");
@@ -68,43 +68,24 @@ export function createDashboardRenderer({
                 elements.loadStreetViewBtn.disabled = true;
                 elements.loadStreetViewBtn.textContent = "加载中...";
                 streetViewLoaded = false;
-
-                window.gm_authFailure = () => {
-                    alert("API Key 验证失败，请检查 Key 与配额设置。");
-                    streetViewLoaded = false;
-                    elements.loadStreetViewBtn.disabled = false;
-                    elements.loadStreetViewBtn.textContent = "加载街景";
-                    if (elements.immersiveStreetViewBtn) {
-                        elements.immersiveStreetViewBtn.hidden = true;
-                    }
-                };
-
-                const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=initLiveStreetView`;
-                script.async = true;
-                script.defer = true;
-                
-                window.initLiveStreetView = () => {
-                    elements.loadStreetViewBtn.textContent = "街景已开启";
-                    elements.streetViewContainer.style.display = "block";
-                    streetViewLoaded = true;
-                    mapController.enableStreetView({
+                try {
+                    await mapController.enableStreetView({
+                        apiKey,
                         container1: elements.svPano1,
                         container2: elements.svPano2
                     });
-                };
-
-                script.onerror = () => {
-                    alert("API 加载失败，请检查网络连接或 API Key。");
+                    elements.loadStreetViewBtn.textContent = "街景已开启";
+                    elements.streetViewContainer.style.display = "block";
+                    streetViewLoaded = true;
+                } catch (error) {
+                    alert(error?.message ?? "街景加载失败，请检查网络连接或 API Key。");
                     streetViewLoaded = false;
                     elements.loadStreetViewBtn.disabled = false;
                     elements.loadStreetViewBtn.textContent = "加载街景";
                     if (elements.immersiveStreetViewBtn) {
                         elements.immersiveStreetViewBtn.hidden = true;
                     }
-                };
-
-                document.body.appendChild(script);
+                }
             });
         }
 

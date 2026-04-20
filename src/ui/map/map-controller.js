@@ -1,4 +1,4 @@
-import { STREET_VIEW_UPDATE_INTERVAL_MS } from "../../app/store/initial-state.js";
+import { createStreetViewController, loadGoogleMapsForStreetView } from "./street-view-controller.js";
 
 const MAP_PROVIDERS = {
     osm: {
@@ -91,13 +91,12 @@ export function createMapController({ previewElement, dashboardElement, initialP
 
     let streetViewController = null;
 
-    function enableStreetView(containers) {
-        if (!window.google || !window.google.maps || !window.google.maps.StreetViewPanorama) {
-            console.error("Google Maps API not loaded");
-            return;
+    async function enableStreetView({ apiKey, container1, container2 }) {
+        await loadGoogleMapsForStreetView(apiKey);
+        if (streetViewController) {
+            streetViewController.destroy();
         }
-
-        streetViewController = createStreetViewController(containers);
+        streetViewController = createStreetViewController({ container1, container2 });
     }
 
     return {
@@ -107,162 +106,6 @@ export function createMapController({ previewElement, dashboardElement, initialP
         enableStreetView,
         isReady: Boolean(window.L)
     };
-}
-
-function createStreetViewController({ container1, container2 }) {
-    const svService = new window.google.maps.StreetViewService();
-    
-    const commonOptions = {
-        zoom: 1,
-        addressControl: false,
-        showRoadLabels: false,
-        linksControl: false,
-        panControl: false,
-        enableCloseButton: false,
-        motionTracking: false,
-        motionTrackingControl: false,
-        clickToGo: false,
-        disableDefaultUI: true
-    };
-
-    const pano1 = new window.google.maps.StreetViewPanorama(container1, { ...commonOptions });
-    const pano2 = new window.google.maps.StreetViewPanorama(container2, { ...commonOptions });
-    
-    let activeIndex = 1;
-    let lastDistance = -1;
-    let pauseAutoUntil = 0;
-    let applyingProgrammaticPov = false;
-    const USER_INTERACTION_PAUSE_MS = 3000;
-    
-    // 街景更新节流（由全局配置统一管理）
-    let lastUpdateTime = 0;
-    const UPDATE_INTERVAL_MS = STREET_VIEW_UPDATE_INTERVAL_MS;
-
-    function pauseAutoUpdateForUserInteraction() {
-        pauseAutoUntil = Date.now() + USER_INTERACTION_PAUSE_MS;
-    }
-
-    function isAutoUpdatePaused() {
-        return Date.now() < pauseAutoUntil;
-    }
-
-    function setProgrammaticPov(panorama, pov) {
-        applyingProgrammaticPov = true;
-        panorama.setPov(pov);
-        queueMicrotask(() => {
-            applyingProgrammaticPov = false;
-        });
-    }
-
-    function bindUserInteractionPause(container, panorama) {
-        if (container) {
-            container.addEventListener("pointerdown", pauseAutoUpdateForUserInteraction);
-            container.addEventListener("wheel", pauseAutoUpdateForUserInteraction, { passive: true });
-            container.addEventListener("touchstart", pauseAutoUpdateForUserInteraction, { passive: true });
-        }
-
-        window.google.maps.event.addListener(panorama, "pov_changed", () => {
-            if (!applyingProgrammaticPov) {
-                pauseAutoUpdateForUserInteraction();
-            }
-        });
-    }
-
-    bindUserInteractionPause(container1, pano1);
-    bindUserInteractionPause(container2, pano2);
-
-    function getTargetStateAtDistance(route, distanceMeters) {
-        if (!route || !route.points || route.points.length === 0) return null;
-        const points = route.points;
-        if (distanceMeters <= 0) return { lat: points[0].latitude, lng: points[0].longitude, grade: points[0].gradePercent };
-        if (distanceMeters >= route.totalDistanceMeters) return { lat: points[points.length - 1].latitude, lng: points[points.length - 1].longitude, grade: points[points.length - 1].gradePercent };
-
-        let idx = 0;
-        while (idx < points.length - 1 && points[idx + 1].distanceMeters < distanceMeters) {
-            idx++;
-        }
-        const p1 = points[idx];
-        const p2 = points[idx + 1];
-        if (!p2) return { lat: p1.latitude, lng: p1.longitude, grade: p1.gradePercent };
-
-        const segmentDist = p2.distanceMeters - p1.distanceMeters;
-        const ratio = segmentDist === 0 ? 0 : (distanceMeters - p1.distanceMeters) / segmentDist;
-
-        return {
-            lat: p1.latitude + (p2.latitude - p1.latitude) * ratio,
-            lng: p1.longitude + (p2.longitude - p1.longitude) * ratio,
-            grade: p1.gradePercent + (p2.gradePercent - p1.gradePercent) * ratio
-        };
-    }
-
-    function update(route, currentRecord) {
-        if (!route || !currentRecord) return;
-        if (isAutoUpdatePaused()) return;
-        
-        const now = Date.now();
-        const currentDistanceMeters = currentRecord.distanceKm * 1000;
-
-        // 初始化或者时间到达 5 秒间隔
-        if (lastDistance === -1 || (now - lastUpdateTime > UPDATE_INTERVAL_MS)) {
-            lastUpdateTime = now;
-            lastDistance = currentDistanceMeters;
-
-            const state = getTargetStateAtDistance(route, currentDistanceMeters);
-            if (!state) return;
-
-            const nextState = getTargetStateAtDistance(route, currentDistanceMeters + 5);
-            let heading = 0;
-            if (nextState) {
-                heading = window.google.maps.geometry.spherical.computeHeading(
-                    new window.google.maps.LatLng(state.lat, state.lng),
-                    new window.google.maps.LatLng(nextState.lat, nextState.lng)
-                );
-            }
-            const pitch = Math.atan(state.grade / 100) * (180 / Math.PI);
-
-            const activePanorama = activeIndex === 1 ? pano1 : pano2;
-            const nextPanorama = activeIndex === 1 ? pano2 : pano1;
-            const activeEl = container1.parentElement.querySelector(`#svPano${activeIndex}`);
-            const nextEl = container1.parentElement.querySelector(`#svPano${activeIndex === 1 ? 2 : 1}`);
-
-            svService.getPanorama({ location: new window.google.maps.LatLng(state.lat, state.lng), radius: 50 }, (data, status) => {
-                if (status === window.google.maps.StreetViewStatus.OK && data.location && data.location.pano) {
-                    const targetPanoId = data.location.pano;
-                    const currentPanoId = activePanorama.getPano();
-
-                    if (targetPanoId === currentPanoId) {
-                        setProgrammaticPov(activePanorama, { heading, pitch });
-                        return;
-                    }
-
-                    nextPanorama.setPano(targetPanoId);
-                    setProgrammaticPov(nextPanorama, { heading, pitch });
-
-                    const listener = window.google.maps.event.addListener(nextPanorama, 'status_changed', () => {
-                        if (nextPanorama.getStatus() === 'OK') {
-                            window.google.maps.event.removeListener(listener);
-                            if (nextEl && activeEl) {
-                                nextEl.style.opacity = '1';
-                                nextEl.style.zIndex = '2';
-                                activeEl.style.opacity = '0';
-                                activeEl.style.zIndex = '1';
-                            }
-                            activeIndex = activeIndex === 1 ? 2 : 1;
-                        }
-                    });
-                    
-                    // Preload next update window
-                    const speedMps = (currentRecord.speedKph || 25) / 3.6;
-                    const futureState = getTargetStateAtDistance(route, currentDistanceMeters + speedMps * (UPDATE_INTERVAL_MS / 1000));
-                    if (futureState) {
-                        svService.getPanorama({ location: new window.google.maps.LatLng(futureState.lat, futureState.lng), radius: 50 }, () => {});
-                    }
-                }
-            });
-        }
-    }
-
-    return { update };
 }
 
 function createLayerSet(map) {
