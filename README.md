@@ -1,101 +1,59 @@
 # Rider Tracker 🚴‍♂️
 
-一个轻量级的纯 Web 虚拟室内骑行平台。支持连接蓝牙心率带、功率计，导入真实 GPX 路线进行物理模拟与实时骑行，并将训练结果导出为标准 FIT 文件。
-
-同时，它通过 Chrome 的 Document Picture-in-Picture API 实现了**完美置顶悬浮窗**。你可以一边看剧或办公，一边在屏幕角落实时监控自己的骑行数据。
+## Overview / 项目简介
+Rider Tracker 是一个基于浏览器的虚拟骑行平台，支持导入 GPX 路线、连接蓝牙设备（心率带/功率计/骑行台）、进行实时骑行与离线模拟，并导出 FIT/JSON 数据。项目同时提供沉浸式街景骑行和 PiP 悬浮窗能力。  
+Rider Tracker is a browser-based virtual cycling platform. It supports GPX route import, Bluetooth device connection (HR monitor / power meter / trainer), real-time riding and offline simulation, plus FIT/JSON export. It also includes immersive Street View mode and a PiP overlay.
 
 ---
 
-## 🚀 1. 启动本地服务器
+## Quick Start / 快速启动
+由于 Web Bluetooth 的安全限制，请通过本地服务器启动，不要直接双击 HTML 文件。  
+Due to Web Bluetooth security requirements, run the project through a local server (do not open the HTML file directly).
 
-由于 Web Bluetooth 等现代 API 的安全限制，**不能直接双击打开 HTML 文件**，必须通过本地服务器访问。
-
-### 推荐方法：使用 Live Server 插件（最简单）
-如果你使用 VS Code / Trae，直接在扩展商店安装 **Live Server** 插件，然后在 `index.html` 上右键选择 **"Open with Live Server"** 即可。
-
-### 命令行启动方法
-如果你习惯使用命令行，进入项目根目录后：
-
-**使用 Python：**
 ```bash
+# Python
 python -m http.server 8000
-# 或
-python3 -m http.server 8000
-```
 
-**使用 Node.js：**
-```bash
+# Node.js
 npx http-server -p 8000
 ```
-启动成功后，在 **最新版的 Chrome 或 Edge 浏览器** 中访问 [http://localhost:8000](http://localhost:8000) 即可。
+
+打开浏览器访问（Open in browser）:  
+[http://localhost:8000](http://localhost:8000)
 
 ---
 
-## ⚙️ 2. 个人参数设置
+## How To Use / 使用方法
 
-系统内置了一套默认的物理模型参数，但为了获得准确的虚拟速度和 TSS 等指标，建议你配置自己的专属数据。
+### 1) 路线设置 | Route Setup
+支持手工分段路线和 GPX 导入。  
+You can build routes manually or import GPX files.
 
-在项目根目录下创建一个名为 `user-profile.json` 的文件（此文件已被 git 忽略，不会泄露隐私），内容参考如下：
+### 2) 离线模拟 | Offline Simulation
+输入功率后运行模拟，快速得到全程速度/时间结果。  
+Run a full-route simulation with target power to estimate speed and completion time.
 
-```json
-{
-    "mass": 70,          // 你的体重 (kg)
-    "ftp": 220,          // 你的阈值功率 (W)
-    "restingHr": 60,     // 你的静息心率 (bpm)
-    "maxHr": 185,        // 你的最大心率 (bpm)
-    "cda": 0.32,         // 空气阻力系数
-    "crr": 0.004,        // 滚动阻力系数
-    "windSpeed": 0       // 风速 (m/s)
-}
-```
-保存后，刷新网页，系统会自动读取并应用你的个人设置。
+### 3) 实时骑行 | Live Ride
+连接心率带和功率计后开始骑行；可选连接骑行台启用训练控制。  
+Connect HR and power devices, then start riding; optionally connect a trainer for control modes.
 
----
+### 4) 沉浸街景 | Immersive Street View
+在骑行界面输入 Google API Key，加载街景后可进入沉浸模式。  
+Enter Google API key in the live dashboard, load Street View, then enter immersive mode.
 
-## 🗺️ 3. 路线与地图 (加载 GPX)
-
-你可以通过两种方式设置骑行路线：
-
-1. **手工分段路线**：在页面的“路线轨迹”面板，手动添加路段并设置距离和坡度。
-2. **导入 GPX 文件**（推荐）：
-   - 点击“选择文件”上传你的 `.gpx` 轨迹文件。
-   - 系统会自动解析轨迹点、海拔和坡度。
-   - 右侧会显示真实的地图底图以及你的骑行路线预览。
+### 5) 数据导出 | Data Export
+骑行后可导出 FIT 或 JSON。  
+Export ride data as FIT or JSON after a ride.
 
 ---
 
-## 🚴 4. 开始骑行与模拟
-
-### 方式 A：离线模拟（无需连接设备）
-如果你只想测试某条路线的难度或预估完赛时间：
-1. 导入路线后，在“模拟参数”中输入一个恒定功率（如 200W）。
-2. 点击 **“运行模拟”**。
-3. 系统会瞬间跑完整个路线，并生成距离-时间曲线、平均速度、用时等结果。
-
-### 方式 B：实时骑行（连接蓝牙设备）
-1. 确保你的电脑蓝牙已开启。
-2. 在“蓝牙设备”面板，分别点击 **“连接心率带”** 和 **“连接功率计”** 并配对。
-3. 点击 **“开始骑行”**。
-4. 系统会根据你的实时踩踏功率和当前路段的坡度，自动计算出虚拟速度，并在地图上实时移动你的位置 marker。
-
-*(提示：骑行过程中可以点击“独立骑行界面”进入沉浸模式，或者点击“开启悬浮窗”将核心数据置顶显示。)*
+## Compatibility / 兼容性
+- **操作系统 / OS:** Windows 10/11, macOS
+- **浏览器 / Browser:** Chromium-based browsers (Chrome/Edge latest recommended)
+- **不支持 / Not Supported:** Safari, Firefox (limited Web Bluetooth / Document PiP support)
 
 ---
 
-## 💾 5. 导出训练数据 (FIT 文件)
-
-骑行（或模拟）结束后，你可以将产生的数据导出并上传到 Strava、Garmin Connect 等平台：
-
-1. 在“FIT 导出信息”面板，可以选填你的活动标题和说明。
-2. 点击 **“导出 FIT”** 按钮。
-3. 浏览器会下载一个 `.fit` 格式的文件。
-   - 该文件被标记为“虚拟骑行”。
-   - 包含了功率、心率、速度、踏频、距离、海拔、坡度等完整秒级记录。
-   - 如果你使用的是 GPX 路线，FIT 文件中还会包含真实的 GPS 经纬度轨迹，上传后可以在平台上看到地图轨迹。
-4. 如果你需要原始数据进行分析，也可以点击 **“导出数据 JSON”**。
-
----
-
-## 🖥️ 兼容性
-- **操作系统**: Windows 10/11, macOS
-- **浏览器**: 仅限基于 Chromium 且版本较新的浏览器 (Chrome 111+, Edge 111+ 等)，**不支持 Safari 和 Firefox**（因其不支持 Web Bluetooth 和 Document PiP API）。
+## Notes / 说明
+- 项目目前为前端主导架构，适合本地训练与功能验证。  
+- This project is currently frontend-first and optimized for local training and feature validation.
