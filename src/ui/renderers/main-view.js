@@ -304,9 +304,14 @@ export function createMainView({
         renderRecords(records);
         renderChart(records);
         
-        // Ensure route chart on dashboard gets the current record pointer
-        const currentRecord = session?.records?.at(-1) ?? null;
-        routeRenderer.renderElevationChart(session?.route ?? state.route, currentRecord);
+        // 实时骑行中的预览使用 live session 路线+当前位置；非骑行状态使用当前选中的路线
+        const previewRoute = state.liveRide.isActive
+            ? (state.liveRide.session?.route ?? state.route)
+            : state.route;
+        const currentRecord = state.liveRide.isActive
+            ? (state.liveRide.session?.records?.at(-1) ?? null)
+            : null;
+        routeRenderer.renderElevationChart(previewRoute, currentRecord);
     }
 
     function renderRecords(records) {

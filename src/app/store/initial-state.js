@@ -104,24 +104,24 @@ function createInitialLiveRideState() {
 
 function createInitialWorkoutState() {
     return {
-        mode: WORKOUT_MODES.FREE_RIDE,
+        mode: WORKOUT_MODES.GRADE_SIM,
         gradeSimulation: {
             difficultyPercent: 100,
             lookaheadMeters: 120,
             maxUphillPercent: 20,
-            maxDownhillPercent: -3,
+            maxDownhillPercent: 0,
             smoothingFactor: 0.7
         },
         runtime: {
             available: false,
-            trainerControlMode: TRAINER_CONTROL_MODES.RESISTANCE,
+            trainerControlMode: TRAINER_CONTROL_MODES.SIM,
             currentGradePercent: 0,
             lookaheadGradePercent: 0,
             targetTrainerGradePercent: 0,
             targetErgPowerWatts: null,
             targetResistanceLevel: 35,
             pendingTrainerCommand: null,
-            controlStatus: "固定阻力待命：阻力等级 35%（开始骑行前已锁定控制模式）。"
+            controlStatus: "坡度模拟待命：已基于当前路线实时梯度生成目标模拟坡度，开始骑行后按预先锁定模式下发 trainer 指令。"
         }
     };
 }

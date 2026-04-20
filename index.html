@@ -284,18 +284,10 @@
 
             <section class="layout-grid">
                 <div class="column" id="live-col-1">
-                    <div class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>路线坡度预览</h2>
-                                <p class="section-subtitle">先通过这张主坡度图查看当前已选路线的实时梯度和骑行位置。</p>
-                            </div>
-                        </div>
-                        <div class="chart-shell">
-                            <svg id="elevationChart" viewBox="0 0 640 180" preserveAspectRatio="none"></svg>
-                        </div>
-                    </div>
+                    <div id="liveExportSlot"></div>
+                </div>
 
+                <div class="column" id="live-col-2">
                     <div class="card">
                         <div class="section-title-row">
                             <div>
@@ -309,7 +301,7 @@
                                 <select id="workoutModeSelect" name="mode">
                                     <option value="free-ride">自由骑行（固定阻力）</option>
                                     <option value="fixed-power">固定功率（ERG）</option>
-                                    <option value="grade-sim">坡度模拟</option>
+                                    <option value="grade-sim" selected>坡度模拟</option>
                                 </select>
                             </label>
                             <label class="field">
@@ -346,7 +338,17 @@
                         <div id="workoutControlStatus" class="route-summary">固定阻力待命：阻力等级 35%（开始骑行前已锁定控制模式）。</div>
                     </div>
 
-                    <div id="liveExportSlot"></div>
+                    <div class="card">
+                        <div class="section-title-row">
+                            <div>
+                                <h2>路线坡度预览</h2>
+                                <p class="section-subtitle">先通过这张主坡度图查看当前已选路线的实时梯度和骑行位置。</p>
+                            </div>
+                        </div>
+                        <div class="chart-shell">
+                            <svg id="elevationChart" viewBox="0 0 640 180" preserveAspectRatio="none"></svg>
+                        </div>
+                    </div>
                 </div>
             </section>
         </div>

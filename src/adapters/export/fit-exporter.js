@@ -106,7 +106,7 @@ export async function exportSessionAsFit(session, exportMetadata) {
         maxNegGrade: gradeStats.maxNegGrade,
         sportProfileName: metadata.profileName,
         sport: "cycling",
-        subSport: "virtualActivity"
+        // subSport: "virtualActivity"
     });
 
     encoder.onMesg(Profile.MesgNum.EVENT, {

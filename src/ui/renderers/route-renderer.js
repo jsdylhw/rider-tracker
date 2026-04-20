@@ -19,11 +19,19 @@ export function createRouteRenderer({
             elements.resetRouteBtn.addEventListener("click", onResetRoute);
         }
         if (elements.gpxFileInput) {
+            elements.gpxFileInput.addEventListener("click", (event) => {
+                // 允许重复选择同一个文件时依然触发 change
+                event.target.value = "";
+            });
             elements.gpxFileInput.addEventListener("change", async (event) => {
                 const [file] = event.target.files ?? [];
                 if (!file) return;
-                await onImportGpx(file);
-                event.target.value = "";
+                try {
+                    await onImportGpx(file);
+                } finally {
+                    // 无论导入成功或失败，都清空，避免下次同名同文件不触发
+                    event.target.value = "";
+                }
             });
         }
         if (elements.mapProviderSelect) {
