@@ -4,14 +4,10 @@ const CYCLING_POWER_MEASUREMENT = "00002a63-0000-1000-8000-00805f9b34fb";
 const CSC_SERVICE = "00001816-0000-1000-8000-00805f9b34fb";
 const CSC_MEASUREMENT = "00002a5b-0000-1000-8000-00805f9b34fb";
 
-const FTMS_SERVICE = "00001826-0000-1000-8000-00805f9b34fb";
-const INDOOR_BIKE_DATA = "00002ad2-0000-1000-8000-00805f9b34fb";
-
 export function createPowerMeter({ onData, onStatus }) {
     let device = null;
     let cpChar = null;
     let cscChar = null;
-    let indoorBikeChar = null;
     
     let currentPower = null;
     let currentCadence = null;
@@ -35,16 +31,15 @@ export function createPowerMeter({ onData, onStatus }) {
             throw new Error("当前浏览器不支持 Web Bluetooth");
         }
         
-        onStatus({ type: "connecting", message: "正在搜索蓝牙功率计/骑行台..." });
+        onStatus({ type: "connecting", message: "正在搜索外置功率计/踏频设备..." });
 
         try {
             device = await navigator.bluetooth.requestDevice({
                 filters: [
                     { services: [CYCLING_POWER_SERVICE] },
-                    { services: [FTMS_SERVICE] },
                     { services: [CSC_SERVICE] }
                 ],
-                optionalServices: [CYCLING_POWER_SERVICE, CSC_SERVICE, FTMS_SERVICE]
+                optionalServices: [CYCLING_POWER_SERVICE, CSC_SERVICE]
             });
 
             const server = await device.gatt.connect();
@@ -52,16 +47,7 @@ export function createPowerMeter({ onData, onStatus }) {
 
             let foundServices = [];
 
-            // 1. 尝试连接 FTMS (智能骑行台服务)，它通常直接包含功率和踏频
-            try {
-                const ftmsService = await server.getPrimaryService(FTMS_SERVICE);
-                indoorBikeChar = await ftmsService.getCharacteristic(INDOOR_BIKE_DATA);
-                await indoorBikeChar.startNotifications();
-                indoorBikeChar.addEventListener("characteristicvaluechanged", handleIndoorBikeData);
-                foundServices.push("FTMS");
-            } catch (e) { /* Ignore */ }
-
-            // 2. 尝试连接传统的 Cycling Power 服务
+            // 1. 尝试连接传统的 Cycling Power 服务
             try {
                 const cpService = await server.getPrimaryService(CYCLING_POWER_SERVICE);
                 cpChar = await cpService.getCharacteristic(CYCLING_POWER_MEASUREMENT);
@@ -70,7 +56,7 @@ export function createPowerMeter({ onData, onStatus }) {
                 foundServices.push("Power");
             } catch (e) { /* Ignore */ }
 
-            // 3. 尝试连接独立的 CSC (速度与踏频) 服务
+            // 2. 尝试连接独立的 CSC (速度与踏频) 服务
             try {
                 const cscService = await server.getPrimaryService(CSC_SERVICE);
                 cscChar = await cscService.getCharacteristic(CSC_MEASUREMENT);
@@ -104,9 +90,6 @@ export function createPowerMeter({ onData, onStatus }) {
         if (cscChar) {
             cscChar.removeEventListener("characteristicvaluechanged", handleCscMeasurement);
         }
-        if (indoorBikeChar) {
-            indoorBikeChar.removeEventListener("characteristicvaluechanged", handleIndoorBikeData);
-        }
         if (device) {
             device.removeEventListener("gattserverdisconnected", handleDisconnected);
         }
@@ -121,8 +104,9 @@ export function createPowerMeter({ onData, onStatus }) {
         device = null;
         cpChar = null;
         cscChar = null;
-        indoorBikeChar = null;
         previousCrankSamples = { cp: null, csc: null };
+        currentPower = null;
+        currentCadence = null;
         onStatus({ type: "disconnected", message: "设备已断开" });
     }
 
@@ -162,36 +146,6 @@ export function createPowerMeter({ onData, onStatus }) {
             currentCadence = parsedCadence;
         }
         
-        emitData();
-    }
-
-    function handleIndoorBikeData(event) {
-        const value = event.target.value;
-        const flags = value.getUint16(0, true);
-        let offset = 2; // 跳过 Flags
-
-        // Instantaneous Speed 总是存在的 (2 bytes)
-        offset += 2; 
-
-        if (flags & 0x0002) offset += 2; // Avg Speed
-
-        // 踏频 (Instantaneous Cadence)
-        if (flags & 0x0004) {
-            const cadenceRaw = value.getUint16(offset, true);
-            currentCadence = Math.round(cadenceRaw / 2); // FTMS 踏频分辨率是 0.5 RPM
-            offset += 2;
-        }
-
-        if (flags & 0x0008) offset += 2; // Avg Cadence
-        if (flags & 0x0010) offset += 3; // Total Distance
-        if (flags & 0x0020) offset += 2; // Resistance Level
-
-        // 功率 (Instantaneous Power)
-        if (flags & 0x0040) {
-            currentPower = value.getInt16(offset, true);
-            offset += 2;
-        }
-
         emitData();
     }
 
@@ -245,6 +199,7 @@ export function createPowerMeter({ onData, onStatus }) {
 
     return {
         toggle,
-        disconnect
+        disconnect,
+        get isConnected() { return !!device?.gatt?.connected; }
     };
 }

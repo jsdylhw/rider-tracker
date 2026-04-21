@@ -32,8 +32,10 @@ export function createDeviceRenderer({
             elements.connectHrBtn.textContent = heartRate.isConnected ? "断开心率带" : (heartRate.isConnecting ? "连接中心率带..." : "连接心率带");
         }
         if (elements.connectPowerBtn) {
-            elements.connectPowerBtn.disabled = !state.ble.supported || powerMeter.isConnecting;
-            elements.connectPowerBtn.textContent = powerMeter.isConnected ? "断开功率计" : (powerMeter.isConnecting ? "连接中功率计..." : "连接功率计");
+            elements.connectPowerBtn.disabled = !state.ble.supported || powerMeter.externalConnecting;
+            elements.connectPowerBtn.textContent = powerMeter.externalConnected
+                ? "断开外置功率计"
+                : (powerMeter.externalConnecting ? "连接中外置功率计..." : "连接外置功率计");
         }
         if (elements.connectTrainerBtn) {
             elements.connectTrainerBtn.disabled = !state.ble.supported || trainer.isConnecting;

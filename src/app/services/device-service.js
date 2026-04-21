@@ -1,6 +1,5 @@
 import { createHeartRateMonitor } from "../../adapters/bluetooth/heart-rate-monitor.js";
-import { createPowerMeter } from "../../adapters/bluetooth/power-meter.js";
-import { createTrainerFtms } from "../../adapters/bluetooth/trainer-ftms.js";
+import { createControllableTrainer } from "../../adapters/bluetooth/controllable-trainer.js";
 
 function mapStatusLabel(type) {
     if (type === "connected") {
@@ -46,58 +45,8 @@ export function createDeviceService({ store }) {
         }
     });
 
-    const powerMeter = createPowerMeter({
-        onData: (data) => {
-            store.setState((state) => {
-                const sampleCount = state.ble.powerMeter.sampleCount + 1;
-                const powerTotal = state.ble.powerMeter.powerTotal + data.power;
-
-                return {
-                    ...state,
-                    ble: {
-                        ...state.ble,
-                        powerMeter: {
-                            ...state.ble.powerMeter,
-                            power: data.power,
-                            cadence: data.cadence ?? state.ble.powerMeter.cadence,
-                            averagePower: Math.round(powerTotal / sampleCount),
-                            sampleCount,
-                            powerTotal,
-                            lastUpdated: data.timestamp
-                        }
-                    }
-                };
-            });
-        },
-        onStatus: (status) => {
-            store.setState((state) => ({
-                ...state,
-                ble: {
-                    ...state.ble,
-                    powerMeter: {
-                        ...state.ble.powerMeter,
-                        isConnecting: status.type === "connecting",
-                        isConnected: status.type === "connected",
-                        statusLabel: mapStatusLabel(status.type),
-                        deviceName: status.deviceName ?? (status.type === "disconnected" ? "等待连接" : status.message),
-                        power: status.type === "disconnected" ? null : state.ble.powerMeter.power,
-                        cadence: status.type === "disconnected" ? null : state.ble.powerMeter.cadence,
-                        averagePower: status.type === "disconnected" ? null : state.ble.powerMeter.averagePower,
-                        sampleCount: status.type === "disconnected" ? 0 : state.ble.powerMeter.sampleCount,
-                        powerTotal: status.type === "disconnected" ? 0 : state.ble.powerMeter.powerTotal
-                    }
-                },
-                liveRide: {
-                    ...state.liveRide,
-                    canStart: status.type === "connected" || state.liveRide.isActive
-                },
-                statusText: status.message
-            }));
-        }
-    });
-
-    const trainerFtms = createTrainerFtms({
-        onStatus: (status) => {
+    const controllableTrainer = createControllableTrainer({
+        onTrainerStatus: (status) => {
             store.setState((state) => ({
                 ...state,
                 ble: {
@@ -113,10 +62,75 @@ export function createDeviceService({ store }) {
                 },
                 liveRide: {
                     ...state.liveRide,
+                    canStart: computeCanStart(state, {
+                        trainerConnected: status.type === "connected"
+                    }),
                     statusMeta: status.message
                 },
                 statusText: status.message
             }));
+        }
+    ,
+        onPowerSourceStatus: (powerState) => {
+            store.setState((state) => ({
+                ...state,
+                ble: {
+                    ...state.ble,
+                    powerMeter: {
+                        ...state.ble.powerMeter,
+                        isConnected: powerState.activeSource !== "none",
+                        statusLabel: powerState.activeSourceLabel,
+                        sourceType: powerState.activeSource,
+                        sourceLabel: powerState.activeSourceLabel,
+                        deviceName: resolvePowerSourceDeviceName(powerState),
+                        externalConnected: powerState.externalPowerConnected,
+                        externalConnecting: powerState.externalPowerConnecting,
+                        externalDeviceName: powerState.externalPowerDeviceName
+                    }
+                },
+                liveRide: {
+                    ...state.liveRide,
+                    canStart: computeCanStart(state, {
+                        trainerConnected: powerState.trainerConnected,
+                        externalPowerConnected: powerState.externalPowerConnected,
+                        activePowerSource: powerState.activeSource
+                    })
+                }
+            }));
+        },
+        onData: (data) => {
+            store.setState((state) => {
+                const hasPowerSample = typeof data.power === "number" && Number.isFinite(data.power);
+                const sampleCount = hasPowerSample ? state.ble.powerMeter.sampleCount + 1 : state.ble.powerMeter.sampleCount;
+                const powerTotal = hasPowerSample ? state.ble.powerMeter.powerTotal + data.power : state.ble.powerMeter.powerTotal;
+
+                return {
+                    ...state,
+                    ble: {
+                        ...state.ble,
+                        powerMeter: {
+                            ...state.ble.powerMeter,
+                            isConnected: data.sourceType !== "none",
+                            statusLabel: mapPowerSourceStatusLabel(data.sourceType),
+                            sourceType: data.sourceType,
+                            sourceLabel: mapPowerSourceStatusLabel(data.sourceType),
+                            power: data.sourceType === "none" ? null : data.power,
+                            cadence: data.sourceType === "none" ? null : data.cadence,
+                            averagePower: sampleCount > 0 ? Math.round(powerTotal / sampleCount) : null,
+                            sampleCount,
+                            powerTotal,
+                            lastUpdated: data.sourceType === "none" ? null : data.timestamp
+                        }
+                    },
+                    liveRide: {
+                        ...state.liveRide,
+                        canStart: computeCanStart(state, {
+                            trainerConnected: state.ble.trainer.isConnected,
+                            activePowerSource: data.sourceType
+                        })
+                    }
+                };
+            });
         }
     });
 
@@ -143,7 +157,7 @@ export function createDeviceService({ store }) {
 
     async function togglePowerMeter() {
         try {
-            await powerMeter.toggle();
+            await controllableTrainer.toggleExternalPowerMeter();
         } catch (error) {
             console.error("功率计连接失败", error);
             store.setState((state) => ({
@@ -152,9 +166,7 @@ export function createDeviceService({ store }) {
                     ...state.ble,
                     powerMeter: {
                         ...state.ble.powerMeter,
-                        isConnecting: false,
-                        statusLabel: "连接失败",
-                        deviceName: error.message
+                        externalConnecting: false
                     }
                 },
                 statusText: `功率计连接失败：${error.message}`
@@ -164,11 +176,7 @@ export function createDeviceService({ store }) {
 
     async function toggleTrainer() {
         try {
-            if (trainerFtms.isConnected) {
-                await trainerFtms.disconnect();
-            } else {
-                await trainerFtms.connect();
-            }
+            await controllableTrainer.toggle();
         } catch (error) {
             console.error("骑行台连接失败", error);
             store.setState((state) => ({
@@ -188,7 +196,7 @@ export function createDeviceService({ store }) {
     }
 
     async function setTrainerGrade(gradePercent) {
-        if (!trainerFtms.isConnected) {
+        if (!controllableTrainer.isConnected) {
             const message = "坡度模拟未下发：智能骑行台控制未连接。";
             store.setState((state) => ({
                 ...state,
@@ -202,7 +210,7 @@ export function createDeviceService({ store }) {
         }
 
         try {
-            const result = await trainerFtms.setTargetGrade(gradePercent);
+            const result = await controllableTrainer.setTargetGrade(gradePercent);
             if (result?.status === "unconfirmed") {
                 const message = `坡度命令未确认（可能已生效）：${gradePercent.toFixed(1)}% (${result.path})`;
                 store.setState((state) => ({
@@ -230,7 +238,7 @@ export function createDeviceService({ store }) {
     }
 
     async function setTrainerPower(powerWatts) {
-        if (!trainerFtms.isConnected) {
+        if (!controllableTrainer.isConnected) {
             const message = "ERG 指令未下发：智能骑行台控制未连接。";
             store.setState((state) => ({
                 ...state,
@@ -244,10 +252,41 @@ export function createDeviceService({ store }) {
         }
 
         try {
-            await trainerFtms.setTargetPower(powerWatts);
+            await controllableTrainer.setTargetPower(powerWatts);
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             const message = `ERG 指令下发失败：${reason}`;
+            store.setState((state) => ({
+                ...state,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: message
+                },
+                statusText: message
+            }));
+            throw error;
+        }
+    }
+
+    async function setTrainerResistance(resistanceLevel) {
+        if (!controllableTrainer.isConnected) {
+            const message = "固定阻力指令未下发：智能骑行台控制未连接。";
+            store.setState((state) => ({
+                ...state,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: message
+                },
+                statusText: message
+            }));
+            throw new Error(message);
+        }
+
+        try {
+            await controllableTrainer.setTargetResistance(resistanceLevel);
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            const message = `固定阻力下发失败：${reason}`;
             store.setState((state) => ({
                 ...state,
                 liveRide: {
@@ -265,6 +304,40 @@ export function createDeviceService({ store }) {
         togglePowerMeter,
         toggleTrainer,
         setTrainerGrade,
-        setTrainerPower
+        setTrainerPower,
+        setTrainerResistance
     };
+}
+
+function computeCanStart(state, overrides = {}) {
+    const trainerConnected = overrides.trainerConnected ?? state.ble.trainer.isConnected;
+    const externalPowerConnected = overrides.externalPowerConnected ?? state.ble.powerMeter.externalConnected;
+    const activePowerSource = overrides.activePowerSource ?? state.ble.powerMeter.sourceType;
+
+    return Boolean(state.liveRide.isActive || trainerConnected || externalPowerConnected || activePowerSource !== "none");
+}
+
+function mapPowerSourceStatusLabel(sourceType) {
+    switch (sourceType) {
+        case "external-power-meter":
+            return "外置功率计";
+        case "trainer":
+            return "骑行台内置功率";
+        default:
+            return "无可用功率源";
+    }
+}
+
+function resolvePowerSourceDeviceName(powerState) {
+    if (powerState.activeSource === "external-power-meter") {
+        return powerState.externalPowerDeviceName || "外置功率计";
+    }
+
+    if (powerState.activeSource === "trainer") {
+        return powerState.trainerDeviceName || "骑行台";
+    }
+
+    return powerState.externalPowerConnected
+        ? `${powerState.externalPowerDeviceName || "外置功率计"}（等待数据）`
+        : "等待连接";
 }

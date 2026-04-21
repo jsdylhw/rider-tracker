@@ -1,13 +1,16 @@
 const FTMS_SERVICE = "00001826-0000-1000-8000-00805f9b34fb";
 const FTMS_CONTROL_POINT = "00002ad9-0000-1000-8000-00805f9b34fb";
+const INDOOR_BIKE_DATA = "00002ad2-0000-1000-8000-00805f9b34fb";
 const FTMS_FEATURE = "00002acc-0000-1000-8000-00805f9b34fb";
 const SUPPORTED_INCLINATION_RANGE = "00002ad5-0000-1000-8000-00805f9b34fb";
+const SUPPORTED_RESISTANCE_LEVEL_RANGE = "00002ad6-0000-1000-8000-00805f9b34fb";
 const SUPPORTED_POWER_RANGE = "00002ad8-0000-1000-8000-00805f9b34fb";
 const FTMS_RESPONSE_OPCODE = 0x80;
 
 const FTMS_OPCODES = {
     REQUEST_CONTROL: 0x00,
     SET_TARGET_INCLINATION: 0x03,
+    SET_TARGET_RESISTANCE: 0x04,
     SET_TARGET_POWER: 0x05,
     SET_INDOOR_BIKE_SIMULATION: 0x11
 };
@@ -26,21 +29,26 @@ const DEFAULT_SIMULATION_CONFIG = {
     cw: 0.51
 };
 
-export function createTrainerFtms({ onStatus }) {
+export function createTrainerFtms({ onStatus, onData }) {
     let device = null;
     let ftmsService = null;
     let controlPointChar = null;
+    let indoorBikeDataChar = null;
     let pendingResponse = null;
-    let commandQueue = Promise.resolve();
     let allowInclinationFallback = true;
     let controlPointListener = null;
+    let indoorBikeDataListener = null;
     let disconnectListener = null;
+    let controlPointNotificationsReady = false;
     let capabilities = {
         simulationSupported: true,
         inclinationSupported: true,
+        resistanceSupported: true,
         powerSupported: true,
         minInclinePercent: -15,
         maxInclinePercent: 20,
+        minResistanceLevel: 0,
+        maxResistanceLevel: 100,
         minPowerWatts: 0,
         maxPowerWatts: 2000
     };
@@ -60,6 +68,7 @@ export function createTrainerFtms({ onStatus }) {
             const server = await device.gatt.connect();
             ftmsService = await server.getPrimaryService(FTMS_SERVICE);
             controlPointChar = await ftmsService.getCharacteristic(FTMS_CONTROL_POINT);
+            indoorBikeDataChar = await getCharacteristicOrNull(ftmsService, INDOOR_BIKE_DATA);
             allowInclinationFallback = true;
             await hydrateCapabilities();
 
@@ -67,15 +76,38 @@ export function createTrainerFtms({ onStatus }) {
             device.addEventListener("gattserverdisconnected", disconnectListener);
 
             // FTMS Control Point requires us to subscribe to indications first before sending commands
-            await controlPointChar.startNotifications();
-            controlPointListener = handleControlPointResponse;
-            controlPointChar.addEventListener("characteristicvaluechanged", controlPointListener);
+            try {
+                await controlPointChar.startNotifications();
+                controlPointListener = handleControlPointResponse;
+                controlPointChar.addEventListener("characteristicvaluechanged", controlPointListener);
+                controlPointNotificationsReady = true;
+            } catch (error) {
+                controlPointNotificationsReady = false;
+                console.warn("[FTMS] Control Point indications unavailable, fallback to non-confirmed command mode.", error);
+            }
+
+            if (indoorBikeDataChar) {
+                try {
+                    await indoorBikeDataChar.startNotifications();
+                    indoorBikeDataListener = handleIndoorBikeData;
+                    indoorBikeDataChar.addEventListener("characteristicvaluechanged", indoorBikeDataListener);
+                } catch (error) {
+                    console.warn("[FTMS] Indoor Bike Data notifications unavailable, continue without trainer data stream.", error);
+                }
+            }
 
             // Send "Request Control" command and ensure trainer accepted it.
-            await sendCommand(new Uint8Array([FTMS_OPCODES.REQUEST_CONTROL]), {
-                expectedRequestOpcode: FTMS_OPCODES.REQUEST_CONTROL,
-                awaitResponse: true
-            });
+            if (controlPointNotificationsReady) {
+                try {
+                    await sendCommand(new Uint8Array([FTMS_OPCODES.REQUEST_CONTROL]), {
+                        expectedRequestOpcode: FTMS_OPCODES.REQUEST_CONTROL,
+                        awaitResponse: true
+                    });
+                } catch (error) {
+                    // Some trainers do not respond reliably to Request Control but still accept writes.
+                    console.warn("[FTMS] Request Control unconfirmed, continue with best-effort control mode.", error);
+                }
+            }
 
             onStatus({
                 type: "connected",
@@ -105,15 +137,20 @@ export function createTrainerFtms({ onStatus }) {
         if (controlPointChar && controlPointListener) {
             controlPointChar.removeEventListener("characteristicvaluechanged", controlPointListener);
         }
+        if (indoorBikeDataChar && indoorBikeDataListener) {
+            indoorBikeDataChar.removeEventListener("characteristicvaluechanged", indoorBikeDataListener);
+        }
         if (device && disconnectListener) {
             device.removeEventListener("gattserverdisconnected", disconnectListener);
         }
-        commandQueue = Promise.resolve();
         device = null;
         ftmsService = null;
         controlPointChar = null;
+        indoorBikeDataChar = null;
         controlPointListener = null;
+        indoorBikeDataListener = null;
         disconnectListener = null;
+        controlPointNotificationsReady = false;
         onStatus({ type: "disconnected", message: "智能骑行台已断开" });
     }
 
@@ -140,6 +177,45 @@ export function createTrainerFtms({ onStatus }) {
         }
     }
 
+    function handleIndoorBikeData(event) {
+        if (!onData) {
+            return;
+        }
+
+        const value = event.target.value;
+        const flags = value.getUint16(0, true);
+        let offset = 2;
+        let speedKph = null;
+        let cadence = null;
+        let power = null;
+
+        speedKph = value.getUint16(offset, true) / 100;
+        offset += 2;
+
+        if (flags & 0x0002) offset += 2;
+
+        if (flags & 0x0004) {
+            cadence = Math.round(value.getUint16(offset, true) / 2);
+            offset += 2;
+        }
+
+        if (flags & 0x0008) offset += 2;
+        if (flags & 0x0010) offset += 3;
+        if (flags & 0x0020) offset += 2;
+
+        if (flags & 0x0040) {
+            power = value.getInt16(offset, true);
+        }
+
+        onData({
+            power,
+            cadence,
+            speedKph,
+            timestamp: Date.now(),
+            sourceType: "trainer"
+        });
+    }
+
     let isCommandPending = false;
     let cmdQueue = [];
 
@@ -147,7 +223,7 @@ export function createTrainerFtms({ onStatus }) {
         if (isCommandPending || cmdQueue.length === 0) return;
 
         isCommandPending = true;
-        const { buffer, expectedRequestOpcode, resolve, reject } = cmdQueue.shift();
+        const { buffer, resolve, reject } = cmdQueue.shift();
 
         try {
             // 给骑行台硬件预留处理时间，防止指令过密
@@ -205,6 +281,9 @@ export function createTrainerFtms({ onStatus }) {
     }
 
     function waitForResponse(expectedRequestOpcode, timeoutMs) {
+        if (!controlPointNotificationsReady) {
+            return Promise.reject(new Error("Control Point indications 不可用，无法等待响应"));
+        }
         if (pendingResponse) {
             return Promise.reject(new Error("已有未完成的 FTMS 响应等待"));
         }
@@ -327,6 +406,27 @@ export function createTrainerFtms({ onStatus }) {
         });
     }
 
+    async function setTargetResistance(resistanceLevel) {
+        if (!capabilities.resistanceSupported) {
+            throw new Error("当前骑行台不支持固定阻力控制");
+        }
+
+        const clampedResistance = Math.max(
+            capabilities.minResistanceLevel,
+            Math.min(capabilities.maxResistanceLevel, resistanceLevel)
+        );
+
+        const buffer = new ArrayBuffer(3);
+        const view = new DataView(buffer);
+        view.setUint8(0, FTMS_OPCODES.SET_TARGET_RESISTANCE);
+        view.setInt16(1, Math.round(clampedResistance * 10), true);
+
+        console.log(`[FTMS] Sending Resistance Target: ${clampedResistance}%`);
+        await sendCommand(new Uint8Array(buffer), {
+            expectedRequestOpcode: FTMS_OPCODES.SET_TARGET_RESISTANCE
+        });
+    }
+
     async function sendIndoorBikeSimulation(gradePercent) {
         const gradeRaw = Math.round(gradePercent * 100); // 0.01%
         const windRaw = Math.round(DEFAULT_SIMULATION_CONFIG.windSpeedMps * 1000); // 0.001 m/s
@@ -351,9 +451,12 @@ export function createTrainerFtms({ onStatus }) {
         capabilities = {
             simulationSupported: true,
             inclinationSupported: true,
+            resistanceSupported: true,
             powerSupported: true,
             minInclinePercent: -15,
             maxInclinePercent: 20,
+            minResistanceLevel: 0,
+            maxResistanceLevel: 100,
             minPowerWatts: 0,
             maxPowerWatts: 2000
         };
@@ -368,6 +471,7 @@ export function createTrainerFtms({ onStatus }) {
             const targetFlags = featureValue.getUint32(4, true);
             capabilities.powerSupported = !!(targetFlags & (1 << 3));
             capabilities.inclinationSupported = !!(targetFlags & (1 << 1));
+            capabilities.resistanceSupported = !!(targetFlags & (1 << 2));
             capabilities.simulationSupported = !!(targetFlags & (1 << 13));
         } catch {
             // Some trainers don't expose feature characteristic reliably.
@@ -378,6 +482,15 @@ export function createTrainerFtms({ onStatus }) {
             const v = await inclineRangeChar.readValue();
             capabilities.minInclinePercent = v.getInt16(0, true) / 10;
             capabilities.maxInclinePercent = v.getInt16(2, true) / 10;
+        } catch {
+            // keep defaults
+        }
+
+        try {
+            const resistanceRangeChar = await ftmsService.getCharacteristic(SUPPORTED_RESISTANCE_LEVEL_RANGE);
+            const v = await resistanceRangeChar.readValue();
+            capabilities.minResistanceLevel = v.getInt16(0, true) / 10;
+            capabilities.maxResistanceLevel = v.getInt16(2, true) / 10;
         } catch {
             // keep defaults
         }
@@ -397,6 +510,16 @@ export function createTrainerFtms({ onStatus }) {
         disconnect,
         setTargetGrade,
         setTargetPower,
+        setTargetResistance,
+        getCapabilities: () => ({ ...capabilities }),
         get isConnected() { return !!device?.gatt?.connected; }
     };
+}
+
+async function getCharacteristicOrNull(service, uuid) {
+    try {
+        return await service.getCharacteristic(uuid);
+    } catch {
+        return null;
+    }
 }

@@ -96,6 +96,9 @@ export function createDashboardRenderer({
                     return;
                 }
                 immersiveStreetViewMode = !immersiveStreetViewMode;
+                if (immersiveStreetViewMode && elements.metricsCustomizer) {
+                    elements.metricsCustomizer.hidden = true;
+                }
                 elements.rideDashboard?.classList.toggle("immersive-street-view", immersiveStreetViewMode);
                 elements.immersiveStreetViewBtn.textContent = immersiveStreetViewMode ? "退出沉浸模式" : "进入沉浸街景";
             });
@@ -133,6 +136,7 @@ export function createDashboardRenderer({
         const currentRecord = session?.records?.at(-1) ?? null;
         const route = session?.route ?? state.route;
         const records = session?.records ?? [];
+        const workoutRuntime = state.workout?.runtime ?? {};
 
         const powerMeter = state.ble.powerMeter;
         const heartRate = state.ble.heartRate;
@@ -202,7 +206,7 @@ export function createDashboardRenderer({
             if (elements.rideProgressSegment) elements.rideProgressSegment.textContent = "等待开始";
             
             const defaultMetricsHtml = Object.entries(customMetricsState)
-                .filter(([key, isEnabled]) => isEnabled)
+                .filter(([, isEnabled]) => isEnabled)
                 .map(([key]) => {
                     const metric = metricsData[key];
                     return `
@@ -220,6 +224,8 @@ export function createDashboardRenderer({
             }
 
             renderTrajectoryOverview(route, null);
+            renderWorkoutTargetHud(workoutRuntime);
+            renderWorkoutTargetChart(records, state);
             mapController.syncRide(route, null);
             return;
         }
@@ -253,7 +259,7 @@ export function createDashboardRenderer({
             elements.dashboardMetricsGrid.innerHTML = immersiveStreetViewMode
                 ? getImmersiveMetricsHtml(metricsData)
                 : Object.entries(customMetricsState)
-                    .filter(([key, isEnabled]) => isEnabled)
+                    .filter(([, isEnabled]) => isEnabled)
                     .map(([key]) => {
                         const metric = metricsData[key];
                         return `
@@ -266,6 +272,8 @@ export function createDashboardRenderer({
         }
 
         renderTrajectoryOverview(route, currentRecord);
+        renderWorkoutTargetHud(workoutRuntime);
+        renderWorkoutTargetChart(records, state);
         mapController.syncRide(route, currentRecord);
     }
 
@@ -325,8 +333,116 @@ export function createDashboardRenderer({
         `;
     }
 
+    function renderWorkoutTargetHud(runtime) {
+        if (elements.workoutTargetHudCard) {
+            elements.workoutTargetHudCard.hidden = !runtime.customWorkoutTargetEnabled;
+        }
+        if (!elements.workoutTargetHudGrid || !runtime.customWorkoutTargetEnabled) return;
+
+        elements.workoutTargetHudGrid.innerHTML = `
+            <div class="data-item">
+                <div class="data-label">当前阶段</div>
+                <div class="data-display">${runtime.customWorkoutTargetStepLabel ?? "--"} <span class="unit"></span></div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">目标功率</div>
+                <div class="data-display power-color">${runtime.customWorkoutTargetPowerWatts ?? "--"} <span class="unit">W</span></div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">目标 FTP</div>
+                <div class="data-display accent-color">${runtime.customWorkoutTargetFtpPercent ?? "--"} <span class="unit">%</span></div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">阶段剩余</div>
+                <div class="data-display">${formatRemaining(runtime.customWorkoutTargetRemainingSeconds)} <span class="unit"></span></div>
+            </div>
+        `;
+    }
+
+    function renderWorkoutTargetChart(records, state) {
+        const runtime = state.workout?.runtime ?? {};
+        if (elements.liveWorkoutTargetCard) {
+            elements.liveWorkoutTargetCard.hidden = !runtime.customWorkoutTargetEnabled;
+        }
+        if (!elements.workoutTargetChart || !runtime.customWorkoutTargetEnabled) return;
+
+        const plan = state.liveRide.customWorkoutTargetPlan ?? state.workout.customWorkoutTarget;
+        if (!plan?.steps?.length) {
+            elements.workoutTargetChart.innerHTML = `
+                <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-size="14">
+                    启用自定义训练目标后，这里会实时显示输入功率与目标功率对比
+                </text>
+            `;
+            return;
+        }
+
+        const width = 640;
+        const height = 220;
+        const padding = 36;
+        const totalPlanSeconds = Math.max(runtime.customWorkoutTargetTotalSeconds ?? 0, 1);
+        const maxElapsedSeconds = Math.max(records.at(-1)?.elapsedSeconds ?? 0, totalPlanSeconds);
+        const actualPowerMax = Math.max(...records.map((record) => record.power ?? 0), 0);
+        const targetPowerMax = Math.max(...plan.steps.flatMap((step) => [
+            Math.round((state.settings.ftp ?? 0) * ((step.ftpPercent ?? 0) / 100)),
+            Math.round((state.settings.ftp ?? 0) * (((step.endFtpPercent ?? step.ftpPercent) ?? 0) / 100))
+        ]), 0);
+        const maxPower = Math.max(100, actualPowerMax, targetPowerMax);
+        const innerWidth = width - padding * 2;
+        const innerHeight = height - padding * 2;
+        const toX = (seconds) => padding + (seconds / maxElapsedSeconds) * innerWidth;
+        const toY = (power) => height - padding - (power / maxPower) * innerHeight;
+
+        const actualPolyline = records.length > 0
+            ? records.map((record) => `${toX(record.elapsedSeconds).toFixed(1)},${toY(record.power ?? 0).toFixed(1)}`).join(" ")
+            : "";
+
+        let cumulativeSeconds = 0;
+        const firstStepStartPower = Math.round((state.settings.ftp ?? 0) * ((plan.steps[0].ftpPercent ?? 0) / 100));
+        const targetPoints = [`${toX(0).toFixed(1)},${toY(firstStepStartPower).toFixed(1)}`];
+        plan.steps.forEach((step) => {
+            const startPower = Math.round((state.settings.ftp ?? 0) * ((step.ftpPercent ?? 0) / 100));
+            const endPower = Math.round((state.settings.ftp ?? 0) * (((step.endFtpPercent ?? step.ftpPercent) ?? 0) / 100));
+            targetPoints.push(`${toX(cumulativeSeconds).toFixed(1)},${toY(startPower).toFixed(1)}`);
+            cumulativeSeconds += Math.round(step.durationMinutes * 60);
+            targetPoints.push(`${toX(cumulativeSeconds).toFixed(1)},${toY(endPower).toFixed(1)}`);
+        });
+
+        const currentElapsedSeconds = records.at(-1)?.elapsedSeconds ?? 0;
+        const currentX = toX(Math.min(currentElapsedSeconds, maxElapsedSeconds)).toFixed(1);
+
+        elements.workoutTargetChart.innerHTML = `
+            <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#334155" stroke-width="1"></line>
+            <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#334155" stroke-width="1"></line>
+            <text x="${padding}" y="${height - 10}" fill="#64748b" font-size="12">0</text>
+            <text x="${width - padding}" y="${height - 10}" text-anchor="end" fill="#64748b" font-size="12">${formatAxisTime(maxElapsedSeconds)}</text>
+            <text x="${padding - 8}" y="${padding + 4}" text-anchor="end" fill="#64748b" font-size="12">${Math.round(maxPower)}W</text>
+            <text x="${padding - 8}" y="${height - padding}" text-anchor="end" fill="#64748b" font-size="12">0W</text>
+            <polyline points="${targetPoints.join(" ")}" fill="none" stroke="#f59e0b" stroke-width="2.2" stroke-dasharray="6 4" stroke-linejoin="round"></polyline>
+            ${actualPolyline ? `<polyline points="${actualPolyline}" fill="none" stroke="#38bdf8" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"></polyline>` : ""}
+            <line x1="${currentX}" y1="${padding}" x2="${currentX}" y2="${height - padding}" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 4"></line>
+            <text x="${padding}" y="${padding - 10}" fill="#38bdf8" font-size="12">实际功率</text>
+            <text x="${padding + 78}" y="${padding - 10}" fill="#f59e0b" font-size="12">目标功率</text>
+        `;
+    }
+
     return {
         bindEvents,
         render
     };
+}
+
+function formatRemaining(seconds) {
+    if (seconds === null || seconds === undefined) {
+        return "--";
+    }
+
+    const minutes = Math.floor(seconds / 60);
+    const remainSeconds = seconds % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(remainSeconds).padStart(2, "0")}`;
+}
+
+function formatAxisTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const remainSeconds = seconds % 60;
+    return `${minutes}:${String(remainSeconds).padStart(2, "0")}`;
 }

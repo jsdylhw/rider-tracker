@@ -3,6 +3,12 @@ import { simulateRide } from "../../domain/ride/simulator.js";
 import { buildGradeSimulationState } from "../../domain/workout/grade-sim-mode.js";
 import { buildErgControlState } from "../../domain/workout/erg-mode.js";
 import { buildResistanceControlState } from "../../domain/workout/resistance-mode.js";
+import {
+    buildWorkoutTargetRuntime,
+    enrichRuntimeWithWorkoutTarget,
+    resolveWorkoutTargetAtElapsed,
+    sanitizeCustomWorkoutTarget
+} from "../../domain/workout/custom-workout-target.js";
 import { getWorkoutModeLabel } from "../../domain/workout/workout-mode.js";
 import { resolveTrainerControlModeForWorkoutMode, TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { saveLastSession } from "../../adapters/storage/session-storage.js";
@@ -40,6 +46,7 @@ export function createRideService({ store, deviceService, exportService }) {
                 session,
                 startedAt,
                 trainerControlMode,
+                customWorkoutTargetPlan: sanitizeCustomWorkoutTarget(currentState.workout.customWorkoutTarget),
                 commandSequence: 0,
                 statusMeta: `正在根据实时功率和路线坡度更新速度，当前模式：${getWorkoutModeLabel(currentState.workout.mode)}。`
             },
@@ -78,6 +85,7 @@ export function createRideService({ store, deviceService, exportService }) {
                 isActive: false,
                 dashboardOpen: false,
                 trainerControlMode: null,
+                customWorkoutTargetPlan: null,
                 commandSequence: 0,
                 lastCompletedAt: new Date().toISOString(),
                 statusMeta: completedSession
@@ -110,19 +118,33 @@ export function createRideService({ store, deviceService, exportService }) {
         const currentCadence = state.ble.powerMeter.cadence;
         const trainerControlMode = state.liveRide.trainerControlMode
             ?? resolveTrainerControlModeForWorkoutMode(state.workout.mode);
+        const customWorkoutTargetPlan = state.liveRide.customWorkoutTargetPlan ?? state.workout.customWorkoutTarget;
         const nextCommandSequence = (state.liveRide.commandSequence ?? 0) + 1;
         const rideId = state.liveRide.startedAt ?? state.liveRide.session.startedAt;
+        const elapsedSeconds = (state.liveRide.session.summary?.elapsedSeconds ?? 0) + 1;
+        const resolvedWorkoutTarget = resolveWorkoutTargetAtElapsed({
+            target: customWorkoutTargetPlan,
+            elapsedSeconds,
+            ftp: state.settings.ftp
+        });
 
         const nextSession = advanceLiveRideSession({
             session: state.liveRide.session,
             power: currentPower,
             heartRate: currentHeartRate,
             cadence: currentCadence,
+            workoutTarget: resolvedWorkoutTarget,
             dt: 1
         });
 
+        const workoutTargetRuntime = buildWorkoutTargetRuntime({
+            target: customWorkoutTargetPlan,
+            elapsedSeconds: nextSession.summary.elapsedSeconds,
+            ftp: state.settings.ftp
+        });
+
         const workoutRuntime = trainerControlMode === TRAINER_CONTROL_MODES.SIM
-            ? buildGradeSimulationState({
+            ? enrichRuntimeWithWorkoutTarget(buildGradeSimulationState({
                 route: nextSession.route,
                 distanceMeters: nextSession.physicsState.distanceMeters,
                 previousTargetGradePercent: state.workout.runtime.targetTrainerGradePercent ?? 0,
@@ -130,13 +152,15 @@ export function createRideService({ store, deviceService, exportService }) {
                 active: true,
                 rideId,
                 commandSequence: nextCommandSequence
-            })
+            }), workoutTargetRuntime)
             : buildRuntimeByControlMode({
                 trainerControlMode,
                 state,
                 active: true,
                 rideId,
-                commandSequence: nextCommandSequence
+                commandSequence: nextCommandSequence,
+                customWorkoutTargetPlan,
+                elapsedSeconds: nextSession.summary.elapsedSeconds
             });
 
         // 触发蓝牙命令发送
@@ -145,6 +169,7 @@ export function createRideService({ store, deviceService, exportService }) {
             const controlMode = cmd.controlMode ?? cmd.mode;
             const targetGradePercent = cmd.targetGradePercent ?? cmd.payload?.gradePercent;
             const targetPowerWatts = cmd.targetPowerWatts ?? cmd.payload?.targetPowerWatts;
+            const targetResistanceLevel = cmd.targetResistanceLevel ?? cmd.payload?.resistanceLevel;
 
             console.log(`[Ride Log] Distance: ${nextSession.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${nextSession.summary.currentGradePercent.toFixed(1)}% | Power: ${currentPower}W | Cadence: ${currentCadence}rpm | Speed: ${nextSession.summary.currentSpeedKph.toFixed(1)}km/h | Next Target Grade: ${targetGradePercent?.toFixed(2)}%`);
 
@@ -155,6 +180,10 @@ export function createRideService({ store, deviceService, exportService }) {
             } else if (controlMode === TRAINER_CONTROL_MODES.ERG && targetPowerWatts !== undefined) {
                 void deviceService.setTrainerPower(targetPowerWatts).catch((error) => {
                     console.error("[RideService] 下发 trainer ERG 命令失败:", error);
+                });
+            } else if (controlMode === TRAINER_CONTROL_MODES.RESISTANCE && targetResistanceLevel !== undefined) {
+                void deviceService.setTrainerResistance(targetResistanceLevel).catch((error) => {
+                    console.error("[RideService] 下发 trainer 固定阻力命令失败:", error);
                 });
             }
             workoutRuntime.pendingTrainerCommand = null;
@@ -175,6 +204,7 @@ export function createRideService({ store, deviceService, exportService }) {
                 ...currentState.liveRide,
                 session: nextSession,
                 trainerControlMode,
+                customWorkoutTargetPlan,
                 commandSequence: nextCommandSequence,
                 statusMeta: trainerControlMode === TRAINER_CONTROL_MODES.SIM
                     ? `${workoutRuntime.controlStatus} 当前速度 ${formatNumber(nextSession.summary.currentSpeedKph, 1)} km/h`
@@ -228,27 +258,35 @@ function buildRuntimeByControlMode({
     state,
     active,
     rideId = null,
-    commandSequence = 0
+    commandSequence = 0,
+    customWorkoutTargetPlan = null,
+    elapsedSeconds = 0
 }) {
+    const workoutTargetRuntime = buildWorkoutTargetRuntime({
+        target: customWorkoutTargetPlan ?? state.workout.customWorkoutTarget,
+        elapsedSeconds,
+        ftp: state.settings.ftp
+    });
+
     if (trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
-        return buildErgControlState({
-            targetPowerWatts: state.settings.power,
+        return enrichRuntimeWithWorkoutTarget(buildErgControlState({
+            targetPowerWatts: workoutTargetRuntime.customWorkoutTargetPowerWatts ?? state.settings.power,
             active,
             rideId,
             commandSequence
-        });
+        }), workoutTargetRuntime);
     }
 
     if (trainerControlMode === TRAINER_CONTROL_MODES.RESISTANCE) {
-        return buildResistanceControlState({
+        return enrichRuntimeWithWorkoutTarget(buildResistanceControlState({
             active,
             rideId,
             commandSequence
-        });
+        }), workoutTargetRuntime);
     }
 
-    return {
+    return enrichRuntimeWithWorkoutTarget({
         ...state.workout.runtime,
         pendingTrainerCommand: null
-    };
+    }, workoutTargetRuntime);
 }

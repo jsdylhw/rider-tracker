@@ -19,7 +19,7 @@ export function createLiveRideSession({ route, settings, startedAt, initialHeart
     };
 }
 
-export function advanceLiveRideSession({ session, power, heartRate, cadence, dt = 1 }) {
+export function advanceLiveRideSession({ session, power, heartRate, cadence, workoutTarget = null, dt = 1 }) {
     const elapsedSeconds = session.records.length + dt;
     const routeSample = getRouteSampleAtDistance(session.route, session.physicsState.distanceMeters);
     const gradePercent = routeSample.gradePercent ?? 0;
@@ -53,6 +53,10 @@ export function advanceLiveRideSession({ session, power, heartRate, cadence, dt 
         gradePercent,
         elevationMeters,
         ascentMeters: nextState.ascentMeters,
+        targetPowerWatts: workoutTarget?.targetPowerWatts ?? null,
+        targetFtpPercent: workoutTarget?.ftpPercent ?? null,
+        targetStepIndex: workoutTarget?.stepIndex ?? null,
+        targetStepLabel: workoutTarget?.stepLabel ?? null,
         segmentName: getSegmentAtDistance(session.route, nextState.distanceMeters)?.name ?? "终点后",
         routeProgress: progressRatio,
         positionLat: nextRouteSample.latitude,
@@ -105,7 +109,10 @@ function buildSummary(records, settings = {}) {
         routeProgress: finalRecord.routeProgress,
         currentSpeedKph: finalRecord.speedKph,
         currentPower: finalRecord.power,
-        currentHeartRate: finalRecord.heartRate
+        currentHeartRate: finalRecord.heartRate,
+        currentTargetPowerWatts: finalRecord.targetPowerWatts ?? null,
+        currentTargetFtpPercent: finalRecord.targetFtpPercent ?? null,
+        currentTargetStepLabel: finalRecord.targetStepLabel ?? null
     };
 }
 
@@ -124,7 +131,10 @@ function createEmptySummary() {
         routeProgress: 0,
         currentSpeedKph: 0,
         currentPower: 0,
-        currentHeartRate: 0
+        currentHeartRate: 0,
+        currentTargetPowerWatts: null,
+        currentTargetFtpPercent: null,
+        currentTargetStepLabel: null
     };
 }
 

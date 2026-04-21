@@ -1,6 +1,7 @@
 import { buildRoute, sanitizeSegments } from "../../domain/route/route-builder.js";
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 import { TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
+import { createDefaultCustomWorkoutTarget } from "../../domain/workout/custom-workout-target.js";
 import { clamp, normalizeText } from "../../shared/utils/common.js";
 
 export const defaultRouteSegments = [
@@ -95,6 +96,7 @@ function createInitialLiveRideState() {
         dashboardOpen: false,
         session: null,
         trainerControlMode: null,
+        customWorkoutTargetPlan: null,
         commandSequence: 0,
         startedAt: null,
         lastCompletedAt: null,
@@ -112,6 +114,7 @@ function createInitialWorkoutState() {
             maxDownhillPercent: 0,
             smoothingFactor: 0.7
         },
+        customWorkoutTarget: createDefaultCustomWorkoutTarget(),
         runtime: {
             available: false,
             trainerControlMode: TRAINER_CONTROL_MODES.SIM,
@@ -120,6 +123,20 @@ function createInitialWorkoutState() {
             targetTrainerGradePercent: 0,
             targetErgPowerWatts: null,
             targetResistanceLevel: 35,
+            customWorkoutTargetEnabled: false,
+            customWorkoutTargetSteps: [],
+            customWorkoutTargetTotalSeconds: 0,
+            customWorkoutTargetActive: false,
+            customWorkoutTargetCompleted: false,
+            customWorkoutTargetStepIndex: null,
+            customWorkoutTargetStepLabel: "未启用自定义训练目标",
+            customWorkoutTargetBlockType: null,
+            customWorkoutTargetPowerWatts: null,
+            customWorkoutTargetFtpPercent: null,
+            customWorkoutTargetStartFtpPercent: null,
+            customWorkoutTargetEndFtpPercent: null,
+            customWorkoutTargetRemainingSeconds: null,
+            customWorkoutTargetProgress: 0,
             pendingTrainerCommand: null,
             controlStatus: "坡度模拟待命：已基于当前路线实时梯度生成目标模拟坡度，开始骑行后按预先锁定模式下发 trainer 指令。"
         }
@@ -144,6 +161,11 @@ function createInitialBleState() {
             isConnected: false,
             statusLabel: bluetoothSupported ? "未连接" : "不支持",
             deviceName: bluetoothSupported ? "等待连接" : "当前浏览器不支持 Web Bluetooth",
+            sourceType: "none",
+            sourceLabel: bluetoothSupported ? "无可用功率源" : "不支持",
+            externalConnected: false,
+            externalConnecting: false,
+            externalDeviceName: bluetoothSupported ? "等待连接" : "当前浏览器不支持 Web Bluetooth",
             power: null,
             cadence: null,
             averagePower: null,

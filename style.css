@@ -273,6 +273,10 @@ body {
     display: none;
 }
 
+.ride-dashboard.immersive-street-view #metricsCustomizer {
+    display: none !important;
+}
+
 .ride-dashboard.immersive-street-view #immersiveMetricsCard {
     position: absolute;
     top: 8px;
@@ -449,7 +453,9 @@ tbody tr:last-child td {
 }
 
 .route-table input,
-.field input {
+.field input,
+.route-table select,
+.field select {
     width: 100%;
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -457,6 +463,19 @@ tbody tr:last-child td {
     font-size: 14px;
     color: var(--text);
     background: #fff;
+}
+
+.workout-target-input {
+    color: var(--text) !important;
+    background: #fff !important;
+    caret-color: var(--text);
+    -webkit-text-fill-color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+
+.route-table select {
+    appearance: none;
+    -webkit-appearance: none;
 }
 
 .field textarea {

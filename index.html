@@ -201,7 +201,7 @@
                             <div class="section-title-row">
                                 <div>
                                     <h2>路线轨迹设置</h2>
-                                    <p class="section-subtitle">支持手工路线和 GPX 导入；选择路线后可直接进行模拟骑行。</p>
+                                    <p class="section-subtitle">支持手工路线和 GPX 导入；可查看距离-海拔剖面、地图轨迹与路线明细。</p>
                                 </div>
                                 <div class="inline-actions">
                                     <button id="addSegmentBtn" class="btn secondary">新增路段</button>
@@ -214,6 +214,15 @@
                                     <span>导入 GPX 文件</span>
                                     <input id="gpxFileInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
                                 </label>
+                                <div>
+                                    <div class="route-source-row" style="margin-bottom: 8px;">
+                                        <span>距离 / 海拔预览</span>
+                                        <strong>GPX 下方即时渲染</strong>
+                                    </div>
+                                    <div id="setupElevationChartShell" class="chart-shell" style="margin-top: 0;">
+                                        <svg id="setupElevationChart" viewBox="0 0 640 180" preserveAspectRatio="none"></svg>
+                                    </div>
+                                </div>
                                 <div class="route-source-row">
                                     <span>当前路线来源</span>
                                     <strong id="routeSourceLabel">手工路线</strong>
@@ -229,10 +238,6 @@
 
                             <div id="routeMapShell" class="chart-shell route-map-shell">
                                 <div id="routeMapPreview" class="map-canvas"></div>
-                            </div>
-
-                            <div id="setupElevationChartShell" class="chart-shell">
-                                <svg id="setupElevationChart" viewBox="0 0 640 180" preserveAspectRatio="none"></svg>
                             </div>
 
                             <div id="routeTableShell" class="table-shell">
@@ -338,17 +343,41 @@
                         <div id="workoutControlStatus" class="route-summary">固定阻力待命：阻力等级 35%（开始骑行前已锁定控制模式）。</div>
                     </div>
 
-                    <div class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>路线坡度预览</h2>
-                                <p class="section-subtitle">先通过这张主坡度图查看当前已选路线的实时梯度和骑行位置。</p>
+                    <div class="card" style="margin-top: 16px;">
+                                <div class="section-title-row">
+                                    <div>
+                                        <h2>自定义训练目标</h2>
+                                <p class="section-subtitle">独立于路线设置。可按时间配置恒定、线性增加、线性减少训练块，并在骑行中实时对照目标功率。</p>
+                                    </div>
+                                    <div class="inline-actions">
+                                        <button id="addCustomWorkoutTargetStepBtn" type="button" class="btn secondary">新增阶段</button>
+                                    </div>
+                                </div>
+                                <label class="field field-wide">
+                                    <span>启用训练目标</span>
+                                    <div style="display:flex; align-items:center; gap: 10px; font-weight: 600;">
+                                        <input id="customWorkoutTargetEnabled" type="checkbox">
+                                        <span>按时间规划 FTP 百分比训练</span>
+                                    </div>
+                                </label>
+                                <div class="table-shell">
+                                    <table class="route-table">
+                                        <thead>
+                                            <tr>
+                                                <th>阶段</th>
+                                                <th>类型</th>
+                                                <th>时长 min</th>
+                                                <th>起始 FTP %</th>
+                                                <th>结束 FTP %</th>
+                                                <th>目标功率</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="customWorkoutTargetTableBody"></tbody>
+                                    </table>
+                                </div>
+                                <div id="customWorkoutTargetStatus" class="route-summary">未启用自定义训练目标。</div>
                             </div>
-                        </div>
-                        <div class="chart-shell">
-                            <svg id="elevationChart" viewBox="0 0 640 180" preserveAspectRatio="none"></svg>
-                        </div>
-                    </div>
                 </div>
             </section>
         </div>
@@ -552,6 +581,10 @@
                                 <h3>实时骑行数据</h3>
                                 <div id="dashboardMetricsGrid" class="data-grid"></div>
                             </div>
+                            <div id="workoutTargetHudCard" class="streetview-hud-card">
+                                <h3>训练目标</h3>
+                                <div id="workoutTargetHudGrid" class="data-grid"></div>
+                            </div>
                             <div id="trajectoryCard" class="streetview-hud-card">
                                 <h3>路线总览</h3>
                                 <p class="section-subtitle">无底图 + 当前位置</p>
@@ -560,6 +593,18 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="card" id="liveWorkoutTargetCard" style="grid-column: 1 / -1;">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>功率目标跟踪</h2>
+                            <p class="section-subtitle">实时对比当前输入功率与训练目标功率。</p>
+                        </div>
+                    </div>
+                    <div class="chart-shell" style="height: 220px; position: relative;">
+                        <svg id="workoutTargetChart" viewBox="0 0 640 220" preserveAspectRatio="none" style="width: 100%; height: 100%;"></svg>
                     </div>
                 </div>
 

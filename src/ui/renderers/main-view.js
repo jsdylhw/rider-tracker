@@ -6,6 +6,7 @@ import { createExportRenderer } from "./export-renderer.js";
 import { createDeviceRenderer } from "./device-renderer.js";
 import { createLayoutCoordinator } from "./layout-coordinator.js";
 import { createWorkoutRenderer } from "./workout-renderer.js";
+import { createCustomWorkoutTargetRenderer } from "./custom-workout-target-renderer.js";
 
 export function createMainView({
     store,
@@ -15,6 +16,10 @@ export function createMainView({
     onUpdateWorkoutMode,
     onUpdateGradeSimulationConfig,
     onUpdateErgTargetPower,
+    onUpdateCustomWorkoutTargetEnabled,
+    onAddCustomWorkoutTargetStep,
+    onUpdateCustomWorkoutTargetStep,
+    onRemoveCustomWorkoutTargetStep,
     onAddSegment,
     onResetRoute,
     onToggleHeartRate,
@@ -61,6 +66,10 @@ export function createMainView({
         addSegmentBtn: document.getElementById("addSegmentBtn"),
         resetRouteBtn: document.getElementById("resetRouteBtn"),
         gpxFileInput: document.getElementById("gpxFileInput"),
+        customWorkoutTargetEnabled: document.getElementById("customWorkoutTargetEnabled"),
+        addCustomWorkoutTargetStepBtn: document.getElementById("addCustomWorkoutTargetStepBtn"),
+        customWorkoutTargetTableBody: document.getElementById("customWorkoutTargetTableBody"),
+        customWorkoutTargetStatus: document.getElementById("customWorkoutTargetStatus"),
         routeSourceLabel: document.getElementById("routeSourceLabel"),
         routeMapPreview: document.getElementById("routeMapPreview"),
         routeSummary: document.getElementById("routeSummary"),
@@ -150,7 +159,11 @@ export function createMainView({
         streetViewContainer: document.getElementById("streetViewContainer"),
         svPano1: document.getElementById("svPano1"),
         svPano2: document.getElementById("svPano2"),
-        streetViewTrajectorySvg: document.getElementById("streetViewTrajectorySvg")
+        streetViewTrajectorySvg: document.getElementById("streetViewTrajectorySvg"),
+        workoutTargetHudCard: document.getElementById("workoutTargetHudCard"),
+        workoutTargetHudGrid: document.getElementById("workoutTargetHudGrid"),
+        workoutTargetChart: document.getElementById("workoutTargetChart"),
+        liveWorkoutTargetCard: document.getElementById("liveWorkoutTargetCard")
     };
 
     elements.fitExportForm = document.getElementById("fitExportForm");
@@ -202,6 +215,13 @@ export function createMainView({
         onUpdateGradeSimulationConfig,
         onUpdateErgTargetPower
     });
+    const customWorkoutTargetRenderer = createCustomWorkoutTargetRenderer({
+        elements,
+        onUpdateCustomWorkoutTargetEnabled,
+        onAddCustomWorkoutTargetStep,
+        onUpdateCustomWorkoutTargetStep,
+        onRemoveCustomWorkoutTargetStep
+    });
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
 
@@ -245,6 +265,7 @@ export function createMainView({
         dashboardRenderer.render(state);
         exportRenderer.render(state);
         workoutRenderer.render(state);
+        customWorkoutTargetRenderer.render(state);
         deviceRenderer.render(state);
         renderSession(state);
         renderPipControls(state);
