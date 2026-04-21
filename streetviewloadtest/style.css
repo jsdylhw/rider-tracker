@@ -1,0 +1,146 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+}
+
+.page {
+    display: grid;
+    grid-template-columns: 440px 1fr;
+    min-height: 100vh;
+}
+
+.panel {
+    padding: 16px;
+    background: #111827;
+    border-right: 1px solid #334155;
+    overflow-y: auto;
+}
+
+.panel h1 {
+    margin: 0 0 8px;
+    font-size: 22px;
+}
+
+.hint {
+    margin: 0 0 16px;
+    color: #94a3b8;
+    line-height: 1.45;
+}
+
+.row {
+    display: grid;
+    gap: 12px;
+}
+
+.field {
+    display: grid;
+    gap: 6px;
+}
+
+.field span {
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.field input {
+    width: 100%;
+    border: 1px solid #334155;
+    background: #0b1220;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+    margin: 12px 0 16px;
+}
+
+button {
+    border: 1px solid #334155;
+    background: #1d4ed8;
+    color: #fff;
+    border-radius: 8px;
+    padding: 9px 12px;
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.metric {
+    border: 1px solid #334155;
+    background: #0b1220;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.metric span {
+    display: block;
+    color: #94a3b8;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+.metric strong {
+    font-size: 15px;
+}
+
+.status {
+    margin: 8px 0 0;
+    color: #93c5fd;
+}
+
+.status.error {
+    color: #fca5a5;
+}
+
+.viewer {
+    position: relative;
+    min-width: 0;
+}
+
+#streetViewContainer {
+    position: absolute;
+    inset: 0;
+    background: #000;
+}
+
+.pano {
+    position: absolute;
+    inset: 0;
+    transition: opacity 0.8s ease-in-out;
+}
+
+#svPano1 {
+    opacity: 1;
+    z-index: 2;
+}
+
+#svPano2 {
+    opacity: 0;
+    z-index: 1;
+}
+
+@media (max-width: 1100px) {
+    .page {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(50vh, 1fr);
+    }
+}

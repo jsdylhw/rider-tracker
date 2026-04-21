@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Street View Load Test</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <main class="page">
+        <section class="panel">
+            <h1>Street View Load Test Demo</h1>
+            <p class="hint">导入 GPX + 输入 API Key 后，按 20 km/h 模拟骑行；街景渲染复用主项目双缓冲控制器。</p>
+
+            <div class="row">
+                <label class="field">
+                    <span>导入 GPX</span>
+                    <input id="gpxInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
+                </label>
+                <label class="field">
+                    <span>Google Maps API Key</span>
+                    <input id="apiKeyInput" type="text" placeholder="AIza...">
+                </label>
+            </div>
+
+            <div class="controls">
+                <button id="loadApiBtn">加载 API</button>
+                <button id="startBtn" disabled>开始模拟骑行</button>
+                <button id="stopBtn" disabled>停止</button>
+            </div>
+
+            <div class="metrics">
+                <div class="metric"><span>路线</span><strong id="routeName">未导入</strong></div>
+                <div class="metric"><span>总距离</span><strong id="routeDistance">0.00 km</strong></div>
+                <div class="metric"><span>模拟速度</span><strong>20.0 km/h</strong></div>
+                <div class="metric"><span>当前位置</span><strong id="positionText">--</strong></div>
+                <div class="metric"><span>当前坡度</span><strong id="gradeText">0.0 %</strong></div>
+                <div class="metric"><span>进度</span><strong id="progressText">0.0 %</strong></div>
+            </div>
+
+            <div class="metrics">
+                <div class="metric"><span>网络探测样本</span><strong id="probeCount">0</strong></div>
+                <div class="metric"><span>平均延迟</span><strong id="probeAvg">-- ms</strong></div>
+                <div class="metric"><span>P95 延迟</span><strong id="probeP95">-- ms</strong></div>
+                <div class="metric"><span>成功率</span><strong id="probeSuccessRate">--</strong></div>
+                <div class="metric"><span>唯一 Pano</span><strong id="probeUniquePano">0</strong></div>
+                <div class="metric"><span>缓冲建议</span><strong id="bufferAdvice">等待数据</strong></div>
+            </div>
+
+            <p id="statusText" class="status">请先导入 GPX 并加载 API。</p>
+        </section>
+
+        <section class="viewer">
+            <div id="streetViewContainer">
+                <div id="svPano1" class="pano active"></div>
+                <div id="svPano2" class="pano"></div>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+</body>
+</html>
