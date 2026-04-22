@@ -2,6 +2,7 @@ import { buildRoute, sanitizeSegments } from "../../domain/route/route-builder.j
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 import { TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { createDefaultCustomWorkoutTarget } from "../../domain/workout/custom-workout-target.js";
+import { createInitialSensorSamplingState } from "../realtime/sensor-sampling.js";
 import { clamp, normalizeText } from "../../shared/utils/common.js";
 
 export const defaultRouteSegments = [
@@ -94,6 +95,7 @@ function createInitialLiveRideState() {
         isActive: false,
         canStart: false,
         dashboardOpen: false,
+        snapshot: null,
         session: null,
         trainerControlMode: null,
         customWorkoutTargetPlan: null,
@@ -179,6 +181,7 @@ function createInitialBleState() {
             statusLabel: bluetoothSupported ? "未连接" : "不支持",
             deviceName: bluetoothSupported ? "等待连接" : "当前浏览器不支持 Web Bluetooth",
             lastUpdated: null
-        }
+        },
+        sampling: createInitialSensorSamplingState()
     };
 }

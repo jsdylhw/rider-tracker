@@ -1,28 +1,33 @@
 import { getWorkoutModeLabel } from "../../domain/workout/workout-mode.js";
 import { TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
+import { buildEffectiveSensorSnapshot } from "../realtime/sensor-sampling.js";
 import { formatNumber } from "../../shared/format.js";
 
 export function buildSensorSnapshot(state) {
     const powerMeter = state.ble?.powerMeter ?? {};
-    const heartRate = state.ble?.heartRate ?? {};
+    const rideSnapshot = state.liveRide?.snapshot ?? null;
+    const effectiveSampling = rideSnapshot?.sampledSensors ?? buildEffectiveSensorSnapshot(state.ble?.sampling);
 
     return {
-        power: powerMeter.power ?? null,
-        cadence: powerMeter.cadence ?? null,
-        heartRate: heartRate.value ?? null,
-        powerSourceType: powerMeter.sourceType ?? "none",
-        powerLastUpdated: powerMeter.lastUpdated ?? null,
-        heartRateLastUpdated: heartRate.lastUpdated ?? null
+        power: effectiveSampling.power,
+        cadence: effectiveSampling.cadence,
+        heartRate: effectiveSampling.heartRate,
+        averagePower: effectiveSampling.averagePower,
+        powerSourceType: effectiveSampling.powerSourceType ?? powerMeter.sourceType ?? "none",
+        powerLastUpdated: effectiveSampling.powerTimestamp ?? powerMeter.lastUpdated ?? null,
+        heartRateLastUpdated: effectiveSampling.heartRateTimestamp ?? state.ble?.heartRate?.lastUpdated ?? null,
+        freshness: effectiveSampling.freshness
     };
 }
 
 export function buildRideSnapshot(state) {
     const liveRide = state.liveRide ?? {};
-    const session = liveRide.session ?? null;
+    const snapshot = liveRide.snapshot ?? null;
+    const session = snapshot?.session ?? liveRide.session ?? null;
     const route = session?.route ?? state.route ?? null;
-    const summary = session?.summary ?? null;
+    const summary = snapshot?.summary ?? session?.summary ?? null;
     const records = session?.records ?? [];
-    const currentRecord = records.at(-1) ?? null;
+    const currentRecord = snapshot?.currentRecord ?? records.at(-1) ?? null;
     const totalDistanceKm = route ? route.totalDistanceMeters / 1000 : 0;
     const distanceKm = summary?.distanceKm ?? 0;
     const remainingKm = Math.max(0, totalDistanceKm - distanceKm);
@@ -32,6 +37,7 @@ export function buildRideSnapshot(state) {
         dashboardOpen: Boolean(liveRide.dashboardOpen),
         isActive: Boolean(liveRide.isActive),
         canStart: Boolean(liveRide.canStart),
+        snapshot,
         session,
         route,
         summary,
@@ -48,8 +54,9 @@ export function buildRideSnapshot(state) {
 
 export function buildTrainingSnapshot(state) {
     const workout = state.workout ?? {};
-    const runtime = workout.runtime ?? {};
-    const customWorkoutTarget = state.liveRide?.customWorkoutTargetPlan ?? workout.customWorkoutTarget ?? null;
+    const rideSnapshot = state.liveRide?.snapshot ?? null;
+    const runtime = rideSnapshot?.workoutRuntime ?? workout.runtime ?? {};
+    const customWorkoutTarget = rideSnapshot?.customWorkoutTargetPlan ?? state.liveRide?.customWorkoutTargetPlan ?? workout.customWorkoutTarget ?? null;
 
     return {
         mode: workout.mode,
@@ -57,7 +64,8 @@ export function buildTrainingSnapshot(state) {
         runtime,
         customWorkoutTarget,
         ftp: state.settings?.ftp ?? 0,
-        trainerTarget: resolveTrainerTarget(runtime)
+        trainerTarget: resolveTrainerTarget(runtime),
+        rideSnapshot
     };
 }
 

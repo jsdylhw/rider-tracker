@@ -1,9 +1,20 @@
 import { buildWorkoutTargetChartSvg } from "./svg/dashboard-charts.js";
 
 export function createWorkoutRuntimeRenderer({ elements }) {
-    function render({ training, records }) {
-        renderWorkoutTargetHud(training?.runtime ?? {});
-        renderWorkoutTargetChart(records ?? [], training ?? {});
+    function render({ rideSnapshot, training, records }) {
+        const runtime = rideSnapshot?.workoutRuntime ?? training?.runtime ?? {};
+        const effectiveRecords = rideSnapshot?.session?.records ?? records ?? [];
+        const effectiveTraining = rideSnapshot
+            ? {
+                ...training,
+                runtime,
+                customWorkoutTarget: rideSnapshot.customWorkoutTargetPlan ?? training?.customWorkoutTarget,
+                rideSnapshot
+            }
+            : (training ?? {});
+
+        renderWorkoutTargetHud(runtime);
+        renderWorkoutTargetChart(effectiveRecords, effectiveTraining);
     }
 
     function renderWorkoutTargetHud(runtime) {

@@ -143,7 +143,7 @@ export function createDashboardRenderer({
             streetViewLoaded
         });
         const { ride, training, metricsData, enabledMetricKeys } = viewModel;
-        const { session, summary, currentRecord, route, records } = ride;
+        const { snapshot: rideSnapshot, session, summary, currentRecord, route, records } = ride;
 
         elements.rideDashboard.hidden = !ride.dashboardOpen;
         if (ride.dashboardOpen) {
@@ -195,9 +195,9 @@ export function createDashboardRenderer({
                 hasSession: false
             });
 
-            renderTrajectoryOverview(route, null);
-            workoutRuntimeRenderer.render({ training, records });
-            mapController.syncRide(route, null);
+            renderTrajectoryOverview(rideSnapshot, route, null);
+            workoutRuntimeRenderer.render({ rideSnapshot, training, records });
+            syncRideMap(rideSnapshot, route, null);
             return;
         }
 
@@ -232,14 +232,24 @@ export function createDashboardRenderer({
             hasSession: true
         });
 
-        renderTrajectoryOverview(route, currentRecord);
-        workoutRuntimeRenderer.render({ training, records });
-        mapController.syncRide(route, currentRecord);
+        renderTrajectoryOverview(rideSnapshot, route, currentRecord);
+        workoutRuntimeRenderer.render({ rideSnapshot, training, records });
+        syncRideMap(rideSnapshot, route, currentRecord);
     }
 
-    function renderTrajectoryOverview(route, currentRecord) {
+    function renderTrajectoryOverview(rideSnapshot, route, currentRecord) {
         if (!elements.streetViewTrajectorySvg) return;
-        elements.streetViewTrajectorySvg.innerHTML = buildTrajectoryOverviewSvg(route, currentRecord);
+        elements.streetViewTrajectorySvg.innerHTML = buildTrajectoryOverviewSvg(
+            rideSnapshot?.session?.route ?? route,
+            rideSnapshot?.currentRecord ?? currentRecord
+        );
+    }
+
+    function syncRideMap(rideSnapshot, route, currentRecord) {
+        mapController.syncRide(
+            rideSnapshot?.session?.route ?? route,
+            rideSnapshot?.currentRecord ?? currentRecord
+        );
     }
 
     return {

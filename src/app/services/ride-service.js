@@ -1,18 +1,19 @@
-import { createLiveRideSession, advanceLiveRideSession } from "../../domain/ride/live-ride-session.js";
+import { createLiveRideSession } from "../../domain/ride/live-ride-session.js";
 import { simulateRide } from "../../domain/ride/simulator.js";
-import { buildGradeSimulationState } from "../../domain/workout/grade-sim-mode.js";
-import { buildErgControlState } from "../../domain/workout/erg-mode.js";
-import { buildResistanceControlState } from "../../domain/workout/resistance-mode.js";
+import { buildEffectiveSensorSnapshot } from "../realtime/sensor-sampling.js";
 import {
-    buildWorkoutTargetRuntime,
-    enrichRuntimeWithWorkoutTarget,
-    resolveWorkoutTargetAtElapsed,
     sanitizeCustomWorkoutTarget
 } from "../../domain/workout/custom-workout-target.js";
 import { getWorkoutModeLabel } from "../../domain/workout/workout-mode.js";
 import { resolveTrainerControlModeForWorkoutMode, TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
+import {
+    buildInitialRideSnapshot,
+    buildNextRideSnapshot,
+    buildRideLogMessage,
+    buildRuntimeByControlMode
+} from "../realtime/ride-engine.js";
 import { saveLastSession } from "../../adapters/storage/session-storage.js";
-import { formatDuration, formatNumber } from "../../shared/format.js";
+import { formatNumber } from "../../shared/format.js";
 
 export function createRideService({ store, deviceService, exportService }) {
     let liveRideTimerId = null;
@@ -25,11 +26,12 @@ export function createRideService({ store, deviceService, exportService }) {
 
         const startedAt = new Date().toISOString();
         const trainerControlMode = resolveTrainerControlModeForWorkoutMode(state.workout.mode);
+        const sampledSensors = buildEffectiveSensorSnapshot(state.ble.sampling);
         const session = createLiveRideSession({
             route: state.route,
             settings: state.settings,
             startedAt,
-            initialHeartRate: state.ble.heartRate.value
+            initialHeartRate: sampledSensors.heartRate
         });
 
         session.exportMetadata = state.exportMetadata;
@@ -37,18 +39,28 @@ export function createRideService({ store, deviceService, exportService }) {
         clearInterval(liveRideTimerId);
         liveRideTimerId = window.setInterval(tickLiveRide, 1000);
 
+        const initialStatusMeta = `正在根据实时功率和路线坡度更新速度，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`;
+
         store.setState((currentState) => ({
             ...currentState,
             liveRide: {
                 ...currentState.liveRide,
                 isActive: true,
                 dashboardOpen: true,
+                snapshot: buildInitialRideSnapshot({
+                    session,
+                    sampledSensors,
+                    trainerControlMode,
+                    customWorkoutTargetPlan: sanitizeCustomWorkoutTarget(currentState.workout.customWorkoutTarget),
+                    workoutRuntime: currentState.workout.runtime,
+                    statusMeta: initialStatusMeta
+                }),
                 session,
                 startedAt,
                 trainerControlMode,
                 customWorkoutTargetPlan: sanitizeCustomWorkoutTarget(currentState.workout.customWorkoutTarget),
                 commandSequence: 0,
-                statusMeta: `正在根据实时功率和路线坡度更新速度，当前模式：${getWorkoutModeLabel(currentState.workout.mode)}。`
+                statusMeta: initialStatusMeta
             },
             statusText: `已开始骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。`
         }));
@@ -68,33 +80,46 @@ export function createRideService({ store, deviceService, exportService }) {
             saveLastSession(completedSession);
         }
 
+        const trainerControlMode = resolveTrainerControlModeForWorkoutMode(state.workout.mode);
+        const stoppedRuntime = buildRuntimeByControlMode({
+            trainerControlMode,
+            state,
+            active: false
+        });
+        const stoppedStatusMeta = completedSession
+            ? `骑行结束：${formatNumber(completedSession.summary.distanceKm, 2)} km / 平均速度 ${formatNumber(completedSession.summary.averageSpeedKph, 1)} km/h`
+            : "骑行已停止。";
+        const stoppedSnapshot = completedSession
+            ? buildInitialRideSnapshot({
+                session: completedSession,
+                sampledSensors: buildEffectiveSensorSnapshot(state.ble.sampling),
+                trainerControlMode,
+                customWorkoutTargetPlan: state.liveRide.customWorkoutTargetPlan,
+                workoutRuntime: stoppedRuntime,
+                statusMeta: stoppedStatusMeta
+            })
+            : null;
+
         store.setState((currentState) => ({
             ...currentState,
             session: completedSession ?? currentState.session,
             hasPersistedSession: Boolean(completedSession) || currentState.hasPersistedSession,
             workout: {
                 ...currentState.workout,
-                runtime: buildRuntimeByControlMode({
-                    trainerControlMode: resolveTrainerControlModeForWorkoutMode(currentState.workout.mode),
-                    state: currentState,
-                    active: false
-                })
+                runtime: stoppedRuntime
             },
             liveRide: {
                 ...currentState.liveRide,
                 isActive: false,
                 dashboardOpen: false,
+                snapshot: stoppedSnapshot,
                 trainerControlMode: null,
                 customWorkoutTargetPlan: null,
                 commandSequence: 0,
                 lastCompletedAt: new Date().toISOString(),
-                statusMeta: completedSession
-                    ? `骑行结束：${formatNumber(completedSession.summary.distanceKm, 2)} km / 平均速度 ${formatNumber(completedSession.summary.averageSpeedKph, 1)} km/h`
-                    : "骑行已停止。"
+                statusMeta: stoppedStatusMeta
             },
-            statusText: completedSession
-                ? `骑行结束：${formatNumber(completedSession.summary.distanceKm, 2)} km / 平均速度 ${formatNumber(completedSession.summary.averageSpeedKph, 1)} km/h`
-                : "骑行已停止。"
+            statusText: stoppedStatusMeta
         }));
 
         // Trigger automatic FIT download for real rides that have recorded distance
@@ -113,65 +138,21 @@ export function createRideService({ store, deviceService, exportService }) {
             return;
         }
 
-        const currentPower = state.ble.powerMeter.power ?? 0;
-        const currentHeartRate = state.ble.heartRate.value;
-        const currentCadence = state.ble.powerMeter.cadence;
-        const trainerControlMode = state.liveRide.trainerControlMode
-            ?? resolveTrainerControlModeForWorkoutMode(state.workout.mode);
-        const customWorkoutTargetPlan = state.liveRide.customWorkoutTargetPlan ?? state.workout.customWorkoutTarget;
-        const nextCommandSequence = (state.liveRide.commandSequence ?? 0) + 1;
-        const rideId = state.liveRide.startedAt ?? state.liveRide.session.startedAt;
-        const elapsedSeconds = (state.liveRide.session.summary?.elapsedSeconds ?? 0) + 1;
-        const resolvedWorkoutTarget = resolveWorkoutTargetAtElapsed({
-            target: customWorkoutTargetPlan,
-            elapsedSeconds,
-            ftp: state.settings.ftp
-        });
-
-        const nextSession = advanceLiveRideSession({
-            session: state.liveRide.session,
-            power: currentPower,
-            heartRate: currentHeartRate,
-            cadence: currentCadence,
-            workoutTarget: resolvedWorkoutTarget,
+        const sampledSensors = buildEffectiveSensorSnapshot(state.ble.sampling);
+        const rideSnapshot = buildNextRideSnapshot({
+            state,
+            sampledSensors,
             dt: 1
         });
 
-        const workoutTargetRuntime = buildWorkoutTargetRuntime({
-            target: customWorkoutTargetPlan,
-            elapsedSeconds: nextSession.summary.elapsedSeconds,
-            ftp: state.settings.ftp
-        });
-
-        const workoutRuntime = trainerControlMode === TRAINER_CONTROL_MODES.SIM
-            ? enrichRuntimeWithWorkoutTarget(buildGradeSimulationState({
-                route: nextSession.route,
-                distanceMeters: nextSession.physicsState.distanceMeters,
-                previousTargetGradePercent: state.workout.runtime.targetTrainerGradePercent ?? 0,
-                config: state.workout.gradeSimulation,
-                active: true,
-                rideId,
-                commandSequence: nextCommandSequence
-            }), workoutTargetRuntime)
-            : buildRuntimeByControlMode({
-                trainerControlMode,
-                state,
-                active: true,
-                rideId,
-                commandSequence: nextCommandSequence,
-                customWorkoutTargetPlan,
-                elapsedSeconds: nextSession.summary.elapsedSeconds
-            });
-
         // 触发蓝牙命令发送
-        if (workoutRuntime.pendingTrainerCommand) {
-            const cmd = workoutRuntime.pendingTrainerCommand;
+        if (rideSnapshot.pendingTrainerCommand) {
+            const cmd = rideSnapshot.pendingTrainerCommand;
             const controlMode = cmd.controlMode ?? cmd.mode;
             const targetGradePercent = cmd.targetGradePercent ?? cmd.payload?.gradePercent;
             const targetPowerWatts = cmd.targetPowerWatts ?? cmd.payload?.targetPowerWatts;
             const targetResistanceLevel = cmd.targetResistanceLevel ?? cmd.payload?.resistanceLevel;
-
-            console.log(`[Ride Log] Distance: ${nextSession.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${nextSession.summary.currentGradePercent.toFixed(1)}% | Power: ${currentPower}W | Cadence: ${currentCadence}rpm | Speed: ${nextSession.summary.currentSpeedKph.toFixed(1)}km/h | Next Target Grade: ${targetGradePercent?.toFixed(2)}%`);
+            console.log(buildRideLogMessage(rideSnapshot));
 
             if (controlMode === TRAINER_CONTROL_MODES.SIM && targetGradePercent !== undefined) {
                 void deviceService.setTrainerGrade(targetGradePercent).catch((error) => {
@@ -186,11 +167,12 @@ export function createRideService({ store, deviceService, exportService }) {
                     console.error("[RideService] 下发 trainer 固定阻力命令失败:", error);
                 });
             }
-            workoutRuntime.pendingTrainerCommand = null;
+            rideSnapshot.workoutRuntime.pendingTrainerCommand = null;
+            rideSnapshot.pendingTrainerCommand = null;
         } else {
             // 每隔约 5 秒打一次常规日志，防止刷屏
-            if (nextSession.physicsState.elapsedSeconds % 5 === 0) {
-                console.log(`[Ride Log] Distance: ${nextSession.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${nextSession.summary.currentGradePercent.toFixed(1)}% | Target Grade: ${workoutRuntime.targetTrainerGradePercent?.toFixed(2)}% | Power: ${currentPower}W | Cadence: ${currentCadence}rpm | Speed: ${nextSession.summary.currentSpeedKph.toFixed(1)}km/h`);
+            if (rideSnapshot.session.physicsState.elapsedSeconds % 5 === 0) {
+                console.log(buildRideLogMessage(rideSnapshot));
             }
         }
 
@@ -198,17 +180,16 @@ export function createRideService({ store, deviceService, exportService }) {
             ...currentState,
             workout: {
                 ...currentState.workout,
-                runtime: workoutRuntime
+                runtime: rideSnapshot.workoutRuntime
             },
             liveRide: {
                 ...currentState.liveRide,
-                session: nextSession,
-                trainerControlMode,
-                customWorkoutTargetPlan,
-                commandSequence: nextCommandSequence,
-                statusMeta: trainerControlMode === TRAINER_CONTROL_MODES.SIM
-                    ? `${workoutRuntime.controlStatus} 当前速度 ${formatNumber(nextSession.summary.currentSpeedKph, 1)} km/h`
-                    : `已骑行 ${formatDuration(nextSession.summary.elapsedSeconds)}，当前速度 ${formatNumber(nextSession.summary.currentSpeedKph, 1)} km/h`
+                snapshot: rideSnapshot,
+                session: rideSnapshot.session,
+                trainerControlMode: rideSnapshot.trainerControlMode,
+                customWorkoutTargetPlan: rideSnapshot.customWorkoutTargetPlan,
+                commandSequence: rideSnapshot.commandSequence,
+                statusMeta: rideSnapshot.statusMeta
             }
         }));
     }
@@ -251,42 +232,4 @@ export function createRideService({ store, deviceService, exportService }) {
         openRideDashboard,
         closeRideDashboard
     };
-}
-
-function buildRuntimeByControlMode({
-    trainerControlMode,
-    state,
-    active,
-    rideId = null,
-    commandSequence = 0,
-    customWorkoutTargetPlan = null,
-    elapsedSeconds = 0
-}) {
-    const workoutTargetRuntime = buildWorkoutTargetRuntime({
-        target: customWorkoutTargetPlan ?? state.workout.customWorkoutTarget,
-        elapsedSeconds,
-        ftp: state.settings.ftp
-    });
-
-    if (trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
-        return enrichRuntimeWithWorkoutTarget(buildErgControlState({
-            targetPowerWatts: workoutTargetRuntime.customWorkoutTargetPowerWatts ?? state.settings.power,
-            active,
-            rideId,
-            commandSequence
-        }), workoutTargetRuntime);
-    }
-
-    if (trainerControlMode === TRAINER_CONTROL_MODES.RESISTANCE) {
-        return enrichRuntimeWithWorkoutTarget(buildResistanceControlState({
-            active,
-            rideId,
-            commandSequence
-        }), workoutTargetRuntime);
-    }
-
-    return enrichRuntimeWithWorkoutTarget({
-        ...state.workout.runtime,
-        pendingTrainerCommand: null
-    }, workoutTargetRuntime);
 }

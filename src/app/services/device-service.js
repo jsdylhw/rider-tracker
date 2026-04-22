@@ -1,5 +1,11 @@
 import { createHeartRateMonitor } from "../../adapters/bluetooth/heart-rate-monitor.js";
 import { createControllableTrainer } from "../../adapters/bluetooth/controllable-trainer.js";
+import {
+    clearHeartRateSample,
+    clearPowerSample,
+    ingestHeartRateSample,
+    ingestPowerSample
+} from "../realtime/sensor-sampling.js";
 
 function mapStatusLabel(type) {
     if (type === "connected") {
@@ -14,34 +20,46 @@ function mapStatusLabel(type) {
 export function createDeviceService({ store }) {
     const heartRateMonitor = createHeartRateMonitor({
         onData: (data) => {
-            store.setState((state) => ({
-                ...state,
-                ble: {
-                    ...state.ble,
-                    heartRate: {
-                        ...state.ble.heartRate,
-                        value: data.heartRate,
-                        lastUpdated: data.timestamp
+            store.setState((state) => {
+                const nextSampling = ingestHeartRateSample(state.ble.sampling, data);
+
+                return {
+                    ...state,
+                    ble: {
+                        ...state.ble,
+                        heartRate: {
+                            ...state.ble.heartRate,
+                            value: nextSampling.heartRate.value,
+                            lastUpdated: nextSampling.heartRate.timestamp
+                        },
+                        sampling: nextSampling
                     }
-                }
-            }));
+                };
+            });
         },
         onStatus: (status) => {
-            store.setState((state) => ({
-                ...state,
-                ble: {
-                    ...state.ble,
-                    heartRate: {
-                        ...state.ble.heartRate,
-                        isConnecting: status.type === "connecting",
-                        isConnected: status.type === "connected",
-                        statusLabel: mapStatusLabel(status.type),
-                        deviceName: status.deviceName ?? (status.type === "disconnected" ? "等待连接" : status.message),
-                        value: status.type === "disconnected" ? null : state.ble.heartRate.value
-                    }
-                },
-                statusText: status.message
-            }));
+            store.setState((state) => {
+                const nextSampling = status.type === "disconnected"
+                    ? clearHeartRateSample(state.ble.sampling)
+                    : state.ble.sampling;
+
+                return {
+                    ...state,
+                    ble: {
+                        ...state.ble,
+                        heartRate: {
+                            ...state.ble.heartRate,
+                            isConnecting: status.type === "connecting",
+                            isConnected: status.type === "connected",
+                            statusLabel: mapStatusLabel(status.type),
+                            deviceName: status.deviceName ?? (status.type === "disconnected" ? "等待连接" : status.message),
+                            value: status.type === "disconnected" ? null : state.ble.heartRate.value
+                        },
+                        sampling: nextSampling
+                    },
+                    statusText: status.message
+                };
+            });
         }
     });
 
@@ -72,37 +90,52 @@ export function createDeviceService({ store }) {
         }
     ,
         onPowerSourceStatus: (powerState) => {
-            store.setState((state) => ({
-                ...state,
-                ble: {
-                    ...state.ble,
-                    powerMeter: {
-                        ...state.ble.powerMeter,
-                        isConnected: powerState.activeSource !== "none",
-                        statusLabel: powerState.activeSourceLabel,
-                        sourceType: powerState.activeSource,
-                        sourceLabel: powerState.activeSourceLabel,
-                        deviceName: resolvePowerSourceDeviceName(powerState),
-                        externalConnected: powerState.externalPowerConnected,
-                        externalConnecting: powerState.externalPowerConnecting,
-                        externalDeviceName: powerState.externalPowerDeviceName
+            store.setState((state) => {
+                const nextSampling = powerState.activeSource === "none"
+                    ? clearPowerSample(state.ble.sampling)
+                    : state.ble.sampling;
+
+                return {
+                    ...state,
+                    ble: {
+                        ...state.ble,
+                        powerMeter: {
+                            ...state.ble.powerMeter,
+                            isConnected: powerState.activeSource !== "none",
+                            statusLabel: powerState.activeSourceLabel,
+                            sourceType: powerState.activeSource,
+                            sourceLabel: powerState.activeSourceLabel,
+                            deviceName: resolvePowerSourceDeviceName(powerState),
+                            externalConnected: powerState.externalPowerConnected,
+                            externalConnecting: powerState.externalPowerConnecting,
+                            externalDeviceName: powerState.externalPowerDeviceName,
+                            ...(powerState.activeSource === "none"
+                                ? {
+                                    power: null,
+                                    cadence: null,
+                                    averagePower: null,
+                                    sampleCount: 0,
+                                    powerTotal: 0,
+                                    lastUpdated: null
+                                }
+                                : {})
+                        },
+                        sampling: nextSampling
+                    },
+                    liveRide: {
+                        ...state.liveRide,
+                        canStart: computeCanStart(state, {
+                            trainerConnected: powerState.trainerConnected,
+                            externalPowerConnected: powerState.externalPowerConnected,
+                            activePowerSource: powerState.activeSource
+                        })
                     }
-                },
-                liveRide: {
-                    ...state.liveRide,
-                    canStart: computeCanStart(state, {
-                        trainerConnected: powerState.trainerConnected,
-                        externalPowerConnected: powerState.externalPowerConnected,
-                        activePowerSource: powerState.activeSource
-                    })
-                }
-            }));
+                };
+            });
         },
         onData: (data) => {
             store.setState((state) => {
-                const hasPowerSample = typeof data.power === "number" && Number.isFinite(data.power);
-                const sampleCount = hasPowerSample ? state.ble.powerMeter.sampleCount + 1 : state.ble.powerMeter.sampleCount;
-                const powerTotal = hasPowerSample ? state.ble.powerMeter.powerTotal + data.power : state.ble.powerMeter.powerTotal;
+                const nextSampling = ingestPowerSample(state.ble.sampling, data);
 
                 return {
                     ...state,
@@ -114,13 +147,14 @@ export function createDeviceService({ store }) {
                             statusLabel: mapPowerSourceStatusLabel(data.sourceType),
                             sourceType: data.sourceType,
                             sourceLabel: mapPowerSourceStatusLabel(data.sourceType),
-                            power: data.sourceType === "none" ? null : data.power,
-                            cadence: data.sourceType === "none" ? null : data.cadence,
-                            averagePower: sampleCount > 0 ? Math.round(powerTotal / sampleCount) : null,
-                            sampleCount,
-                            powerTotal,
-                            lastUpdated: data.sourceType === "none" ? null : data.timestamp
-                        }
+                            power: nextSampling.power.value,
+                            cadence: nextSampling.cadence.value,
+                            averagePower: nextSampling.power.average,
+                            sampleCount: nextSampling.power.sampleCount,
+                            powerTotal: nextSampling.power.total,
+                            lastUpdated: nextSampling.power.timestamp
+                        },
+                        sampling: nextSampling
                     },
                     liveRide: {
                         ...state.liveRide,
