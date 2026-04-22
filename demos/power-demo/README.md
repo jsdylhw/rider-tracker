@@ -17,7 +17,7 @@ python -m http.server 8080
 
 浏览器访问：
 
-- <http://localhost:8080/powertest/index.html>
+- <http://localhost:8080/demos/power-demo/index.html>
 
 推荐浏览器：最新版 Chrome / Edge（支持 Web Bluetooth）。
 

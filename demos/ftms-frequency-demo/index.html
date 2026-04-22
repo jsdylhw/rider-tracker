@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTMS Frequency Demo</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #0f172a;
+            --panel: #111827;
+            --panel-2: #1f2937;
+            --border: #334155;
+            --text: #e5e7eb;
+            --muted: #94a3b8;
+            --accent: #38bdf8;
+            --good: #22c55e;
+            --warn: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        .page {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        button {
+            border: 0;
+            border-radius: 8px;
+            padding: 10px 14px;
+            cursor: pointer;
+            background: var(--panel-2);
+            color: var(--text);
+        }
+
+        button.primary {
+            background: var(--accent);
+            color: #082f49;
+            font-weight: 700;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .metric {
+            background: var(--panel-2);
+            border-radius: 10px;
+            padding: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .metric-label {
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .status {
+            color: var(--muted);
+            margin-top: 8px;
+        }
+
+        .status.good {
+            color: var(--good);
+        }
+
+        .status.warn {
+            color: var(--warn);
+        }
+
+        .hint {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .log {
+            width: 100%;
+            min-height: 320px;
+            resize: vertical;
+            background: #020617;
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: monospace;
+            line-height: 1.5;
+        }
+
+        code {
+            color: #7dd3fc;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="card">
+            <h1>FTMS Indoor Bike Data Frequency Demo</h1>
+            <p class="hint">
+                这个页面用于测试骑行台通过 FTMS <code>Indoor Bike Data</code> 上报数据的通知频率，
+                重点观察包间隔、近似 Hz、功率/踏频字段是否稳定出现。需要在 <code>https</code> 或 <code>localhost</code> 环境下打开。
+            </p>
+            <div class="controls">
+                <button id="connectBtn" class="primary">连接骑行台</button>
+                <button id="disconnectBtn" disabled>断开连接</button>
+                <button id="clearBtn">清空日志</button>
+            </div>
+            <div id="statusText" class="status">等待连接 FTMS 骑行台。</div>
+        </div>
+
+        <div class="card">
+            <h2>实时统计</h2>
+            <div class="grid">
+                <div class="metric">
+                    <div class="metric-label">通知总数</div>
+                    <div id="packetCount" class="metric-value">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">当前间隔</div>
+                    <div id="currentIntervalMs" class="metric-value">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">平均间隔</div>
+                    <div id="avgIntervalMs" class="metric-value">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">近似频率</div>
+                    <div id="hzValue" class="metric-value">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">功率字段</div>
+                    <div id="powerValue" class="metric-value">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">踏频字段</div>
+                    <div id="cadenceValue" class="metric-value">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">速度字段</div>
+                    <div id="speedValue" class="metric-value">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">功率样本占比</div>
+                    <div id="powerPresenceRate" class="metric-value">0%</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>原始日志</h2>
+            <textarea id="logOutput" class="log" readonly></textarea>
+        </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+</body>
+</html>

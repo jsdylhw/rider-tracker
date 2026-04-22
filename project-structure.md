@@ -36,10 +36,11 @@
   - 本文档
 - `tests/`
   - 单元/集成测试、测试夹具 GPX、测试运行器
-- `street-view-demo.html`
-  - 独立街景示例页
-- `powertest/`
-  - BLE 功率/FTMS 相关独立验证页
+- `demos/`
+  - 独立示例与实验页目录
+  - `streetview-load-demo/`：街景加载独立验证页
+  - `power-demo/`：BLE 功率/FTMS 控制独立验证页
+  - `ftms-frequency-demo/`：FTMS 骑行台数据通知频率测试页
 - `server/`
   - 服务端示例（Strava token / 上传相关）
 
