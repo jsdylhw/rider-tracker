@@ -46,7 +46,7 @@ export function createLayoutCoordinator({ elements }) {
                 elements.routeMapShell.hidden = true;
             }
             if (elements.setupElevationChartShell) {
-                elements.setupElevationChartShell.hidden = true;
+                elements.setupElevationChartShell.hidden = false;
             }
 
             if (elements.liveExportSlot && elements.exportCardContainer) {

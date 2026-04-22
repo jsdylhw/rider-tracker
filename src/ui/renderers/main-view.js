@@ -7,6 +7,7 @@ import { createDeviceRenderer } from "./device-renderer.js";
 import { createLayoutCoordinator } from "./layout-coordinator.js";
 import { createWorkoutRenderer } from "./workout-renderer.js";
 import { createCustomWorkoutTargetRenderer } from "./custom-workout-target-renderer.js";
+import { buildDistanceTimeChartSvg } from "./svg/session-charts.js";
 
 export function createMainView({
     store,
@@ -368,42 +369,7 @@ export function createMainView({
 
     function renderChart(records) {
         if (!elements.distanceChart) return;
-
-        if (records.length === 0) {
-            elements.distanceChart.innerHTML = `
-                <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-size="14">
-                    运行模拟后将显示图像
-                </text>
-            `;
-            return;
-        }
-
-        const width = 640;
-        const height = 280;
-        const padding = 40;
-
-        const maxTime = records[records.length - 1].elapsedSeconds;
-        const maxDist = records[records.length - 1].distanceKm;
-
-        const points = records.map((r) => {
-            const x = padding + (r.elapsedSeconds / maxTime) * (width - padding * 2);
-            const y = height - padding - (r.distanceKm / maxDist) * (height - padding * 2);
-            return `${x},${y}`;
-        }).join(" ");
-
-        elements.distanceChart.innerHTML = `
-            <polyline points="${points}" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linejoin="round" />
-            
-            <!-- X 轴 (时间) -->
-            <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#cbd5e1" stroke-width="1" />
-            <text x="${padding}" y="${height - padding + 20}" fill="#64748b" font-size="12">0s</text>
-            <text x="${width - padding}" y="${height - padding + 20}" fill="#64748b" font-size="12" text-anchor="end">${formatDuration(maxTime)}</text>
-            
-            <!-- Y 轴 (距离) -->
-            <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#cbd5e1" stroke-width="1" />
-            <text x="${padding - 10}" y="${height - padding}" fill="#64748b" font-size="12" text-anchor="end">0 km</text>
-            <text x="${padding - 10}" y="${padding}" fill="#64748b" font-size="12" text-anchor="end">${formatNumber(maxDist, 1)} km</text>
-        `;
+        elements.distanceChart.innerHTML = buildDistanceTimeChartSvg(records);
     }
 
     function renderPipControls(state) {
