@@ -26,7 +26,7 @@
 ## 根目录结构（关键）
 - `index.html`
   - 唯一页面入口，承载所有视图 DOM
-- `style.css`
+- `src/style.css`
   - 全局样式（当前仍为单文件）
 - `README.md`
   - 使用说明与功能文档
@@ -237,7 +237,7 @@
 - 回归测试基础已建立
 
 ### 仍需优化的部分
-- `index.html` 与 `style.css` 体量偏大
+- `index.html` 与 `src/style.css` 体量偏大
 - `main-view.js` 仍承担较重装配职责
 - 沉浸模式 UI 与普通 Dashboard 共享大量 DOM，后续可继续解耦
 
