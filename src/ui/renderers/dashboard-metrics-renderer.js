@@ -5,11 +5,22 @@ export function createDashboardMetricsRenderer({ elements }) {
         immersiveStreetViewMode = false,
         hasSession = false
     }) {
-        if (!elements.dashboardMetricsGrid) return;
+        if (immersiveStreetViewMode) {
+            if (elements.dashboardMetricsGrid) {
+                elements.dashboardMetricsGrid.innerHTML = "";
+            }
+            if (elements.immersiveMetricsGrid) {
+                elements.immersiveMetricsGrid.innerHTML = buildImmersiveMetricsHtml(metricsData, hasSession);
+            }
+            return;
+        }
 
-        elements.dashboardMetricsGrid.innerHTML = immersiveStreetViewMode
-            ? buildImmersiveMetricsHtml(metricsData, hasSession)
-            : buildDefaultMetricsHtml(metricsData, enabledMetricKeys, hasSession);
+        if (elements.immersiveMetricsGrid) {
+            elements.immersiveMetricsGrid.innerHTML = "";
+        }
+        if (elements.dashboardMetricsGrid) {
+            elements.dashboardMetricsGrid.innerHTML = buildDefaultMetricsHtml(metricsData, enabledMetricKeys, hasSession);
+        }
     }
 
     return {
@@ -21,6 +32,9 @@ function buildDefaultMetricsHtml(metricsData, enabledMetricKeys, hasSession) {
     return enabledMetricKeys
         .map((key) => {
             const metric = metricsData[key];
+            if (!metric) {
+                return "";
+            }
             return `
                 <div class="data-item">
                     <div class="data-label">${metric.label}</div>
@@ -36,6 +50,9 @@ function buildImmersiveMetricsHtml(metricsData, hasSession) {
     return immersiveKeys
         .map((key) => {
             const metric = metricsData[key];
+            if (!metric) {
+                return "";
+            }
             return `
                 <div class="data-item">
                     <div class="data-label">${metric.label}</div>

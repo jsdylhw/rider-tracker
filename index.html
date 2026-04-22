@@ -408,6 +408,23 @@
                     <input name="activityName" type="text" maxlength="48">
                 </label>
                 <label class="field">
+                    <span>FIT 类型</span>
+                    <label class="export-toggle">
+                        <input name="markVirtualActivity" type="checkbox" checked>
+                        <span class="export-toggle-track" aria-hidden="true"></span>
+                        <span class="export-toggle-label">
+                            <span class="export-toggle-title">
+                                <span class="when-checked">模拟骑行</span>
+                                <span class="when-unchecked">普通骑行</span>
+                            </span>
+                            <span class="export-toggle-subtitle">
+                                <span class="when-checked">写入 virtualActivity</span>
+                                <span class="when-unchecked">不写入 virtualActivity</span>
+                            </span>
+                        </span>
+                    </label>
+                </label>
+                <label class="field">
                     <span>仓库地址</span>
                     <input name="repositoryUrl" type="url">
                 </label>
@@ -579,7 +596,7 @@
                             <button id="immersiveBackBtn" class="btn ghost">返回页面</button>
                             <div id="immersiveMetricsCard" class="streetview-hud-card">
                                 <h3>实时骑行数据</h3>
-                                <div id="dashboardMetricsGrid" class="data-grid"></div>
+                                <div id="immersiveMetricsGrid" class="data-grid"></div>
                             </div>
                             <div id="workoutTargetHudCard" class="streetview-hud-card">
                                 <h3>训练目标</h3>
@@ -594,6 +611,16 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <div class="card ride-metrics-column">
+                    <div class="section-title-row">
+                        <div>
+                            <h2>实时骑行数据</h2>
+                            <p class="section-subtitle">展示功率、速度、踏频、心率等动态指标。</p>
+                        </div>
+                    </div>
+                    <div id="dashboardMetricsGrid" class="data-grid"></div>
                 </div>
 
                 <div class="card" id="liveWorkoutTargetCard" style="grid-column: 1 / -1;">

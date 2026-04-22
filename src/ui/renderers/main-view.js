@@ -144,6 +144,7 @@ export function createMainView({
         recordsTableBody: document.getElementById("recordsTableBody"),
         checkboxInputs: [...document.querySelectorAll(".checkbox-group input")],
         dashboardMetricsGrid: document.getElementById("dashboardMetricsGrid"),
+        immersiveMetricsGrid: document.getElementById("immersiveMetricsGrid"),
         customizeMetricsBtn: document.getElementById("customizeMetricsBtn"),
         metricsCustomizer: document.getElementById("metricsCustomizer"),
         elevationChart: document.getElementById("elevationChart"),
@@ -166,6 +167,8 @@ export function createMainView({
         workoutTargetChart: document.getElementById("workoutTargetChart"),
         liveWorkoutTargetCard: document.getElementById("liveWorkoutTargetCard")
     };
+
+    const layoutCoordinator = createLayoutCoordinator({ elements });
 
     elements.fitExportForm = document.getElementById("fitExportForm");
     elements.downloadSessionBtn = document.getElementById("downloadSessionBtn");
@@ -223,8 +226,6 @@ export function createMainView({
         onUpdateCustomWorkoutTargetStep,
         onRemoveCustomWorkoutTargetStep
     });
-
-    const layoutCoordinator = createLayoutCoordinator({ elements });
 
     function bind(el, event, handler) {
         if (el) el.addEventListener(event, handler);

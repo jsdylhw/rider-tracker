@@ -75,7 +75,12 @@ export function createRideService({ store, deviceService, exportService }) {
         clearInterval(liveRideTimerId);
         liveRideTimerId = null;
 
-        const completedSession = state.liveRide.session;
+        const completedSession = state.liveRide.session
+            ? {
+                ...state.liveRide.session,
+                finishedAt: new Date().toISOString()
+            }
+            : null;
         if (completedSession) {
             saveLastSession(completedSession);
         }

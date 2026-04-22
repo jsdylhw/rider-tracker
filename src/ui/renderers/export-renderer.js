@@ -23,7 +23,11 @@ export function createExportRenderer({
             if (elements.fitExportForm) {
                 const field = elements.fitExportForm.elements.namedItem(key);
                 if (field && document.activeElement !== field) {
-                    field.value = value;
+                    if (field.type === "checkbox") {
+                        field.checked = Boolean(value);
+                    } else {
+                        field.value = value;
+                    }
                 }
             }
         });
@@ -38,7 +42,8 @@ export function createExportRenderer({
             activityName: String(formData.get("activityName") ?? ""),
             fitDescription: String(formData.get("fitDescription") ?? ""),
             repositoryUrl: String(formData.get("repositoryUrl") ?? ""),
-            uploadEndpoint: String(formData.get("uploadEndpoint") ?? "")
+            uploadEndpoint: String(formData.get("uploadEndpoint") ?? ""),
+            markVirtualActivity: Boolean(formData.get("markVirtualActivity"))
         };
     }
 

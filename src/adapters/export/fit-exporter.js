@@ -1,4 +1,7 @@
-const FIT_SDK_URL = "https://esm.sh/@garmin/fitsdk@21.178.0/es2022/fitsdk.mjs";
+const FIT_SDK_URLS = [
+    "https://esm.sh/@garmin/fitsdk@21.178.0/es2022/fitsdk.mjs",
+    "https://cdn.jsdelivr.net/npm/@garmin/fitsdk@21.178.0/es2022/fitsdk.mjs"
+];
 const APP_PRODUCT_ID = 5101;
 const APP_SOFTWARE_VERSION = 1;
 const APP_SERIAL_NUMBER = 51010001;
@@ -6,18 +9,22 @@ const FIT_EPOCH_MS = 631065600000;
 
 let fitSdkPromise;
 
-export async function exportSessionAsFit(session, exportMetadata) {
+export async function exportSessionAsFit(session, exportMetadata, options = {}) {
     const { Encoder, Profile } = await loadFitSdk();
 
-    const encoder = new Encoder();
-    const records = session.records ?? [];
+    if (!session?.summary) {
+        throw new Error("缺少 session.summary，无法导出 FIT。");
+    }
+
+    const markVirtualActivity = options?.markVirtualActivity !== false;
     const summary = session.summary;
+    const records = session.records ?? [];
+    const encoder = new Encoder();
     const metadata = buildExportMetadata(exportMetadata ?? session.exportMetadata);
-    const finishedAt = new Date(session.createdAt);
-    const startedAt = new Date(finishedAt.getTime() - summary.elapsedSeconds * 1000);
-    const maxSpeed = Math.max(...records.map((record) => record.speedKph / 3.6), 0);
-    const maxHeartRate = Math.max(...records.map((record) => record.heartRate), 0);
-    const maxPower = Math.max(...records.map((record) => record.power), 0);
+    const { startedAt, finishedAt } = resolveSessionTimestamps({ session, summary });
+    const maxSpeed = maxOf(records, (record) => (Number.isFinite(record?.speedKph) ? record.speedKph / 3.6 : null));
+    const maxHeartRate = maxOf(records, (record) => (Number.isFinite(record?.heartRate) ? record.heartRate : null));
+    const maxPower = maxOf(records, (record) => (Number.isFinite(record?.power) ? record.power : null));
     const gradeStats = summarizeGrades(records);
 
     encoder.onMesg(Profile.MesgNum.FILE_ID, {
@@ -49,15 +56,16 @@ export async function exportSessionAsFit(session, exportMetadata) {
     });
 
     records.forEach((record) => {
-        const message = {
-            timestamp: new Date(startedAt.getTime() + record.elapsedSeconds * 1000),
-            heartRate: record.heartRate,
-            distance: record.distanceKm * 1000,
-            speed: record.speedKph / 3.6,
-            altitude: record.elevationMeters,
-            power: record.power,
-            grade: record.gradePercent
-        };
+        const timestamp = new Date(startedAt.getTime() + (Number(record.elapsedSeconds) || 0) * 1000);
+        const message = { timestamp };
+
+        setFinite(message, "heartRate", record.heartRate);
+        setFinite(message, "distance", Number.isFinite(record?.distanceKm) ? record.distanceKm * 1000 : null);
+        setFinite(message, "speed", Number.isFinite(record?.speedKph) ? record.speedKph / 3.6 : null);
+        setFinite(message, "altitude", record.elevationMeters);
+        setFinite(message, "power", record.power);
+        setFinite(message, "cadence", record.cadence);
+        setFinite(message, "grade", record.gradePercent);
 
         if (typeof record.positionLat === "number" && typeof record.positionLong === "number") {
             message.positionLat = toSemicircles(record.positionLat);
@@ -106,7 +114,7 @@ export async function exportSessionAsFit(session, exportMetadata) {
         maxNegGrade: gradeStats.maxNegGrade,
         sportProfileName: metadata.profileName,
         sport: "cycling",
-        // subSport: "virtualActivity"
+        ...(markVirtualActivity ? { subSport: "virtualActivity" } : {})
     });
 
     encoder.onMesg(Profile.MesgNum.EVENT, {
@@ -128,17 +136,79 @@ export async function exportSessionAsFit(session, exportMetadata) {
     return encoder.close();
 }
 
+export function exportSessionAsVirtualFit(session, exportMetadata) {
+    return exportSessionAsFit(session, exportMetadata, { markVirtualActivity: true });
+}
+
+export function exportSessionAsPlainFit(session, exportMetadata) {
+    return exportSessionAsFit(session, exportMetadata, { markVirtualActivity: false });
+}
+
 async function loadFitSdk() {
     if (!fitSdkPromise) {
-        fitSdkPromise = import(FIT_SDK_URL);
+        fitSdkPromise = loadFirstAvailableFitSdk();
     }
 
     return fitSdkPromise;
 }
 
+async function loadFirstAvailableFitSdk() {
+    const errors = [];
+    for (const url of FIT_SDK_URLS) {
+        try {
+            return await import(url);
+        } catch (err) {
+            errors.push(err);
+        }
+    }
+    const message = errors.map((err) => (err instanceof Error ? err.message : String(err))).filter(Boolean).join(" | ");
+    throw new Error(`加载 FIT SDK 失败：${message || "未知错误"}`);
+}
+
 function toFitLocalTimestamp(date) {
     const timezoneOffsetSeconds = -date.getTimezoneOffset() * 60;
     return Math.floor((date.getTime() - FIT_EPOCH_MS) / 1000) + timezoneOffsetSeconds;
+}
+
+function resolveSessionTimestamps({ session, summary }) {
+    const elapsedMs = Math.max(0, Number(summary?.elapsedSeconds ?? 0) * 1000);
+    const startedAt = parseDate(session?.startedAt) ?? (elapsedMs > 0 ? new Date(Date.now() - elapsedMs) : new Date());
+    const finishedAt = parseDate(session?.finishedAt)
+        ?? parseDate(session?.createdAt)
+        ?? new Date(startedAt.getTime() + elapsedMs);
+
+    if (!Number.isFinite(finishedAt.getTime())) {
+        return { startedAt, finishedAt: new Date(startedAt.getTime() + elapsedMs) };
+    }
+
+    if (elapsedMs > 0 && finishedAt.getTime() < startedAt.getTime()) {
+        return { startedAt: new Date(finishedAt.getTime() - elapsedMs), finishedAt };
+    }
+
+    return { startedAt, finishedAt };
+}
+
+function parseDate(value) {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function setFinite(target, key, value) {
+    if (Number.isFinite(value)) {
+        target[key] = value;
+    }
+}
+
+function maxOf(values, selector) {
+    let maxValue = 0;
+    for (const item of values) {
+        const value = selector(item);
+        if (Number.isFinite(value)) {
+            maxValue = Math.max(maxValue, value);
+        }
+    }
+    return maxValue;
 }
 
 function buildExportMetadata(exportMetadata) {

@@ -4,10 +4,13 @@ import { simulateStep } from "../physics/cycling-model.js";
 export function simulateRide({ route, settings }) {
     const records = [];
     const maxSimulationSeconds = 24 * 60 * 60;
+    const finishedAt = new Date().toISOString();
 
     if (!route || route.totalDistanceMeters <= 0) {
         return {
-            createdAt: new Date().toISOString(),
+            createdAt: finishedAt,
+            startedAt: finishedAt,
+            finishedAt,
             route,
             settings,
             records,
@@ -78,8 +81,12 @@ export function simulateRide({ route, settings }) {
         ? Math.round(records.reduce((sum, record) => sum + record.heartRate, 0) / records.length)
         : settings.restingHr;
 
+    const startedAt = new Date(new Date(finishedAt).getTime() - elapsedSeconds * 1000).toISOString();
+
     return {
-        createdAt: new Date().toISOString(),
+        createdAt: finishedAt,
+        startedAt,
+        finishedAt,
         route,
         settings,
         records,

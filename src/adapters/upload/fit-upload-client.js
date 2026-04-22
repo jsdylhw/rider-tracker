@@ -7,7 +7,12 @@ export async function uploadFitToEndpoint({
     activityName,
     fitDescription,
     repositoryUrl,
-    generatedMessage
+    generatedMessage,
+    userId,
+    trainer,
+    commute,
+    externalId,
+    sportType
 }) {
     const formData = new FormData();
     const payload = fitBytes instanceof Uint8Array ? fitBytes : new Uint8Array(fitBytes);
@@ -17,6 +22,11 @@ export async function uploadFitToEndpoint({
     formData.append("activityName", activityName);
     formData.append("fitDescription", fitDescription);
     formData.append("repositoryUrl", repositoryUrl);
+    if (userId) formData.append("userId", String(userId));
+    if (typeof trainer === "boolean") formData.append("trainer", trainer ? "1" : "0");
+    if (typeof commute === "boolean") formData.append("commute", commute ? "1" : "0");
+    if (externalId) formData.append("externalId", String(externalId));
+    if (sportType) formData.append("sportType", String(sportType));
 
     const response = await fetch(endpointUrl, {
         method: "POST",
