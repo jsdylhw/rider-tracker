@@ -114,6 +114,13 @@ function createInitialLiveRideState() {
         trainerControlMode: null,
         customWorkoutTargetPlan: null,
         commandSequence: 0,
+        commandDispatch: {
+            lastSentAtMs: null,
+            lastSentControlMode: null,
+            lastSentGradePercent: 0,
+            lastSentPowerWatts: null,
+            lastSentResistanceLevel: null
+        },
         startedAt: null,
         lastCompletedAt: null,
         statusMeta: "连接功率计后即可开始骑行。"

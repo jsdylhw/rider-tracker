@@ -39,11 +39,8 @@ export function simulateStep({
     elevationMeters,
     ascentMeters,
     power,
-    heartRate,
     gradePercent,
-    elapsedSeconds,
     settings,
-    durationSeconds,
     dt
 }) {
     const mass = settings.mass;
@@ -100,22 +97,12 @@ export function simulateStep({
     const elevationDelta = nextSpeed * dt * slopeRatio;
     const nextElevationMeters = elevationMeters + elevationDelta;
     const nextAscentMeters = ascentMeters + Math.max(0, elevationDelta);
-    const nextHeartRate = updateHeartRate({
-        currentHeartRate: heartRate,
-        power,
-        elapsedSeconds,
-        durationSeconds,
-        restingHr: settings.restingHr,
-        maxHr: settings.maxHr,
-        dt
-    });
 
     return {
         speed: nextSpeed,
         distanceMeters: nextDistanceMeters,
         elevationMeters: nextElevationMeters,
-        ascentMeters: nextAscentMeters,
-        heartRate: nextHeartRate
+        ascentMeters: nextAscentMeters
     };
 }
 
@@ -130,22 +117,4 @@ function calculateResistivePower({ speed, mass, crr, cda, windSpeed, cosBeta, si
 
 function calculateAirForce(relativeWind, cda) {
     return 0.5 * AIR_DENSITY * cda * relativeWind * Math.abs(relativeWind);
-}
-
-function updateHeartRate({
-    currentHeartRate,
-    power,
-    elapsedSeconds,
-    durationSeconds,
-    restingHr,
-    maxHr,
-    dt
-}) {
-    const fatigueRatio = durationSeconds > 0 ? elapsedSeconds / durationSeconds : 0;
-    const hrTarget = Math.min(
-        maxHr,
-        restingHr + power * 0.32 + 18 * fatigueRatio
-    );
-
-    return currentHeartRate + (hrTarget - currentHeartRate) * Math.min(1, dt / 18);
 }

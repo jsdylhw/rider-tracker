@@ -46,7 +46,7 @@ export const suite = {
                 });
 
                 assertEqual(session.records.length, 0);
-                assertEqual(session.physicsState.heartRate, 95);
+                assertEqual(session.heartRateState.currentHeartRate, 95);
                 assertEqual(session.summary.elapsedSeconds, 0);
             }
         },
@@ -82,6 +82,62 @@ export const suite = {
                 assertEqual(session.summary.maxPower, 260);
                 assertEqual(session.summary.averageCadence, 89);
                 assertGreaterThan(session.summary.estimatedTss, 0);
+            }
+        },
+        {
+            name: "advanceLiveRideSession keeps last known heart rate when no new sample arrives",
+            run() {
+                let session = createLiveRideSession({
+                    route: createGeoRoute(),
+                    settings,
+                    startedAt: "2026-01-01T00:00:00.000Z",
+                    initialHeartRate: 102
+                });
+
+                session = advanceLiveRideSession({
+                    session,
+                    power: 230,
+                    heartRate: 118,
+                    cadence: 88,
+                    dt: 1
+                });
+
+                session = advanceLiveRideSession({
+                    session,
+                    power: 240,
+                    heartRate: null,
+                    cadence: 89,
+                    dt: 1
+                });
+
+                assertEqual(session.records.at(-1).heartRate, 118);
+                assertEqual(session.heartRateState.currentHeartRate, 118);
+            }
+        },
+        {
+            name: "advanceLiveRideSession accumulates fractional dt correctly",
+            run() {
+                let session = createLiveRideSession({
+                    route: createGeoRoute(),
+                    settings,
+                    startedAt: "2026-01-01T00:00:00.000Z",
+                    initialHeartRate: 100
+                });
+
+                for (let index = 0; index < 4; index += 1) {
+                    session = advanceLiveRideSession({
+                        session,
+                        power: 220,
+                        heartRate: 112,
+                        cadence: 86,
+                        dt: 0.25
+                    });
+                }
+
+                assertEqual(session.records.length, 4);
+                assertApprox(session.summary.elapsedSeconds, 1, 0.0001);
+                assertEqual(session.records.at(-1).elapsedLabel, "00:01");
+                assertGreaterThan(session.summary.distanceKm, 0);
             }
         },
         {

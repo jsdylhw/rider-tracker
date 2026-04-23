@@ -1,6 +1,5 @@
 import { resolveSpeedTarget, simulateStep } from "../../src/domain/physics/cycling-model.js";
 import {
-    assertApprox,
     assertGreaterThan,
     assertLessThan
 } from "../helpers/test-harness.js";
@@ -119,7 +118,6 @@ export const suite = {
                     elevationMeters: 10,
                     ascentMeters: 5,
                     power: 220,
-                    heartRate: 120,
                     gradePercent: 4,
                     elapsedSeconds: 10,
                     settings,
@@ -130,7 +128,6 @@ export const suite = {
                 assertGreaterThan(next.distanceMeters, 100);
                 assertGreaterThan(next.elevationMeters, 10);
                 assertGreaterThan(next.ascentMeters, 5);
-                assertGreaterThan(next.heartRate, 120);
             }
         },
         {
@@ -142,7 +139,6 @@ export const suite = {
                     elevationMeters: 0,
                     ascentMeters: 0,
                     power: 0,
-                    heartRate: 100,
                     gradePercent: 18,
                     elapsedSeconds: 1,
                     settings,
@@ -156,7 +152,6 @@ export const suite = {
                     elevationMeters: 0,
                     ascentMeters: 0,
                     power: 500,
-                    heartRate: 150,
                     gradePercent: -20,
                     elapsedSeconds: 100,
                     settings,
@@ -166,27 +161,6 @@ export const suite = {
 
                 assertGreaterThan(coasting.speed + 1, 0);
                 assertLessThan(downhill.speed, 33.31);
-            }
-        },
-        {
-            name: "heart rate response remains below max heart rate",
-            run() {
-                const next = simulateStep({
-                    speed: 8,
-                    distanceMeters: 0,
-                    elevationMeters: 0,
-                    ascentMeters: 0,
-                    power: 400,
-                    heartRate: 170,
-                    gradePercent: 2,
-                    elapsedSeconds: 3500,
-                    settings,
-                    durationSeconds: 3600,
-                    dt: 1
-                });
-
-                assertLessThan(next.heartRate, settings.maxHr + 0.001);
-                assertApprox(next.heartRate <= settings.maxHr ? 1 : 0, 1, 0.001);
             }
         }
     ]

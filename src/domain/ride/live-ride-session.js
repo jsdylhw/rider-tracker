@@ -1,5 +1,9 @@
 import { getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
 import { simulateStep } from "../physics/cycling-model.js";
+import {
+    advanceLiveHeartRateState,
+    createInitialLiveHeartRateState
+} from "../physiology/heart-rate-model.js";
 
 export function createLiveRideSession({ route, settings, startedAt, initialHeartRate = null }) {
     return {
@@ -13,29 +17,36 @@ export function createLiveRideSession({ route, settings, startedAt, initialHeart
             speed: 0,
             distanceMeters: 0,
             elevationMeters: 0,
-            ascentMeters: 0,
-            heartRate: initialHeartRate ?? settings.restingHr
-        }
+            ascentMeters: 0
+        },
+        heartRateState: createInitialLiveHeartRateState({
+            initialHeartRate,
+            restingHr: settings.restingHr
+        })
     };
 }
 
 export function advanceLiveRideSession({ session, power, heartRate, cadence, workoutTarget = null, dt = 1 }) {
-    const elapsedSeconds = session.records.length + dt;
+    const elapsedSeconds = (session.summary.elapsedSeconds ?? 0) + dt;
     const routeSample = getRouteSampleAtDistance(session.route, session.physicsState.distanceMeters);
     const gradePercent = routeSample.gradePercent ?? 0;
+    const nextHeartRateState = advanceLiveHeartRateState({
+        currentState: session.heartRateState,
+        sampledHeartRate: heartRate,
+        restingHr: session.settings.restingHr
+    });
     
     const nextState = simulateStep({
         ...session.physicsState,
         power,
-        heartRate: heartRate ?? session.physicsState.heartRate,
         gradePercent,
         elapsedSeconds,
         settings: session.settings,
-        durationSeconds: Math.max(elapsedSeconds, 1),
+        durationSeconds: Math.max(elapsedSeconds, dt),
         dt
     });
 
-    const resolvedHeartRate = heartRate ?? Math.round(nextState.heartRate);
+    const resolvedHeartRate = nextHeartRateState.currentHeartRate;
     const progressRatio = session.route.totalDistanceMeters > 0
         ? Math.min(1, nextState.distanceMeters / session.route.totalDistanceMeters)
         : 0;
@@ -68,10 +79,8 @@ export function advanceLiveRideSession({ session, power, heartRate, cadence, wor
     return {
         ...session,
         records,
-        physicsState: {
-            ...nextState,
-            heartRate: resolvedHeartRate
-        },
+        physicsState: nextState,
+        heartRateState: nextHeartRateState,
         summary: buildSummary(records, session.settings)
     };
 }
@@ -149,9 +158,10 @@ function calculateEstimatedTss({ averagePower, elapsedSeconds, ftp }) {
 }
 
 function formatDuration(totalSeconds) {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
+    const safeTotalSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const hours = Math.floor(safeTotalSeconds / 3600);
+    const minutes = Math.floor((safeTotalSeconds % 3600) / 60);
+    const seconds = safeTotalSeconds % 60;
 
     if (hours > 0) {
         return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;

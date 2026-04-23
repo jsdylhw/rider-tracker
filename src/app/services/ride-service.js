@@ -15,8 +15,13 @@ import {
 import { saveLastSession } from "../../adapters/storage/session-storage.js";
 import { formatNumber } from "../../shared/format.js";
 
+const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
+const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
+const TRAINER_COMMAND_MIN_INTERVAL_MS = 500;
+
 export function createRideService({ store, deviceService, exportService }) {
     let liveRideTimerId = null;
+    let liveRideTickIntervalMs = DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS;
 
     function startRide() {
         const state = store.getState();
@@ -36,8 +41,7 @@ export function createRideService({ store, deviceService, exportService }) {
 
         session.exportMetadata = state.exportMetadata;
 
-        clearInterval(liveRideTimerId);
-        liveRideTimerId = window.setInterval(tickLiveRide, 1000);
+        restartLiveRideLoop(resolveAdaptivePhysicsTickMs(sampledSensors));
 
         const initialStatusMeta = `正在根据实时功率和路线坡度更新速度，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`;
 
@@ -60,6 +64,7 @@ export function createRideService({ store, deviceService, exportService }) {
                 trainerControlMode,
                 customWorkoutTargetPlan: sanitizeCustomWorkoutTarget(currentState.workout.customWorkoutTarget),
                 commandSequence: 0,
+                commandDispatch: createInitialCommandDispatchState(),
                 statusMeta: initialStatusMeta
             },
             statusText: `已开始骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。`
@@ -72,8 +77,7 @@ export function createRideService({ store, deviceService, exportService }) {
             return;
         }
 
-        clearInterval(liveRideTimerId);
-        liveRideTimerId = null;
+        stopLiveRideLoop();
 
         const completedSession = state.liveRide.session
             ? {
@@ -121,6 +125,7 @@ export function createRideService({ store, deviceService, exportService }) {
                 trainerControlMode: null,
                 customWorkoutTargetPlan: null,
                 commandSequence: 0,
+                commandDispatch: createInitialCommandDispatchState(),
                 lastCompletedAt: new Date().toISOString(),
                 statusMeta: stoppedStatusMeta
             },
@@ -138,20 +143,27 @@ export function createRideService({ store, deviceService, exportService }) {
     function tickLiveRide() {
         const state = store.getState();
         if (!state.liveRide.isActive || !state.liveRide.session) {
-            clearInterval(liveRideTimerId);
-            liveRideTimerId = null;
+            stopLiveRideLoop();
             return;
         }
 
+        const currentTickIntervalMs = liveRideTickIntervalMs;
         const sampledSensors = buildEffectiveSensorSnapshot(state.ble.sampling);
+        const nextTickIntervalMs = resolveAdaptivePhysicsTickMs(sampledSensors);
         const rideSnapshot = buildNextRideSnapshot({
             state,
             sampledSensors,
-            dt: 1
+            dt: currentTickIntervalMs / 1000
         });
 
-        // 触发蓝牙命令发送
-        if (rideSnapshot.pendingTrainerCommand) {
+        const now = Date.now();
+        const shouldDispatchTrainerCommand = canDispatchTrainerCommand({
+            command: rideSnapshot.pendingTrainerCommand,
+            dispatchState: state.liveRide.commandDispatch,
+            now
+        });
+
+        if (rideSnapshot.pendingTrainerCommand && shouldDispatchTrainerCommand) {
             const cmd = rideSnapshot.pendingTrainerCommand;
             const controlMode = cmd.controlMode ?? cmd.mode;
             const targetGradePercent = cmd.targetGradePercent ?? cmd.payload?.gradePercent;
@@ -174,12 +186,23 @@ export function createRideService({ store, deviceService, exportService }) {
             }
             rideSnapshot.workoutRuntime.pendingTrainerCommand = null;
             rideSnapshot.pendingTrainerCommand = null;
-        } else {
+        } else if (!rideSnapshot.pendingTrainerCommand) {
             // 每隔约 5 秒打一次常规日志，防止刷屏
-            if (rideSnapshot.session.physicsState.elapsedSeconds % 5 === 0) {
+            if (shouldEmitRideLog({
+                previousElapsedSeconds: state.liveRide.session.summary?.elapsedSeconds ?? 0,
+                nextElapsedSeconds: rideSnapshot.session.summary.elapsedSeconds
+            })) {
                 console.log(buildRideLogMessage(rideSnapshot));
             }
         }
+
+        const nextCommandDispatch = shouldDispatchTrainerCommand && rideSnapshot.workoutRuntime
+            ? buildNextCommandDispatchState({
+                dispatchState: state.liveRide.commandDispatch,
+                runtime: rideSnapshot.workoutRuntime,
+                now
+            })
+            : state.liveRide.commandDispatch ?? createInitialCommandDispatchState();
 
         store.setState((currentState) => ({
             ...currentState,
@@ -194,9 +217,14 @@ export function createRideService({ store, deviceService, exportService }) {
                 trainerControlMode: rideSnapshot.trainerControlMode,
                 customWorkoutTargetPlan: rideSnapshot.customWorkoutTargetPlan,
                 commandSequence: rideSnapshot.commandSequence,
+                commandDispatch: nextCommandDispatch,
                 statusMeta: rideSnapshot.statusMeta
             }
         }));
+
+        if (nextTickIntervalMs !== currentTickIntervalMs) {
+            restartLiveRideLoop(nextTickIntervalMs);
+        }
     }
 
     function runSimulation() {
@@ -237,4 +265,87 @@ export function createRideService({ store, deviceService, exportService }) {
         openRideDashboard,
         closeRideDashboard
     };
+
+    function restartLiveRideLoop(nextIntervalMs) {
+        const safeIntervalMs = normalizePhysicsTickIntervalMs(nextIntervalMs);
+        if (liveRideTimerId !== null) {
+            clearInterval(liveRideTimerId);
+        }
+        liveRideTickIntervalMs = safeIntervalMs;
+        liveRideTimerId = window.setInterval(tickLiveRide, safeIntervalMs);
+    }
+
+    function stopLiveRideLoop() {
+        if (liveRideTimerId !== null) {
+            clearInterval(liveRideTimerId);
+        }
+        liveRideTimerId = null;
+        liveRideTickIntervalMs = DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS;
+    }
+}
+
+function createInitialCommandDispatchState() {
+    return {
+        lastSentAtMs: null,
+        lastSentControlMode: null,
+        lastSentGradePercent: 0,
+        lastSentPowerWatts: null,
+        lastSentResistanceLevel: null
+    };
+}
+
+function canDispatchTrainerCommand({ command, dispatchState, now }) {
+    if (!command) {
+        return false;
+    }
+
+    const lastSentAtMs = dispatchState?.lastSentAtMs ?? null;
+    if (!Number.isFinite(lastSentAtMs)) {
+        return true;
+    }
+
+    return now - lastSentAtMs >= TRAINER_COMMAND_MIN_INTERVAL_MS;
+}
+
+function buildNextCommandDispatchState({ dispatchState, runtime, now }) {
+    return {
+        ...createInitialCommandDispatchState(),
+        ...dispatchState,
+        lastSentAtMs: now,
+        lastSentControlMode: runtime.trainerControlMode ?? null,
+        lastSentGradePercent: runtime.targetTrainerGradePercent ?? 0,
+        lastSentPowerWatts: runtime.targetErgPowerWatts ?? null,
+        lastSentResistanceLevel: runtime.targetResistanceLevel ?? null
+    };
+}
+
+function shouldEmitRideLog({ previousElapsedSeconds, nextElapsedSeconds }) {
+    const previousBucket = Math.floor((Number(previousElapsedSeconds) || 0) / 5);
+    const nextBucket = Math.floor((Number(nextElapsedSeconds) || 0) / 5);
+    return nextBucket > previousBucket;
+}
+
+function resolveAdaptivePhysicsTickMs(sampledSensors) {
+    const estimatedIntervalMs = sampledSensors?.powerSignal?.estimatedIntervalMs;
+    const intervalSampleCount = sampledSensors?.powerSignal?.intervalSampleCount ?? 0;
+    const signalStable = sampledSensors?.powerSignal?.isStable === true;
+    const powerFresh = sampledSensors?.freshness?.power === true;
+
+    if (!powerFresh || !Number.isFinite(estimatedIntervalMs) || intervalSampleCount < 4 || !signalStable) {
+        return DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS;
+    }
+
+    return normalizePhysicsTickIntervalMs(estimatedIntervalMs);
+}
+
+function normalizePhysicsTickIntervalMs(intervalMs) {
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+        return DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS;
+    }
+
+    return ADAPTIVE_PHYSICS_TICK_BUCKETS_MS.reduce((closest, candidate) => {
+        const currentDelta = Math.abs(candidate - intervalMs);
+        const bestDelta = Math.abs(closest - intervalMs);
+        return currentDelta < bestDelta ? candidate : closest;
+    }, DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS);
 }

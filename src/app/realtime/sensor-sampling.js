@@ -1,4 +1,6 @@
 export const SENSOR_STALE_THRESHOLD_MS = 4000;
+const SIGNAL_ESTIMATE_ALPHA = 0.35;
+const MIN_STABLE_INTERVAL_SAMPLES = 4;
 
 export function createInitialSensorSamplingState() {
     return {
@@ -12,7 +14,13 @@ export function createInitialSensorSamplingState() {
             sourceType: "none",
             sampleCount: 0,
             total: 0,
-            average: null
+            average: null,
+            lastIntervalMs: null,
+            intervalSampleCount: 0,
+            estimatedIntervalMs: null,
+            estimatedHz: null,
+            jitterMs: null,
+            isSignalStable: false
         },
         cadence: {
             value: null,
@@ -63,6 +71,11 @@ export function ingestPowerSample(samplingState, data) {
     const hasPowerSample = powerValue !== null;
     const nextSampleCount = hasPowerSample ? samplingState.power.sampleCount + 1 : samplingState.power.sampleCount;
     const nextTotal = hasPowerSample ? samplingState.power.total + powerValue : samplingState.power.total;
+    const signalStats = buildNextSignalStats({
+        previousPowerState: samplingState.power,
+        timestamp,
+        sourceType
+    });
 
     return {
         ...samplingState,
@@ -72,7 +85,8 @@ export function ingestPowerSample(samplingState, data) {
             sourceType,
             sampleCount: nextSampleCount,
             total: nextTotal,
-            average: nextSampleCount > 0 ? Math.round(nextTotal / nextSampleCount) : null
+            average: nextSampleCount > 0 ? Math.round(nextTotal / nextSampleCount) : null,
+            ...signalStats
         },
         cadence: {
             value: cadenceValue,
@@ -92,7 +106,13 @@ export function clearPowerSample(samplingState) {
             sourceType: "none",
             sampleCount: 0,
             total: 0,
-            average: null
+            average: null,
+            lastIntervalMs: null,
+            intervalSampleCount: 0,
+            estimatedIntervalMs: null,
+            estimatedHz: null,
+            jitterMs: null,
+            isSignalStable: false
         },
         cadence: {
             value: null,
@@ -124,6 +144,14 @@ export function buildEffectiveSensorSnapshot(
         cadenceTimestamp: samplingState.cadence.timestamp,
         heartRateTimestamp: samplingState.heartRate.timestamp,
         lastUpdated: samplingState.lastUpdated,
+        powerSignal: {
+            observedIntervalMs: powerFresh ? samplingState.power.lastIntervalMs : null,
+            estimatedIntervalMs: powerFresh ? samplingState.power.estimatedIntervalMs : null,
+            estimatedHz: powerFresh ? samplingState.power.estimatedHz : null,
+            jitterMs: powerFresh ? samplingState.power.jitterMs : null,
+            isStable: powerFresh ? samplingState.power.isSignalStable : false,
+            intervalSampleCount: powerFresh ? samplingState.power.intervalSampleCount : 0
+        },
         freshness: {
             power: powerFresh,
             cadence: cadenceFresh,
@@ -142,4 +170,59 @@ function resolveTimestamp(input) {
 
 function normalizeFiniteNumber(value) {
     return Number.isFinite(value) ? value : null;
+}
+
+function buildNextSignalStats({ previousPowerState, timestamp, sourceType }) {
+    const previousTimestamp = previousPowerState?.timestamp;
+    const sourceChanged = previousPowerState?.sourceType !== sourceType;
+
+    if (
+        sourceChanged
+        || !Number.isFinite(previousTimestamp)
+        || !Number.isFinite(timestamp)
+        || timestamp <= previousTimestamp
+        || timestamp - previousTimestamp > SENSOR_STALE_THRESHOLD_MS
+    ) {
+        return createInitialSignalStats();
+    }
+
+    const lastIntervalMs = timestamp - previousTimestamp;
+    const intervalSampleCount = (previousPowerState.intervalSampleCount ?? 0) + 1;
+    const previousEstimate = previousPowerState.estimatedIntervalMs;
+    const estimatedIntervalMs = Number.isFinite(previousEstimate)
+        ? blendValue(previousEstimate, lastIntervalMs, SIGNAL_ESTIMATE_ALPHA)
+        : lastIntervalMs;
+    const jitterSample = Number.isFinite(previousEstimate)
+        ? Math.abs(lastIntervalMs - previousEstimate)
+        : 0;
+    const previousJitter = previousPowerState.jitterMs;
+    const jitterMs = Number.isFinite(previousJitter)
+        ? blendValue(previousJitter, jitterSample, SIGNAL_ESTIMATE_ALPHA)
+        : jitterSample;
+    const estimatedHz = estimatedIntervalMs > 0 ? 1000 / estimatedIntervalMs : null;
+    const jitterRatio = estimatedIntervalMs > 0 ? jitterMs / estimatedIntervalMs : 1;
+
+    return {
+        lastIntervalMs,
+        intervalSampleCount,
+        estimatedIntervalMs,
+        estimatedHz,
+        jitterMs,
+        isSignalStable: intervalSampleCount >= MIN_STABLE_INTERVAL_SAMPLES && jitterRatio <= 0.35
+    };
+}
+
+function createInitialSignalStats() {
+    return {
+        lastIntervalMs: null,
+        intervalSampleCount: 0,
+        estimatedIntervalMs: null,
+        estimatedHz: null,
+        jitterMs: null,
+        isSignalStable: false
+    };
+}
+
+function blendValue(previousValue, nextValue, alpha) {
+    return (previousValue * (1 - alpha)) + (nextValue * alpha);
 }

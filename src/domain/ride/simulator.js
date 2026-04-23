@@ -1,5 +1,6 @@
 import { getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
 import { simulateStep } from "../physics/cycling-model.js";
+import { estimateHeartRate } from "../physiology/heart-rate-model.js";
 
 export function simulateRide({ route, settings }) {
     const records = [];
@@ -30,9 +31,9 @@ export function simulateRide({ route, settings }) {
         speed: 0,
         distanceMeters: 0,
         elevationMeters: 0,
-        ascentMeters: 0,
-        heartRate: settings.restingHr
+        ascentMeters: 0
     };
+    let currentHeartRate = settings.restingHr;
 
     for (let elapsedSeconds = 1; elapsedSeconds <= maxSimulationSeconds; elapsedSeconds += 1) {
         const routeSample = getRouteSampleAtDistance(route, state.distanceMeters);
@@ -45,6 +46,15 @@ export function simulateRide({ route, settings }) {
             elapsedSeconds,
             settings,
             durationSeconds: maxSimulationSeconds,
+            dt: 1
+        });
+        currentHeartRate = estimateHeartRate({
+            currentHeartRate,
+            power: settings.power,
+            elapsedSeconds,
+            durationSeconds: maxSimulationSeconds,
+            restingHr: settings.restingHr,
+            maxHr: settings.maxHr,
             dt: 1
         });
 
@@ -60,7 +70,7 @@ export function simulateRide({ route, settings }) {
             power: settings.power,
             speedKph: state.speed * 3.6,
             distanceKm: state.distanceMeters / 1000,
-            heartRate: Math.round(state.heartRate),
+            heartRate: Math.round(currentHeartRate),
             gradePercent,
             elevationMeters,
             ascentMeters: state.ascentMeters,

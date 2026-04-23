@@ -46,7 +46,9 @@ export function buildNextRideSnapshot({
         ? enrichRuntimeWithWorkoutTarget(buildGradeSimulationState({
             route: nextSession.route,
             distanceMeters: nextSession.physicsState.distanceMeters,
-            previousTargetGradePercent: state.workout.runtime.targetTrainerGradePercent ?? 0,
+            previousTargetGradePercent: state.liveRide.commandDispatch?.lastSentGradePercent
+                ?? state.workout.runtime.targetTrainerGradePercent
+                ?? 0,
             config: state.workout.gradeSimulation,
             active: true,
             rideId,

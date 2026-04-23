@@ -3,6 +3,8 @@ import { installDomParserPolyfill } from "./helpers/dom-parser-polyfill.js";
 import { suite as routeSuite } from "./unit/route-builder.test.js";
 import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
+import { suite as heartRateModelSuite } from "./unit/heart-rate-model.test.js";
+import { suite as sensorSamplingSuite } from "./unit/sensor-sampling.test.js";
 import { suite as simulatorSuite } from "./unit/simulator.test.js";
 import { suite as liveRideSuite } from "./unit/live-ride-session.test.js";
 import { suite as gradeSimSuite } from "./unit/grade-sim-mode.test.js";
@@ -23,6 +25,8 @@ const suites = [
     routeSuite,
     gpxSuite,
     physicsSuite,
+    heartRateModelSuite,
+    sensorSamplingSuite,
     simulatorSuite,
     liveRideSuite,
     gradeSimSuite,
