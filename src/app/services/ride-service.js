@@ -95,8 +95,9 @@ export function createRideService({ store, deviceService, exportService }) {
             state,
             active: false
         });
+        const completedMetrics = completedSession?.summary?.metrics ?? null;
         const stoppedStatusMeta = completedSession
-            ? `骑行结束：${formatNumber(completedSession.summary.distanceKm, 2)} km / 平均速度 ${formatNumber(completedSession.summary.averageSpeedKph, 1)} km/h`
+            ? `骑行结束：${formatNumber(completedMetrics?.ride.distanceKm ?? 0, 2)} km / 平均速度 ${formatNumber(completedMetrics?.speed.averageKph ?? 0, 1)} km/h`
             : "骑行已停止。";
         const stoppedSnapshot = completedSession
             ? buildInitialRideSnapshot({
@@ -133,7 +134,7 @@ export function createRideService({ store, deviceService, exportService }) {
         }));
 
         // Trigger automatic FIT download for real rides that have recorded distance
-        if (completedSession && completedSession.summary.distanceKm > 0) {
+        if ((completedMetrics?.ride.distanceKm ?? 0) > 0) {
             setTimeout(() => {
                 exportService.downloadFit();
             }, 500); // Small delay to let UI state settle
@@ -220,8 +221,8 @@ export function createRideService({ store, deviceService, exportService }) {
         } else if (!rideSnapshot.pendingTrainerCommand) {
             // 每隔约 5 秒打一次常规日志，防止刷屏
             if (shouldEmitRideLog({
-                previousElapsedSeconds: state.liveRide.session.summary?.elapsedSeconds ?? 0,
-                nextElapsedSeconds: rideSnapshot.session.summary.elapsedSeconds
+                previousElapsedSeconds: state.liveRide.session.summary?.metrics?.ride?.elapsedSeconds ?? 0,
+                nextElapsedSeconds: rideSnapshot.session.summary.metrics.ride.elapsedSeconds
             })) {
                 console.log(buildRideLogMessage(rideSnapshot));
             }
@@ -277,7 +278,7 @@ export function createRideService({ store, deviceService, exportService }) {
             ...currentState,
             session,
             hasPersistedSession: true,
-            statusText: `模拟完成：${formatNumber(session.summary.distanceKm, 2)} km / 平均速度 ${formatNumber(session.summary.averageSpeedKph, 1)} km/h`
+            statusText: `模拟完成：${formatNumber(session.summary.metrics.ride.distanceKm, 2)} km / 平均速度 ${formatNumber(session.summary.metrics.speed.averageKph, 1)} km/h`
         }));
     }
 

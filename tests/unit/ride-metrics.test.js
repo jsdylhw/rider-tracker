@@ -146,7 +146,7 @@ export const suite = {
             }
         },
         {
-            name: "resolveRideMetrics falls back to legacy summary when metrics are missing",
+            name: "resolveRideMetrics returns empty metrics when neither metrics nor records are available",
             run() {
                 const metrics = resolveRideMetrics({
                     summary: {
@@ -168,15 +168,15 @@ export const suite = {
                     }
                 });
 
-                assertEqual(metrics.ride.elapsedSeconds, 180);
-                assertEqual(metrics.ride.distanceKm, 1.5);
-                assertEqual(metrics.speed.averageKph, 30);
-                assertEqual(metrics.speed.currentKph, 32);
-                assertEqual(metrics.heartRate.averageBpm, 145);
-                assertEqual(metrics.power.maxWatts, 350);
-                assertEqual(metrics.cadence.averageRpm, 88);
-                assertEqual(metrics.grade.currentPercent, 3);
-                assertEqual(metrics.load.estimatedTss, 12.5);
+                assertEqual(metrics.ride.elapsedSeconds, 0);
+                assertEqual(metrics.ride.distanceKm, 0);
+                assertEqual(metrics.speed.averageKph, 0);
+                assertEqual(metrics.speed.currentKph, 0);
+                assertEqual(metrics.heartRate.averageBpm, 0);
+                assertEqual(metrics.power.maxWatts, 0);
+                assertEqual(metrics.cadence.averageRpm, null);
+                assertEqual(metrics.grade.currentPercent, 0);
+                assertEqual(metrics.load.estimatedTss, 0);
             }
         }
     ]

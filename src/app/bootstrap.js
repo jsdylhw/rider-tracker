@@ -81,7 +81,7 @@ createMainView({
 if (persistedSession) {
     store.setState((state) => ({
         ...state,
-        statusText: `已恢复最近一次模拟：${formatDuration(persistedSession.summary.elapsedSeconds)} / ${formatNumber(persistedSession.summary.distanceKm, 2)} km`
+        statusText: `已恢复最近一次模拟：${formatDuration(persistedSession.summary.metrics?.ride?.elapsedSeconds ?? 0)} / ${formatNumber(persistedSession.summary.metrics?.ride?.distanceKm ?? 0, 2)} km`
     }));
 }
 

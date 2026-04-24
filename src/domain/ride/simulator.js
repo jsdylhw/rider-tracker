@@ -17,40 +17,7 @@ export function simulateRide({ route, settings }) {
             route,
             settings,
             records,
-            summary: {
-                elapsedSeconds: metrics.ride.elapsedSeconds,
-                distanceKm: metrics.ride.distanceKm,
-                averageSpeedKph: metrics.speed.averageKph,
-                maxSpeedKph: metrics.speed.maxKph,
-                averageHeartRate: settings.restingHr,
-                maxHeartRate: metrics.heartRate.maxBpm,
-                averagePower: metrics.power.averageWatts,
-                maxPower: metrics.power.maxWatts,
-                rolling3sPower: metrics.power.rolling3sWatts,
-                rolling10sPower: metrics.power.rolling10sWatts,
-                normalizedPower: metrics.power.normalizedPowerWatts,
-                intensityFactor: metrics.power.intensityFactor,
-                variabilityIndex: metrics.power.variabilityIndex,
-                averageCadence: metrics.cadence.averageRpm,
-                maxCadence: metrics.cadence.maxRpm,
-                averageGradePercent: metrics.grade.averagePercent,
-                averagePositiveGradePercent: metrics.grade.averagePositivePercent,
-                averageNegativeGradePercent: metrics.grade.averageNegativePercent,
-                maxPositiveGradePercent: metrics.grade.maxPositivePercent,
-                maxNegativeGradePercent: metrics.grade.maxNegativePercent,
-                estimatedTss: metrics.load.estimatedTss,
-                ascentMeters: metrics.ride.ascentMeters,
-                currentGradePercent: metrics.ride.currentGradePercent,
-                routeProgress: metrics.ride.routeProgress,
-                currentSpeedKph: metrics.speed.currentKph,
-                currentPower: metrics.power.currentWatts,
-                currentHeartRate: settings.restingHr,
-                currentCadence: metrics.cadence.currentRpm,
-                currentTargetPowerWatts: metrics.ride.currentTargetPowerWatts,
-                currentTargetFtpPercent: metrics.ride.currentTargetFtpPercent,
-                currentTargetStepLabel: metrics.ride.currentTargetStepLabel,
-                metrics
-            }
+            summary: createSummary(metrics)
         };
     }
 
@@ -116,8 +83,6 @@ export function simulateRide({ route, settings }) {
         records,
         ftp: settings.ftp ?? null
     });
-    const averageHeartRate = records.length > 0 ? metrics.heartRate.averageBpm : settings.restingHr;
-
     const startedAt = new Date(new Date(finishedAt).getTime() - metrics.ride.elapsedSeconds * 1000).toISOString();
 
     return {
@@ -127,40 +92,13 @@ export function simulateRide({ route, settings }) {
         route,
         settings,
         records,
-        summary: {
-            elapsedSeconds: metrics.ride.elapsedSeconds,
-            distanceKm: metrics.ride.distanceKm,
-            averageSpeedKph: metrics.speed.averageKph,
-            maxSpeedKph: metrics.speed.maxKph,
-            averageHeartRate,
-            maxHeartRate: metrics.heartRate.maxBpm,
-            averagePower: metrics.power.averageWatts,
-            maxPower: metrics.power.maxWatts,
-            rolling3sPower: metrics.power.rolling3sWatts,
-            rolling10sPower: metrics.power.rolling10sWatts,
-            normalizedPower: metrics.power.normalizedPowerWatts,
-            intensityFactor: metrics.power.intensityFactor,
-            variabilityIndex: metrics.power.variabilityIndex,
-            averageCadence: metrics.cadence.averageRpm,
-            maxCadence: metrics.cadence.maxRpm,
-            averageGradePercent: metrics.grade.averagePercent,
-            averagePositiveGradePercent: metrics.grade.averagePositivePercent,
-            averageNegativeGradePercent: metrics.grade.averageNegativePercent,
-            maxPositiveGradePercent: metrics.grade.maxPositivePercent,
-            maxNegativeGradePercent: metrics.grade.maxNegativePercent,
-            estimatedTss: metrics.load.estimatedTss,
-            ascentMeters: metrics.ride.ascentMeters,
-            currentGradePercent: metrics.ride.currentGradePercent,
-            routeProgress: metrics.ride.routeProgress,
-            currentSpeedKph: metrics.speed.currentKph,
-            currentPower: metrics.power.currentWatts,
-            currentHeartRate: metrics.heartRate.currentBpm,
-            currentCadence: metrics.cadence.currentRpm,
-            currentTargetPowerWatts: metrics.ride.currentTargetPowerWatts,
-            currentTargetFtpPercent: metrics.ride.currentTargetFtpPercent,
-            currentTargetStepLabel: metrics.ride.currentTargetStepLabel,
-            metrics
-        }
+        summary: createSummary(metrics)
+    };
+}
+
+function createSummary(metrics) {
+    return {
+        metrics
     };
 }
 

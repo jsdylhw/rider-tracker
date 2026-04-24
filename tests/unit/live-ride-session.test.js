@@ -47,7 +47,7 @@ export const suite = {
 
                 assertEqual(session.records.length, 0);
                 assertEqual(session.heartRateState.currentHeartRate, 95);
-                assertEqual(session.summary.elapsedSeconds, 0);
+                assertEqual(session.summary.metrics.ride.elapsedSeconds, 0);
             }
         },
         {
@@ -77,12 +77,12 @@ export const suite = {
                 });
 
                 assertEqual(session.records.length, 2);
-                assertGreaterThan(session.summary.averageSpeedKph, 0);
-                assertEqual(session.summary.averageHeartRate, 115);
-                assertEqual(session.summary.maxPower, 260);
-                assertEqual(session.summary.averageCadence, 89);
-                assertGreaterThan(session.summary.estimatedTss, 0);
-                assertEqual(session.summary.rolling3sPower, 245);
+                assertGreaterThan(session.summary.metrics.speed.averageKph, 0);
+                assertEqual(session.summary.metrics.heartRate.averageBpm, 115);
+                assertEqual(session.summary.metrics.power.maxWatts, 260);
+                assertEqual(session.summary.metrics.cadence.averageRpm, 89);
+                assertGreaterThan(session.summary.metrics.load.estimatedTss, 0);
+                assertEqual(session.summary.metrics.power.rolling3sWatts, 245);
                 assertEqual(typeof session.summary.metrics, "object");
             }
         },
@@ -137,9 +137,9 @@ export const suite = {
                 }
 
                 assertEqual(session.records.length, 4);
-                assertApprox(session.summary.elapsedSeconds, 1, 0.0001);
+                assertApprox(session.summary.metrics.ride.elapsedSeconds, 1, 0.0001);
                 assertEqual(session.records.at(-1).elapsedLabel, "00:01");
-                assertGreaterThan(session.summary.distanceKm, 0);
+                assertGreaterThan(session.summary.metrics.ride.distanceKm, 0);
             }
         },
         {
@@ -165,7 +165,7 @@ export const suite = {
                 assert(typeof record.positionLat === "number", "应携带 positionLat");
                 assert(typeof record.positionLong === "number", "应携带 positionLong");
                 assert(record.routeProgress > 0, "路线进度应已推进");
-                assertApprox(session.summary.currentPower, record.power, 0.001);
+                assertApprox(session.summary.metrics.power.currentWatts, record.power, 0.001);
             }
         }
     ]

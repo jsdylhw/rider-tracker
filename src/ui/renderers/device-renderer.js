@@ -1,4 +1,5 @@
 import { formatNumber } from "../../shared/format.js";
+import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
 
 export function createDeviceRenderer({
     elements,
@@ -26,6 +27,11 @@ export function createDeviceRenderer({
         const liveSession = liveRide.session;
         const currentRecord = liveSession?.records?.at(-1) ?? null;
         const workoutRuntime = state.workout.runtime;
+        const sessionMetrics = resolveRideMetrics({
+            summary: liveSession?.summary ?? null,
+            records: liveSession?.records ?? [],
+            ftp: state.settings?.ftp ?? null
+        });
 
         if (elements.connectHrBtn) {
             elements.connectHrBtn.disabled = !state.ble.supported || heartRate.isConnecting;
@@ -71,7 +77,11 @@ export function createDeviceRenderer({
         if (elements.liveHeartRateDisplay) elements.liveHeartRateDisplay.innerHTML = `${heartRate.value ?? "--"} <span class="unit">bpm</span>`;
         if (elements.livePowerDisplay) elements.livePowerDisplay.innerHTML = `${powerMeter.power ?? "--"} <span class="unit">W</span>`;
         if (elements.liveCadenceDisplay) elements.liveCadenceDisplay.innerHTML = `${powerMeter.cadence ?? "--"} <span class="unit">rpm</span>`;
-        if (elements.liveAvgPowerDisplay) elements.liveAvgPowerDisplay.innerHTML = `${powerMeter.averagePower ?? "--"} <span class="unit">W</span>`;
+        if (elements.liveAvgPowerDisplay) {
+            elements.liveAvgPowerDisplay.innerHTML = liveSession
+                ? `${Math.round(sessionMetrics.power.averageWatts ?? 0)} <span class="unit">W</span>`
+                : `-- <span class="unit">W</span>`;
+        }
         if (elements.liveSpeedDisplay) elements.liveSpeedDisplay.innerHTML = `${currentRecord ? formatNumber(currentRecord.speedKph, 1) : "--"} <span class="unit">km/h</span>`;
         if (elements.liveDistanceDisplay) elements.liveDistanceDisplay.innerHTML = `${currentRecord ? formatNumber(currentRecord.distanceKm, 2) : "--"} <span class="unit">km</span>`;
     }

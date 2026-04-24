@@ -74,7 +74,7 @@ export const suite = {
             }
         },
         {
-            name: "resolveFitExportSummary falls back to legacy summary and records",
+            name: "resolveFitExportSummary derives export data from records when metrics are absent",
             run() {
                 const exportSummary = resolveFitExportSummary({
                     summary: {
@@ -115,15 +115,15 @@ export const suite = {
                 assertEqual(exportSummary.ascentMeters, 18);
                 assertApprox(exportSummary.averageSpeedMps, 10, 0.0001);
                 assertApprox(exportSummary.maxSpeedMps, 40 / 3.6, 0.0001);
-                assertEqual(exportSummary.averageHeartRate, 140);
+                assertEqual(exportSummary.averageHeartRate, 145);
                 assertEqual(exportSummary.maxHeartRate, 155);
-                assertEqual(exportSummary.averagePower, 200);
+                assertEqual(exportSummary.averagePower, 220);
                 assertEqual(exportSummary.maxPower, 260);
-                assertEqual(exportSummary.grade.averagePercent, 1.8);
-                assertEqual(exportSummary.grade.averagePositivePercent, 2.1);
-                assertEqual(exportSummary.grade.averageNegativePercent, -0.8);
-                assertEqual(exportSummary.grade.maxPositivePercent, 5);
-                assertEqual(exportSummary.grade.maxNegativePercent, -3);
+                assertEqual(exportSummary.grade.averagePercent, 0);
+                assertEqual(exportSummary.grade.averagePositivePercent, 0);
+                assertEqual(exportSummary.grade.averageNegativePercent, 0);
+                assertEqual(exportSummary.grade.maxPositivePercent, 0);
+                assertEqual(exportSummary.grade.maxNegativePercent, 0);
             }
         }
     ]

@@ -1,4 +1,8 @@
-export const DEFAULT_POWER_WINDOW_SECONDS = [3, 10];
+import {
+    DEFAULT_POWER_WINDOW_SECONDS,
+    normalizePowerWindows,
+    summarizePowerMetrics
+} from "./power-metrics.js";
 
 export function buildRideMetrics({
     records = [],
@@ -19,15 +23,15 @@ export function buildRideMetrics({
     const routeProgress = normalizeFiniteNumber(finalRecord?.routeProgress) ?? 0;
 
     const speedValues = collectFiniteValues(records, "speedKph");
-    const powerValues = collectFiniteValues(records, "power");
     const heartRateValues = collectFiniteValues(records, "heartRate");
     const cadenceValues = collectFiniteValues(records, "cadence");
     const gradeStats = summarizeGrades(records);
-
-    const averagePower = roundAverage(powerValues);
-    const normalizedPowerWatts = calculateNormalizedPower(records);
-    const intensityFactor = calculateIntensityFactor(normalizedPowerWatts, ftp);
-    const variabilityIndex = calculateVariabilityIndex(normalizedPowerWatts, averagePower);
+    const powerMetrics = summarizePowerMetrics({
+        records,
+        powerWindowSeconds
+    });
+    const intensityFactor = calculateIntensityFactor(powerMetrics.normalizedPowerWatts, ftp);
+    const variabilityIndex = calculateVariabilityIndex(powerMetrics.normalizedPowerWatts, powerMetrics.averageWatts);
 
     return {
         ride: {
@@ -47,17 +51,12 @@ export function buildRideMetrics({
         },
         power: {
             currentWatts: normalizeFiniteNumber(finalRecord?.power) ?? 0,
-            averageWatts: averagePower,
-            maxWatts: maxOrDefault(powerValues, 0),
-            rolling3sWatts: calculateRollingAverage(records, 3),
-            rolling10sWatts: calculateRollingAverage(records, 10),
-            windows: Object.fromEntries(
-                powerWindowSeconds.map((windowSeconds) => [
-                    `${windowSeconds}s`,
-                    calculateRollingAverage(records, windowSeconds)
-                ])
-            ),
-            normalizedPowerWatts,
+            averageWatts: powerMetrics.averageWatts,
+            maxWatts: powerMetrics.maxWatts,
+            rolling3sWatts: powerMetrics.rolling3sWatts,
+            rolling10sWatts: powerMetrics.rolling10sWatts,
+            windows: powerMetrics.windows,
+            normalizedPowerWatts: powerMetrics.normalizedPowerWatts,
             intensityFactor,
             variabilityIndex
         },
@@ -153,18 +152,7 @@ export function resolveRideMetrics({
         });
     }
 
-    return createMetricsFromLegacySummary(summary, options.powerWindowSeconds);
-}
-
-function normalizePowerWindows(powerWindowSeconds) {
-    const source = Array.isArray(powerWindowSeconds) && powerWindowSeconds.length > 0
-        ? powerWindowSeconds
-        : DEFAULT_POWER_WINDOW_SECONDS;
-
-    return [...new Set(source
-        .map((value) => Math.round(Number(value)))
-        .filter((value) => Number.isFinite(value) && value > 0))]
-        .sort((left, right) => left - right);
+    return createEmptyRideMetrics(options.powerWindowSeconds);
 }
 
 function collectFiniteValues(records, key) {
@@ -199,52 +187,6 @@ function maxOrDefault(values, defaultValue) {
 
 function maxOrDefaultOrNull(values) {
     return values.length ? Math.max(...values) : null;
-}
-
-function calculateRollingAverage(records, windowSeconds) {
-    if (!records.length) {
-        return 0;
-    }
-
-    const finalElapsedSeconds = normalizeFiniteNumber(records.at(-1)?.elapsedSeconds);
-
-    if (!Number.isFinite(finalElapsedSeconds)) {
-        return 0;
-    }
-
-    const windowStartSeconds = finalElapsedSeconds - windowSeconds;
-    const windowValues = records
-        .filter((record) => {
-            const elapsedSeconds = normalizeFiniteNumber(record?.elapsedSeconds);
-            return Number.isFinite(elapsedSeconds) && elapsedSeconds > windowStartSeconds;
-        })
-        .map((record) => normalizeFiniteNumber(record?.power) ?? 0);
-
-    if (!windowValues.length) {
-        return 0;
-    }
-
-    return Math.round(windowValues.reduce((sum, value) => sum + value, 0) / windowValues.length);
-}
-
-function calculateNormalizedPower(records) {
-    if (!records.length) {
-        return 0;
-    }
-
-    const rolling30s = records.map((_record, index) => {
-        const partialRecords = records.slice(0, index + 1);
-        return calculateRollingAverage(partialRecords, 30);
-    });
-
-    const validRolling = rolling30s.filter((value) => Number.isFinite(value) && value > 0);
-
-    if (!validRolling.length) {
-        return 0;
-    }
-
-    const fourthPowerAverage = validRolling.reduce((sum, value) => sum + (value ** 4), 0) / validRolling.length;
-    return Math.round(fourthPowerAverage ** 0.25);
 }
 
 function calculateIntensityFactor(normalizedPowerWatts, ftp) {
@@ -304,62 +246,4 @@ function averageOrDefault(values, defaultValue) {
     }
 
     return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function createMetricsFromLegacySummary(summary, powerWindowSeconds = DEFAULT_POWER_WINDOW_SECONDS) {
-    const emptyMetrics = createEmptyRideMetrics(powerWindowSeconds);
-
-    if (!summary) {
-        return emptyMetrics;
-    }
-
-    return {
-        ride: {
-            elapsedSeconds: normalizeFiniteNumber(summary.elapsedSeconds) ?? 0,
-            distanceKm: normalizeFiniteNumber(summary.distanceKm) ?? 0,
-            ascentMeters: normalizeFiniteNumber(summary.ascentMeters) ?? 0,
-            currentGradePercent: normalizeFiniteNumber(summary.currentGradePercent) ?? 0,
-            routeProgress: normalizeFiniteNumber(summary.routeProgress) ?? 0,
-            currentTargetPowerWatts: normalizeFiniteNumber(summary.currentTargetPowerWatts),
-            currentTargetFtpPercent: normalizeFiniteNumber(summary.currentTargetFtpPercent),
-            currentTargetStepLabel: summary.currentTargetStepLabel ?? null
-        },
-        speed: {
-            currentKph: normalizeFiniteNumber(summary.currentSpeedKph) ?? 0,
-            averageKph: normalizeFiniteNumber(summary.averageSpeedKph) ?? 0,
-            maxKph: normalizeFiniteNumber(summary.maxSpeedKph) ?? 0
-        },
-        power: {
-            currentWatts: normalizeFiniteNumber(summary.currentPower) ?? 0,
-            averageWatts: normalizeFiniteNumber(summary.averagePower) ?? 0,
-            maxWatts: normalizeFiniteNumber(summary.maxPower) ?? 0,
-            rolling3sWatts: normalizeFiniteNumber(summary.rolling3sPower) ?? 0,
-            rolling10sWatts: normalizeFiniteNumber(summary.rolling10sPower) ?? 0,
-            windows: {
-                ...emptyMetrics.power.windows,
-                "3s": normalizeFiniteNumber(summary.rolling3sPower) ?? 0,
-                "10s": normalizeFiniteNumber(summary.rolling10sPower) ?? 0
-            },
-            normalizedPowerWatts: normalizeFiniteNumber(summary.normalizedPower) ?? 0,
-            intensityFactor: normalizeFiniteNumber(summary.intensityFactor),
-            variabilityIndex: normalizeFiniteNumber(summary.variabilityIndex)
-        },
-        heartRate: {
-            currentBpm: normalizeFiniteNumber(summary.currentHeartRate) ?? 0,
-            averageBpm: normalizeFiniteNumber(summary.averageHeartRate) ?? 0,
-            maxBpm: normalizeFiniteNumber(summary.maxHeartRate) ?? 0
-        },
-        cadence: {
-            currentRpm: normalizeFiniteNumber(summary.currentCadence),
-            averageRpm: normalizeFiniteNumber(summary.averageCadence),
-            maxRpm: normalizeFiniteNumber(summary.maxCadence)
-        },
-        grade: {
-            ...emptyMetrics.grade,
-            currentPercent: normalizeFiniteNumber(summary.currentGradePercent) ?? 0
-        },
-        load: {
-            estimatedTss: normalizeFiniteNumber(summary.estimatedTss) ?? 0
-        }
-    };
 }

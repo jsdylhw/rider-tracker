@@ -28,7 +28,7 @@ export function createLiveRideSession({ route, settings, startedAt, initialHeart
 }
 
 export function advanceLiveRideSession({ session, power, heartRate, cadence, workoutTarget = null, dt = 1 }) {
-    const elapsedSeconds = (session.summary.elapsedSeconds ?? 0) + dt;
+    const elapsedSeconds = (session.summary.metrics?.ride?.elapsedSeconds ?? 0) + dt;
     const routeSample = getRouteSampleAtDistance(session.route, session.physicsState.distanceMeters);
     const gradePercent = routeSample.gradePercent ?? 0;
     const nextHeartRateState = advanceLiveHeartRateState({
@@ -93,82 +93,17 @@ function buildSummary(records, settings = {}) {
             ftp: settings.ftp ?? null
         })
         : createEmptyRideMetrics();
-
-    const finalRecord = records.at(-1) ?? null;
-
-    if (!finalRecord) {
-        return createEmptySummary(metrics);
-    }
-
-    return {
-        elapsedSeconds: metrics.ride.elapsedSeconds,
-        distanceKm: metrics.ride.distanceKm,
-        averageSpeedKph: metrics.speed.averageKph,
-        maxSpeedKph: metrics.speed.maxKph,
-        averageHeartRate: metrics.heartRate.averageBpm,
-        maxHeartRate: metrics.heartRate.maxBpm,
-        averagePower: metrics.power.averageWatts,
-        maxPower: metrics.power.maxWatts,
-        rolling3sPower: metrics.power.rolling3sWatts,
-        rolling10sPower: metrics.power.rolling10sWatts,
-        normalizedPower: metrics.power.normalizedPowerWatts,
-        intensityFactor: metrics.power.intensityFactor,
-        variabilityIndex: metrics.power.variabilityIndex,
-        averageCadence: metrics.cadence.averageRpm,
-        maxCadence: metrics.cadence.maxRpm,
-        averageGradePercent: metrics.grade.averagePercent,
-        averagePositiveGradePercent: metrics.grade.averagePositivePercent,
-        averageNegativeGradePercent: metrics.grade.averageNegativePercent,
-        maxPositiveGradePercent: metrics.grade.maxPositivePercent,
-        maxNegativeGradePercent: metrics.grade.maxNegativePercent,
-        estimatedTss: metrics.load.estimatedTss,
-        ascentMeters: metrics.ride.ascentMeters,
-        currentGradePercent: metrics.ride.currentGradePercent,
-        routeProgress: metrics.ride.routeProgress,
-        currentSpeedKph: metrics.speed.currentKph,
-        currentPower: metrics.power.currentWatts,
-        currentHeartRate: metrics.heartRate.currentBpm,
-        currentCadence: metrics.cadence.currentRpm,
-        currentTargetPowerWatts: metrics.ride.currentTargetPowerWatts,
-        currentTargetFtpPercent: metrics.ride.currentTargetFtpPercent,
-        currentTargetStepLabel: metrics.ride.currentTargetStepLabel,
-        metrics
-    };
+    return createSummary(metrics);
 }
 
 function createEmptySummary(metrics = createEmptyRideMetrics()) {
     return {
-        elapsedSeconds: 0,
-        distanceKm: 0,
-        averageSpeedKph: 0,
-        maxSpeedKph: 0,
-        averageHeartRate: 0,
-        maxHeartRate: 0,
-        averagePower: 0,
-        maxPower: 0,
-        rolling3sPower: 0,
-        rolling10sPower: 0,
-        normalizedPower: 0,
-        intensityFactor: null,
-        variabilityIndex: null,
-        averageCadence: null,
-        maxCadence: null,
-        averageGradePercent: 0,
-        averagePositiveGradePercent: 0,
-        averageNegativeGradePercent: 0,
-        maxPositiveGradePercent: 0,
-        maxNegativeGradePercent: 0,
-        estimatedTss: 0,
-        ascentMeters: 0,
-        currentGradePercent: 0,
-        routeProgress: 0,
-        currentSpeedKph: 0,
-        currentPower: 0,
-        currentHeartRate: 0,
-        currentCadence: null,
-        currentTargetPowerWatts: null,
-        currentTargetFtpPercent: null,
-        currentTargetStepLabel: null,
+        metrics
+    };
+}
+
+function createSummary(metrics) {
+    return {
         metrics
     };
 }

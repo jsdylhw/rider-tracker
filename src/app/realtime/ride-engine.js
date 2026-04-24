@@ -20,7 +20,7 @@ export function buildNextRideSnapshot({
     const customWorkoutTargetPlan = state.liveRide.customWorkoutTargetPlan ?? state.workout.customWorkoutTarget;
     const nextCommandSequence = (state.liveRide.commandSequence ?? 0) + 1;
     const rideId = state.liveRide.startedAt ?? state.liveRide.session.startedAt;
-    const nextElapsedSeconds = (state.liveRide.session.summary?.elapsedSeconds ?? 0) + dt;
+    const nextElapsedSeconds = (state.liveRide.session.summary?.metrics?.ride?.elapsedSeconds ?? 0) + dt;
     const resolvedWorkoutTarget = resolveWorkoutTargetAtElapsed({
         target: customWorkoutTargetPlan,
         elapsedSeconds: nextElapsedSeconds,
@@ -38,7 +38,7 @@ export function buildNextRideSnapshot({
 
     const workoutTargetRuntime = buildWorkoutTargetRuntime({
         target: customWorkoutTargetPlan,
-        elapsedSeconds: nextSession.summary.elapsedSeconds,
+        elapsedSeconds: nextSession.summary.metrics.ride.elapsedSeconds,
         ftp: state.settings.ftp
     });
 
@@ -61,7 +61,7 @@ export function buildNextRideSnapshot({
             rideId,
             commandSequence: nextCommandSequence,
             customWorkoutTargetPlan,
-            elapsedSeconds: nextSession.summary.elapsedSeconds
+            elapsedSeconds: nextSession.summary.metrics.ride.elapsedSeconds
         });
 
     return buildRideSnapshot({
@@ -144,10 +144,10 @@ export function buildRideLogMessage(rideSnapshot) {
 
     if (rideSnapshot.pendingTrainerCommand) {
         const cmd = rideSnapshot.pendingTrainerCommand;
-        return `[Ride Log] Distance: ${rideSnapshot.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${rideSnapshot.summary.currentGradePercent.toFixed(1)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${rideSnapshot.summary.currentSpeedKph.toFixed(1)}km/h | Next Command: ${formatTrainerCommand(cmd)}`;
+        return `[Ride Log] Distance: ${rideSnapshot.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${rideSnapshot.summary.grade.currentPercent.toFixed(1)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${rideSnapshot.summary.speed.currentKph.toFixed(1)}km/h | Next Command: ${formatTrainerCommand(cmd)}`;
     }
 
-    return `[Ride Log] Distance: ${rideSnapshot.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${rideSnapshot.summary.currentGradePercent.toFixed(1)}% | Target Grade: ${rideSnapshot.workoutRuntime.targetTrainerGradePercent?.toFixed(2)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${rideSnapshot.summary.currentSpeedKph.toFixed(1)}km/h`;
+    return `[Ride Log] Distance: ${rideSnapshot.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${rideSnapshot.summary.grade.currentPercent.toFixed(1)}% | Target Grade: ${rideSnapshot.workoutRuntime.targetTrainerGradePercent?.toFixed(2)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${rideSnapshot.summary.speed.currentKph.toFixed(1)}km/h`;
 }
 
 function formatTrainerCommand(command) {
@@ -184,7 +184,7 @@ function buildRideSnapshot({
         customWorkoutTargetPlan,
         commandSequence: nextCommandSequence,
         session: nextSession,
-        summary: nextSession.summary,
+        summary: nextSession.summary.metrics,
         currentRecord,
         workoutRuntime,
         pendingTrainerCommand: workoutRuntime.pendingTrainerCommand ?? null,
@@ -198,6 +198,6 @@ function buildRideSnapshot({
 
 function buildRideStatusMeta({ trainerControlMode, workoutRuntime, nextSession }) {
     return trainerControlMode === TRAINER_CONTROL_MODES.SIM
-        ? `${workoutRuntime.controlStatus} 当前速度 ${formatNumber(nextSession.summary.currentSpeedKph, 1)} km/h`
-        : `已骑行 ${formatDuration(nextSession.summary.elapsedSeconds)}，当前速度 ${formatNumber(nextSession.summary.currentSpeedKph, 1)} km/h`;
+        ? `${workoutRuntime.controlStatus} 当前速度 ${formatNumber(nextSession.summary.metrics.speed.currentKph, 1)} km/h`
+        : `已骑行 ${formatDuration(nextSession.summary.metrics.ride.elapsedSeconds)}，当前速度 ${formatNumber(nextSession.summary.metrics.speed.currentKph, 1)} km/h`;
 }

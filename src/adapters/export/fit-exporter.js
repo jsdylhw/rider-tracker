@@ -149,82 +149,68 @@ export function resolveFitExportSummary({ summary = {}, records = [] } = {}) {
     return {
         elapsedSeconds: selectFiniteValue(
             metrics?.ride?.elapsedSeconds,
-            summary?.elapsedSeconds,
             records.at(-1)?.elapsedSeconds,
             0
         ),
         distanceMeters: selectFiniteValue(
             scaleKilometersToMeters(metrics?.ride?.distanceKm),
-            scaleKilometersToMeters(summary?.distanceKm),
             scaleKilometersToMeters(records.at(-1)?.distanceKm),
             0
         ),
         ascentMeters: selectFiniteValue(
             metrics?.ride?.ascentMeters,
-            summary?.ascentMeters,
             records.at(-1)?.ascentMeters,
             0
         ),
         averageSpeedMps: selectFiniteValue(
             scaleKphToMps(metrics?.speed?.averageKph),
-            scaleKphToMps(summary?.averageSpeedKph),
             deriveAverageSpeedMpsFromRecords(records),
             0
         ),
         maxSpeedMps: selectFiniteValue(
             scaleKphToMps(metrics?.speed?.maxKph),
-            scaleKphToMps(summary?.maxSpeedKph),
             maxOf(records, (record) => scaleKphToMps(record?.speedKph)),
             0
         ),
         averageHeartRate: selectFiniteValue(
             metrics?.heartRate?.averageBpm,
-            summary?.averageHeartRate,
             averageOf(records, (record) => record?.heartRate),
             0
         ),
         maxHeartRate: selectFiniteValue(
             metrics?.heartRate?.maxBpm,
-            summary?.maxHeartRate,
             maxOf(records, (record) => record?.heartRate),
             0
         ),
         averagePower: selectFiniteValue(
             metrics?.power?.averageWatts,
-            summary?.averagePower,
             averageOf(records, (record) => record?.power),
             0
         ),
         maxPower: selectFiniteValue(
             metrics?.power?.maxWatts,
-            summary?.maxPower,
             maxOf(records, (record) => record?.power),
             0
         ),
         grade: {
             averagePercent: selectFiniteValue(
                 metrics?.grade?.averagePercent,
-                summary?.averageGradePercent,
                 0
             ),
             averagePositivePercent: selectFiniteValue(
                 metrics?.grade?.averagePositivePercent,
-                summary?.averagePositiveGradePercent,
                 0
             ),
             averageNegativePercent: selectFiniteValue(
                 metrics?.grade?.averageNegativePercent,
-                summary?.averageNegativeGradePercent,
                 0
             ),
             maxPositivePercent: selectFiniteValue(
                 metrics?.grade?.maxPositivePercent,
-                summary?.maxPositiveGradePercent,
                 0
             ),
             maxNegativePercent: selectFiniteValue(
                 metrics?.grade?.maxNegativePercent,
-                summary?.maxNegativeGradePercent,
                 0
             )
         }
@@ -258,7 +244,11 @@ function toFitLocalTimestamp(date) {
 }
 
 function resolveSessionTimestamps({ session, summary }) {
-    const elapsedMs = Math.max(0, Number(summary?.elapsedSeconds ?? 0) * 1000);
+    const metrics = resolveRideMetrics({
+        summary,
+        records: session?.records ?? []
+    });
+    const elapsedMs = Math.max(0, Number(metrics?.ride?.elapsedSeconds ?? 0) * 1000);
     const startedAt = parseDate(session?.startedAt) ?? (elapsedMs > 0 ? new Date(Date.now() - elapsedMs) : new Date());
     const finishedAt = parseDate(session?.finishedAt)
         ?? parseDate(session?.createdAt)

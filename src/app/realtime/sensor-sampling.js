@@ -12,9 +12,6 @@ export function createInitialSensorSamplingState() {
             value: null,
             timestamp: null,
             sourceType: "none",
-            sampleCount: 0,
-            total: 0,
-            average: null,
             lastIntervalMs: null,
             intervalSampleCount: 0,
             estimatedIntervalMs: null,
@@ -68,9 +65,6 @@ export function ingestPowerSample(samplingState, data) {
         });
     }
 
-    const hasPowerSample = powerValue !== null;
-    const nextSampleCount = hasPowerSample ? samplingState.power.sampleCount + 1 : samplingState.power.sampleCount;
-    const nextTotal = hasPowerSample ? samplingState.power.total + powerValue : samplingState.power.total;
     const signalStats = buildNextSignalStats({
         previousPowerState: samplingState.power,
         timestamp,
@@ -83,9 +77,6 @@ export function ingestPowerSample(samplingState, data) {
             value: powerValue,
             timestamp,
             sourceType,
-            sampleCount: nextSampleCount,
-            total: nextTotal,
-            average: nextSampleCount > 0 ? Math.round(nextTotal / nextSampleCount) : null,
             ...signalStats
         },
         cadence: {
@@ -104,9 +95,6 @@ export function clearPowerSample(samplingState) {
             value: null,
             timestamp: null,
             sourceType: "none",
-            sampleCount: 0,
-            total: 0,
-            average: null,
             lastIntervalMs: null,
             intervalSampleCount: 0,
             estimatedIntervalMs: null,
@@ -138,7 +126,6 @@ export function buildEffectiveSensorSnapshot(
         power: powerFresh ? samplingState.power.value : null,
         cadence: cadenceFresh ? samplingState.cadence.value : null,
         heartRate: heartRateFresh ? samplingState.heartRate.value : null,
-        averagePower: powerFresh ? samplingState.power.average : null,
         powerSourceType: powerFresh ? samplingState.power.sourceType : "none",
         powerTimestamp: samplingState.power.timestamp,
         cadenceTimestamp: samplingState.cadence.timestamp,

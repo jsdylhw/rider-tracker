@@ -18,6 +18,20 @@ const settings = {
     maxHr: 182
 };
 
+function simulateFixedGradeRide({ gradePercent, power }) {
+    const route = buildRoute([
+        { name: `Grade ${gradePercent}%`, distanceKm: 5, gradePercent }
+    ]);
+
+    return simulateRide({
+        route,
+        settings: {
+            ...settings,
+            power
+        }
+    });
+}
+
 export const suite = {
     name: "simulator",
     tests: [
@@ -29,12 +43,13 @@ export const suite = {
                     { name: "Climb", distanceKm: 0.8, gradePercent: 4 }
                 ]);
                 const session = simulateRide({ route, settings });
+                const metrics = session.summary.metrics;
 
                 assertGreaterThan(session.records.length, 10);
-                assertApprox(session.summary.distanceKm, route.totalDistanceMeters / 1000, 0.05);
-                assertGreaterThan(session.summary.elapsedSeconds, 0);
-                assertGreaterThan(session.summary.averageSpeedKph, 0);
-                assert(session.summary.routeProgress >= 0.99, "模拟完成后路线进度应接近 100%");
+                assertApprox(metrics.ride.distanceKm, route.totalDistanceMeters / 1000, 0.05);
+                assertGreaterThan(metrics.ride.elapsedSeconds, 0);
+                assertGreaterThan(metrics.speed.averageKph, 0);
+                assert(metrics.ride.routeProgress >= 0.99, "模拟完成后路线进度应接近 100%");
             }
         },
         {
@@ -60,13 +75,67 @@ export const suite = {
             }
         },
         {
-            name: "simulateRide falls back to resting heart rate for empty route summary",
+            name: "simulateRide computes consistent metrics on a flat route",
+            run() {
+                const lowerPowerSession = simulateFixedGradeRide({ gradePercent: 0, power: 180 });
+                const higherPowerSession = simulateFixedGradeRide({ gradePercent: 0, power: 220 });
+                const lowerMetrics = lowerPowerSession.summary.metrics;
+                const higherMetrics = higherPowerSession.summary.metrics;
+
+                assertEqual(lowerMetrics.grade.averagePercent, 0);
+                assertEqual(higherMetrics.grade.averagePercent, 0);
+                assertEqual(lowerMetrics.ride.ascentMeters, 0);
+                assertEqual(higherMetrics.ride.ascentMeters, 0);
+                assertEqual(lowerMetrics.power.averageWatts, 180);
+                assertEqual(higherMetrics.power.averageWatts, 220);
+                assertApprox(lowerMetrics.power.normalizedPowerWatts, 180, 5);
+                assertApprox(higherMetrics.power.normalizedPowerWatts, 220, 5);
+                assertGreaterThan(higherMetrics.speed.averageKph, lowerMetrics.speed.averageKph);
+            }
+        },
+        {
+            name: "simulateRide keeps uphill and downhill metrics consistent across powers",
+            run() {
+                const uphill180 = simulateFixedGradeRide({ gradePercent: 3, power: 180 }).summary.metrics;
+                const uphill220 = simulateFixedGradeRide({ gradePercent: 3, power: 220 }).summary.metrics;
+                const flat220 = simulateFixedGradeRide({ gradePercent: 0, power: 220 }).summary.metrics;
+                const downhill180 = simulateFixedGradeRide({ gradePercent: -3, power: 180 }).summary.metrics;
+                const downhill220 = simulateFixedGradeRide({ gradePercent: -3, power: 220 }).summary.metrics;
+
+                assertApprox(uphill180.grade.averagePercent, 3, 0.01);
+                assertApprox(uphill220.grade.averagePercent, 3, 0.01);
+                assertApprox(downhill180.grade.averagePercent, -3, 0.01);
+                assertApprox(downhill220.grade.averagePercent, -3, 0.01);
+
+                assertGreaterThan(uphill180.ride.ascentMeters, 0);
+                assertGreaterThan(uphill220.ride.ascentMeters, 0);
+                assertEqual(downhill180.ride.ascentMeters, 0);
+                assertEqual(downhill220.ride.ascentMeters, 0);
+
+                assertEqual(uphill180.power.averageWatts, 180);
+                assertEqual(uphill220.power.averageWatts, 220);
+                assertEqual(downhill180.power.averageWatts, 180);
+                assertEqual(downhill220.power.averageWatts, 220);
+
+                assertApprox(uphill180.power.normalizedPowerWatts, 180, 5);
+                assertApprox(uphill220.power.normalizedPowerWatts, 220, 5);
+                assertApprox(downhill180.power.normalizedPowerWatts, 180, 5);
+                assertApprox(downhill220.power.normalizedPowerWatts, 220, 5);
+
+                assertGreaterThan(uphill220.speed.averageKph, uphill180.speed.averageKph);
+                assertGreaterThan(downhill220.speed.averageKph, downhill180.speed.averageKph);
+                assertGreaterThan(flat220.speed.averageKph, uphill220.speed.averageKph);
+                assertGreaterThan(downhill220.speed.averageKph, flat220.speed.averageKph);
+            }
+        },
+        {
+            name: "simulateRide returns empty metrics for empty route summary",
             run() {
                 const route = buildRoute([]);
                 const session = simulateRide({ route, settings });
 
-                assertEqual(session.summary.averageHeartRate, settings.restingHr);
-                assertEqual(session.summary.distanceKm, 0);
+                assertEqual(session.summary.metrics.heartRate.averageBpm, 0);
+                assertEqual(session.summary.metrics.ride.distanceKm, 0);
             }
         }
     ]

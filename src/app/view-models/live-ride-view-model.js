@@ -13,7 +13,6 @@ export function buildSensorSnapshot(state) {
         power: effectiveSampling.power,
         cadence: effectiveSampling.cadence,
         heartRate: effectiveSampling.heartRate,
-        averagePower: effectiveSampling.averagePower,
         powerSourceType: effectiveSampling.powerSourceType ?? powerMeter.sourceType ?? "none",
         powerLastUpdated: effectiveSampling.powerTimestamp ?? powerMeter.lastUpdated ?? null,
         heartRateLastUpdated: effectiveSampling.heartRateTimestamp ?? state.ble?.heartRate?.lastUpdated ?? null,

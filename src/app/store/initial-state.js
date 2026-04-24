@@ -197,9 +197,6 @@ function createInitialBleState() {
             externalDeviceName: bluetoothSupported ? "等待连接" : "当前浏览器不支持 Web Bluetooth",
             power: null,
             cadence: null,
-            averagePower: null,
-            sampleCount: 0,
-            powerTotal: 0,
             lastUpdated: null
         },
         trainer: {

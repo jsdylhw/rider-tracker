@@ -117,9 +117,6 @@ export function createDeviceService({ store }) {
                                 ? {
                                     power: null,
                                     cadence: null,
-                                    averagePower: null,
-                                    sampleCount: 0,
-                                    powerTotal: 0,
                                     lastUpdated: null
                                 }
                                 : {})
@@ -153,9 +150,6 @@ export function createDeviceService({ store }) {
                             sourceLabel: mapPowerSourceStatusLabel(data.sourceType),
                             power: nextSampling.power.value,
                             cadence: nextSampling.cadence.value,
-                            averagePower: nextSampling.power.average,
-                            sampleCount: nextSampling.power.sampleCount,
-                            powerTotal: nextSampling.power.total,
                             lastUpdated: nextSampling.power.timestamp
                         },
                         sampling: nextSampling
