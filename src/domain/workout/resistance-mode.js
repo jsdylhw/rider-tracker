@@ -8,11 +8,13 @@ const DEFAULT_RESISTANCE_LEVEL = 35;
 
 export function buildResistanceControlState({
     resistanceLevel = DEFAULT_RESISTANCE_LEVEL,
+    previousResistanceLevel = null,
     active = false,
     rideId = null,
     commandSequence = 0
 }) {
     const normalizedResistanceLevel = Math.max(0, Math.min(100, Math.round(Number(resistanceLevel) || 0)));
+    const hasResistanceChanged = normalizedResistanceLevel !== previousResistanceLevel;
 
     return {
         available: true,
@@ -22,7 +24,7 @@ export function buildResistanceControlState({
         targetTrainerGradePercent: 0,
         targetErgPowerWatts: null,
         targetResistanceLevel: normalizedResistanceLevel,
-        pendingTrainerCommand: active
+        pendingTrainerCommand: active && hasResistanceChanged
             ? createTrainerCommand({
                 controlMode: TRAINER_CONTROL_MODES.RESISTANCE,
                 type: TRAINER_COMMAND_TYPES.SET_RESISTANCE,

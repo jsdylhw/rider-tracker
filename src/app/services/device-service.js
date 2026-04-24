@@ -244,18 +244,7 @@ export function createDeviceService({ store }) {
         }
 
         try {
-            const result = await controllableTrainer.setTargetGrade(gradePercent);
-            if (result?.status === "unconfirmed") {
-                const message = `坡度命令未确认（可能已生效）：${gradePercent.toFixed(1)}% (${result.path})`;
-                store.setState((state) => ({
-                    ...state,
-                    liveRide: {
-                        ...state.liveRide,
-                        statusMeta: message
-                    },
-                    statusText: message
-                }));
-            }
+            await controllableTrainer.setTargetGrade(gradePercent);
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             const message = `坡度模拟下发失败：${reason}`;

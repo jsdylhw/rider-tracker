@@ -111,6 +111,9 @@ export function buildRuntimeByControlMode({
     if (trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
         return enrichRuntimeWithWorkoutTarget(buildErgControlState({
             targetPowerWatts: workoutTargetRuntime.customWorkoutTargetPowerWatts ?? state.settings.power,
+            previousTargetPowerWatts: state.liveRide.commandDispatch?.lastSentPowerWatts
+                ?? state.workout.runtime.targetErgPowerWatts
+                ?? null,
             active,
             rideId,
             commandSequence
@@ -119,6 +122,9 @@ export function buildRuntimeByControlMode({
 
     if (trainerControlMode === TRAINER_CONTROL_MODES.RESISTANCE) {
         return enrichRuntimeWithWorkoutTarget(buildResistanceControlState({
+            previousResistanceLevel: state.liveRide.commandDispatch?.lastSentResistanceLevel
+                ?? state.workout.runtime.targetResistanceLevel
+                ?? null,
             active,
             rideId,
             commandSequence
@@ -137,11 +143,27 @@ export function buildRideLogMessage(rideSnapshot) {
 
     if (rideSnapshot.pendingTrainerCommand) {
         const cmd = rideSnapshot.pendingTrainerCommand;
-        const targetGradePercent = cmd.targetGradePercent ?? cmd.payload?.gradePercent;
-        return `[Ride Log] Distance: ${rideSnapshot.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${rideSnapshot.summary.currentGradePercent.toFixed(1)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${rideSnapshot.summary.currentSpeedKph.toFixed(1)}km/h | Next Target Grade: ${targetGradePercent?.toFixed(2)}%`;
+        return `[Ride Log] Distance: ${rideSnapshot.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${rideSnapshot.summary.currentGradePercent.toFixed(1)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${rideSnapshot.summary.currentSpeedKph.toFixed(1)}km/h | Next Command: ${formatTrainerCommand(cmd)}`;
     }
 
     return `[Ride Log] Distance: ${rideSnapshot.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${rideSnapshot.summary.currentGradePercent.toFixed(1)}% | Target Grade: ${rideSnapshot.workoutRuntime.targetTrainerGradePercent?.toFixed(2)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${rideSnapshot.summary.currentSpeedKph.toFixed(1)}km/h`;
+}
+
+function formatTrainerCommand(command) {
+    const controlMode = command.controlMode ?? command.mode;
+
+    if (controlMode === TRAINER_CONTROL_MODES.ERG) {
+        const targetPowerWatts = command.targetPowerWatts ?? command.payload?.targetPowerWatts;
+        return `ERG ${Number(targetPowerWatts ?? 0).toFixed(0)}W`;
+    }
+
+    if (controlMode === TRAINER_CONTROL_MODES.RESISTANCE) {
+        const targetResistanceLevel = command.targetResistanceLevel ?? command.payload?.resistanceLevel;
+        return `RESISTANCE ${Number(targetResistanceLevel ?? 0).toFixed(0)}%`;
+    }
+
+    const targetGradePercent = command.targetGradePercent ?? command.payload?.gradePercent;
+    return `SIM ${Number(targetGradePercent ?? 0).toFixed(2)}%`;
 }
 
 function buildRideSnapshot({

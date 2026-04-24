@@ -6,11 +6,13 @@ import {
 
 export function buildErgControlState({
     targetPowerWatts,
+    previousTargetPowerWatts = null,
     active = false,
     rideId = null,
     commandSequence = 0
 }) {
     const normalizedTargetPower = Math.max(0, Math.round(Number(targetPowerWatts) || 0));
+    const hasTargetChanged = normalizedTargetPower !== previousTargetPowerWatts;
 
     return {
         available: true,
@@ -20,7 +22,7 @@ export function buildErgControlState({
         targetTrainerGradePercent: 0,
         targetErgPowerWatts: normalizedTargetPower,
         targetResistanceLevel: null,
-        pendingTrainerCommand: active
+        pendingTrainerCommand: active && hasTargetChanged
             ? createTrainerCommand({
                 controlMode: TRAINER_CONTROL_MODES.ERG,
                 type: TRAINER_COMMAND_TYPES.SET_ERG_POWER,

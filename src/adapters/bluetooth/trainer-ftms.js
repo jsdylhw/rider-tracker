@@ -15,14 +15,6 @@ const FTMS_OPCODES = {
     SET_INDOOR_BIKE_SIMULATION: 0x11
 };
 
-const FTMS_RESPONSE_RESULT = {
-    SUCCESS: 0x01,
-    NOT_SUPPORTED: 0x02,
-    INVALID_PARAMETER: 0x03,
-    OPERATION_FAILED: 0x04,
-    NOT_PERMITTED: 0x05
-};
-
 const DEFAULT_SIMULATION_CONFIG = {
     windSpeedMps: 0,
     crr: 0.004,
@@ -34,12 +26,9 @@ export function createTrainerFtms({ onStatus, onData }) {
     let ftmsService = null;
     let controlPointChar = null;
     let indoorBikeDataChar = null;
-    let pendingResponse = null;
-    let allowInclinationFallback = true;
     let controlPointListener = null;
     let indoorBikeDataListener = null;
     let disconnectListener = null;
-    let controlPointNotificationsReady = false;
     let capabilities = {
         simulationSupported: true,
         inclinationSupported: true,
@@ -69,7 +58,6 @@ export function createTrainerFtms({ onStatus, onData }) {
             ftmsService = await server.getPrimaryService(FTMS_SERVICE);
             controlPointChar = await ftmsService.getCharacteristic(FTMS_CONTROL_POINT);
             indoorBikeDataChar = await getCharacteristicOrNull(ftmsService, INDOOR_BIKE_DATA);
-            allowInclinationFallback = true;
             await hydrateCapabilities();
 
             disconnectListener = handleDisconnected;
@@ -80,10 +68,8 @@ export function createTrainerFtms({ onStatus, onData }) {
                 await controlPointChar.startNotifications();
                 controlPointListener = handleControlPointResponse;
                 controlPointChar.addEventListener("characteristicvaluechanged", controlPointListener);
-                controlPointNotificationsReady = true;
             } catch (error) {
-                controlPointNotificationsReady = false;
-                console.warn("[FTMS] Control Point indications unavailable, fallback to non-confirmed command mode.", error);
+                console.warn("[FTMS] Control Point indications unavailable, continue with best-effort command mode.", error);
             }
 
             if (indoorBikeDataChar) {
@@ -96,17 +82,10 @@ export function createTrainerFtms({ onStatus, onData }) {
                 }
             }
 
-            // Send "Request Control" command and ensure trainer accepted it.
-            if (controlPointNotificationsReady) {
-                try {
-                    await sendCommand(new Uint8Array([FTMS_OPCODES.REQUEST_CONTROL]), {
-                        expectedRequestOpcode: FTMS_OPCODES.REQUEST_CONTROL,
-                        awaitResponse: true
-                    });
-                } catch (error) {
-                    // Some trainers do not respond reliably to Request Control but still accept writes.
-                    console.warn("[FTMS] Request Control unconfirmed, continue with best-effort control mode.", error);
-                }
+            try {
+                await sendCommand(new Uint8Array([FTMS_OPCODES.REQUEST_CONTROL]));
+            } catch (error) {
+                console.warn("[FTMS] Request Control best-effort send failed, continue if trainer still accepts writes.", error);
             }
 
             onStatus({
@@ -129,11 +108,6 @@ export function createTrainerFtms({ onStatus, onData }) {
     }
 
     function handleDisconnected() {
-        if (pendingResponse) {
-            window.clearTimeout(pendingResponse.timeoutId);
-            pendingResponse.reject(new Error("智能骑行台连接已断开"));
-            pendingResponse = null;
-        }
         if (controlPointChar && controlPointListener) {
             controlPointChar.removeEventListener("characteristicvaluechanged", controlPointListener);
         }
@@ -150,7 +124,6 @@ export function createTrainerFtms({ onStatus, onData }) {
         controlPointListener = null;
         indoorBikeDataListener = null;
         disconnectListener = null;
-        controlPointNotificationsReady = false;
         onStatus({ type: "disconnected", message: "智能骑行台已断开" });
     }
 
@@ -158,22 +131,10 @@ export function createTrainerFtms({ onStatus, onData }) {
         const value = event.target.value;
         const responseOpcode = value.getUint8(0);
         
-        if (responseOpcode === FTMS_RESPONSE_OPCODE) { // Response Code
+        if (responseOpcode === FTMS_RESPONSE_OPCODE) {
             const requestOpcode = value.getUint8(1);
             const result = value.getUint8(2);
-
-            // 0x01 = Success, 0x02 = Not Supported, 0x03 = Invalid Parameter, 0x04 = Operation Failed
-            console.log(`[FTMS] Command 0x${requestOpcode.toString(16)} resulted in: 0x${result.toString(16)}`);
-
-            if (pendingResponse) {
-                const pending = pendingResponse;
-                pendingResponse = null;
-                window.clearTimeout(pending.timeoutId);
-                pending.resolve({
-                    requestOpcode,
-                    result
-                });
-            }
+            console.log(`[FTMS] Response for 0x${requestOpcode.toString(16)}: ${formatResultCode(result)}`);
         }
     }
 
@@ -232,10 +193,9 @@ export function createTrainerFtms({ onStatus, onData }) {
             await controlPointChar.writeValueWithResponse(buffer);
             console.log(`[FTMS] Sent Command:`, new Uint8Array(buffer));
             
-            // 简单等待一小段时间让它生效，不强制等待 Notification 
-            // 因为有些骑行台在频繁下发时不会对每条指令都返回 0x80
+            // 保留一个很短的硬件生效窗口，但不等待 FTMS response。
             await new Promise(r => setTimeout(r, 100));
-            await resolve();
+            resolve();
         } catch (error) {
             console.error("[FTMS] Failed to send command:", error);
             reject(error);
@@ -246,95 +206,36 @@ export function createTrainerFtms({ onStatus, onData }) {
         }
     }
 
-    async function sendCommand(buffer, { expectedRequestOpcode, awaitResponse = false, responseTimeoutMs = 1500 } = {}) {
+    async function sendCommand(buffer) {
         if (!controlPointChar) {
             throw new Error("FTMS Control Point 未连接");
         }
 
         return new Promise((resolve, reject) => {
-            // 如果队列太长（说明堵塞严重），清空之前的旧指令，只保留最新的一条
             if (cmdQueue.length > 2) {
+                const dropped = cmdQueue.slice(0, -1);
                 cmdQueue = cmdQueue.slice(-1);
+                dropped.forEach(({ reject: rejectDropped }) => {
+                    rejectDropped(new Error("FTMS 命令已被新的控制目标替换"));
+                });
             }
             cmdQueue.push({
                 buffer,
-                expectedRequestOpcode,
-                resolve: async () => {
-                    if (!awaitResponse) {
-                        resolve();
-                        return;
-                    }
-                    try {
-                        const response = await waitForResponse(expectedRequestOpcode, responseTimeoutMs);
-                        if (response.result !== FTMS_RESPONSE_RESULT.SUCCESS) {
-                            throw new Error(`FTMS 返回失败（opcode 0x${expectedRequestOpcode?.toString(16)}): ${formatResultCode(response.result)}`);
-                        }
-                        resolve(response);
-                    } catch (error) {
-                        reject(error);
-                    }
-                },
+                resolve,
                 reject
             });
             processCommandQueue();
         });
     }
 
-    function waitForResponse(expectedRequestOpcode, timeoutMs) {
-        if (!controlPointNotificationsReady) {
-            return Promise.reject(new Error("Control Point indications 不可用，无法等待响应"));
-        }
-        if (pendingResponse) {
-            return Promise.reject(new Error("已有未完成的 FTMS 响应等待"));
-        }
-
-        return new Promise((resolve, reject) => {
-            const timeoutId = window.setTimeout(() => {
-                pendingResponse = null;
-                reject(new Error(`命令超时（opcode 0x${expectedRequestOpcode?.toString(16)})`));
-            }, timeoutMs);
-
-            pendingResponse = {
-                timeoutId,
-                resolve: (result) => {
-                    if (typeof expectedRequestOpcode === "number" && result.requestOpcode !== expectedRequestOpcode) {
-                        return;
-                    }
-                    resolve(result);
-                },
-                reject
-            };
-        });
-    }
-
     function formatResultCode(resultCode) {
-        switch (resultCode) {
-            case FTMS_RESPONSE_RESULT.SUCCESS:
-                return "0x01 success";
-            case FTMS_RESPONSE_RESULT.NOT_SUPPORTED:
-                return "0x02 not-supported";
-            case FTMS_RESPONSE_RESULT.INVALID_PARAMETER:
-                return "0x03 invalid-parameter";
-            case FTMS_RESPONSE_RESULT.OPERATION_FAILED:
-                return "0x04 operation-failed";
-            case FTMS_RESPONSE_RESULT.NOT_PERMITTED:
-                return "0x05 not-permitted";
-            default:
-                return `0x${resultCode.toString(16)}`;
-        }
-    }
-
-    function isInclinationUnsupported(error) {
-        return String(error?.message ?? "").includes("opcode 0x3")
-            && String(error?.message ?? "").includes("0x02");
-    }
-
-    function isInclinationTimeout(error) {
-        return String(error?.message ?? "").includes("命令超时（opcode 0x3）");
-    }
-
-    function isSimulationTimeout(error) {
-        return String(error?.message ?? "").includes("命令超时（opcode 0x11）");
+        return ({
+            0x01: "0x01 success",
+            0x02: "0x02 not-supported",
+            0x03: "0x03 invalid-parameter",
+            0x04: "0x04 operation-failed",
+            0x05: "0x05 not-permitted"
+        })[resultCode] ?? `0x${resultCode.toString(16)}`;
     }
 
     /**
@@ -344,23 +245,15 @@ export function createTrainerFtms({ onStatus, onData }) {
      * 例如：5.5% -> 55 (0x0037)
      */
     async function setTargetGrade(gradePercent) {
-        // 按设备支持范围限制坡度
         const clampedGrade = Math.max(capabilities.minInclinePercent, Math.min(capabilities.maxInclinePercent, gradePercent));
-        try {
-            // 优先使用 Indoor Bike Simulation（0x11），兼容主流骑行台的 Sim 模式。
-            if (!capabilities.simulationSupported) {
-                throw new Error("设备不支持 0x11 Simulation");
-            }
+
+        if (capabilities.simulationSupported) {
             await sendIndoorBikeSimulation(clampedGrade);
-            return { status: "confirmed", path: "0x11" };
-        } catch (error) {
-            if (isSimulationTimeout(error)) {
-                return { status: "unconfirmed", path: "0x11", reason: error.message };
-            }
-            if (!allowInclinationFallback) {
-                throw new Error(`FTMS 0x11 下发失败，且 0x03 回退已禁用: ${error.message}`);
-            }
-            console.warn("[FTMS] 0x11 模拟命令失败，回退到 0x03 Inclination。", error);
+            return;
+        }
+
+        if (!capabilities.inclinationSupported) {
+            throw new Error("当前骑行台不支持坡度模拟控制");
         }
 
         const inclinationValue = Math.round(clampedGrade * 10); // 0.1% 精度
@@ -369,22 +262,8 @@ export function createTrainerFtms({ onStatus, onData }) {
         view.setUint8(0, FTMS_OPCODES.SET_TARGET_INCLINATION);
         view.setInt16(1, inclinationValue, true);
 
-        console.log(`[FTMS] Sending Inclination Fallback: ${clampedGrade}% (Value: ${inclinationValue})`);
-        try {
-            await sendCommand(new Uint8Array(buffer), {
-                expectedRequestOpcode: FTMS_OPCODES.SET_TARGET_INCLINATION
-            });
-            return { status: "confirmed", path: "0x03-fallback" };
-        } catch (error) {
-            if (isInclinationUnsupported(error)) {
-                allowInclinationFallback = false;
-                throw new Error(`骑行台不支持稳定的 0x03 回退（已自动禁用回退）: ${error.message}`);
-            }
-            if (isInclinationTimeout(error)) {
-                return { status: "unconfirmed", path: "0x03-fallback", reason: error.message };
-            }
-            throw error;
-        }
+        console.log(`[FTMS] Sending Inclination Grade: ${clampedGrade}% (Value: ${inclinationValue})`);
+        await sendCommand(new Uint8Array(buffer));
     }
 
     /**
@@ -401,9 +280,7 @@ export function createTrainerFtms({ onStatus, onData }) {
         view.setInt16(1, clampedPower, true); // Little-endian SINT16
         
         console.log(`[FTMS] Sending ERG Target Power: ${clampedPower}W`);
-        await sendCommand(new Uint8Array(buffer), {
-            expectedRequestOpcode: FTMS_OPCODES.SET_TARGET_POWER
-        });
+        await sendCommand(new Uint8Array(buffer));
     }
 
     async function setTargetResistance(resistanceLevel) {
@@ -422,9 +299,7 @@ export function createTrainerFtms({ onStatus, onData }) {
         view.setInt16(1, Math.round(clampedResistance * 10), true);
 
         console.log(`[FTMS] Sending Resistance Target: ${clampedResistance}%`);
-        await sendCommand(new Uint8Array(buffer), {
-            expectedRequestOpcode: FTMS_OPCODES.SET_TARGET_RESISTANCE
-        });
+        await sendCommand(new Uint8Array(buffer));
     }
 
     async function sendIndoorBikeSimulation(gradePercent) {
@@ -442,9 +317,7 @@ export function createTrainerFtms({ onStatus, onData }) {
         view.setUint8(6, cwRaw);
 
         console.log(`[FTMS] Sending Simulation Grade: ${gradePercent}% (gradeRaw: ${gradeRaw})`);
-        await sendCommand(new Uint8Array(buffer), {
-            expectedRequestOpcode: FTMS_OPCODES.SET_INDOOR_BIKE_SIMULATION
-        });
+        await sendCommand(new Uint8Array(buffer));
     }
 
     async function hydrateCapabilities() {
