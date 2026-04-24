@@ -114,6 +114,7 @@ export function buildRuntimeByControlMode({
             previousTargetPowerWatts: state.liveRide.commandDispatch?.lastSentPowerWatts
                 ?? state.workout.runtime.targetErgPowerWatts
                 ?? null,
+            confirmationRequired: state.workout.erg?.confirmationRequired === true,
             active,
             rideId,
             commandSequence

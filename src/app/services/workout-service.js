@@ -81,6 +81,32 @@ export function createWorkoutService({ store }) {
         });
     }
 
+    function updateErgConfirmationMode(enabled) {
+        store.setState((state) => {
+            const nextErg = {
+                ...state.workout.erg,
+                confirmationRequired: Boolean(enabled)
+            };
+
+            return {
+                ...state,
+                workout: {
+                    ...state.workout,
+                    erg: nextErg,
+                    runtime: deriveRuntime(
+                        { ...state, workout: { ...state.workout, erg: nextErg } },
+                        state.workout.mode,
+                        state.workout.gradeSimulation,
+                        state.workout.customWorkoutTarget
+                    )
+                },
+                statusText: nextErg.confirmationRequired
+                    ? "已启用 ERG 确认模式。"
+                    : "已关闭 ERG 确认模式。"
+            };
+        });
+    }
+
     function updateCustomWorkoutTargetEnabled(enabled) {
         store.setState((state) => {
             const nextTarget = sanitizeCustomWorkoutTarget({
@@ -165,6 +191,7 @@ export function createWorkoutService({ store }) {
         updateWorkoutMode,
         updateGradeSimulationConfig,
         updateErgTargetPower,
+        updateErgConfirmationMode,
         updateCustomWorkoutTargetEnabled,
         addCustomWorkoutTargetStep,
         updateCustomWorkoutTargetStep,
@@ -190,6 +217,7 @@ function deriveRuntime(state, mode, gradeSimulation, customWorkoutTarget) {
     if (trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
         return enrichRuntimeWithWorkoutTarget(buildErgControlState({
             targetPowerWatts: workoutTargetRuntime.customWorkoutTargetPowerWatts ?? state.settings.power,
+            confirmationRequired: state.workout.erg?.confirmationRequired === true,
             active: false
         }), workoutTargetRuntime);
     }

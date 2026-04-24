@@ -32,7 +32,8 @@ export function createTrainerCommand({
     payload,
     rideId,
     sequence = 0,
-    source = "live-ride-loop"
+    source = "live-ride-loop",
+    requireConfirmation = false
 }) {
     return {
         protocolVersion: TRAINER_COMMAND_PROTOCOL_VERSION,
@@ -43,6 +44,7 @@ export function createTrainerCommand({
         rideId,
         sequence,
         source,
+        requireConfirmation,
         createdAtMs: Date.now()
     };
 }

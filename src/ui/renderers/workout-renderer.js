@@ -6,7 +6,8 @@ export function createWorkoutRenderer({
     elements,
     onUpdateWorkoutMode,
     onUpdateGradeSimulationConfig,
-    onUpdateErgTargetPower
+    onUpdateErgTargetPower,
+    onUpdateErgConfirmationMode
 }) {
     let lastSignature = "";
 
@@ -22,6 +23,12 @@ export function createWorkoutRenderer({
         if (elements.ergTargetPowerInput) {
             elements.ergTargetPowerInput.addEventListener("input", (event) => {
                 onUpdateErgTargetPower(Number(event.target.value));
+            });
+        }
+
+        if (elements.ergConfirmationRequiredInput) {
+            elements.ergConfirmationRequiredInput.addEventListener("change", (event) => {
+                onUpdateErgConfirmationMode(event.target.checked);
             });
         }
         
@@ -85,6 +92,11 @@ export function createWorkoutRenderer({
                 elements.ergTargetPowerInput.value = Math.round(state.settings.power ?? 0);
             }
             elements.ergTargetPowerInput.disabled = !isErg;
+        }
+
+        if (elements.ergConfirmationRequiredInput) {
+            elements.ergConfirmationRequiredInput.checked = workout.erg?.confirmationRequired === true;
+            elements.ergConfirmationRequiredInput.disabled = !isErg;
         }
 
         if (elements.workoutModeLabel) {

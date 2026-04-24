@@ -17,6 +17,7 @@ export function createMainView({
     onUpdateWorkoutMode,
     onUpdateGradeSimulationConfig,
     onUpdateErgTargetPower,
+    onUpdateErgConfirmationMode,
     onUpdateCustomWorkoutTargetEnabled,
     onAddCustomWorkoutTargetStep,
     onUpdateCustomWorkoutTargetStep,
@@ -90,6 +91,7 @@ export function createMainView({
         maxDownhillInput: document.getElementById("maxDownhillInput"),
         gradeSmoothingInput: document.getElementById("gradeSmoothingInput"),
         ergTargetPowerInput: document.getElementById("ergTargetPowerInput"),
+        ergConfirmationRequiredInput: document.getElementById("ergConfirmationRequiredInput"),
         workoutModeLabel: document.getElementById("workoutModeLabel"),
         trainerTargetLabel: document.getElementById("trainerTargetLabel"),
         targetTrainerGradeValue: document.getElementById("targetTrainerGradeValue"),
@@ -217,7 +219,8 @@ export function createMainView({
         elements,
         onUpdateWorkoutMode,
         onUpdateGradeSimulationConfig,
-        onUpdateErgTargetPower
+        onUpdateErgTargetPower,
+        onUpdateErgConfirmationMode
     });
     const customWorkoutTargetRenderer = createCustomWorkoutTargetRenderer({
         elements,

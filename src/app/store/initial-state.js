@@ -116,10 +116,12 @@ function createInitialLiveRideState() {
         commandSequence: 0,
         commandDispatch: {
             lastSentAtMs: null,
+            lastAttemptedAtMs: null,
             lastSentControlMode: null,
             lastSentGradePercent: 0,
             lastSentPowerWatts: null,
-            lastSentResistanceLevel: null
+            lastSentResistanceLevel: null,
+            inFlightCommandKey: null
         },
         startedAt: null,
         lastCompletedAt: null,
@@ -137,6 +139,9 @@ function createInitialWorkoutState() {
             maxDownhillPercent: 0,
             smoothingFactor: 0.7
         },
+        erg: {
+            confirmationRequired: false
+        },
         customWorkoutTarget: createDefaultCustomWorkoutTarget(),
         runtime: {
             available: false,
@@ -146,6 +151,7 @@ function createInitialWorkoutState() {
             targetTrainerGradePercent: 0,
             targetErgPowerWatts: null,
             targetResistanceLevel: 35,
+            ergConfirmationRequired: false,
             customWorkoutTargetEnabled: false,
             customWorkoutTargetSteps: [],
             customWorkoutTargetTotalSeconds: 0,

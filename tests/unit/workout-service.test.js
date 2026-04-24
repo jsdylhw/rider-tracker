@@ -19,6 +19,9 @@ function createBaseState(mode = WORKOUT_MODES.FIXED_POWER) {
         },
         workout: {
             mode,
+            erg: {
+                confirmationRequired: false
+            },
             gradeSimulation: {
                 difficultyPercent: 75,
                 lookaheadMeters: 120,
@@ -66,6 +69,23 @@ export const suite = {
 
                 service.updateErgTargetPower(9999);
                 assertEqual(store.getState().settings.power, 600);
+            }
+        },
+        {
+            name: "updateErgConfirmationMode 会更新 ERG 确认模式与 runtime",
+            run() {
+                const store = createStore(createBaseState(WORKOUT_MODES.FIXED_POWER));
+                const service = createWorkoutService({ store });
+
+                service.updateErgConfirmationMode(true);
+                let state = store.getState();
+                assertEqual(state.workout.erg.confirmationRequired, true);
+                assertEqual(state.workout.runtime.ergConfirmationRequired, true);
+
+                service.updateErgConfirmationMode(false);
+                state = store.getState();
+                assertEqual(state.workout.erg.confirmationRequired, false);
+                assertEqual(state.workout.runtime.ergConfirmationRequired, false);
             }
         }
     ]

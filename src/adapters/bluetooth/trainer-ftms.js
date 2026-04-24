@@ -15,6 +15,14 @@ const FTMS_OPCODES = {
     SET_INDOOR_BIKE_SIMULATION: 0x11
 };
 
+const FTMS_RESPONSE_RESULT = {
+    SUCCESS: 0x01,
+    NOT_SUPPORTED: 0x02,
+    INVALID_PARAMETER: 0x03,
+    OPERATION_FAILED: 0x04,
+    NOT_PERMITTED: 0x05
+};
+
 const DEFAULT_SIMULATION_CONFIG = {
     windSpeedMps: 0,
     crr: 0.004,
@@ -29,6 +37,8 @@ export function createTrainerFtms({ onStatus, onData }) {
     let controlPointListener = null;
     let indoorBikeDataListener = null;
     let disconnectListener = null;
+    let controlPointNotificationsReady = false;
+    let pendingResponse = null;
     let capabilities = {
         simulationSupported: true,
         inclinationSupported: true,
@@ -68,7 +78,9 @@ export function createTrainerFtms({ onStatus, onData }) {
                 await controlPointChar.startNotifications();
                 controlPointListener = handleControlPointResponse;
                 controlPointChar.addEventListener("characteristicvaluechanged", controlPointListener);
+                controlPointNotificationsReady = true;
             } catch (error) {
+                controlPointNotificationsReady = false;
                 console.warn("[FTMS] Control Point indications unavailable, continue with best-effort command mode.", error);
             }
 
@@ -108,6 +120,7 @@ export function createTrainerFtms({ onStatus, onData }) {
     }
 
     function handleDisconnected() {
+        clearPendingResponse(new Error("智能骑行台连接已断开"));
         if (controlPointChar && controlPointListener) {
             controlPointChar.removeEventListener("characteristicvaluechanged", controlPointListener);
         }
@@ -124,6 +137,7 @@ export function createTrainerFtms({ onStatus, onData }) {
         controlPointListener = null;
         indoorBikeDataListener = null;
         disconnectListener = null;
+        controlPointNotificationsReady = false;
         onStatus({ type: "disconnected", message: "智能骑行台已断开" });
     }
 
@@ -135,6 +149,15 @@ export function createTrainerFtms({ onStatus, onData }) {
             const requestOpcode = value.getUint8(1);
             const result = value.getUint8(2);
             console.log(`[FTMS] Response for 0x${requestOpcode.toString(16)}: ${formatResultCode(result)}`);
+
+            if (pendingResponse && pendingResponse.expectedRequestOpcode === requestOpcode) {
+                const resolvePending = pendingResponse.resolve;
+                clearPendingResponse();
+                resolvePending({
+                    requestOpcode,
+                    result
+                });
+            }
         }
     }
 
@@ -184,19 +207,39 @@ export function createTrainerFtms({ onStatus, onData }) {
         if (isCommandPending || cmdQueue.length === 0) return;
 
         isCommandPending = true;
-        const { buffer, resolve, reject } = cmdQueue.shift();
+        const {
+            buffer,
+            resolve,
+            reject,
+            awaitResponse,
+            expectedRequestOpcode,
+            responseTimeoutMs
+        } = cmdQueue.shift();
 
         try {
             // 给骑行台硬件预留处理时间，防止指令过密
             await new Promise(r => setTimeout(r, 200));
 
+            const responsePromise = awaitResponse
+                ? armResponseWaiter(expectedRequestOpcode, responseTimeoutMs)
+                : null;
+
             await controlPointChar.writeValueWithResponse(buffer);
             console.log(`[FTMS] Sent Command:`, new Uint8Array(buffer));
             
-            // 保留一个很短的硬件生效窗口，但不等待 FTMS response。
-            await new Promise(r => setTimeout(r, 100));
-            resolve();
+            if (responsePromise) {
+                const response = await responsePromise;
+                if (response.result !== FTMS_RESPONSE_RESULT.SUCCESS) {
+                    throw new Error(`FTMS 返回失败（opcode 0x${expectedRequestOpcode?.toString(16)}): ${formatResultCode(response.result)}`);
+                }
+                resolve(response);
+            } else {
+                // 保留一个很短的硬件生效窗口，但不等待 FTMS response。
+                await new Promise(r => setTimeout(r, 100));
+                resolve();
+            }
         } catch (error) {
+            clearPendingResponse();
             console.error("[FTMS] Failed to send command:", error);
             reject(error);
         } finally {
@@ -206,7 +249,11 @@ export function createTrainerFtms({ onStatus, onData }) {
         }
     }
 
-    async function sendCommand(buffer) {
+    async function sendCommand(buffer, {
+        awaitResponse = false,
+        expectedRequestOpcode = null,
+        responseTimeoutMs = 2000
+    } = {}) {
         if (!controlPointChar) {
             throw new Error("FTMS Control Point 未连接");
         }
@@ -221,11 +268,55 @@ export function createTrainerFtms({ onStatus, onData }) {
             }
             cmdQueue.push({
                 buffer,
+                awaitResponse,
+                expectedRequestOpcode,
+                responseTimeoutMs,
                 resolve,
                 reject
             });
             processCommandQueue();
         });
+    }
+
+    function armResponseWaiter(expectedRequestOpcode, timeoutMs) {
+        if (!controlPointNotificationsReady) {
+            return Promise.reject(new Error("当前骑行台未开启 FTMS 回包，无法使用确认模式"));
+        }
+
+        if (typeof expectedRequestOpcode !== "number") {
+            return Promise.reject(new Error("确认模式缺少 FTMS request opcode"));
+        }
+
+        if (pendingResponse) {
+            return Promise.reject(new Error("已有等待中的 FTMS 确认响应"));
+        }
+
+        return new Promise((resolve, reject) => {
+            const timeoutId = window.setTimeout(() => {
+                clearPendingResponse();
+                reject(new Error(`FTMS 确认超时（opcode 0x${expectedRequestOpcode.toString(16)})`));
+            }, timeoutMs);
+
+            pendingResponse = {
+                expectedRequestOpcode,
+                timeoutId,
+                resolve,
+                reject
+            };
+        });
+    }
+
+    function clearPendingResponse(error = null) {
+        if (!pendingResponse) {
+            return;
+        }
+
+        const current = pendingResponse;
+        pendingResponse = null;
+        window.clearTimeout(current.timeoutId);
+        if (error) {
+            current.reject(error);
+        }
     }
 
     function formatResultCode(resultCode) {
@@ -271,16 +362,19 @@ export function createTrainerFtms({ onStatus, onData }) {
      * Opcode: 0x05 (Set Target Power)
      * 参数: Power (SINT16, 精度 1W)
      */
-    async function setTargetPower(powerWatts) {
+    async function setTargetPower(powerWatts, options = {}) {
         const clampedPower = Math.max(capabilities.minPowerWatts, Math.min(capabilities.maxPowerWatts, powerWatts));
-        
+
         const buffer = new ArrayBuffer(3);
         const view = new DataView(buffer);
         view.setUint8(0, FTMS_OPCODES.SET_TARGET_POWER); // Opcode: Set Target Power
         view.setInt16(1, clampedPower, true); // Little-endian SINT16
         
         console.log(`[FTMS] Sending ERG Target Power: ${clampedPower}W`);
-        await sendCommand(new Uint8Array(buffer));
+        await sendCommand(new Uint8Array(buffer), {
+            awaitResponse: options.confirm === true,
+            expectedRequestOpcode: FTMS_OPCODES.SET_TARGET_POWER
+        });
     }
 
     async function setTargetResistance(resistanceLevel) {

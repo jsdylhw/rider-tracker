@@ -157,6 +157,7 @@ export function createRideService({ store, deviceService, exportService }) {
         });
 
         const now = Date.now();
+        let dispatchedCommand = null;
         const shouldDispatchTrainerCommand = canDispatchTrainerCommand({
             command: rideSnapshot.pendingTrainerCommand,
             dispatchState: state.liveRide.commandDispatch,
@@ -169,23 +170,53 @@ export function createRideService({ store, deviceService, exportService }) {
             const targetGradePercent = cmd.targetGradePercent ?? cmd.payload?.gradePercent;
             const targetPowerWatts = cmd.targetPowerWatts ?? cmd.payload?.targetPowerWatts;
             const targetResistanceLevel = cmd.targetResistanceLevel ?? cmd.payload?.resistanceLevel;
+            const requiresConfirmation = cmd.requireConfirmation === true;
+            dispatchedCommand = cmd;
             console.log(buildRideLogMessage(rideSnapshot));
 
-            if (controlMode === TRAINER_CONTROL_MODES.SIM && targetGradePercent !== undefined) {
-                void deviceService.setTrainerGrade(targetGradePercent).catch((error) => {
-                    console.error("[RideService] 下发 trainer 坡度命令失败:", error);
+            const dispatchPromise = dispatchTrainerCommand({
+                deviceService,
+                controlMode,
+                targetGradePercent,
+                targetPowerWatts,
+                targetResistanceLevel,
+                requiresConfirmation
+            });
+
+            if (requiresConfirmation) {
+                void dispatchPromise
+                    .then(() => {
+                        store.setState((currentState) => ({
+                            ...currentState,
+                            liveRide: {
+                                ...currentState.liveRide,
+                                commandDispatch: buildNextCommandDispatchState({
+                                    dispatchState: currentState.liveRide.commandDispatch,
+                                    command: cmd,
+                                    now: Date.now()
+                                })
+                            }
+                        }));
+                    })
+                    .catch((error) => {
+                        console.error("[RideService] ERG 确认模式下发失败:", error);
+                        store.setState((currentState) => ({
+                            ...currentState,
+                            liveRide: {
+                                ...currentState.liveRide,
+                                commandDispatch: clearInFlightCommandDispatchState({
+                                    dispatchState: currentState.liveRide.commandDispatch
+                                })
+                            }
+                        }));
+                    });
+            } else {
+                void dispatchPromise.catch((error) => {
+                    console.error(`[RideService] 下发 trainer ${controlMode} 命令失败:`, error);
                 });
-            } else if (controlMode === TRAINER_CONTROL_MODES.ERG && targetPowerWatts !== undefined) {
-                void deviceService.setTrainerPower(targetPowerWatts).catch((error) => {
-                    console.error("[RideService] 下发 trainer ERG 命令失败:", error);
-                });
-            } else if (controlMode === TRAINER_CONTROL_MODES.RESISTANCE && targetResistanceLevel !== undefined) {
-                void deviceService.setTrainerResistance(targetResistanceLevel).catch((error) => {
-                    console.error("[RideService] 下发 trainer 固定阻力命令失败:", error);
-                });
+                rideSnapshot.workoutRuntime.pendingTrainerCommand = null;
+                rideSnapshot.pendingTrainerCommand = null;
             }
-            rideSnapshot.workoutRuntime.pendingTrainerCommand = null;
-            rideSnapshot.pendingTrainerCommand = null;
         } else if (!rideSnapshot.pendingTrainerCommand) {
             // 每隔约 5 秒打一次常规日志，防止刷屏
             if (shouldEmitRideLog({
@@ -196,12 +227,18 @@ export function createRideService({ store, deviceService, exportService }) {
             }
         }
 
-        const nextCommandDispatch = shouldDispatchTrainerCommand && rideSnapshot.workoutRuntime
-            ? buildNextCommandDispatchState({
-                dispatchState: state.liveRide.commandDispatch,
-                runtime: rideSnapshot.workoutRuntime,
-                now
-            })
+        const nextCommandDispatch = shouldDispatchTrainerCommand && dispatchedCommand
+            ? (dispatchedCommand.requireConfirmation === true
+                ? buildInFlightCommandDispatchState({
+                    dispatchState: state.liveRide.commandDispatch,
+                    command: dispatchedCommand,
+                    now
+                })
+                : buildNextCommandDispatchState({
+                    dispatchState: state.liveRide.commandDispatch,
+                    command: dispatchedCommand,
+                    now
+                }))
             : state.liveRide.commandDispatch ?? createInitialCommandDispatchState();
 
         store.setState((currentState) => ({
@@ -287,10 +324,12 @@ export function createRideService({ store, deviceService, exportService }) {
 function createInitialCommandDispatchState() {
     return {
         lastSentAtMs: null,
+        lastAttemptedAtMs: null,
         lastSentControlMode: null,
         lastSentGradePercent: 0,
         lastSentPowerWatts: null,
-        lastSentResistanceLevel: null
+        lastSentResistanceLevel: null,
+        inFlightCommandKey: null
     };
 }
 
@@ -299,24 +338,84 @@ function canDispatchTrainerCommand({ command, dispatchState, now }) {
         return false;
     }
 
-    const lastSentAtMs = dispatchState?.lastSentAtMs ?? null;
-    if (!Number.isFinite(lastSentAtMs)) {
+    const commandKey = buildTrainerCommandKey(command);
+    if (dispatchState?.inFlightCommandKey === commandKey) {
+        return false;
+    }
+
+    const lastAttemptedAtMs = dispatchState?.lastAttemptedAtMs ?? dispatchState?.lastSentAtMs ?? null;
+    if (!Number.isFinite(lastAttemptedAtMs)) {
         return true;
     }
 
-    return now - lastSentAtMs >= TRAINER_COMMAND_MIN_INTERVAL_MS;
+    return now - lastAttemptedAtMs >= TRAINER_COMMAND_MIN_INTERVAL_MS;
 }
 
-function buildNextCommandDispatchState({ dispatchState, runtime, now }) {
+function buildInFlightCommandDispatchState({ dispatchState, command, now }) {
     return {
         ...createInitialCommandDispatchState(),
         ...dispatchState,
-        lastSentAtMs: now,
-        lastSentControlMode: runtime.trainerControlMode ?? null,
-        lastSentGradePercent: runtime.targetTrainerGradePercent ?? 0,
-        lastSentPowerWatts: runtime.targetErgPowerWatts ?? null,
-        lastSentResistanceLevel: runtime.targetResistanceLevel ?? null
+        lastAttemptedAtMs: now,
+        inFlightCommandKey: buildTrainerCommandKey(command)
     };
+}
+
+function clearInFlightCommandDispatchState({ dispatchState }) {
+    return {
+        ...createInitialCommandDispatchState(),
+        ...dispatchState,
+        inFlightCommandKey: null
+    };
+}
+
+function buildNextCommandDispatchState({ dispatchState, command, now }) {
+    const controlMode = command.controlMode ?? command.mode ?? null;
+
+    return {
+        ...createInitialCommandDispatchState(),
+        ...dispatchState,
+        lastAttemptedAtMs: now,
+        lastSentAtMs: now,
+        lastSentControlMode: controlMode,
+        lastSentGradePercent: command.targetGradePercent ?? command.payload?.gradePercent ?? 0,
+        lastSentPowerWatts: command.targetPowerWatts ?? command.payload?.targetPowerWatts ?? null,
+        lastSentResistanceLevel: command.targetResistanceLevel ?? command.payload?.resistanceLevel ?? null,
+        inFlightCommandKey: null
+    };
+}
+
+function buildTrainerCommandKey(command) {
+    const controlMode = command.controlMode ?? command.mode ?? "unknown";
+    const targetGradePercent = command.targetGradePercent ?? command.payload?.gradePercent ?? "";
+    const targetPowerWatts = command.targetPowerWatts ?? command.payload?.targetPowerWatts ?? "";
+    const targetResistanceLevel = command.targetResistanceLevel ?? command.payload?.resistanceLevel ?? "";
+    const requireConfirmation = command.requireConfirmation === true ? "confirm" : "best-effort";
+    return `${controlMode}:${targetGradePercent}:${targetPowerWatts}:${targetResistanceLevel}:${requireConfirmation}`;
+}
+
+async function dispatchTrainerCommand({
+    deviceService,
+    controlMode,
+    targetGradePercent,
+    targetPowerWatts,
+    targetResistanceLevel,
+    requiresConfirmation
+}) {
+    if (controlMode === TRAINER_CONTROL_MODES.SIM && targetGradePercent !== undefined) {
+        await deviceService.setTrainerGrade(targetGradePercent);
+        return;
+    }
+
+    if (controlMode === TRAINER_CONTROL_MODES.ERG && targetPowerWatts !== undefined) {
+        await deviceService.setTrainerPower(targetPowerWatts, {
+            confirm: requiresConfirmation
+        });
+        return;
+    }
+
+    if (controlMode === TRAINER_CONTROL_MODES.RESISTANCE && targetResistanceLevel !== undefined) {
+        await deviceService.setTrainerResistance(targetResistanceLevel);
+    }
 }
 
 function shouldEmitRideLog({ previousElapsedSeconds, nextElapsedSeconds }) {

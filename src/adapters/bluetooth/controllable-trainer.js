@@ -70,8 +70,8 @@ export function createControllableTrainer({
         return trainerFtms.setTargetGrade(gradePercent);
     }
 
-    async function setTargetPower(powerWatts) {
-        return trainerFtms.setTargetPower(powerWatts);
+    async function setTargetPower(powerWatts, options) {
+        return trainerFtms.setTargetPower(powerWatts, options);
     }
 
     async function setTargetResistance(resistanceLevel) {

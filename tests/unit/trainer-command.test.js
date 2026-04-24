@@ -1,5 +1,5 @@
 import { WORKOUT_MODES } from "../../src/domain/workout/workout-mode.js";
-import { resolveTrainerControlModeForWorkoutMode, TRAINER_CONTROL_MODES } from "../../src/domain/workout/trainer-command.js";
+import { createTrainerCommand, resolveTrainerControlModeForWorkoutMode, TRAINER_CONTROL_MODES } from "../../src/domain/workout/trainer-command.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
@@ -20,6 +20,19 @@ export const suite = {
                     resolveTrainerControlModeForWorkoutMode(WORKOUT_MODES.GRADE_SIM),
                     TRAINER_CONTROL_MODES.SIM
                 );
+            }
+        },
+        {
+            name: "createTrainerCommand preserves confirmation flag",
+            run() {
+                const command = createTrainerCommand({
+                    controlMode: TRAINER_CONTROL_MODES.ERG,
+                    type: "set-erg-power",
+                    payload: { targetPowerWatts: 250 },
+                    requireConfirmation: true
+                });
+
+                assertEqual(command.requireConfirmation, true);
             }
         }
     ]

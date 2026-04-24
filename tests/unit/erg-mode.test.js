@@ -10,6 +10,7 @@ export const suite = {
             run() {
                 const runtime = buildErgControlState({
                     targetPowerWatts: 223.8,
+                    confirmationRequired: true,
                     active: true,
                     rideId: "ride-erg",
                     commandSequence: 3
@@ -23,6 +24,20 @@ export const suite = {
                 assertEqual(runtime.pendingTrainerCommand.payload.targetPowerWatts, 224);
                 assertEqual(runtime.pendingTrainerCommand.rideId, "ride-erg");
                 assertEqual(runtime.pendingTrainerCommand.sequence, 3);
+                assertEqual(runtime.pendingTrainerCommand.requireConfirmation, true);
+                assertEqual(runtime.ergConfirmationRequired, true);
+            }
+        },
+        {
+            name: "buildErgControlState skips command when target power is unchanged",
+            run() {
+                const runtime = buildErgControlState({
+                    targetPowerWatts: 224,
+                    previousTargetPowerWatts: 224,
+                    active: true
+                });
+
+                assertEqual(runtime.pendingTrainerCommand, null);
             }
         }
     ]
