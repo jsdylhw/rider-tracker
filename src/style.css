@@ -337,12 +337,13 @@ body {
     position: absolute;
     right: 8px;
     bottom: 6px;
-    width: 240px;
-    background: rgba(15, 23, 42, 0.62);
-    border: 1px solid rgba(148, 163, 184, 0.3);
-    border-radius: 14px;
-    padding: 8px;
-    backdrop-filter: blur(5px);
+    width: 280px;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.76), rgba(15, 23, 42, 0.56));
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 16px;
+    padding: 10px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
+    backdrop-filter: blur(8px);
 }
 
 .ride-dashboard.immersive-street-view #trajectoryCard h3,
@@ -351,7 +352,7 @@ body {
 }
 
 .ride-dashboard.immersive-street-view #trajectoryCard .chart-shell {
-    height: 130px !important;
+    height: 150px !important;
     background: transparent;
     border: 0;
 }
@@ -382,13 +383,14 @@ body {
     left: 50%;
     transform: translateX(-50%);
     bottom: 10px;
-    width: min(62vw, 920px);
+    width: min(68vw, 980px);
     z-index: 50;
-    background: rgba(31, 41, 55, 0.78);
-    border: 1px solid rgba(148, 163, 184, 0.34);
-    border-radius: 14px;
-    padding: 8px 10px;
-    backdrop-filter: blur(6px);
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.7));
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 16px;
+    padding: 10px 12px;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.26);
+    backdrop-filter: blur(8px);
 }
 
 .ride-dashboard.immersive-street-view {

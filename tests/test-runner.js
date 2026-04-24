@@ -18,6 +18,7 @@ import { suite as gpxFixturesSuite } from "./integration/gpx-fixtures.test.js";
 import { suite as rideRegressionSuite } from "./integration/ride-regression.test.js";
 import { suite as streetviewUiSuite } from "./integration/streetview-ui.test.js";
 import { suite as routeRendererImportSuite } from "./unit/route-renderer-import.test.js";
+import { suite as routeChartSvgSuite } from "./unit/route-chart-svg.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
@@ -39,7 +40,8 @@ const suites = [
     gpxFixturesSuite,
     rideRegressionSuite,
     streetviewUiSuite,
-    routeRendererImportSuite
+    routeRendererImportSuite,
+    routeChartSvgSuite
 ];
 
 runSuites(suites).then((results) => {
