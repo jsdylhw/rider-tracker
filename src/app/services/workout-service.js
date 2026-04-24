@@ -11,7 +11,7 @@ import {
 import { resolveTrainerControlModeForWorkoutMode, TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { clamp } from "../../shared/utils/common.js";
 
-export function createWorkoutService({ store }) {
+export function createWorkoutService({ store, deviceService = null }) {
     function updateWorkoutMode(mode) {
         const normalizedMode = mode === WORKOUT_MODES.GRADE_SIM
             ? WORKOUT_MODES.GRADE_SIM
@@ -27,6 +27,10 @@ export function createWorkoutService({ store }) {
                 runtime: deriveRuntime(state, normalizedMode, state.workout.gradeSimulation, state.workout.customWorkoutTarget)
             }
         }));
+
+        if (deviceService?.prepareTrainerControlForWorkoutMode) {
+            void deviceService.prepareTrainerControlForWorkoutMode(normalizedMode);
+        }
     }
 
     function updateGradeSimulationConfig(partialConfig) {

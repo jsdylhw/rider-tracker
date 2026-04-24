@@ -1,5 +1,7 @@
 import { createHeartRateMonitor } from "../../adapters/bluetooth/heart-rate-monitor.js";
 import { createControllableTrainer } from "../../adapters/bluetooth/controllable-trainer.js";
+import { getWorkoutModeLabel } from "../../domain/workout/workout-mode.js";
+import { resolveTrainerControlModeForWorkoutMode } from "../../domain/workout/trainer-command.js";
 import {
     clearHeartRateSample,
     clearPowerSample,
@@ -73,7 +75,9 @@ export function createDeviceService({ store }) {
                         ...state.ble.trainer,
                         isConnecting: status.type === "connecting",
                         isConnected: status.type === "connected",
-                        statusLabel: mapStatusLabel(status.type),
+                        controlActivating: status.phase === "control-activating",
+                        controlReady: status.controlReady === true,
+                        statusLabel: mapTrainerStatusLabel(status),
                         deviceName: status.deviceName ?? (status.type === "disconnected" ? "等待连接" : status.message),
                         lastUpdated: Date.now()
                     }
@@ -244,6 +248,7 @@ export function createDeviceService({ store }) {
         }
 
         try {
+            await controllableTrainer.activateControl("sim");
             await controllableTrainer.setTargetGrade(gradePercent);
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
@@ -260,7 +265,7 @@ export function createDeviceService({ store }) {
         }
     }
 
-    async function setTrainerPower(powerWatts) {
+    async function setTrainerPower(powerWatts, options) {
         if (!controllableTrainer.isConnected) {
             const message = "ERG 指令未下发：智能骑行台控制未连接。";
             store.setState((state) => ({
@@ -275,7 +280,8 @@ export function createDeviceService({ store }) {
         }
 
         try {
-            await controllableTrainer.setTargetPower(powerWatts);
+            await controllableTrainer.activateControl("erg");
+            await controllableTrainer.setTargetPower(powerWatts, options);
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             const message = `ERG 指令下发失败：${reason}`;
@@ -306,6 +312,7 @@ export function createDeviceService({ store }) {
         }
 
         try {
+            await controllableTrainer.activateControl("resistance");
             await controllableTrainer.setTargetResistance(resistanceLevel);
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
@@ -326,10 +333,44 @@ export function createDeviceService({ store }) {
         toggleHeartRate,
         togglePowerMeter,
         toggleTrainer,
+        prepareTrainerControlForWorkoutMode,
         setTrainerGrade,
         setTrainerPower,
         setTrainerResistance
     };
+
+    async function prepareTrainerControlForWorkoutMode(workoutMode) {
+        if (!controllableTrainer.isConnected) {
+            return false;
+        }
+
+        const controlMode = resolveTrainerControlModeForWorkoutMode(workoutMode);
+        const modeLabel = getWorkoutModeLabel(workoutMode);
+
+        try {
+            await controllableTrainer.activateControl(controlMode);
+            store.setState((state) => ({
+                ...state,
+                statusText: `已为训练模式“${modeLabel}”激活骑行台 FTMS 控制。`,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: `训练模式已切换为 ${modeLabel}，骑行台控制链路就绪。`
+                }
+            }));
+            return true;
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            store.setState((state) => ({
+                ...state,
+                statusText: `训练模式“${modeLabel}”激活骑行台控制失败：${reason}`,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: `训练模式已切换为 ${modeLabel}，但 FTMS 控制激活失败：${reason}`
+                }
+            }));
+            return false;
+        }
+    }
 }
 
 function computeCanStart(state, overrides = {}) {
@@ -349,6 +390,25 @@ function mapPowerSourceStatusLabel(sourceType) {
         default:
             return "无可用功率源";
     }
+}
+
+function mapTrainerStatusLabel(status) {
+    if (status.type === "connecting") {
+        return "连接中";
+    }
+    if (status.type !== "connected") {
+        return "未连接";
+    }
+    if (status.phase === "control-ready") {
+        return "控制已激活";
+    }
+    if (status.phase === "control-activating") {
+        return "激活控制中";
+    }
+    if (status.phase === "data-ready") {
+        return "仅数据已连接";
+    }
+    return "已连接";
 }
 
 function resolvePowerSourceDeviceName(powerState) {

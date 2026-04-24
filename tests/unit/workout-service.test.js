@@ -87,6 +87,28 @@ export const suite = {
                 assertEqual(state.workout.erg.confirmationRequired, false);
                 assertEqual(state.workout.runtime.ergConfirmationRequired, false);
             }
+        },
+        {
+            name: "updateWorkoutMode 会尝试按训练模式预激活 trainer 控制",
+            run() {
+                const store = createStore(createBaseState(WORKOUT_MODES.FREE_RIDE));
+                const invokedModes = [];
+                const service = createWorkoutService({
+                    store,
+                    deviceService: {
+                        async prepareTrainerControlForWorkoutMode(mode) {
+                            invokedModes.push(mode);
+                            return true;
+                        }
+                    }
+                });
+
+                service.updateWorkoutMode(WORKOUT_MODES.GRADE_SIM);
+
+                assertEqual(store.getState().workout.mode, WORKOUT_MODES.GRADE_SIM);
+                assertEqual(invokedModes.length, 1);
+                assertEqual(invokedModes[0], WORKOUT_MODES.GRADE_SIM);
+            }
         }
     ]
 };

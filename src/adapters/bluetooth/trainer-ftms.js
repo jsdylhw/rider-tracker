@@ -38,6 +38,10 @@ export function createTrainerFtms({ onStatus, onData }) {
     let indoorBikeDataListener = null;
     let disconnectListener = null;
     let controlPointNotificationsReady = false;
+    let indoorBikeDataReady = false;
+    let controlReady = false;
+    let controlActivationPromise = null;
+    let capabilitiesHydrated = false;
     let pendingResponse = null;
     let capabilities = {
         simulationSupported: true,
@@ -66,44 +70,21 @@ export function createTrainerFtms({ onStatus, onData }) {
 
             const server = await device.gatt.connect();
             ftmsService = await server.getPrimaryService(FTMS_SERVICE);
-            controlPointChar = await ftmsService.getCharacteristic(FTMS_CONTROL_POINT);
-            indoorBikeDataChar = await getCharacteristicOrNull(ftmsService, INDOOR_BIKE_DATA);
-            await hydrateCapabilities();
+            [controlPointChar, indoorBikeDataChar] = await Promise.all([
+                ftmsService.getCharacteristic(FTMS_CONTROL_POINT),
+                getCharacteristicOrNull(ftmsService, INDOOR_BIKE_DATA)
+            ]);
 
             disconnectListener = handleDisconnected;
             device.addEventListener("gattserverdisconnected", disconnectListener);
 
-            // FTMS Control Point requires us to subscribe to indications first before sending commands
-            try {
-                await controlPointChar.startNotifications();
-                controlPointListener = handleControlPointResponse;
-                controlPointChar.addEventListener("characteristicvaluechanged", controlPointListener);
-                controlPointNotificationsReady = true;
-            } catch (error) {
-                controlPointNotificationsReady = false;
-                console.warn("[FTMS] Control Point indications unavailable, continue with best-effort command mode.", error);
-            }
-
-            if (indoorBikeDataChar) {
-                try {
-                    await indoorBikeDataChar.startNotifications();
-                    indoorBikeDataListener = handleIndoorBikeData;
-                    indoorBikeDataChar.addEventListener("characteristicvaluechanged", indoorBikeDataListener);
-                } catch (error) {
-                    console.warn("[FTMS] Indoor Bike Data notifications unavailable, continue without trainer data stream.", error);
-                }
-            }
-
-            try {
-                await sendCommand(new Uint8Array([FTMS_OPCODES.REQUEST_CONTROL]));
-            } catch (error) {
-                console.warn("[FTMS] Request Control best-effort send failed, continue if trainer still accepts writes.", error);
-            }
-
-            onStatus({
+            await ensureIndoorBikeDataSubscription();
+            emitStatus({
                 type: "connected",
-                message: `已获取智能骑行台控制权`,
-                deviceName: device.name || "未命名设备"
+                phase: "data-ready",
+                message: indoorBikeDataReady
+                    ? "已连接骑行台数据流，等待训练模式激活 FTMS 控制。"
+                    : "已连接骑行台，但当前未获取到 Indoor Bike Data 数据流。"
             });
         } catch (error) {
             console.error("FTMS Connection Error:", error);
@@ -138,7 +119,11 @@ export function createTrainerFtms({ onStatus, onData }) {
         indoorBikeDataListener = null;
         disconnectListener = null;
         controlPointNotificationsReady = false;
-        onStatus({ type: "disconnected", message: "智能骑行台已断开" });
+        indoorBikeDataReady = false;
+        controlReady = false;
+        controlActivationPromise = null;
+        capabilitiesHydrated = false;
+        emitStatus({ type: "disconnected", phase: "disconnected", message: "智能骑行台已断开" });
     }
 
     function handleControlPointResponse(event) {
@@ -278,6 +263,70 @@ export function createTrainerFtms({ onStatus, onData }) {
         });
     }
 
+    async function activateControl({ controlModeLabel = "当前训练模式" } = {}) {
+        if (!device?.gatt?.connected || !controlPointChar) {
+            throw new Error("智能骑行台尚未完成数据连接");
+        }
+
+        if (controlReady) {
+            return {
+                controlReady: true,
+                capabilities: { ...capabilities }
+            };
+        }
+
+        if (controlActivationPromise) {
+            return controlActivationPromise;
+        }
+
+        controlActivationPromise = (async () => {
+            emitStatus({
+                type: "connected",
+                phase: "control-activating",
+                message: `正在为${controlModeLabel}激活 FTMS 控制...`
+            });
+
+            try {
+                await ensureControlPointNotifications();
+
+                try {
+                    await sendCommand(new Uint8Array([FTMS_OPCODES.REQUEST_CONTROL]), {
+                        awaitResponse: controlPointNotificationsReady,
+                        expectedRequestOpcode: FTMS_OPCODES.REQUEST_CONTROL
+                    });
+                } catch (error) {
+                    console.warn("[FTMS] Request Control 激活失败，继续尝试最佳努力控制。", error);
+                }
+
+                await hydrateCapabilities();
+                controlReady = true;
+
+                emitStatus({
+                    type: "connected",
+                    phase: "control-ready",
+                    message: `已为${controlModeLabel}激活 FTMS 控制。`
+                });
+
+                return {
+                    controlReady: true,
+                    capabilities: { ...capabilities }
+                };
+            } catch (error) {
+                controlReady = false;
+                emitStatus({
+                    type: "connected",
+                    phase: "data-ready",
+                    message: `骑行台数据流已连接，但 FTMS 控制激活失败：${error.message}`
+                });
+                throw error;
+            } finally {
+                controlActivationPromise = null;
+            }
+        })();
+
+        return controlActivationPromise;
+    }
+
     function armResponseWaiter(expectedRequestOpcode, timeoutMs) {
         if (!controlPointNotificationsReady) {
             return Promise.reject(new Error("当前骑行台未开启 FTMS 回包，无法使用确认模式"));
@@ -336,6 +385,7 @@ export function createTrainerFtms({ onStatus, onData }) {
      * 例如：5.5% -> 55 (0x0037)
      */
     async function setTargetGrade(gradePercent) {
+        await activateControl({ controlModeLabel: "坡度模拟" });
         const clampedGrade = Math.max(capabilities.minInclinePercent, Math.min(capabilities.maxInclinePercent, gradePercent));
 
         if (capabilities.simulationSupported) {
@@ -363,6 +413,7 @@ export function createTrainerFtms({ onStatus, onData }) {
      * 参数: Power (SINT16, 精度 1W)
      */
     async function setTargetPower(powerWatts, options = {}) {
+        await activateControl({ controlModeLabel: "ERG 模式" });
         const clampedPower = Math.max(capabilities.minPowerWatts, Math.min(capabilities.maxPowerWatts, powerWatts));
 
         const buffer = new ArrayBuffer(3);
@@ -378,6 +429,7 @@ export function createTrainerFtms({ onStatus, onData }) {
     }
 
     async function setTargetResistance(resistanceLevel) {
+        await activateControl({ controlModeLabel: "固定阻力模式" });
         if (!capabilities.resistanceSupported) {
             throw new Error("当前骑行台不支持固定阻力控制");
         }
@@ -415,6 +467,10 @@ export function createTrainerFtms({ onStatus, onData }) {
     }
 
     async function hydrateCapabilities() {
+        if (!ftmsService || capabilitiesHydrated) {
+            return;
+        }
+
         capabilities = {
             simulationSupported: true,
             inclinationSupported: true,
@@ -427,10 +483,6 @@ export function createTrainerFtms({ onStatus, onData }) {
             minPowerWatts: 0,
             maxPowerWatts: 2000
         };
-
-        if (!ftmsService) {
-            return;
-        }
 
         try {
             const featureChar = await ftmsService.getCharacteristic(FTMS_FEATURE);
@@ -470,15 +522,67 @@ export function createTrainerFtms({ onStatus, onData }) {
         } catch {
             // keep defaults
         }
+
+        capabilitiesHydrated = true;
+    }
+
+    async function ensureIndoorBikeDataSubscription() {
+        if (!indoorBikeDataChar || indoorBikeDataReady) {
+            indoorBikeDataReady = Boolean(indoorBikeDataChar && indoorBikeDataReady);
+            return indoorBikeDataReady;
+        }
+
+        try {
+            await indoorBikeDataChar.startNotifications();
+            indoorBikeDataListener = handleIndoorBikeData;
+            indoorBikeDataChar.addEventListener("characteristicvaluechanged", indoorBikeDataListener);
+            indoorBikeDataReady = true;
+        } catch (error) {
+            indoorBikeDataReady = false;
+            console.warn("[FTMS] Indoor Bike Data notifications unavailable, continue without trainer data stream.", error);
+        }
+
+        return indoorBikeDataReady;
+    }
+
+    async function ensureControlPointNotifications() {
+        if (controlPointNotificationsReady) {
+            return true;
+        }
+
+        try {
+            await controlPointChar.startNotifications();
+            controlPointListener = handleControlPointResponse;
+            controlPointChar.addEventListener("characteristicvaluechanged", controlPointListener);
+            controlPointNotificationsReady = true;
+        } catch (error) {
+            controlPointNotificationsReady = false;
+            console.warn("[FTMS] Control Point indications unavailable, continue with best-effort command mode.", error);
+        }
+
+        return controlPointNotificationsReady;
+    }
+
+    function emitStatus(status) {
+        onStatus?.({
+            ...status,
+            deviceName: device?.name || "未命名设备",
+            capabilities: { ...capabilities },
+            dataStreamReady: indoorBikeDataReady,
+            controlReady,
+            controlPointNotificationsReady
+        });
     }
 
     return {
         connect,
         disconnect,
+        activateControl,
         setTargetGrade,
         setTargetPower,
         setTargetResistance,
         getCapabilities: () => ({ ...capabilities }),
+        get isControlReady() { return controlReady; },
         get isConnected() { return !!device?.gatt?.connected; }
     };
 }

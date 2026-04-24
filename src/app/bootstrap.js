@@ -33,7 +33,7 @@ const deviceService = createDeviceService({ store });
 const exportService = createExportService({ store });
 const rideService = createRideService({ store, deviceService, exportService });
 const uiService = createUiService({ store });
-const workoutService = createWorkoutService({ store });
+const workoutService = createWorkoutService({ store, deviceService });
 
 // 3. 创建控制器与视图
 const pipController = createPipController({

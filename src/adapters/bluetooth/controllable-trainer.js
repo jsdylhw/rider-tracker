@@ -70,6 +70,12 @@ export function createControllableTrainer({
         return trainerFtms.setTargetGrade(gradePercent);
     }
 
+    async function activateControl(controlMode) {
+        return trainerFtms.activateControl({
+            controlModeLabel: mapControlModeLabel(controlMode)
+        });
+    }
+
     async function setTargetPower(powerWatts, options) {
         return trainerFtms.setTargetPower(powerWatts, options);
     }
@@ -129,7 +135,8 @@ export function createControllableTrainer({
             externalPowerConnecting: externalPowerStatus.isConnecting,
             externalPowerDeviceName: externalPowerStatus.deviceName,
             trainerConnected: trainerStatus.isConnected,
-            trainerDeviceName: trainerStatus.deviceName
+            trainerDeviceName: trainerStatus.deviceName,
+            trainerControlReady: trainerStatus.controlReady === true
         };
     }
 
@@ -137,6 +144,7 @@ export function createControllableTrainer({
         toggle,
         disconnect,
         toggleExternalPowerMeter,
+        activateControl,
         setTargetGrade,
         setTargetPower,
         setTargetResistance,
@@ -155,7 +163,9 @@ function normalizeStatus(status, previous) {
     return {
         isConnecting: status.type === "connecting",
         isConnected: status.type === "connected",
-        deviceName: status.deviceName ?? previous.deviceName ?? "等待连接"
+        deviceName: status.deviceName ?? previous.deviceName ?? "等待连接",
+        phase: status.phase ?? previous.phase ?? "disconnected",
+        controlReady: status.controlReady === true
     };
 }
 
@@ -163,8 +173,23 @@ function createDisconnectedStatus(deviceName) {
     return {
         isConnecting: false,
         isConnected: false,
-        deviceName
+        deviceName,
+        phase: "disconnected",
+        controlReady: false
     };
+}
+
+function mapControlModeLabel(controlMode) {
+    switch (controlMode) {
+        case "sim":
+            return "坡度模拟";
+        case "erg":
+            return "ERG 模式";
+        case "resistance":
+            return "固定阻力模式";
+        default:
+            return "当前训练模式";
+    }
 }
 
 function isFresh(sample) {

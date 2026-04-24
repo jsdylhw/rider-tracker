@@ -205,6 +205,8 @@ function createInitialBleState() {
         trainer: {
             isConnecting: false,
             isConnected: false,
+            controlActivating: false,
+            controlReady: false,
             statusLabel: bluetoothSupported ? "未连接" : "不支持",
             deviceName: bluetoothSupported ? "等待连接" : "当前浏览器不支持 Web Bluetooth",
             lastUpdated: null
