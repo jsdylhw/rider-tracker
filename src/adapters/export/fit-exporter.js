@@ -1,3 +1,5 @@
+import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
+
 const FIT_SDK_URLS = [
     "https://esm.sh/@garmin/fitsdk@21.178.0/es2022/fitsdk.mjs",
     "https://cdn.jsdelivr.net/npm/@garmin/fitsdk@21.178.0/es2022/fitsdk.mjs"
@@ -22,10 +24,7 @@ export async function exportSessionAsFit(session, exportMetadata, options = {}) 
     const encoder = new Encoder();
     const metadata = buildExportMetadata(exportMetadata ?? session.exportMetadata);
     const { startedAt, finishedAt } = resolveSessionTimestamps({ session, summary });
-    const maxSpeed = maxOf(records, (record) => (Number.isFinite(record?.speedKph) ? record.speedKph / 3.6 : null));
-    const maxHeartRate = maxOf(records, (record) => (Number.isFinite(record?.heartRate) ? record.heartRate : null));
-    const maxPower = maxOf(records, (record) => (Number.isFinite(record?.power) ? record.power : null));
-    const gradeStats = summarizeGrades(records);
+    const exportSummary = resolveFitExportSummary({ summary, records });
 
     encoder.onMesg(Profile.MesgNum.FILE_ID, {
         type: "activity",
@@ -78,40 +77,40 @@ export async function exportSessionAsFit(session, exportMetadata, options = {}) 
     encoder.onMesg(Profile.MesgNum.LAP, {
         timestamp: finishedAt,
         startTime: startedAt,
-        totalElapsedTime: summary.elapsedSeconds,
-        totalTimerTime: summary.elapsedSeconds,
-        totalDistance: summary.distanceKm * 1000,
-        totalAscent: Math.round(summary.ascentMeters),
-        avgSpeed: summary.averageSpeedKph / 3.6,
-        maxSpeed,
-        avgHeartRate: summary.averageHeartRate,
-        maxHeartRate,
-        avgPower: summary.averagePower,
-        maxPower,
-        avgGrade: gradeStats.avgGrade,
-        maxPosGrade: gradeStats.maxPosGrade,
-        maxNegGrade: gradeStats.maxNegGrade
+        totalElapsedTime: exportSummary.elapsedSeconds,
+        totalTimerTime: exportSummary.elapsedSeconds,
+        totalDistance: exportSummary.distanceMeters,
+        totalAscent: Math.round(exportSummary.ascentMeters),
+        avgSpeed: exportSummary.averageSpeedMps,
+        maxSpeed: exportSummary.maxSpeedMps,
+        avgHeartRate: exportSummary.averageHeartRate,
+        maxHeartRate: exportSummary.maxHeartRate,
+        avgPower: exportSummary.averagePower,
+        maxPower: exportSummary.maxPower,
+        avgGrade: exportSummary.grade.averagePercent,
+        maxPosGrade: exportSummary.grade.maxPositivePercent,
+        maxNegGrade: exportSummary.grade.maxNegativePercent
     });
 
     encoder.onMesg(Profile.MesgNum.SESSION, {
         timestamp: finishedAt,
         startTime: startedAt,
-        totalElapsedTime: summary.elapsedSeconds,
-        totalTimerTime: summary.elapsedSeconds,
-        totalDistance: summary.distanceKm * 1000,
-        totalAscent: Math.round(summary.ascentMeters),
-        avgSpeed: summary.averageSpeedKph / 3.6,
-        maxSpeed,
-        avgHeartRate: summary.averageHeartRate,
-        maxHeartRate,
-        avgPower: summary.averagePower,
-        maxPower,
+        totalElapsedTime: exportSummary.elapsedSeconds,
+        totalTimerTime: exportSummary.elapsedSeconds,
+        totalDistance: exportSummary.distanceMeters,
+        totalAscent: Math.round(exportSummary.ascentMeters),
+        avgSpeed: exportSummary.averageSpeedMps,
+        maxSpeed: exportSummary.maxSpeedMps,
+        avgHeartRate: exportSummary.averageHeartRate,
+        maxHeartRate: exportSummary.maxHeartRate,
+        avgPower: exportSummary.averagePower,
+        maxPower: exportSummary.maxPower,
         totalDescent: Math.round(session.route?.totalDescentMeters ?? 0),
-        avgGrade: gradeStats.avgGrade,
-        avgPosGrade: gradeStats.avgPosGrade,
-        avgNegGrade: gradeStats.avgNegGrade,
-        maxPosGrade: gradeStats.maxPosGrade,
-        maxNegGrade: gradeStats.maxNegGrade,
+        avgGrade: exportSummary.grade.averagePercent,
+        avgPosGrade: exportSummary.grade.averagePositivePercent,
+        avgNegGrade: exportSummary.grade.averageNegativePercent,
+        maxPosGrade: exportSummary.grade.maxPositivePercent,
+        maxNegGrade: exportSummary.grade.maxNegativePercent,
         sportProfileName: metadata.profileName,
         sport: "cycling",
         ...(markVirtualActivity ? { subSport: "virtualActivity" } : {})
@@ -125,7 +124,7 @@ export async function exportSessionAsFit(session, exportMetadata, options = {}) 
 
     encoder.onMesg(Profile.MesgNum.ACTIVITY, {
         timestamp: finishedAt,
-        totalTimerTime: summary.elapsedSeconds,
+        totalTimerTime: exportSummary.elapsedSeconds,
         numSessions: 1,
         type: "manual",
         event: "activity",
@@ -142,6 +141,94 @@ export function exportSessionAsVirtualFit(session, exportMetadata) {
 
 export function exportSessionAsPlainFit(session, exportMetadata) {
     return exportSessionAsFit(session, exportMetadata, { markVirtualActivity: false });
+}
+
+export function resolveFitExportSummary({ summary = {}, records = [] } = {}) {
+    const metrics = resolveRideMetrics({ summary, records });
+
+    return {
+        elapsedSeconds: selectFiniteValue(
+            metrics?.ride?.elapsedSeconds,
+            summary?.elapsedSeconds,
+            records.at(-1)?.elapsedSeconds,
+            0
+        ),
+        distanceMeters: selectFiniteValue(
+            scaleKilometersToMeters(metrics?.ride?.distanceKm),
+            scaleKilometersToMeters(summary?.distanceKm),
+            scaleKilometersToMeters(records.at(-1)?.distanceKm),
+            0
+        ),
+        ascentMeters: selectFiniteValue(
+            metrics?.ride?.ascentMeters,
+            summary?.ascentMeters,
+            records.at(-1)?.ascentMeters,
+            0
+        ),
+        averageSpeedMps: selectFiniteValue(
+            scaleKphToMps(metrics?.speed?.averageKph),
+            scaleKphToMps(summary?.averageSpeedKph),
+            deriveAverageSpeedMpsFromRecords(records),
+            0
+        ),
+        maxSpeedMps: selectFiniteValue(
+            scaleKphToMps(metrics?.speed?.maxKph),
+            scaleKphToMps(summary?.maxSpeedKph),
+            maxOf(records, (record) => scaleKphToMps(record?.speedKph)),
+            0
+        ),
+        averageHeartRate: selectFiniteValue(
+            metrics?.heartRate?.averageBpm,
+            summary?.averageHeartRate,
+            averageOf(records, (record) => record?.heartRate),
+            0
+        ),
+        maxHeartRate: selectFiniteValue(
+            metrics?.heartRate?.maxBpm,
+            summary?.maxHeartRate,
+            maxOf(records, (record) => record?.heartRate),
+            0
+        ),
+        averagePower: selectFiniteValue(
+            metrics?.power?.averageWatts,
+            summary?.averagePower,
+            averageOf(records, (record) => record?.power),
+            0
+        ),
+        maxPower: selectFiniteValue(
+            metrics?.power?.maxWatts,
+            summary?.maxPower,
+            maxOf(records, (record) => record?.power),
+            0
+        ),
+        grade: {
+            averagePercent: selectFiniteValue(
+                metrics?.grade?.averagePercent,
+                summary?.averageGradePercent,
+                0
+            ),
+            averagePositivePercent: selectFiniteValue(
+                metrics?.grade?.averagePositivePercent,
+                summary?.averagePositiveGradePercent,
+                0
+            ),
+            averageNegativePercent: selectFiniteValue(
+                metrics?.grade?.averageNegativePercent,
+                summary?.averageNegativeGradePercent,
+                0
+            ),
+            maxPositivePercent: selectFiniteValue(
+                metrics?.grade?.maxPositivePercent,
+                summary?.maxPositiveGradePercent,
+                0
+            ),
+            maxNegativePercent: selectFiniteValue(
+                metrics?.grade?.maxNegativePercent,
+                summary?.maxNegativeGradePercent,
+                0
+            )
+        }
+    };
 }
 
 async function loadFitSdk() {
@@ -200,6 +287,16 @@ function setFinite(target, key, value) {
     }
 }
 
+function selectFiniteValue(...values) {
+    for (const value of values) {
+        if (Number.isFinite(value)) {
+            return value;
+        }
+    }
+
+    return 0;
+}
+
 function maxOf(values, selector) {
     let maxValue = 0;
     for (const item of values) {
@@ -209,6 +306,41 @@ function maxOf(values, selector) {
         }
     }
     return maxValue;
+}
+
+function averageOf(values, selector) {
+    let total = 0;
+    let count = 0;
+
+    for (const item of values) {
+        const value = selector(item);
+        if (Number.isFinite(value)) {
+            total += value;
+            count += 1;
+        }
+    }
+
+    return count > 0 ? total / count : 0;
+}
+
+function deriveAverageSpeedMpsFromRecords(records) {
+    const finalRecord = records.at(-1);
+    const elapsedSeconds = Number(finalRecord?.elapsedSeconds);
+    const distanceKm = Number(finalRecord?.distanceKm);
+
+    if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0 || !Number.isFinite(distanceKm)) {
+        return 0;
+    }
+
+    return (distanceKm * 1000) / elapsedSeconds;
+}
+
+function scaleKphToMps(value) {
+    return Number.isFinite(value) ? value / 3.6 : null;
+}
+
+function scaleKilometersToMeters(value) {
+    return Number.isFinite(value) ? value * 1000 : null;
 }
 
 function buildExportMetadata(exportMetadata) {
@@ -237,38 +369,6 @@ function buildProductName(activityName) {
 function buildProfileName(description, repositoryUrl) {
     const combined = `${description} | ${repositoryUrl}`;
     return combined.slice(0, 96);
-}
-
-function summarizeGrades(records) {
-    if (records.length === 0) {
-        return {
-            avgGrade: 0,
-            avgPosGrade: 0,
-            avgNegGrade: 0,
-            maxPosGrade: 0,
-            maxNegGrade: 0
-        };
-    }
-
-    const gradeValues = records.map((record) => Number(record.gradePercent) || 0);
-    const positiveGrades = gradeValues.filter((grade) => grade > 0);
-    const negativeGrades = gradeValues.filter((grade) => grade < 0);
-
-    return {
-        avgGrade: average(gradeValues),
-        avgPosGrade: average(positiveGrades),
-        avgNegGrade: average(negativeGrades),
-        maxPosGrade: positiveGrades.length > 0 ? Math.max(...positiveGrades) : 0,
-        maxNegGrade: negativeGrades.length > 0 ? Math.min(...negativeGrades) : 0
-    };
-}
-
-function average(values) {
-    if (values.length === 0) {
-        return 0;
-    }
-
-    return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function toSemicircles(degrees) {

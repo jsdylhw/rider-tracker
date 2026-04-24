@@ -82,6 +82,8 @@ export const suite = {
                 assertEqual(session.summary.maxPower, 260);
                 assertEqual(session.summary.averageCadence, 89);
                 assertGreaterThan(session.summary.estimatedTss, 0);
+                assertEqual(session.summary.rolling3sPower, 245);
+                assertEqual(typeof session.summary.metrics, "object");
             }
         },
         {

@@ -2,6 +2,7 @@ import { getWorkoutModeLabel } from "../../domain/workout/workout-mode.js";
 import { TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { buildEffectiveSensorSnapshot } from "../realtime/sensor-sampling.js";
 import { formatNumber } from "../../shared/format.js";
+import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
 
 export function buildSensorSnapshot(state) {
     const powerMeter = state.ble?.powerMeter ?? {};
@@ -28,10 +29,15 @@ export function buildRideSnapshot(state) {
     const summary = snapshot?.summary ?? session?.summary ?? null;
     const records = session?.records ?? [];
     const currentRecord = snapshot?.currentRecord ?? records.at(-1) ?? null;
+    const metrics = resolveRideMetrics({
+        summary,
+        records,
+        ftp: state.settings?.ftp ?? null
+    });
     const totalDistanceKm = route ? route.totalDistanceMeters / 1000 : 0;
-    const distanceKm = summary?.distanceKm ?? 0;
+    const distanceKm = metrics.ride.distanceKm;
     const remainingKm = Math.max(0, totalDistanceKm - distanceKm);
-    const progressPercent = Math.round((summary?.routeProgress ?? 0) * 100);
+    const progressPercent = Math.round((metrics.ride.routeProgress ?? 0) * 100);
 
     return {
         dashboardOpen: Boolean(liveRide.dashboardOpen),
@@ -47,6 +53,7 @@ export function buildRideSnapshot(state) {
         distanceKm,
         remainingKm,
         progressPercent,
+        metrics,
         trainerControlMode: liveRide.trainerControlMode ?? null,
         statusMeta: liveRide.statusMeta ?? ""
     };
@@ -102,16 +109,17 @@ export function buildPipViewModel(state) {
     const sensor = buildSensorSnapshot(state);
     const ride = buildRideSnapshot(state);
     const training = buildTrainingSnapshot(state);
+    const metrics = ride.metrics;
 
     return {
         distance: formatNumber(ride.distanceKm, 2),
         remaining: formatNumber(ride.remainingKm, 2),
-        speed: ride.summary ? formatNumber(ride.summary.currentSpeedKph ?? 0, 1) : "--",
+        speed: formatNumber(metrics.speed.currentKph ?? 0, 1),
         power: sensor.power !== null ? String(sensor.power) : "--",
         hr: sensor.heartRate !== null ? String(sensor.heartRate) : "--",
         cadence: sensor.cadence !== null ? String(sensor.cadence) : "--",
         modeLabel: training.modeLabel,
-        currentGrade: formatNumber(training.runtime.currentGradePercent ?? ride.summary?.currentGradePercent ?? 0, 1),
+        currentGrade: formatNumber(training.runtime.currentGradePercent ?? metrics.grade.currentPercent ?? 0, 1),
         lookaheadGrade: formatNumber(training.runtime.lookaheadGradePercent ?? 0, 1),
         targetTrainerGrade: formatNumber(training.runtime.targetTrainerGradePercent ?? 0, 1),
         targetControlLabel: training.trainerTarget.label,
@@ -124,31 +132,21 @@ export function buildPipViewModel(state) {
 }
 
 function buildDashboardMetricsData({ sensor, ride, training }) {
-    const avg3sPower = computeAvg3sPower(ride.records);
-    const summary = ride.summary;
+    const metrics = ride.metrics;
 
     return {
         currentPower: { label: "实时功率", value: sensor.power ?? 0, unit: "W", color: "power-color" },
-        avg3sPower: { label: "3秒均功率", value: avg3sPower, unit: "W", color: "power-color" },
+        avg3sPower: { label: "3秒均功率", value: metrics.power.rolling3sWatts, unit: "W", color: "power-color" },
         currentHr: { label: "当前心率", value: sensor.heartRate ?? 0, unit: "bpm", color: "" },
-        currentSpeed: { label: "当前速度", value: formatNumber(summary?.currentSpeedKph ?? 0, 1), unit: "km/h", color: "accent-color" },
+        currentSpeed: { label: "当前速度", value: formatNumber(metrics.speed.currentKph, 1), unit: "km/h", color: "accent-color" },
         currentCadence: { label: "实时踏频", value: sensor.cadence ?? 0, unit: "rpm", color: "accent-color" },
         pushedGrade: { label: "推送坡度", value: formatNumber(training.runtime.targetTrainerGradePercent ?? 0, 1), unit: "%", color: "climb-color" },
-        avgPower: { label: "平均功率", value: Math.round(summary?.averagePower ?? 0), unit: "W", color: "power-color" },
-        maxPower: { label: "最大功率", value: Math.round(summary?.maxPower ?? 0), unit: "W", color: "power-color" },
-        avgHr: { label: "平均心率", value: Math.round(summary?.averageHeartRate ?? 0), unit: "bpm", color: "" },
-        currentGrade: { label: "当前坡度", value: formatNumber(summary?.currentGradePercent ?? 0, 1), unit: "%", color: "climb-color" },
-        tss: { label: "预估 TSS", value: formatNumber(summary?.estimatedTss ?? 0, 1), unit: "", color: "accent-color" }
+        avgPower: { label: "平均功率", value: Math.round(metrics.power.averageWatts ?? 0), unit: "W", color: "power-color" },
+        maxPower: { label: "最大功率", value: Math.round(metrics.power.maxWatts ?? 0), unit: "W", color: "power-color" },
+        avgHr: { label: "平均心率", value: Math.round(metrics.heartRate.averageBpm ?? 0), unit: "bpm", color: "" },
+        currentGrade: { label: "当前坡度", value: formatNumber(metrics.ride.currentGradePercent ?? 0, 1), unit: "%", color: "climb-color" },
+        tss: { label: "预估 TSS", value: formatNumber(metrics.load.estimatedTss ?? 0, 1), unit: "", color: "accent-color" }
     };
-}
-
-function computeAvg3sPower(records) {
-    if (!records.length) {
-        return 0;
-    }
-
-    const last3 = records.slice(-3);
-    return Math.round(last3.reduce((sum, record) => sum + (record.power || 0), 0) / last3.length);
 }
 
 function resolveTrainerTarget(runtime) {

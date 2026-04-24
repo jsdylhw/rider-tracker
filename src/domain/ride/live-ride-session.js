@@ -4,6 +4,7 @@ import {
     advanceLiveHeartRateState,
     createInitialLiveHeartRateState
 } from "../physiology/heart-rate-model.js";
+import { buildRideMetrics, createEmptyRideMetrics } from "../metrics/ride-metrics.js";
 
 export function createLiveRideSession({ route, settings, startedAt, initialHeartRate = null }) {
     return {
@@ -86,54 +87,77 @@ export function advanceLiveRideSession({ session, power, heartRate, cadence, wor
 }
 
 function buildSummary(records, settings = {}) {
-    if (records.length === 0) {
-        return createEmptySummary();
+    const metrics = records.length > 0
+        ? buildRideMetrics({
+            records,
+            ftp: settings.ftp ?? null
+        })
+        : createEmptyRideMetrics();
+
+    const finalRecord = records.at(-1) ?? null;
+
+    if (!finalRecord) {
+        return createEmptySummary(metrics);
     }
 
-    const finalRecord = records.at(-1);
-    const averageHeartRate = Math.round(records.reduce((sum, record) => sum + (record.heartRate ?? 0), 0) / records.length);
-    const averagePower = Math.round(records.reduce((sum, record) => sum + (record.power ?? 0), 0) / records.length);
-    const maxPower = Math.max(...records.map((record) => record.power ?? 0), 0);
-    const cadenceValues = records.filter((record) => typeof record.cadence === "number");
-    const averageCadence = cadenceValues.length > 0
-        ? Math.round(cadenceValues.reduce((sum, record) => sum + record.cadence, 0) / cadenceValues.length)
-        : null;
-    const estimatedTss = calculateEstimatedTss({
-        averagePower,
-        elapsedSeconds: finalRecord.elapsedSeconds,
-        ftp: settings.ftp ?? null
-    });
-
     return {
-        elapsedSeconds: finalRecord.elapsedSeconds,
-        distanceKm: finalRecord.distanceKm,
-        averageSpeedKph: finalRecord.elapsedSeconds > 0 ? (finalRecord.distanceKm / finalRecord.elapsedSeconds) * 3600 : 0,
-        averageHeartRate,
-        averagePower,
-        maxPower,
-        averageCadence,
-        estimatedTss,
-        ascentMeters: finalRecord.ascentMeters,
-        currentGradePercent: finalRecord.gradePercent,
-        routeProgress: finalRecord.routeProgress,
-        currentSpeedKph: finalRecord.speedKph,
-        currentPower: finalRecord.power,
-        currentHeartRate: finalRecord.heartRate,
-        currentTargetPowerWatts: finalRecord.targetPowerWatts ?? null,
-        currentTargetFtpPercent: finalRecord.targetFtpPercent ?? null,
-        currentTargetStepLabel: finalRecord.targetStepLabel ?? null
+        elapsedSeconds: metrics.ride.elapsedSeconds,
+        distanceKm: metrics.ride.distanceKm,
+        averageSpeedKph: metrics.speed.averageKph,
+        maxSpeedKph: metrics.speed.maxKph,
+        averageHeartRate: metrics.heartRate.averageBpm,
+        maxHeartRate: metrics.heartRate.maxBpm,
+        averagePower: metrics.power.averageWatts,
+        maxPower: metrics.power.maxWatts,
+        rolling3sPower: metrics.power.rolling3sWatts,
+        rolling10sPower: metrics.power.rolling10sWatts,
+        normalizedPower: metrics.power.normalizedPowerWatts,
+        intensityFactor: metrics.power.intensityFactor,
+        variabilityIndex: metrics.power.variabilityIndex,
+        averageCadence: metrics.cadence.averageRpm,
+        maxCadence: metrics.cadence.maxRpm,
+        averageGradePercent: metrics.grade.averagePercent,
+        averagePositiveGradePercent: metrics.grade.averagePositivePercent,
+        averageNegativeGradePercent: metrics.grade.averageNegativePercent,
+        maxPositiveGradePercent: metrics.grade.maxPositivePercent,
+        maxNegativeGradePercent: metrics.grade.maxNegativePercent,
+        estimatedTss: metrics.load.estimatedTss,
+        ascentMeters: metrics.ride.ascentMeters,
+        currentGradePercent: metrics.ride.currentGradePercent,
+        routeProgress: metrics.ride.routeProgress,
+        currentSpeedKph: metrics.speed.currentKph,
+        currentPower: metrics.power.currentWatts,
+        currentHeartRate: metrics.heartRate.currentBpm,
+        currentCadence: metrics.cadence.currentRpm,
+        currentTargetPowerWatts: metrics.ride.currentTargetPowerWatts,
+        currentTargetFtpPercent: metrics.ride.currentTargetFtpPercent,
+        currentTargetStepLabel: metrics.ride.currentTargetStepLabel,
+        metrics
     };
 }
 
-function createEmptySummary() {
+function createEmptySummary(metrics = createEmptyRideMetrics()) {
     return {
         elapsedSeconds: 0,
         distanceKm: 0,
         averageSpeedKph: 0,
+        maxSpeedKph: 0,
         averageHeartRate: 0,
+        maxHeartRate: 0,
         averagePower: 0,
         maxPower: 0,
+        rolling3sPower: 0,
+        rolling10sPower: 0,
+        normalizedPower: 0,
+        intensityFactor: null,
+        variabilityIndex: null,
         averageCadence: null,
+        maxCadence: null,
+        averageGradePercent: 0,
+        averagePositiveGradePercent: 0,
+        averageNegativeGradePercent: 0,
+        maxPositiveGradePercent: 0,
+        maxNegativeGradePercent: 0,
         estimatedTss: 0,
         ascentMeters: 0,
         currentGradePercent: 0,
@@ -141,20 +165,12 @@ function createEmptySummary() {
         currentSpeedKph: 0,
         currentPower: 0,
         currentHeartRate: 0,
+        currentCadence: null,
         currentTargetPowerWatts: null,
         currentTargetFtpPercent: null,
-        currentTargetStepLabel: null
+        currentTargetStepLabel: null,
+        metrics
     };
-}
-
-function calculateEstimatedTss({ averagePower, elapsedSeconds, ftp }) {
-    if (!ftp || ftp <= 0 || elapsedSeconds <= 0) {
-        return 0;
-    }
-
-    const intensityFactor = averagePower / ftp;
-    const durationHours = elapsedSeconds / 3600;
-    return durationHours * intensityFactor * intensityFactor * 100;
 }
 
 function formatDuration(totalSeconds) {

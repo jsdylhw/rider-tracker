@@ -143,7 +143,7 @@ export function createDashboardRenderer({
             streetViewLoaded
         });
         const { ride, training, metricsData, enabledMetricKeys } = viewModel;
-        const { snapshot: rideSnapshot, session, summary, currentRecord, route, records } = ride;
+        const { snapshot: rideSnapshot, session, currentRecord, route, records, distanceKm } = ride;
 
         elements.rideDashboard.hidden = !ride.dashboardOpen;
         if (ride.dashboardOpen) {
@@ -222,7 +222,7 @@ export function createDashboardRenderer({
             : "骑行已结束，可在这里回看本次路线进度和核心指标。";
         if (elements.rideProgressHeadline) elements.rideProgressHeadline.textContent = `${progressPercent}%`;
         if (elements.rideProgressBar) elements.rideProgressBar.style.width = `${progressPercent}%`;
-        if (elements.rideProgressDistance) elements.rideProgressDistance.textContent = `${formatNumber(summary?.distanceKm ?? 0, 2)} / ${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
+        if (elements.rideProgressDistance) elements.rideProgressDistance.textContent = `${formatNumber(distanceKm ?? 0, 2)} / ${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
         if (elements.rideProgressSegment) elements.rideProgressSegment.textContent = currentRecord?.segmentName ?? "等待开始";
 
         dashboardMetricsRenderer.render({

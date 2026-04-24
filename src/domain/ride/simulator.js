@@ -1,6 +1,7 @@
 import { getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
 import { simulateStep } from "../physics/cycling-model.js";
 import { estimateHeartRate } from "../physiology/heart-rate-model.js";
+import { buildRideMetrics, createEmptyRideMetrics } from "../metrics/ride-metrics.js";
 
 export function simulateRide({ route, settings }) {
     const records = [];
@@ -8,6 +9,7 @@ export function simulateRide({ route, settings }) {
     const finishedAt = new Date().toISOString();
 
     if (!route || route.totalDistanceMeters <= 0) {
+        const metrics = createEmptyRideMetrics();
         return {
             createdAt: finishedAt,
             startedAt: finishedAt,
@@ -16,13 +18,38 @@ export function simulateRide({ route, settings }) {
             settings,
             records,
             summary: {
-                elapsedSeconds: 0,
-                distanceKm: 0,
-                averageSpeedKph: 0,
+                elapsedSeconds: metrics.ride.elapsedSeconds,
+                distanceKm: metrics.ride.distanceKm,
+                averageSpeedKph: metrics.speed.averageKph,
+                maxSpeedKph: metrics.speed.maxKph,
                 averageHeartRate: settings.restingHr,
-                ascentMeters: 0,
-                currentGradePercent: 0,
-                routeProgress: 0
+                maxHeartRate: metrics.heartRate.maxBpm,
+                averagePower: metrics.power.averageWatts,
+                maxPower: metrics.power.maxWatts,
+                rolling3sPower: metrics.power.rolling3sWatts,
+                rolling10sPower: metrics.power.rolling10sWatts,
+                normalizedPower: metrics.power.normalizedPowerWatts,
+                intensityFactor: metrics.power.intensityFactor,
+                variabilityIndex: metrics.power.variabilityIndex,
+                averageCadence: metrics.cadence.averageRpm,
+                maxCadence: metrics.cadence.maxRpm,
+                averageGradePercent: metrics.grade.averagePercent,
+                averagePositiveGradePercent: metrics.grade.averagePositivePercent,
+                averageNegativeGradePercent: metrics.grade.averageNegativePercent,
+                maxPositiveGradePercent: metrics.grade.maxPositivePercent,
+                maxNegativeGradePercent: metrics.grade.maxNegativePercent,
+                estimatedTss: metrics.load.estimatedTss,
+                ascentMeters: metrics.ride.ascentMeters,
+                currentGradePercent: metrics.ride.currentGradePercent,
+                routeProgress: metrics.ride.routeProgress,
+                currentSpeedKph: metrics.speed.currentKph,
+                currentPower: metrics.power.currentWatts,
+                currentHeartRate: settings.restingHr,
+                currentCadence: metrics.cadence.currentRpm,
+                currentTargetPowerWatts: metrics.ride.currentTargetPowerWatts,
+                currentTargetFtpPercent: metrics.ride.currentTargetFtpPercent,
+                currentTargetStepLabel: metrics.ride.currentTargetStepLabel,
+                metrics
             }
         };
     }
@@ -85,13 +112,13 @@ export function simulateRide({ route, settings }) {
         }
     }
 
-    const finalRecord = records.at(-1) ?? createEmptyRecord(settings);
-    const elapsedSeconds = finalRecord.elapsedSeconds ?? 0;
-    const averageHeartRate = records.length > 0
-        ? Math.round(records.reduce((sum, record) => sum + record.heartRate, 0) / records.length)
-        : settings.restingHr;
+    const metrics = buildRideMetrics({
+        records,
+        ftp: settings.ftp ?? null
+    });
+    const averageHeartRate = records.length > 0 ? metrics.heartRate.averageBpm : settings.restingHr;
 
-    const startedAt = new Date(new Date(finishedAt).getTime() - elapsedSeconds * 1000).toISOString();
+    const startedAt = new Date(new Date(finishedAt).getTime() - metrics.ride.elapsedSeconds * 1000).toISOString();
 
     return {
         createdAt: finishedAt,
@@ -101,13 +128,38 @@ export function simulateRide({ route, settings }) {
         settings,
         records,
         summary: {
-            elapsedSeconds,
-            distanceKm: finalRecord.distanceKm,
-            averageSpeedKph: elapsedSeconds > 0 ? (finalRecord.distanceKm / elapsedSeconds) * 3600 : 0,
+            elapsedSeconds: metrics.ride.elapsedSeconds,
+            distanceKm: metrics.ride.distanceKm,
+            averageSpeedKph: metrics.speed.averageKph,
+            maxSpeedKph: metrics.speed.maxKph,
             averageHeartRate,
-            ascentMeters: finalRecord.ascentMeters,
-            currentGradePercent: finalRecord.gradePercent,
-            routeProgress: finalRecord.routeProgress
+            maxHeartRate: metrics.heartRate.maxBpm,
+            averagePower: metrics.power.averageWatts,
+            maxPower: metrics.power.maxWatts,
+            rolling3sPower: metrics.power.rolling3sWatts,
+            rolling10sPower: metrics.power.rolling10sWatts,
+            normalizedPower: metrics.power.normalizedPowerWatts,
+            intensityFactor: metrics.power.intensityFactor,
+            variabilityIndex: metrics.power.variabilityIndex,
+            averageCadence: metrics.cadence.averageRpm,
+            maxCadence: metrics.cadence.maxRpm,
+            averageGradePercent: metrics.grade.averagePercent,
+            averagePositiveGradePercent: metrics.grade.averagePositivePercent,
+            averageNegativeGradePercent: metrics.grade.averageNegativePercent,
+            maxPositiveGradePercent: metrics.grade.maxPositivePercent,
+            maxNegativeGradePercent: metrics.grade.maxNegativePercent,
+            estimatedTss: metrics.load.estimatedTss,
+            ascentMeters: metrics.ride.ascentMeters,
+            currentGradePercent: metrics.ride.currentGradePercent,
+            routeProgress: metrics.ride.routeProgress,
+            currentSpeedKph: metrics.speed.currentKph,
+            currentPower: metrics.power.currentWatts,
+            currentHeartRate: metrics.heartRate.currentBpm,
+            currentCadence: metrics.cadence.currentRpm,
+            currentTargetPowerWatts: metrics.ride.currentTargetPowerWatts,
+            currentTargetFtpPercent: metrics.ride.currentTargetFtpPercent,
+            currentTargetStepLabel: metrics.ride.currentTargetStepLabel,
+            metrics
         }
     };
 }
@@ -122,20 +174,4 @@ function formatDuration(totalSeconds) {
     }
 
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
-function createEmptyRecord(settings) {
-    return {
-        elapsedSeconds: 0,
-        elapsedLabel: "00:00",
-        power: settings.power,
-        speedKph: 0,
-        distanceKm: 0,
-        heartRate: settings.restingHr,
-        gradePercent: 0,
-        elevationMeters: 0,
-        ascentMeters: 0,
-        segmentName: "未开始",
-        routeProgress: 0
-    };
 }

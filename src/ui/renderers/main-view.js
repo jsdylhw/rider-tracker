@@ -1,4 +1,5 @@
 import { formatDuration, formatNumber } from "../../shared/format.js";
+import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
 import { createMapController } from "../map/map-controller.js";
 import { createRouteRenderer } from "./route-renderer.js";
 import { createDashboardRenderer } from "./dashboard-renderer.js";
@@ -302,14 +303,19 @@ export function createMainView({
             : state.session;
         const summary = session?.summary;
         const records = session?.records ?? [];
+        const metrics = resolveRideMetrics({
+            summary,
+            records,
+            ftp: state.settings?.ftp ?? null
+        });
 
-        if (elements.avgSpeedDisplay) elements.avgSpeedDisplay.innerHTML = `${formatNumber(summary?.averageSpeedKph ?? 0, 1)} <span class="unit">km/h</span>`;
-        if (elements.distanceDisplay) elements.distanceDisplay.innerHTML = `${formatNumber(summary?.distanceKm ?? 0, 2)} <span class="unit">km</span>`;
-        if (elements.heartRateDisplay) elements.heartRateDisplay.innerHTML = `${Math.round(summary?.averageHeartRate ?? 0)} <span class="unit">bpm</span>`;
-        if (elements.elevationDisplay) elements.elevationDisplay.innerHTML = `${Math.round(summary?.ascentMeters ?? 0)} <span class="unit">m</span>`;
-        if (elements.elapsedTimeValue) elements.elapsedTimeValue.textContent = formatDuration(summary?.elapsedSeconds ?? 0);
-        if (elements.routeProgressValue) elements.routeProgressValue.textContent = `${Math.round((summary?.routeProgress ?? 0) * 100)}%`;
-        if (elements.currentGradeValue) elements.currentGradeValue.textContent = `${formatNumber(summary?.currentGradePercent ?? 0, 1)}%`;
+        if (elements.avgSpeedDisplay) elements.avgSpeedDisplay.innerHTML = `${formatNumber(metrics.speed.averageKph, 1)} <span class="unit">km/h</span>`;
+        if (elements.distanceDisplay) elements.distanceDisplay.innerHTML = `${formatNumber(metrics.ride.distanceKm, 2)} <span class="unit">km</span>`;
+        if (elements.heartRateDisplay) elements.heartRateDisplay.innerHTML = `${Math.round(metrics.heartRate.averageBpm)} <span class="unit">bpm</span>`;
+        if (elements.elevationDisplay) elements.elevationDisplay.innerHTML = `${Math.round(metrics.ride.ascentMeters)} <span class="unit">m</span>`;
+        if (elements.elapsedTimeValue) elements.elapsedTimeValue.textContent = formatDuration(metrics.ride.elapsedSeconds);
+        if (elements.routeProgressValue) elements.routeProgressValue.textContent = `${Math.round((metrics.ride.routeProgress ?? 0) * 100)}%`;
+        if (elements.currentGradeValue) elements.currentGradeValue.textContent = `${formatNumber(metrics.grade.currentPercent ?? 0, 1)}%`;
         if (elements.recordCountValue) elements.recordCountValue.textContent = String(records.length);
         if (elements.statusText) elements.statusText.textContent = state.statusText;
         
@@ -327,7 +333,7 @@ export function createMainView({
             elements.liveElevationCard.hidden = !session?.route && !state.route;
         }
 
-        renderRecords(records);
+        renderRecords(records, metrics);
         renderChart(records);
         
         // 实时骑行中的预览使用 live session 路线+当前位置；非骑行状态使用当前选中的路线
@@ -340,22 +346,19 @@ export function createMainView({
         routeRenderer.renderElevationChart(previewRoute, currentRecord);
     }
 
-    function renderRecords(records) {
+    function renderRecords(records, metrics) {
         if (!elements.recordsTableBody) return;
         
         if (records.length === 0) {
             elements.recordsTableBody.innerHTML = `<tr><td class="empty-state" colspan="6">运行模拟后将在这里显示记录。</td></tr>`;
             return;
         }
-
-        const startRecord = records[0];
-        const endRecord = records[records.length - 1];
         
-        const durationSeconds = endRecord.elapsedSeconds - startRecord.elapsedSeconds + 1;
-        const distanceKm = endRecord.distanceKm - startRecord.distanceKm;
-        const avgSpeedKph = durationSeconds > 0 ? (distanceKm / durationSeconds) * 3600 : 0;
-        const avgPower = Math.round(records.reduce((sum, r) => sum + (r.power || 0), 0) / records.length);
-        const avgHr = Math.round(records.reduce((sum, r) => sum + (r.heartRate || 0), 0) / records.length);
+        const durationSeconds = metrics.ride.elapsedSeconds;
+        const distanceKm = metrics.ride.distanceKm;
+        const avgSpeedKph = metrics.speed.averageKph;
+        const avgPower = Math.round(metrics.power.averageWatts);
+        const avgHr = Math.round(metrics.heartRate.averageBpm);
 
         const routeName = "当前路线总计";
         
