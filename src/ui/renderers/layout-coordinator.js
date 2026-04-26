@@ -40,7 +40,17 @@ export function createLayoutCoordinator({ elements }) {
                 elements.exportCardContainer.hidden = false;
             }
         } else if (mode === "live" && elements.liveCol1 && elements.routeCardContainer) {
-            elements.liveCol1.insertBefore(elements.routeCardContainer, elements.liveCol1.firstChild);
+            if (elements.deviceControlsPanel) {
+                elements.liveCol1.parentElement?.insertBefore(
+                    elements.deviceControlsPanel,
+                    elements.liveCol1
+                );
+            }
+
+            elements.liveCol1.insertBefore(
+                elements.routeCardContainer,
+                elements.liveCol1.firstChild
+            );
             elements.routeCardContainer.hidden = false;
 
             if (elements.routeMapShell) {

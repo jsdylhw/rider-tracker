@@ -231,7 +231,10 @@ export function createWorkoutService({ store, deviceService = null }) {
 
 function deriveRuntime(state, mode, gradeSimulation, customWorkoutTarget) {
     const trainerControlMode = resolveTrainerControlModeForWorkoutMode(mode);
-    const activeWorkoutTarget = state.liveRide.customWorkoutTargetPlan ?? customWorkoutTarget;
+    const activeWorkoutTarget = resolveWorkoutTargetPlanForControlMode(
+        trainerControlMode,
+        state.liveRide.customWorkoutTargetPlan ?? customWorkoutTarget
+    );
     const workoutTargetRuntime = buildWorkoutTargetRuntime({
         target: activeWorkoutTarget,
         elapsedSeconds: state.liveRide.session?.summary?.elapsedSeconds ?? 0,
@@ -273,4 +276,15 @@ function deriveRuntime(state, mode, gradeSimulation, customWorkoutTarget) {
         };
 
     return enrichRuntimeWithWorkoutTarget(previewRuntime, workoutTargetRuntime);
+}
+
+function resolveWorkoutTargetPlanForControlMode(trainerControlMode, customWorkoutTarget) {
+    if (trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
+        return customWorkoutTarget;
+    }
+
+    return {
+        ...customWorkoutTarget,
+        enabled: false
+    };
 }

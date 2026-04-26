@@ -265,29 +265,15 @@
                 <div class="hero-copy">
                     <p class="eyebrow">Live Ride</p>
                     <h1>实时虚拟骑行</h1>
-                    <p class="hero-text">连接功率计与心率带后，按路线坡度推进虚拟位置并同步地图与指标。</p>
+                    <p class="hero-text">先连接设备、确认路线，再选择骑行台控制模式。开始后系统会用实时功率推进虚拟位置，并按所选模式控制骑行台。</p>
                     <div class="controls mode-controls">
                         <button class="btn ghost go-home-btn">返回首页</button>
                         <button id="openRideDashboardBtn" class="btn primary">进入骑行界面</button>
                     </div>
                 </div>
-                <div class="hero-metrics">
-                    <div class="metric-chip">
-                        <span>当前状态</span>
-                        <strong>实时骑行</strong>
-                    </div>
-                    <div class="metric-chip">
-                        <span>当前路段</span>
-                        <strong>路线联动</strong>
-                    </div>
-                    <div class="metric-chip">
-                        <span>实时距离</span>
-                        <strong>进度驱动</strong>
-                    </div>
-                </div>
             </section>
 
-            <section class="layout-grid">
+            <section class="layout-grid live-setup-grid">
                 <div class="column" id="live-col-1">
                     <div id="liveExportSlot"></div>
                 </div>
@@ -296,8 +282,8 @@
                     <div class="card">
                         <div class="section-title-row">
                             <div>
-                                <h2>训练模式</h2>
-                                <p class="section-subtitle">开始骑行前选择模式：自由骑行（固定阻力）/ 固定功率（ERG）/ 坡度模拟（SIM）。骑行开始后控制模式锁定。</p>
+                                <h2>骑行台控制模式</h2>
+                                <p class="section-subtitle">选择骑行台如何执行训练：固定阻力、ERG 固定功率或按路线坡度模拟。自定义训练目标仅用于 ERG。</p>
                             </div>
                         </div>
                         <form id="workoutModeForm" class="form-grid">
@@ -309,90 +295,92 @@
                                     <option value="grade-sim" selected>坡度模拟</option>
                                 </select>
                             </label>
-                            <label class="field">
+                            <label class="field control-mode-field" hidden>
                                 <span>固定阻力 %</span>
                                 <input id="resistanceLevelInput" name="resistanceLevel" type="number" min="0" max="100" step="1">
                             </label>
-                            <label class="field">
+                            <label class="field control-mode-field" hidden>
                                 <span>ERG 目标功率 W</span>
                                 <input id="ergTargetPowerInput" name="ergTargetPower" type="number" min="80" max="600" step="5">
                             </label>
-                            <label class="field">
+                            <label class="field control-mode-field" hidden>
                                 <span>模拟难度 %</span>
                                 <input id="gradeDifficultyInput" name="difficultyPercent" type="number" min="30" max="150" step="5">
                             </label>
-                            <label class="field">
+                            <label class="field control-mode-field" hidden>
                                 <span>前瞻距离 m</span>
                                 <input id="gradeLookaheadInput" name="lookaheadMeters" type="number" min="30" max="500" step="10">
                             </label>
-                            <label class="field">
-                                <span>最大上坡 %</span>
+                            <label class="field control-mode-field">
+                                <span>最大坡度 %</span>
                                 <input id="maxUphillInput" name="maxUphillPercent" type="number" min="3" max="20" step="0.5">
                             </label>
-                            <label class="field">
-                                <span>最大下坡 %</span>
+                            <label class="field control-mode-field">
+                                <span>最小坡度 %</span>
                                 <input id="maxDownhillInput" name="maxDownhillPercent" type="number" min="-10" max="0" step="0.5">
                             </label>
-                            <label class="field">
+                            <label class="field control-mode-field" hidden>
                                 <span>平滑系数</span>
                                 <input id="gradeSmoothingInput" name="smoothingFactor" type="number" min="0.05" max="1" step="0.05">
                             </label>
-                            <label class="field field-wide">
+                            <label class="field field-wide control-mode-field" hidden>
                                 <span>ERG 确认模式</span>
-                                <div style="display:flex; align-items:center; gap: 10px; font-weight: 600;">
+                                <div class="setting-toggle">
                                     <input id="ergConfirmationRequiredInput" type="checkbox">
-                                    <span>等待 FTMS 回包后再视为目标功率已生效</span>
+                                    <span class="setting-toggle-track" aria-hidden="true"></span>
+                                    <span class="setting-toggle-copy">
+                                        <strong>等待确认回包</strong>
+                                        <small>收到 FTMS 回包后再视为目标功率已生效</small>
+                                    </span>
                                 </div>
                             </label>
                         </form>
-                        <div class="summary-grid">
-                            <div class="summary-card">
-                                <span>当前模式</span>
-                                <strong id="workoutModeLabel">自由骑行（固定阻力）</strong>
-                            </div>
-                            <div class="summary-card">
-                                <span id="trainerTargetLabel">目标阻力</span>
-                                <strong id="targetTrainerGradeValue">35%</strong>
-                            </div>
-                        </div>
+                        <span id="workoutModeLabel" hidden>自由骑行（固定阻力）</span>
+                        <span id="trainerTargetLabel" hidden>目标阻力</span>
+                        <span id="targetTrainerGradeValue" hidden>35%</span>
                         <div id="workoutControlStatus" class="route-summary">固定阻力待命：阻力等级 35%（开始骑行前已锁定控制模式）。</div>
-                    </div>
 
-                    <div class="card" style="margin-top: 16px;">
-                                <div class="section-title-row">
-                                    <div>
-                                        <h2>自定义训练目标</h2>
-                                <p class="section-subtitle">独立于路线设置。可按时间配置恒定、线性增加、线性减少训练块，并在骑行中实时对照目标功率。</p>
-                                    </div>
-                                    <div class="inline-actions">
-                                        <button id="addCustomWorkoutTargetStepBtn" type="button" class="btn secondary">新增阶段</button>
-                                    </div>
+                        <div id="customWorkoutTargetPanel" class="target-plan-panel">
+                            <div class="section-title-row">
+                                <div>
+                                    <h3>ERG 目标来源</h3>
+                                    <p class="section-subtitle">使用固定目标功率，或启用按时间分段的 FTP 目标计划；两者只在 ERG 模式下控制骑行台。</p>
                                 </div>
-                                <label class="field field-wide">
-                                    <span>启用训练目标</span>
-                                    <div style="display:flex; align-items:center; gap: 10px; font-weight: 600;">
-                                        <input id="customWorkoutTargetEnabled" type="checkbox">
-                                        <span>按时间规划 FTP 百分比训练</span>
-                                    </div>
-                                </label>
+                                <div class="inline-actions">
+                                    <button id="addCustomWorkoutTargetStepBtn" type="button" class="btn secondary">新增阶段</button>
+                                </div>
+                            </div>
+                            <label class="field field-wide">
+                                <span>目标计划</span>
+                                <div class="setting-toggle">
+                                    <input id="customWorkoutTargetEnabled" type="checkbox">
+                                    <span class="setting-toggle-track" aria-hidden="true"></span>
+                                    <span class="setting-toggle-copy">
+                                        <strong>分段 FTP 目标</strong>
+                                        <small>按时间改写 ERG 目标功率</small>
+                                    </span>
+                                </div>
+                            </label>
+                            <div id="customWorkoutTargetEditor">
                                 <div class="table-shell">
                                     <table class="route-table">
                                         <thead>
                                             <tr>
-                                                <th>阶段</th>
                                                 <th>类型</th>
                                                 <th>时长 min</th>
-                                                <th>起始 FTP %</th>
+                                                <th>FTP %</th>
                                                 <th>结束 FTP %</th>
-                                                <th>目标功率</th>
+                                                <th>功率预览</th>
                                                 <th>操作</th>
                                             </tr>
                                         </thead>
                                         <tbody id="customWorkoutTargetTableBody"></tbody>
                                     </table>
                                 </div>
-                                <div id="customWorkoutTargetStatus" class="route-summary">未启用自定义训练目标。</div>
                             </div>
+                            <div id="customWorkoutTargetStatus" class="route-summary">未启用自定义训练目标。</div>
+                        </div>
+                    </div>
                 </div>
             </section>
         </div>
@@ -475,6 +463,21 @@
                 </div>
             </div>
 
+            <div class="card pip-controls-card">
+                <div class="section-title-row">
+                    <div>
+                        <h2>PiP 显示项</h2>
+                        <p class="section-subtitle">开启悬浮窗前选择需要显示的指标。</p>
+                    </div>
+                </div>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" value="hr" checked> 心率</label>
+                    <label><input type="checkbox" value="power" checked> 功率</label>
+                    <label><input type="checkbox" value="time" checked> 时间</label>
+                    <label><input type="checkbox" value="np" checked> 进度</label>
+                </div>
+            </div>
+
             <div id="metricsCustomizer" class="card" hidden>
                 <div class="section-title-row">
                     <div>
@@ -497,7 +500,7 @@
                 </div>
             </div>
 
-            <div id="deviceControlsPanel" class="layout-grid" style="margin-bottom: 1.5rem;">
+            <div id="deviceControlsPanel" class="live-setup-full">
                 <div class="column column-main">
                     <div class="card">
                         <div class="section-title-row">
@@ -528,21 +531,12 @@
                                 <strong id="trainerDeviceStatus">未连接</strong>
                                 <p class="device-meta" id="trainerDeviceName">等待连接</p>
                             </div>
-                            <div class="summary-card">
-                                <span>骑行状态</span>
-                                <strong id="rideStatusLabel">未开始</strong>
-                                <p class="device-meta" id="rideStatusMeta">连接功率计后即可开始骑行。</p>
-                            </div>
-                            <div class="summary-card">
-                                <span>推送坡度</span>
-                                <strong id="trainerPushGradeValue">0.0%</strong>
-                                <p class="device-meta" id="trainerPushGradeMeta">等待骑行开始后推送</p>
-                            </div>
-                            <div class="summary-card">
-                                <span>当前路段</span>
-                                <strong id="rideSegmentLabel">等待开始</strong>
-                                <p class="device-meta" id="rideSegmentMeta">速度将按当前路线坡度和实时功率计算。</p>
-                            </div>
+                            <span id="rideStatusLabel" hidden>未开始</span>
+                            <span id="rideStatusMeta" hidden>连接功率计后即可开始骑行。</span>
+                            <span id="trainerPushGradeValue" hidden>0.0%</span>
+                            <span id="trainerPushGradeMeta" hidden>等待骑行开始后推送</span>
+                            <span id="rideSegmentLabel" hidden>等待开始</span>
+                            <span id="rideSegmentMeta" hidden>速度将按当前路线坡度和实时功率计算。</span>
                         </div>
                         
                         <div class="data-grid" style="display: none;">
@@ -553,23 +547,6 @@
                             <div class="data-display" id="liveAvgPowerDisplay"></div>
                             <div class="data-display" id="liveSpeedDisplay"></div>
                             <div class="data-display" id="liveDistanceDisplay"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="column">
-                    <div class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>PiP 显示项</h2>
-                                <p class="section-subtitle">控制悬浮窗中显示的指标。</p>
-                            </div>
-                        </div>
-                        <div class="checkbox-group">
-                            <label><input type="checkbox" value="hr" checked> 心率</label>
-                            <label><input type="checkbox" value="power" checked> 功率</label>
-                            <label><input type="checkbox" value="time" checked> 时间</label>
-                            <label><input type="checkbox" value="np" checked> 进度</label>
                         </div>
                     </div>
                 </div>

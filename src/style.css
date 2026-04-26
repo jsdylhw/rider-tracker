@@ -14,6 +14,10 @@
     --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
 }
 
+[hidden] {
+    display: none !important;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -93,7 +97,8 @@ body {
 }
 
 .hero h1,
-.card h2 {
+.card h2,
+.card h3 {
     margin: 0;
 }
 
@@ -158,6 +163,53 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
     margin-top: 16px;
+}
+
+#deviceControlsPanel {
+    display: block;
+}
+
+#deviceControlsPanel .column-main {
+    display: block;
+}
+
+#deviceControlsPanel .card {
+    padding: 18px;
+}
+
+#deviceControlsPanel .controls {
+    margin-top: 12px;
+}
+
+#deviceControlsPanel .device-status-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+#deviceControlsPanel .summary-card {
+    padding: 12px;
+}
+
+#deviceControlsPanel .summary-card span {
+    margin-bottom: 4px;
+}
+
+#deviceControlsPanel .summary-card strong {
+    font-size: 18px;
+}
+
+#deviceControlsPanel .device-meta {
+    margin-top: 6px;
+}
+
+.live-setup-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+}
+
+.live-setup-full {
+    grid-column: 1 / -1;
+    width: 100%;
 }
 
 .layout-grid {
@@ -533,6 +585,122 @@ tbody tr:last-child td {
 
 .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.target-plan-panel {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    display: grid;
+    gap: 14px;
+}
+
+.target-plan-panel h3 {
+    font-size: 16px;
+}
+
+.setting-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: #f8fafc;
+    cursor: pointer;
+}
+
+.setting-toggle input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.setting-toggle-track {
+    position: relative;
+    width: 42px;
+    height: 24px;
+    flex: 0 0 42px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    transition: background 0.18s ease;
+}
+
+.setting-toggle-track::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+    transition: transform 0.18s ease;
+}
+
+.setting-toggle input:checked + .setting-toggle-track {
+    background: var(--primary);
+}
+
+.setting-toggle input:checked + .setting-toggle-track::after {
+    transform: translateX(18px);
+}
+
+.setting-toggle input:focus-visible + .setting-toggle-track {
+    outline: 3px solid rgba(46, 213, 115, 0.28);
+    outline-offset: 2px;
+}
+
+.setting-toggle input:disabled + .setting-toggle-track,
+.setting-toggle input:disabled ~ .setting-toggle-copy {
+    opacity: 0.58;
+}
+
+.setting-toggle-copy {
+    display: grid;
+    gap: 2px;
+}
+
+.setting-toggle-copy strong {
+    color: var(--text);
+    font-size: 14px;
+}
+
+.setting-toggle-copy small {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.workout-target-type-select {
+    min-width: 58px;
+    width: 64px;
+}
+
+.workout-target-input {
+    width: 80px;
+}
+
+#customWorkoutTargetPanel .route-table th,
+#customWorkoutTargetPanel .route-table td {
+    padding: 8px 6px;
+}
+
+#customWorkoutTargetPanel .route-table {
+    min-width: 0;
+}
+
+.muted-table-text {
+    color: var(--muted);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+#customWorkoutTargetTableBody td:nth-child(5) {
+    white-space: nowrap;
+    min-width: 104px;
 }
 
 .field {

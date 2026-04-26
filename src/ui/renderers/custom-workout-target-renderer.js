@@ -3,6 +3,7 @@ import {
     getBlockTypeLabel,
     WORKOUT_TARGET_BLOCK_TYPES
 } from "../../domain/workout/custom-workout-target.js";
+import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 
 export function createCustomWorkoutTargetRenderer({
     elements,
@@ -75,7 +76,10 @@ export function createCustomWorkoutTargetRenderer({
                         latestState.settings.ftp,
                         latestState.liveRide.isActive
                     );
-                    renderStatus(latestState.workout.runtime);
+                    renderStatus(
+                        latestState.workout.runtime,
+                        latestState.workout.mode === WORKOUT_MODES.FIXED_POWER
+                    );
                 }, 0);
             });
 
@@ -127,18 +131,28 @@ export function createCustomWorkoutTargetRenderer({
 
         const customWorkoutTarget = state.workout.customWorkoutTarget;
         const isLocked = state.liveRide.isActive;
+        const isErgMode = state.workout.mode === WORKOUT_MODES.FIXED_POWER;
+        const editorEnabled = isErgMode && customWorkoutTarget.enabled;
+
+        if (elements.customWorkoutTargetPanel) {
+            elements.customWorkoutTargetPanel.hidden = !isErgMode;
+        }
 
         if (elements.customWorkoutTargetEnabled && document.activeElement !== elements.customWorkoutTargetEnabled) {
             elements.customWorkoutTargetEnabled.checked = customWorkoutTarget.enabled;
-            elements.customWorkoutTargetEnabled.disabled = isLocked;
+            elements.customWorkoutTargetEnabled.disabled = isLocked || !isErgMode;
         }
 
         if (elements.addCustomWorkoutTargetStepBtn) {
-            elements.addCustomWorkoutTargetStepBtn.disabled = isLocked;
+            elements.addCustomWorkoutTargetStepBtn.disabled = isLocked || !editorEnabled;
+        }
+
+        if (elements.customWorkoutTargetEditor) {
+            elements.customWorkoutTargetEditor.hidden = !editorEnabled;
         }
 
         syncTableIfNeeded(customWorkoutTarget, state.settings.ftp, isLocked);
-        renderStatus(state.workout.runtime);
+        renderStatus(state.workout.runtime, isErgMode);
         lastSignature = signature;
     }
 
@@ -179,9 +193,8 @@ export function createCustomWorkoutTargetRenderer({
 
             return `
                 <tr data-step-id="${step.id}">
-                    <td>${index + 1}</td>
                     <td>
-                        <select data-field="blockType" ${isLocked ? "disabled" : ""}>
+                        <select class="workout-target-type-select" data-field="blockType" ${isLocked ? "disabled" : ""} aria-label="第 ${index + 1} 段类型">
                             ${renderBlockTypeOption(WORKOUT_TARGET_BLOCK_TYPES.STEADY, step.blockType)}
                             ${renderBlockTypeOption(WORKOUT_TARGET_BLOCK_TYPES.RAMP_UP, step.blockType)}
                             ${renderBlockTypeOption(WORKOUT_TARGET_BLOCK_TYPES.RAMP_DOWN, step.blockType)}
@@ -189,7 +202,10 @@ export function createCustomWorkoutTargetRenderer({
                     </td>
                     <td><input class="workout-target-input" data-field="durationMinutes" inputmode="numeric" type="text" value="${durationValue}" ${isLocked ? "disabled" : ""}></td>
                     <td><input class="workout-target-input" data-field="ftpPercent" inputmode="numeric" type="text" value="${ftpValue}" ${isLocked ? "disabled" : ""}></td>
-                    <td><input class="workout-target-input" data-field="endFtpPercent" inputmode="numeric" type="text" value="${endFtpValue}" ${isLocked ? "disabled" : ""} ${isSteadyBlock ? "readonly" : ""}></td>
+                    <td>${isSteadyBlock
+                        ? `<span class="muted-table-text">同 FTP %</span>`
+                        : `<input class="workout-target-input" data-field="endFtpPercent" inputmode="numeric" type="text" value="${endFtpValue}" ${isLocked ? "disabled" : ""}>`
+                    }</td>
                     <td>${powerPreview}</td>
                     <td class="action-cell">
                         <button type="button" class="remove-segment-btn" data-remove-step="${step.id}" ${isLocked || customWorkoutTarget.steps.length <= 1 ? "disabled" : ""}>×</button>
@@ -199,16 +215,21 @@ export function createCustomWorkoutTargetRenderer({
         }).join("");
     }
 
-    function renderStatus(runtime) {
+    function renderStatus(runtime, isErgMode = true) {
         if (!elements.customWorkoutTargetStatus) return;
 
+        if (!isErgMode) {
+            elements.customWorkoutTargetStatus.textContent = "自定义训练目标仅在 ERG 模式下控制骑行台。";
+            return;
+        }
+
         if (!runtime.customWorkoutTargetEnabled) {
-            elements.customWorkoutTargetStatus.textContent = "未启用自定义训练目标。启用后可按时间分段设置 FTP 百分比，并在骑行时实时对比目标功率。";
+            elements.customWorkoutTargetStatus.textContent = "当前使用固定 ERG 目标功率。启用分段计划后，将按时间改写 ERG 目标功率。";
             return;
         }
 
         if (runtime.customWorkoutTargetActive) {
-            elements.customWorkoutTargetStatus.textContent = `${runtime.customWorkoutTargetStepLabel}：${formatRuntimeFtp(runtime)} / ${runtime.customWorkoutTargetPowerWatts}W，阶段剩余 ${formatDuration(runtime.customWorkoutTargetRemainingSeconds ?? 0)}。`;
+            elements.customWorkoutTargetStatus.textContent = `当前目标：${formatRuntimeFtp(runtime)} / ${runtime.customWorkoutTargetPowerWatts} W，剩余 ${formatDuration(runtime.customWorkoutTargetRemainingSeconds ?? 0)}。`;
             return;
         }
 
@@ -217,7 +238,7 @@ export function createCustomWorkoutTargetRenderer({
             return;
         }
 
-        elements.customWorkoutTargetStatus.textContent = `已启用自定义训练目标，总时长 ${formatDuration(runtime.customWorkoutTargetTotalSeconds ?? 0)}。开始骑行后将自动进入第 1 段。`;
+        elements.customWorkoutTargetStatus.textContent = `分段 FTP 目标已启用，总时长 ${formatDuration(runtime.customWorkoutTargetTotalSeconds ?? 0)}。开始骑行后按表格顺序控制 ERG。`;
     }
 
     function resolveEditingValue(stepId, field, fallbackValue) {
@@ -306,7 +327,7 @@ export function createCustomWorkoutTargetRenderer({
             return;
         }
 
-        const previewCell = row.children[5];
+        const previewCell = row.children[4];
         if (!previewCell) {
             return;
         }
@@ -321,7 +342,18 @@ export function createCustomWorkoutTargetRenderer({
 
 function renderBlockTypeOption(blockType, currentBlockType) {
     const selected = blockType === currentBlockType ? "selected" : "";
-    return `<option value="${blockType}" ${selected}>${getBlockTypeLabel(blockType)}</option>`;
+    return `<option value="${blockType}" ${selected}>${getCompactBlockTypeLabel(blockType)}</option>`;
+}
+
+function getCompactBlockTypeLabel(blockType) {
+    switch (blockType) {
+        case WORKOUT_TARGET_BLOCK_TYPES.RAMP_UP:
+            return "增加";
+        case WORKOUT_TARGET_BLOCK_TYPES.RAMP_DOWN:
+            return "减少";
+        default:
+            return "恒定";
+    }
 }
 
 function formatRuntimeFtp(runtime) {

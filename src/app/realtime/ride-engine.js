@@ -17,7 +17,10 @@ export function buildNextRideSnapshot({
 }) {
     const trainerControlMode = state.liveRide.trainerControlMode
         ?? resolveTrainerControlModeForWorkoutMode(state.workout.mode);
-    const customWorkoutTargetPlan = state.liveRide.customWorkoutTargetPlan ?? state.workout.customWorkoutTarget;
+    const customWorkoutTargetPlan = resolveWorkoutTargetPlanForControlMode(
+        trainerControlMode,
+        state.liveRide.customWorkoutTargetPlan ?? state.workout.customWorkoutTarget
+    );
     const nextCommandSequence = (state.liveRide.commandSequence ?? 0) + 1;
     const rideId = state.liveRide.startedAt ?? state.liveRide.session.startedAt;
     const nextElapsedSeconds = (state.liveRide.session.summary?.metrics?.ride?.elapsedSeconds ?? 0) + dt;
@@ -103,7 +106,10 @@ export function buildRuntimeByControlMode({
     elapsedSeconds = 0
 }) {
     const workoutTargetRuntime = buildWorkoutTargetRuntime({
-        target: customWorkoutTargetPlan ?? state.workout.customWorkoutTarget,
+        target: resolveWorkoutTargetPlanForControlMode(
+            trainerControlMode,
+            customWorkoutTargetPlan ?? state.workout.customWorkoutTarget
+        ),
         elapsedSeconds,
         ftp: state.settings.ftp
     });
@@ -133,6 +139,17 @@ export function buildRuntimeByControlMode({
         ...state.workout.runtime,
         pendingTrainerCommand: null
     }, workoutTargetRuntime);
+}
+
+function resolveWorkoutTargetPlanForControlMode(trainerControlMode, customWorkoutTargetPlan) {
+    if (trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
+        return customWorkoutTargetPlan;
+    }
+
+    return {
+        ...customWorkoutTargetPlan,
+        enabled: false
+    };
 }
 
 export function buildRideLogMessage(rideSnapshot) {

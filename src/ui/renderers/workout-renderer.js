@@ -90,32 +90,35 @@ export function createWorkoutRenderer({
         [
             elements.gradeDifficultyInput,
             elements.gradeLookaheadInput,
-            elements.maxUphillInput,
-            elements.maxDownhillInput,
             elements.gradeSmoothingInput
-        ].forEach((field) => {
-            if (field) {
-                field.disabled = !isGradeSim;
-            }
-        });
+        ].forEach((field) => setFieldVisible(field, false));
+
+        [
+            elements.maxUphillInput,
+            elements.maxDownhillInput
+        ].forEach((field) => setFieldVisible(field, isGradeSim));
 
         if (elements.ergTargetPowerInput) {
             if (document.activeElement !== elements.ergTargetPowerInput) {
                 elements.ergTargetPowerInput.value = Math.round(state.settings.power ?? 0);
             }
-            elements.ergTargetPowerInput.disabled = !isErg;
+            setFieldVisible(elements.ergTargetPowerInput, isErg, workout.customWorkoutTarget?.enabled === true);
         }
 
         if (elements.ergConfirmationRequiredInput) {
             elements.ergConfirmationRequiredInput.checked = workout.erg?.confirmationRequired === true;
-            elements.ergConfirmationRequiredInput.disabled = !isErg;
+            setFieldVisible(elements.ergConfirmationRequiredInput, isErg);
         }
 
         if (elements.resistanceLevelInput) {
             if (document.activeElement !== elements.resistanceLevelInput) {
                 elements.resistanceLevelInput.value = Math.round(workout.resistance?.level ?? 35);
             }
-            elements.resistanceLevelInput.disabled = !isResistance;
+            setFieldVisible(elements.resistanceLevelInput, isResistance);
+        }
+
+        if (elements.customWorkoutTargetPanel) {
+            elements.customWorkoutTargetPanel.hidden = !isErg;
         }
 
         if (elements.workoutModeLabel) {
@@ -160,6 +163,15 @@ function readWorkoutConfig(form) {
         maxDownhillPercent: Number(formData.get("maxDownhillPercent")),
         smoothingFactor: Number(formData.get("smoothingFactor"))
     };
+}
+
+function setFieldVisible(input, visible, disabledWhenVisible = false) {
+    const field = input?.closest?.(".field");
+    if (!field) {
+        return;
+    }
+    field.hidden = !visible;
+    input.disabled = !visible || disabledWhenVisible;
 }
 
 function isGradeSimulationField(field) {

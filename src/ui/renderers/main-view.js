@@ -71,6 +71,8 @@ export function createMainView({
         resetRouteBtn: document.getElementById("resetRouteBtn"),
         gpxFileInput: document.getElementById("gpxFileInput"),
         customWorkoutTargetEnabled: document.getElementById("customWorkoutTargetEnabled"),
+        customWorkoutTargetPanel: document.getElementById("customWorkoutTargetPanel"),
+        customWorkoutTargetEditor: document.getElementById("customWorkoutTargetEditor"),
         addCustomWorkoutTargetStepBtn: document.getElementById("addCustomWorkoutTargetStepBtn"),
         customWorkoutTargetTableBody: document.getElementById("customWorkoutTargetTableBody"),
         customWorkoutTargetStatus: document.getElementById("customWorkoutTargetStatus"),
