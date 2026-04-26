@@ -1,6 +1,6 @@
 import { createPowerMeterProbe } from "./ble-power-meter.js";
 import { createTrainerSimController } from "./ble-trainer-ftms.js";
-import { resolveSpeedTarget } from "../src/domain/physics/cycling-model.js";
+import { resolveSpeedTarget } from "../../src/domain/physics/cycling-model.js";
 
 const el = {
   connectPowerMeterBtn: document.getElementById("connectPowerMeterBtn"),
@@ -16,11 +16,21 @@ const el = {
   gradeInput: document.getElementById("gradeInput"),
   sendGradeBtn: document.getElementById("sendGradeBtn"),
   gradeSendStatus: document.getElementById("gradeSendStatus"),
+  ergPowerSlider: document.getElementById("ergPowerSlider"),
+  ergPowerInput: document.getElementById("ergPowerInput"),
+  sendErgBtn: document.getElementById("sendErgBtn"),
+  ergSendStatus: document.getElementById("ergSendStatus"),
+  resistanceSlider: document.getElementById("resistanceSlider"),
+  resistanceInput: document.getElementById("resistanceInput"),
+  sendResistanceBtn: document.getElementById("sendResistanceBtn"),
+  resistanceSendStatus: document.getElementById("resistanceSendStatus"),
   logPanel: document.getElementById("logPanel")
 };
 
 const state = {
   currentGrade: 0,
+  currentErgPower: 150,
+  currentResistance: 20,
   powerMeterConnected: false,
   trainerConnected: false,
   latestPower: null
@@ -60,7 +70,11 @@ const trainer = createTrainerSimController({
       : status.message;
     el.connectTrainerBtn.textContent = state.trainerConnected ? "断开骑行台" : "连接骑行台 (FTMS)";
     el.sendGradeBtn.disabled = !state.trainerConnected;
+    el.sendErgBtn.disabled = !state.trainerConnected;
+    el.sendResistanceBtn.disabled = !state.trainerConnected;
     el.gradeSendStatus.textContent = state.trainerConnected ? "可发送坡度命令" : "等待连接骑行台";
+    el.ergSendStatus.textContent = state.trainerConnected ? "可发送 ERG 命令" : "等待连接骑行台";
+    el.resistanceSendStatus.textContent = state.trainerConnected ? "可发送阻力命令" : "等待连接骑行台";
     log(`骑行台状态: ${status.message}`);
   }
 });
@@ -97,6 +111,34 @@ el.sendGradeBtn.addEventListener("click", async () => {
   await sendGradeNow();
 });
 
+el.ergPowerSlider.addEventListener("input", () => {
+  const value = Number(el.ergPowerSlider.value);
+  setErgPowerValue(value);
+});
+
+el.ergPowerInput.addEventListener("input", () => {
+  const value = Number(el.ergPowerInput.value);
+  setErgPowerValue(value);
+});
+
+el.sendErgBtn.addEventListener("click", async () => {
+  await sendErgNow();
+});
+
+el.resistanceSlider.addEventListener("input", () => {
+  const value = Number(el.resistanceSlider.value);
+  setResistanceValue(value);
+});
+
+el.resistanceInput.addEventListener("input", () => {
+  const value = Number(el.resistanceInput.value);
+  setResistanceValue(value);
+});
+
+el.sendResistanceBtn.addEventListener("click", async () => {
+  await sendResistanceNow();
+});
+
 document.addEventListener("keydown", async (event) => {
   if (!state.trainerConnected) return;
   if (event.key === "ArrowUp") {
@@ -105,15 +147,44 @@ document.addEventListener("keydown", async (event) => {
   } else if (event.key === "ArrowDown") {
     setGradeValue(state.currentGrade - 0.5);
     await sendGradeNow();
+  } else if (event.key === "PageUp") {
+    setErgPowerValue(state.currentErgPower + 5);
+    await sendErgNow();
+  } else if (event.key === "PageDown") {
+    setErgPowerValue(state.currentErgPower - 5);
+    await sendErgNow();
+  } else if (event.key === "Home") {
+    setResistanceValue(state.currentResistance + 1);
+    await sendResistanceNow();
+  } else if (event.key === "End") {
+    setResistanceValue(state.currentResistance - 1);
+    await sendResistanceNow();
   }
 });
 
 function setGradeValue(next) {
+  if (!Number.isFinite(next)) return;
   const value = clamp(round1(next), -10, 10);
   state.currentGrade = value;
   el.gradeSlider.value = String(value);
   el.gradeInput.value = String(value);
   el.modelSpeedValue.textContent = computeModelSpeedText(state.latestPower, state.currentGrade);
+}
+
+function setErgPowerValue(next) {
+  if (!Number.isFinite(next)) return;
+  const value = clamp(Math.round(next / 5) * 5, 0, 2000);
+  state.currentErgPower = value;
+  el.ergPowerSlider.value = String(clamp(value, 0, 800));
+  el.ergPowerInput.value = String(value);
+}
+
+function setResistanceValue(next) {
+  if (!Number.isFinite(next)) return;
+  const value = clamp(Math.round(next), 0, 100);
+  state.currentResistance = value;
+  el.resistanceSlider.value = String(value);
+  el.resistanceInput.value = String(value);
 }
 
 async function sendGradeNow() {
@@ -135,6 +206,49 @@ async function sendGradeNow() {
     log(`坡度命令下发失败: ${error.message}`);
   } finally {
     el.sendGradeBtn.disabled = !state.trainerConnected;
+  }
+}
+
+async function sendErgNow() {
+  if (!state.trainerConnected) return;
+  el.sendErgBtn.disabled = true;
+  const power = state.currentErgPower;
+  el.ergSendStatus.textContent = `发送中: ${power} W`;
+  try {
+    const result = await trainer.setTargetPower(power);
+    if (result?.status === "written-unconfirmed") {
+      el.ergSendStatus.textContent = `已写入但未确认: ${power} W`;
+      log(`ERG 命令已写入但重发后仍未收到确认，后续将使用快速下发: ${power} W (${result.path}, retry ${result.retryCount ?? 0}, ${result.reason})`);
+    } else if (result?.status === "written") {
+      el.ergSendStatus.textContent = `已写入: ${power} W`;
+      log(`ERG 命令已快速写入: ${power} W (${result.path}, 未等待 FTMS 确认)`);
+    } else {
+      const retryText = result?.retryCount ? `，重发 ${result.retryCount} 次后确认` : "";
+      el.ergSendStatus.textContent = `已发送: ${power} W${retryText}`;
+      log(`ERG 命令下发成功: ${power} W (${result?.path ?? "unknown"}${retryText})`);
+    }
+  } catch (error) {
+    el.ergSendStatus.textContent = `失败: ${error.message}`;
+    log(`ERG 命令下发失败: ${error.message}`);
+  } finally {
+    el.sendErgBtn.disabled = !state.trainerConnected;
+  }
+}
+
+async function sendResistanceNow() {
+  if (!state.trainerConnected) return;
+  el.sendResistanceBtn.disabled = true;
+  const resistance = state.currentResistance;
+  el.resistanceSendStatus.textContent = `发送中: ${resistance}%`;
+  try {
+    const result = await trainer.setTargetResistance(resistance);
+    el.resistanceSendStatus.textContent = `已写入: ${resistance}%`;
+    log(`固定阻力命令已写入: ${resistance}% (${result?.path ?? "unknown"}，未等待 FTMS 确认)`);
+  } catch (error) {
+    el.resistanceSendStatus.textContent = `失败: ${error.message}`;
+    log(`固定阻力命令下发失败: ${error.message}`);
+  } finally {
+    el.sendResistanceBtn.disabled = !state.trainerConnected;
   }
 }
 
@@ -166,4 +280,6 @@ function log(message) {
 }
 
 setGradeValue(0);
+setErgPowerValue(150);
+setResistanceValue(20);
 log("Demo 已就绪。请先连接功率计和骑行台。");

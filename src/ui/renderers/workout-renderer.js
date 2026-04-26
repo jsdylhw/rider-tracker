@@ -7,16 +7,21 @@ export function createWorkoutRenderer({
     onUpdateWorkoutMode,
     onUpdateGradeSimulationConfig,
     onUpdateErgTargetPower,
-    onUpdateErgConfirmationMode
+    onUpdateErgConfirmationMode,
+    onUpdateResistanceLevel
 }) {
     let lastSignature = "";
 
     function bindEvents() {
         if (elements.workoutModeForm) {
-            elements.workoutModeForm.addEventListener("input", () => {
-                const mode = elements.workoutModeSelect?.value ?? WORKOUT_MODES.FREE_RIDE;
-                onUpdateWorkoutMode(mode);
-                onUpdateGradeSimulationConfig(readWorkoutConfig(elements.workoutModeForm));
+            elements.workoutModeForm.addEventListener("input", (event) => {
+                if (event.target === elements.workoutModeSelect) {
+                    const mode = elements.workoutModeSelect?.value ?? WORKOUT_MODES.FREE_RIDE;
+                    onUpdateWorkoutMode(mode);
+                }
+                if (isGradeSimulationField(event.target)) {
+                    onUpdateGradeSimulationConfig(readWorkoutConfig(elements.workoutModeForm));
+                }
             });
         }
 
@@ -29,6 +34,12 @@ export function createWorkoutRenderer({
         if (elements.ergConfirmationRequiredInput) {
             elements.ergConfirmationRequiredInput.addEventListener("change", (event) => {
                 onUpdateErgConfirmationMode(event.target.checked);
+            });
+        }
+
+        if (elements.resistanceLevelInput) {
+            elements.resistanceLevelInput.addEventListener("input", (event) => {
+                onUpdateResistanceLevel(Number(event.target.value));
             });
         }
         
@@ -58,6 +69,7 @@ export function createWorkoutRenderer({
         const { gradeSimulation, runtime } = workout;
         const isGradeSim = workout.mode === WORKOUT_MODES.GRADE_SIM;
         const isErg = workout.mode === WORKOUT_MODES.FIXED_POWER;
+        const isResistance = workout.mode === WORKOUT_MODES.FREE_RIDE;
 
         if (elements.workoutModeSelect && document.activeElement !== elements.workoutModeSelect) {
             elements.workoutModeSelect.value = workout.mode;
@@ -97,6 +109,13 @@ export function createWorkoutRenderer({
         if (elements.ergConfirmationRequiredInput) {
             elements.ergConfirmationRequiredInput.checked = workout.erg?.confirmationRequired === true;
             elements.ergConfirmationRequiredInput.disabled = !isErg;
+        }
+
+        if (elements.resistanceLevelInput) {
+            if (document.activeElement !== elements.resistanceLevelInput) {
+                elements.resistanceLevelInput.value = Math.round(workout.resistance?.level ?? 35);
+            }
+            elements.resistanceLevelInput.disabled = !isResistance;
         }
 
         if (elements.workoutModeLabel) {
@@ -141,6 +160,16 @@ function readWorkoutConfig(form) {
         maxDownhillPercent: Number(formData.get("maxDownhillPercent")),
         smoothingFactor: Number(formData.get("smoothingFactor"))
     };
+}
+
+function isGradeSimulationField(field) {
+    return [
+        "difficultyPercent",
+        "lookaheadMeters",
+        "maxUphillPercent",
+        "maxDownhillPercent",
+        "smoothingFactor"
+    ].includes(field?.name);
 }
 
 function resolveTrainerTargetLabel(runtime) {

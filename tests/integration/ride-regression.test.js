@@ -104,7 +104,7 @@ export const suite = {
                 try {
                     const service = createRideService({
                         store,
-                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {} },
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
                         exportService: { downloadFit() {} }
                     });
                     service.startRide();
@@ -164,7 +164,7 @@ export const suite = {
                 try {
                     const service = createRideService({
                         store,
-                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {} },
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
                         exportService: { downloadFit() {} }
                     });
 
@@ -206,7 +206,7 @@ export const suite = {
                 try {
                     const service = createRideService({
                         store,
-                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {} },
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
                         exportService: { downloadFit() { downloadCount += 1; } }
                     });
                     service.startRide();
@@ -234,7 +234,7 @@ export const suite = {
                 let downloadCount = 0;
                 const service = createRideService({
                     store,
-                    deviceService: { async setTrainerGrade() {}, async setTrainerPower() {} },
+                    deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
                     exportService: { downloadFit() { downloadCount += 1; } }
                 });
 
@@ -244,7 +244,7 @@ export const suite = {
             }
         },
         {
-            name: "SIM 模式下 trainer 命令按 500ms 节流下发",
+            name: "SIM 模式下 trainer 命令按 500ms 节流且不重复下发相同坡度",
             run() {
                 const store = createStore({
                     ...createState(),
@@ -298,7 +298,7 @@ export const suite = {
 
                     now += 250;
                     timerCallbacks[0]();
-                    assertEqual(sentGrades.length, 2);
+                    assertEqual(sentGrades.length, 1);
                 } finally {
                     Date.now = originalDateNow;
                     if (originalWindow === undefined) delete globalThis.window;

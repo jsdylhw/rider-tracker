@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>PowerTest - 坡度模拟 Demo</title>
+  <title>PowerTest - SIM/ERG Demo</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <main class="shell">
-    <h1>PowerTest: 功率计 + 坡度模拟</h1>
-    <p class="hint">目标：连接外部功率计，连接 FTMS 骑行台，手动调节坡度 -10% 到 +10%。</p>
+    <h1>PowerTest: 功率计 + SIM/ERG 控制</h1>
+    <p class="hint">目标：连接外部功率计，连接 FTMS 骑行台，手动调节坡度 -10% 到 +10%，或下发 ERG 目标功率。</p>
 
     <section class="card">
       <h2>设备连接</h2>
@@ -51,7 +51,7 @@
 
     <section class="card">
       <h2>坡度模拟控制</h2>
-      <div class="grade-row">
+      <div class="control-row">
         <label for="gradeSlider">目标坡度 (%)</label>
         <input id="gradeSlider" type="range" min="-10" max="10" step="0.1" value="0">
         <input id="gradeInput" type="number" min="-10" max="10" step="0.1" value="0">
@@ -59,6 +59,32 @@
       <div class="row">
         <button id="sendGradeBtn" class="btn primary" disabled>发送坡度到骑行台</button>
         <span id="gradeSendStatus" class="status">等待连接骑行台</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>ERG 固定功率控制</h2>
+      <div class="control-row">
+        <label for="ergPowerSlider">目标功率 (W)</label>
+        <input id="ergPowerSlider" type="range" min="0" max="800" step="5" value="150">
+        <input id="ergPowerInput" type="number" min="0" max="2000" step="5" value="150">
+      </div>
+      <div class="row">
+        <button id="sendErgBtn" class="btn primary" disabled>发送 ERG 到骑行台</button>
+        <span id="ergSendStatus" class="status">等待连接骑行台</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>固定阻力控制</h2>
+      <div class="control-row">
+        <label for="resistanceSlider">目标阻力 (%)</label>
+        <input id="resistanceSlider" type="range" min="0" max="100" step="1" value="20">
+        <input id="resistanceInput" type="number" min="0" max="100" step="1" value="20">
+      </div>
+      <div class="row">
+        <button id="sendResistanceBtn" class="btn primary" disabled>发送阻力到骑行台</button>
+        <span id="resistanceSendStatus" class="status">等待连接骑行台</span>
       </div>
     </section>
 

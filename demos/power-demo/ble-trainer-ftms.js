@@ -5,6 +5,8 @@ const FTMS_RESPONSE_OPCODE = 0x80;
 const FTMS_OPCODES = {
   REQUEST_CONTROL: 0x00,
   SET_TARGET_INCLINATION: 0x03,
+  SET_TARGET_RESISTANCE: 0x04,
+  SET_TARGET_POWER: 0x05,
   SET_INDOOR_BIKE_SIMULATION: 0x11
 };
 
@@ -22,12 +24,17 @@ const SIM_DEFAULTS = {
   windResistance: 0.51
 };
 
+const ERG_DEFAULTS = {
+  maxRetriesOnTimeout: 1
+};
+
 export function createTrainerSimController({ onStatus }) {
   let device = null;
   let controlPoint = null;
   let pendingResponse = null;
   let commandQueue = Promise.resolve();
   let allowInclinationFallback = true;
+  let ergConfirmationUnavailable = false;
 
   async function toggle() {
     if (device?.gatt?.connected) {
@@ -51,6 +58,7 @@ export function createTrainerSimController({ onStatus }) {
     const service = await server.getPrimaryService(FTMS_SERVICE);
     controlPoint = await service.getCharacteristic(FTMS_CONTROL_POINT);
     allowInclinationFallback = true;
+    ergConfirmationUnavailable = false;
 
     device.addEventListener("gattserverdisconnected", handleDisconnected);
     await controlPoint.startNotifications();
@@ -103,17 +111,36 @@ export function createTrainerSimController({ onStatus }) {
     return queued;
   }
 
-  async function sendCommand(payload, expectedOpcode, timeoutMs = 4000) {
+  async function sendCommand(payload, expectedOpcode, options = {}) {
+    const normalizedOptions = typeof options === "number"
+      ? { timeoutMs: options }
+      : options;
+    const {
+      awaitResponse = true,
+      timeoutMs = 4000
+    } = normalizedOptions;
+
     return enqueue(async () => {
       if (!controlPoint) {
         throw new Error("FTMS Control Point 未连接");
       }
       await controlPoint.writeValueWithResponse(payload);
+      if (!awaitResponse) {
+        return {
+          requestOpcode: expectedOpcode,
+          result: null,
+          confirmed: false
+        };
+      }
+
       const response = await waitForResponse(expectedOpcode, timeoutMs);
       if (response.result !== FTMS_RESULT.SUCCESS) {
         throw new Error(`FTMS 命令失败: opcode 0x${expectedOpcode.toString(16)}, result ${formatResultCode(response.result)}`);
       }
-      return response;
+      return {
+        ...response,
+        confirmed: true
+      };
     });
   }
 
@@ -173,6 +200,78 @@ export function createTrainerSimController({ onStatus }) {
     }
   }
 
+  async function setTargetPower(powerWatts) {
+    const power = clamp(Math.round(powerWatts), 0, 2000);
+    if (ergConfirmationUnavailable) {
+      await sendTargetPower(power, { awaitResponse: false });
+      return {
+        status: "written",
+        path: "0x05",
+        retryCount: 0,
+        confirmed: false,
+        confirmationSkipped: true
+      };
+    }
+
+    let lastTimeout = null;
+
+    for (let attempt = 0; attempt <= ERG_DEFAULTS.maxRetriesOnTimeout; attempt += 1) {
+      try {
+        await sendTargetPower(power, { awaitResponse: true });
+        return {
+          status: "confirmed",
+          path: "0x05",
+          retryCount: attempt
+        };
+      } catch (error) {
+        if (!isTargetPowerTimeout(error)) {
+          throw error;
+        }
+        lastTimeout = error;
+      }
+    }
+
+    ergConfirmationUnavailable = true;
+    return {
+      status: "written-unconfirmed",
+      path: "0x05",
+      retryCount: ERG_DEFAULTS.maxRetriesOnTimeout,
+      confirmed: false,
+      confirmationSkipped: false,
+      confirmationDisabled: true,
+      reason: lastTimeout?.message ?? "FTMS ERG 命令未收到确认"
+    };
+  }
+
+  async function sendTargetPower(powerWatts, options = {}) {
+    const buffer = new ArrayBuffer(3);
+    const view = new DataView(buffer);
+    view.setUint8(0, FTMS_OPCODES.SET_TARGET_POWER);
+    view.setInt16(1, powerWatts, true);
+
+    await sendCommand(new Uint8Array(buffer), FTMS_OPCODES.SET_TARGET_POWER, options);
+  }
+
+  async function setTargetResistance(resistancePercent) {
+    const resistance = clamp(Math.round(resistancePercent), 0, 100);
+    await sendTargetResistance(resistance, { awaitResponse: false });
+    return {
+      status: "written",
+      path: "0x04",
+      confirmed: false,
+      resistancePercent: resistance
+    };
+  }
+
+  async function sendTargetResistance(resistancePercent, options = {}) {
+    const buffer = new ArrayBuffer(3);
+    const view = new DataView(buffer);
+    view.setUint8(0, FTMS_OPCODES.SET_TARGET_RESISTANCE);
+    view.setInt16(1, Math.round(resistancePercent * 10), true);
+
+    await sendCommand(new Uint8Array(buffer), FTMS_OPCODES.SET_TARGET_RESISTANCE, options);
+  }
+
   async function sendSimulation(gradePercent) {
     const windRaw = Math.round(SIM_DEFAULTS.windSpeedMps * 1000);
     const gradeRaw = Math.round(gradePercent * 100);
@@ -215,6 +314,10 @@ export function createTrainerSimController({ onStatus }) {
     return String(error?.message ?? "").includes("命令超时: 0x11");
   }
 
+  function isTargetPowerTimeout(error) {
+    return String(error?.message ?? "").includes("命令超时: 0x5");
+  }
+
   function formatResultCode(code) {
     switch (code) {
       case FTMS_RESULT.SUCCESS:
@@ -236,6 +339,8 @@ export function createTrainerSimController({ onStatus }) {
     toggle,
     disconnect,
     setGradePercent,
+    setTargetPower,
+    setTargetResistance,
     get isConnected() {
       return Boolean(device?.gatt?.connected);
     }

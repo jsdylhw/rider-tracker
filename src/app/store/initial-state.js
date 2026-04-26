@@ -142,6 +142,9 @@ function createInitialWorkoutState() {
         erg: {
             confirmationRequired: false
         },
+        resistance: {
+            level: 35
+        },
         customWorkoutTarget: createDefaultCustomWorkoutTarget(),
         runtime: {
             available: false,

@@ -52,6 +52,7 @@ createMainView({
     onUpdateGradeSimulationConfig: workoutService.updateGradeSimulationConfig,
     onUpdateErgTargetPower: workoutService.updateErgTargetPower,
     onUpdateErgConfirmationMode: workoutService.updateErgConfirmationMode,
+    onUpdateResistanceLevel: workoutService.updateResistanceLevel,
     onUpdateCustomWorkoutTargetEnabled: workoutService.updateCustomWorkoutTargetEnabled,
     onAddCustomWorkoutTargetStep: workoutService.addCustomWorkoutTargetStep,
     onUpdateCustomWorkoutTargetStep: workoutService.updateCustomWorkoutTargetStep,

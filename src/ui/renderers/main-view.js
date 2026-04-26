@@ -19,6 +19,7 @@ export function createMainView({
     onUpdateGradeSimulationConfig,
     onUpdateErgTargetPower,
     onUpdateErgConfirmationMode,
+    onUpdateResistanceLevel,
     onUpdateCustomWorkoutTargetEnabled,
     onAddCustomWorkoutTargetStep,
     onUpdateCustomWorkoutTargetStep,
@@ -93,6 +94,7 @@ export function createMainView({
         gradeSmoothingInput: document.getElementById("gradeSmoothingInput"),
         ergTargetPowerInput: document.getElementById("ergTargetPowerInput"),
         ergConfirmationRequiredInput: document.getElementById("ergConfirmationRequiredInput"),
+        resistanceLevelInput: document.getElementById("resistanceLevelInput"),
         workoutModeLabel: document.getElementById("workoutModeLabel"),
         trainerTargetLabel: document.getElementById("trainerTargetLabel"),
         targetTrainerGradeValue: document.getElementById("targetTrainerGradeValue"),
@@ -221,7 +223,8 @@ export function createMainView({
         onUpdateWorkoutMode,
         onUpdateGradeSimulationConfig,
         onUpdateErgTargetPower,
-        onUpdateErgConfirmationMode
+        onUpdateErgConfirmationMode,
+        onUpdateResistanceLevel
     });
     const customWorkoutTargetRenderer = createCustomWorkoutTargetRenderer({
         elements,

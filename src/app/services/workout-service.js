@@ -111,6 +111,31 @@ export function createWorkoutService({ store, deviceService = null }) {
         });
     }
 
+    function updateResistanceLevel(resistanceLevel) {
+        store.setState((state) => {
+            const normalizedResistance = clamp(Number(resistanceLevel), 0, 100, state.workout.resistance?.level ?? 35);
+            const nextResistance = {
+                ...state.workout.resistance,
+                level: Math.round(normalizedResistance)
+            };
+
+            return {
+                ...state,
+                workout: {
+                    ...state.workout,
+                    resistance: nextResistance,
+                    runtime: deriveRuntime(
+                        { ...state, workout: { ...state.workout, resistance: nextResistance } },
+                        state.workout.mode,
+                        state.workout.gradeSimulation,
+                        state.workout.customWorkoutTarget
+                    )
+                },
+                statusText: `固定阻力已更新为 ${nextResistance.level}%`
+            };
+        });
+    }
+
     function updateCustomWorkoutTargetEnabled(enabled) {
         store.setState((state) => {
             const nextTarget = sanitizeCustomWorkoutTarget({
@@ -196,6 +221,7 @@ export function createWorkoutService({ store, deviceService = null }) {
         updateGradeSimulationConfig,
         updateErgTargetPower,
         updateErgConfirmationMode,
+        updateResistanceLevel,
         updateCustomWorkoutTargetEnabled,
         addCustomWorkoutTargetStep,
         updateCustomWorkoutTargetStep,
@@ -214,6 +240,7 @@ function deriveRuntime(state, mode, gradeSimulation, customWorkoutTarget) {
 
     if (trainerControlMode === TRAINER_CONTROL_MODES.RESISTANCE) {
         return enrichRuntimeWithWorkoutTarget(buildResistanceControlState({
+            resistanceLevel: state.workout.resistance?.level,
             active: false
         }), workoutTargetRuntime);
     }

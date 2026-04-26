@@ -81,7 +81,9 @@ export const suite = {
                 };
 
                 const originalWindow = globalThis.window;
+                const originalDateNow = Date.now;
                 const timerCallbacks = [];
+                let now = 1000;
 
                 globalThis.window = {
                     ...(originalWindow ?? {}),
@@ -91,6 +93,7 @@ export const suite = {
                     },
                     clearInterval() {}
                 };
+                Date.now = () => now;
 
                 try {
                     const rideService = createRideService({ store, deviceService, exportService });
@@ -105,6 +108,7 @@ export const suite = {
                     assertEqual(sentPowerTargets[0], 220);
 
                     workoutService.updateErgTargetPower(285);
+                    now += 500;
                     timerCallbacks[0]();
                     await Promise.resolve();
 
@@ -116,6 +120,7 @@ export const suite = {
                     } else {
                         globalThis.window = originalWindow;
                     }
+                    Date.now = originalDateNow;
                 }
             }
         }

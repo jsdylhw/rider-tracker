@@ -243,7 +243,15 @@ export function createDeviceService({ store }) {
 
         try {
             await controllableTrainer.activateControl("sim");
-            await controllableTrainer.setTargetGrade(gradePercent);
+            const result = await controllableTrainer.setTargetGrade(gradePercent);
+            store.setState((state) => ({
+                ...state,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: `坡度模拟已写入骑行台：${Number(gradePercent).toFixed(1)}%。`
+                }
+            }));
+            return result;
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             const message = `坡度模拟下发失败：${reason}`;
@@ -275,7 +283,15 @@ export function createDeviceService({ store }) {
 
         try {
             await controllableTrainer.activateControl("erg");
-            await controllableTrainer.setTargetPower(powerWatts, options);
+            const result = await controllableTrainer.setTargetPower(powerWatts, options);
+            store.setState((state) => ({
+                ...state,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: resolveErgDispatchStatus(powerWatts, result)
+                }
+            }));
+            return result;
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             const message = `ERG 指令下发失败：${reason}`;
@@ -307,7 +323,15 @@ export function createDeviceService({ store }) {
 
         try {
             await controllableTrainer.activateControl("resistance");
-            await controllableTrainer.setTargetResistance(resistanceLevel);
+            const result = await controllableTrainer.setTargetResistance(resistanceLevel);
+            store.setState((state) => ({
+                ...state,
+                liveRide: {
+                    ...state.liveRide,
+                    statusMeta: `固定阻力已写入骑行台：${Math.round(Number(resistanceLevel) || 0)}%。`
+                }
+            }));
+            return result;
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             const message = `固定阻力下发失败：${reason}`;
@@ -365,6 +389,22 @@ export function createDeviceService({ store }) {
             return false;
         }
     }
+}
+
+function resolveErgDispatchStatus(powerWatts, result) {
+    const power = Math.round(Number(powerWatts) || 0);
+
+    if (result?.status === "confirmed") {
+        return result.retryCount > 0
+            ? `ERG 目标功率已确认：${power} W（重发 ${result.retryCount} 次后确认）。`
+            : `ERG 目标功率已确认：${power} W。`;
+    }
+
+    if (result?.status === "written-unconfirmed") {
+        return `ERG 目标功率已写入但未收到确认：${power} W；后续将使用快速下发。`;
+    }
+
+    return `ERG 目标功率已写入骑行台：${power} W。`;
 }
 
 function computeCanStart(state, overrides = {}) {

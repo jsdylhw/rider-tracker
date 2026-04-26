@@ -29,6 +29,8 @@ const DEFAULT_SIMULATION_CONFIG = {
     cw: 0.51
 };
 
+const ERG_CONFIRMATION_TIMEOUT_RETRIES = 1;
+
 export function createTrainerFtms({ onStatus, onData }) {
     let device = null;
     let ftmsService = null;
@@ -43,6 +45,7 @@ export function createTrainerFtms({ onStatus, onData }) {
     let controlActivationPromise = null;
     let capabilitiesHydrated = false;
     let pendingResponse = null;
+    let ergConfirmationUnavailable = false;
     let capabilities = {
         simulationSupported: true,
         inclinationSupported: true,
@@ -74,6 +77,7 @@ export function createTrainerFtms({ onStatus, onData }) {
                 ftmsService.getCharacteristic(FTMS_CONTROL_POINT),
                 getCharacteristicOrNull(ftmsService, INDOOR_BIKE_DATA)
             ]);
+            ergConfirmationUnavailable = false;
 
             disconnectListener = handleDisconnected;
             device.addEventListener("gattserverdisconnected", disconnectListener);
@@ -123,6 +127,7 @@ export function createTrainerFtms({ onStatus, onData }) {
         controlReady = false;
         controlActivationPromise = null;
         capabilitiesHydrated = false;
+        ergConfirmationUnavailable = false;
         emitStatus({ type: "disconnected", phase: "disconnected", message: "智能骑行台已断开" });
     }
 
@@ -388,13 +393,16 @@ export function createTrainerFtms({ onStatus, onData }) {
         await activateControl({ controlModeLabel: "坡度模拟" });
         const clampedGrade = Math.max(capabilities.minInclinePercent, Math.min(capabilities.maxInclinePercent, gradePercent));
 
-        if (capabilities.simulationSupported) {
+        try {
             await sendIndoorBikeSimulation(clampedGrade);
-            return;
-        }
-
-        if (!capabilities.inclinationSupported) {
-            throw new Error("当前骑行台不支持坡度模拟控制");
+            return {
+                status: "written",
+                path: "0x11",
+                confirmed: false,
+                gradePercent: clampedGrade
+            };
+        } catch (simulationError) {
+            console.warn("[FTMS] Indoor Bike Simulation write failed, trying inclination fallback.", simulationError);
         }
 
         const inclinationValue = Math.round(clampedGrade * 10); // 0.1% 精度
@@ -405,6 +413,12 @@ export function createTrainerFtms({ onStatus, onData }) {
 
         console.log(`[FTMS] Sending Inclination Grade: ${clampedGrade}% (Value: ${inclinationValue})`);
         await sendCommand(new Uint8Array(buffer));
+        return {
+            status: "written",
+            path: "0x03-fallback",
+            confirmed: false,
+            gradePercent: clampedGrade
+        };
     }
 
     /**
@@ -422,18 +436,54 @@ export function createTrainerFtms({ onStatus, onData }) {
         view.setInt16(1, clampedPower, true); // Little-endian SINT16
         
         console.log(`[FTMS] Sending ERG Target Power: ${clampedPower}W`);
-        await sendCommand(new Uint8Array(buffer), {
-            awaitResponse: options.confirm === true,
-            expectedRequestOpcode: FTMS_OPCODES.SET_TARGET_POWER
-        });
+        if (options.confirm !== true || ergConfirmationUnavailable) {
+            await sendCommand(new Uint8Array(buffer));
+            return {
+                status: "written",
+                path: "0x05",
+                confirmed: false,
+                confirmationSkipped: ergConfirmationUnavailable,
+                targetPowerWatts: clampedPower
+            };
+        }
+
+        let lastTimeout = null;
+        for (let attempt = 0; attempt <= ERG_CONFIRMATION_TIMEOUT_RETRIES; attempt += 1) {
+            try {
+                const response = await sendCommand(new Uint8Array(buffer), {
+                    awaitResponse: true,
+                    expectedRequestOpcode: FTMS_OPCODES.SET_TARGET_POWER
+                });
+                return {
+                    status: "confirmed",
+                    path: "0x05",
+                    confirmed: true,
+                    retryCount: attempt,
+                    targetPowerWatts: clampedPower,
+                    response
+                };
+            } catch (error) {
+                if (!isFtmsConfirmationTimeout(error, FTMS_OPCODES.SET_TARGET_POWER)) {
+                    throw error;
+                }
+                lastTimeout = error;
+            }
+        }
+
+        ergConfirmationUnavailable = true;
+        return {
+            status: "written-unconfirmed",
+            path: "0x05",
+            confirmed: false,
+            confirmationDisabled: true,
+            retryCount: ERG_CONFIRMATION_TIMEOUT_RETRIES,
+            targetPowerWatts: clampedPower,
+            reason: lastTimeout?.message ?? "FTMS ERG 确认超时"
+        };
     }
 
     async function setTargetResistance(resistanceLevel) {
         await activateControl({ controlModeLabel: "固定阻力模式" });
-        if (!capabilities.resistanceSupported) {
-            throw new Error("当前骑行台不支持固定阻力控制");
-        }
-
         const clampedResistance = Math.max(
             capabilities.minResistanceLevel,
             Math.min(capabilities.maxResistanceLevel, resistanceLevel)
@@ -446,6 +496,12 @@ export function createTrainerFtms({ onStatus, onData }) {
 
         console.log(`[FTMS] Sending Resistance Target: ${clampedResistance}%`);
         await sendCommand(new Uint8Array(buffer));
+        return {
+            status: "written",
+            path: "0x04",
+            confirmed: false,
+            resistanceLevel: clampedResistance
+        };
     }
 
     async function sendIndoorBikeSimulation(gradePercent) {
@@ -464,6 +520,12 @@ export function createTrainerFtms({ onStatus, onData }) {
 
         console.log(`[FTMS] Sending Simulation Grade: ${gradePercent}% (gradeRaw: ${gradeRaw})`);
         await sendCommand(new Uint8Array(buffer));
+    }
+
+    function isFtmsConfirmationTimeout(error, expectedRequestOpcode) {
+        const message = String(error?.message ?? "");
+        return message.includes("FTMS 确认超时")
+            && message.includes(`opcode 0x${expectedRequestOpcode.toString(16)}`);
     }
 
     async function hydrateCapabilities() {

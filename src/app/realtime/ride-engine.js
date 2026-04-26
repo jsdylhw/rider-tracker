@@ -111,9 +111,7 @@ export function buildRuntimeByControlMode({
     if (trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
         return enrichRuntimeWithWorkoutTarget(buildErgControlState({
             targetPowerWatts: workoutTargetRuntime.customWorkoutTargetPowerWatts ?? state.settings.power,
-            previousTargetPowerWatts: state.liveRide.commandDispatch?.lastSentPowerWatts
-                ?? state.workout.runtime.targetErgPowerWatts
-                ?? null,
+            previousTargetPowerWatts: state.liveRide.commandDispatch?.lastSentPowerWatts ?? null,
             confirmationRequired: state.workout.erg?.confirmationRequired === true,
             active,
             rideId,
@@ -123,9 +121,8 @@ export function buildRuntimeByControlMode({
 
     if (trainerControlMode === TRAINER_CONTROL_MODES.RESISTANCE) {
         return enrichRuntimeWithWorkoutTarget(buildResistanceControlState({
-            previousResistanceLevel: state.liveRide.commandDispatch?.lastSentResistanceLevel
-                ?? state.workout.runtime.targetResistanceLevel
-                ?? null,
+            resistanceLevel: state.workout.resistance?.level,
+            previousResistanceLevel: state.liveRide.commandDispatch?.lastSentResistanceLevel ?? null,
             active,
             rideId,
             commandSequence
