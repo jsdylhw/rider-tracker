@@ -403,6 +403,7 @@
             <div class="controls">
                 <button id="downloadSessionBtn" class="btn power-btn" disabled>导出 JSON</button>
                 <button id="downloadFitBtn" class="btn secondary" disabled>导出 FIT</button>
+                <button id="connectStravaBtn" class="btn secondary" disabled>连接 Strava</button>
                 <button id="uploadFitBtn" class="btn primary" disabled>上传 FIT</button>
             </div>
             <form id="fitExportForm" class="form-grid">
@@ -432,8 +433,12 @@
                     <input name="repositoryUrl" type="url">
                 </label>
                 <label class="field">
-                    <span>上传接口地址</span>
-                    <input name="uploadEndpoint" type="url" placeholder="https://api.example.com/upload-fit">
+                    <span>Strava Server</span>
+                    <input name="stravaServerUrl" type="url" placeholder="http://localhost:8787">
+                </label>
+                <label class="field">
+                    <span>Strava User ID</span>
+                    <input name="stravaUserId" type="text" maxlength="64" placeholder="default">
                 </label>
                 <label class="field field-wide">
                     <span>说明信息</span>

@@ -35,7 +35,7 @@ export async function uploadFitToEndpoint({
 
     if (!response.ok) {
         const text = await safeReadText(response);
-        throw new Error(`上传失败（${response.status}）：${text || response.statusText || "未知错误"}`);
+        throw new Error(`Upload failed (${response.status}): ${text || response.statusText || "Unknown error"}`);
     }
 
     return safeReadJson(response);

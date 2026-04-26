@@ -37,6 +37,7 @@ export function createMainView({
     onRunSimulation,
     onDownloadSession,
     onDownloadFit,
+    onConnectStrava,
     onUploadFit,
     onImportGpx,
     onUpdateRouteSegment,
@@ -182,6 +183,7 @@ export function createMainView({
     elements.fitExportForm = document.getElementById("fitExportForm");
     elements.downloadSessionBtn = document.getElementById("downloadSessionBtn");
     elements.downloadFitBtn = document.getElementById("downloadFitBtn");
+    elements.connectStravaBtn = document.getElementById("connectStravaBtn");
     elements.uploadFitBtn = document.getElementById("uploadFitBtn");
 
     let lastRenderedSettingsSignature = "";
@@ -251,6 +253,7 @@ export function createMainView({
     bind(elements.runSimulationBtn, "click", onRunSimulation);
     bind(elements.downloadSessionBtn, "click", onDownloadSession);
     bind(elements.downloadFitBtn, "click", onDownloadFit);
+    bind(elements.connectStravaBtn, "click", onConnectStrava);
     bind(elements.uploadFitBtn, "click", onUploadFit);
 
     if (elements.personalSettingsForm) {
@@ -328,8 +331,9 @@ export function createMainView({
         
         if (elements.downloadSessionBtn) elements.downloadSessionBtn.disabled = !session || state.liveRide.isActive;
         if (elements.downloadFitBtn) elements.downloadFitBtn.disabled = !session || state.liveRide.isActive;
+        if (elements.connectStravaBtn) elements.connectStravaBtn.disabled = state.liveRide.isActive || !state.exportMetadata.stravaServerUrl;
         if (elements.uploadFitBtn) {
-            elements.uploadFitBtn.disabled = !session || state.liveRide.isActive || !state.exportMetadata.uploadEndpoint;
+            elements.uploadFitBtn.disabled = !session || state.liveRide.isActive || !state.exportMetadata.stravaServerUrl;
         }
         if (elements.runSimulationBtn) elements.runSimulationBtn.disabled = state.liveRide.isActive;
         if (elements.exportCardContainer && state.uiMode === "live") {

@@ -1,5 +1,5 @@
 import { exportSessionAsFit } from "../../adapters/export/fit-exporter.js";
-import { uploadFitToEndpoint } from "../../adapters/upload/fit-upload-client.js";
+import { startStravaAuthorization, uploadFitToStravaServer } from "../../adapters/upload/strava-server-client.js";
 import { downloadBinary, downloadJson } from "../../shared/format.js";
 import { sanitizeExportMetadata } from "../store/initial-state.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
@@ -16,6 +16,43 @@ export function createExportService({ store }) {
             },
             statusText: "FIT 导出信息已更新。"
         }));
+    }
+
+    async function connectStrava() {
+        const { exportMetadata } = store.getState();
+        const authWindow = window.open("", "_blank");
+
+        store.setState((state) => ({
+            ...state,
+            statusText: "正在打开 Strava 授权页面..."
+        }));
+
+        try {
+            const { authUrl } = await startStravaAuthorization({
+                serverUrl: exportMetadata.stravaServerUrl,
+                userId: exportMetadata.stravaUserId
+            });
+
+            if (authWindow) {
+                authWindow.location.href = authUrl;
+            } else {
+                window.location.href = authUrl;
+            }
+
+            store.setState((state) => ({
+                ...state,
+                statusText: "请在新打开的 Strava 页面完成授权，完成后即可上传 FIT。"
+            }));
+        } catch (error) {
+            if (authWindow) {
+                authWindow.close();
+            }
+            console.error("Strava 授权启动失败", error);
+            store.setState((state) => ({
+                ...state,
+                statusText: `Strava 授权启动失败：${extractErrorMessage(error)}`
+            }));
+        }
     }
 
     function downloadSession() {
@@ -73,10 +110,10 @@ export function createExportService({ store }) {
             return;
         }
 
-        if (!exportMetadata.uploadEndpoint) {
+        if (!exportMetadata.stravaServerUrl) {
             store.setState((state) => ({
                 ...state,
-                statusText: "请先填写 FIT 上传接口地址。"
+                statusText: "请先填写 Strava server 地址。"
             }));
             return;
         }
@@ -93,24 +130,24 @@ export function createExportService({ store }) {
             const timestamp = session.createdAt.replaceAll(":", "-").split(".")[0];
             const filename = `virtual-ride-${timestamp}.fit`;
 
-            await uploadFitToEndpoint({
-                endpointUrl: exportMetadata.uploadEndpoint,
+            const upload = await uploadFitToStravaServer({
+                serverUrl: exportMetadata.stravaServerUrl,
+                userId: exportMetadata.stravaUserId,
                 fitBytes,
                 filename,
                 activityName: exportMetadata.activityName,
                 fitDescription: exportMetadata.fitDescription,
                 repositoryUrl: exportMetadata.repositoryUrl,
                 generatedMessage: buildGeneratedMessage(exportMetadata.repositoryUrl),
-                userId: "default",
                 trainer: true,
                 commute: false,
-                sportType: "Ride",
+                sportType: "VirtualRide",
                 externalId: buildExternalId(session, timestamp)
             });
 
             store.setState((state) => ({
                 ...state,
-                statusText: "FIT 上传成功，已附加开源项目生成说明。"
+                statusText: `Strava 上传完成，活动 ID：${upload.activity_id}。`
             }));
         } catch (error) {
             console.error("FIT 上传失败", error);
@@ -123,6 +160,7 @@ export function createExportService({ store }) {
 
     return {
         updateExportMetadata,
+        connectStrava,
         downloadSession,
         downloadFit,
         uploadFit

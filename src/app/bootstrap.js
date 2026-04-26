@@ -69,6 +69,7 @@ createMainView({
     onRunSimulation: rideService.runSimulation,
     onDownloadSession: exportService.downloadSession,
     onDownloadFit: exportService.downloadFit,
+    onConnectStrava: exportService.connectStrava,
     onUploadFit: exportService.uploadFit,
     onImportGpx: routeService.importGpx,
     onUpdateRouteSegment: routeService.updateRouteSegment,

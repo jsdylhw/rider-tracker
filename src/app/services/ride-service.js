@@ -14,6 +14,7 @@ import {
 } from "../realtime/ride-engine.js";
 import { saveLastSession } from "../../adapters/storage/session-storage.js";
 import { formatNumber } from "../../shared/format.js";
+import { sanitizeSessionExportMetadata } from "../store/initial-state.js";
 
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
@@ -39,7 +40,7 @@ export function createRideService({ store, deviceService, exportService }) {
             initialHeartRate: sampledSensors.heartRate
         });
 
-        session.exportMetadata = state.exportMetadata;
+        session.exportMetadata = sanitizeSessionExportMetadata(state.exportMetadata);
 
         restartLiveRideLoop(resolveAdaptivePhysicsTickMs(sampledSensors));
 
@@ -269,7 +270,7 @@ export function createRideService({ store, deviceService, exportService }) {
         const state = store.getState();
         const session = {
             ...simulateRide({ route: state.route, settings: state.settings }),
-            exportMetadata: state.exportMetadata
+            exportMetadata: sanitizeSessionExportMetadata(state.exportMetadata)
         };
 
         saveLastSession(session);

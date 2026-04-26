@@ -43,6 +43,8 @@ export function createExportRenderer({
             fitDescription: String(formData.get("fitDescription") ?? ""),
             repositoryUrl: String(formData.get("repositoryUrl") ?? ""),
             uploadEndpoint: String(formData.get("uploadEndpoint") ?? ""),
+            stravaServerUrl: String(formData.get("stravaServerUrl") ?? ""),
+            stravaUserId: String(formData.get("stravaUserId") ?? ""),
             markVirtualActivity: Boolean(formData.get("markVirtualActivity"))
         };
     }
