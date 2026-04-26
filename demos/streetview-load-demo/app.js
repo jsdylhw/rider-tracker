@@ -1,6 +1,6 @@
-import { parseGpx } from "../src/domain/route/gpx-parser.js";
-import { getRouteSampleAtDistance } from "../src/domain/route/route-builder.js";
-import { createStreetViewController, loadGoogleMapsForStreetView } from "../src/ui/map/street-view-controller.js";
+import { parseGpx } from "../../src/domain/route/gpx-parser.js";
+import { getRouteSampleAtDistance } from "../../src/domain/route/route-builder.js";
+import { createStreetViewController, loadGoogleMapsForStreetView } from "../../src/ui/map/street-view-controller.js";
 
 const SIM_SPEED_KMH = 20;
 const SIM_SPEED_MPS = SIM_SPEED_KMH / 3.6;

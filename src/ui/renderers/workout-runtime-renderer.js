@@ -1,4 +1,5 @@
-import { buildWorkoutTargetChartSvg } from "./svg/dashboard-charts.js";
+import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
+import { buildErgPowerChartSvg, buildWorkoutTargetChartSvg } from "./svg/dashboard-charts.js";
 
 export function createWorkoutRuntimeRenderer({ elements }) {
     function render({ rideSnapshot, training, records }) {
@@ -13,15 +14,47 @@ export function createWorkoutRuntimeRenderer({ elements }) {
             }
             : (training ?? {});
 
-        renderWorkoutTargetHud(runtime);
+        renderWorkoutTargetHud(runtime, effectiveRecords, effectiveTraining);
         renderWorkoutTargetChart(effectiveRecords, effectiveTraining);
     }
 
-    function renderWorkoutTargetHud(runtime) {
+    function renderWorkoutTargetHud(runtime, records, training) {
+        const isFixedPower = training?.mode === WORKOUT_MODES.FIXED_POWER;
+        const shouldShowErgHud = isFixedPower && !runtime.customWorkoutTargetEnabled;
+
         if (elements.workoutTargetHudCard) {
-            elements.workoutTargetHudCard.hidden = !runtime.customWorkoutTargetEnabled;
+            elements.workoutTargetHudCard.hidden = !runtime.customWorkoutTargetEnabled && !shouldShowErgHud;
+            elements.workoutTargetHudCard.classList.toggle("erg-power-hud", shouldShowErgHud);
         }
-        if (!elements.workoutTargetHudGrid || !runtime.customWorkoutTargetEnabled) return;
+        if (!elements.workoutTargetHudGrid) return;
+
+        if (shouldShowErgHud) {
+            const progressPercent = training?.rideSnapshot?.summary?.ride?.routeProgress != null
+                ? training.rideSnapshot.summary.ride.routeProgress * 100
+                : ((records.at(-1)?.routeProgress ?? 0) * 100);
+            const targetPowerWatts = runtime.targetErgPowerWatts ?? records.at(-1)?.power ?? 0;
+            elements.workoutTargetHudGrid.innerHTML = `
+                <div class="erg-power-hud-header">
+                    <span>骑行进度</span>
+                    <strong>${Math.round(progressPercent)}%</strong>
+                    <span>目标 ${Math.round(targetPowerWatts)} W</span>
+                </div>
+                <svg class="erg-power-chart" viewBox="0 0 640 160" preserveAspectRatio="none">
+                    ${buildErgPowerChartSvg({
+                        records,
+                        targetPowerWatts,
+                        ftp: training?.ftp ?? 0,
+                        progressPercent
+                    })}
+                </svg>
+            `;
+            return;
+        }
+
+        if (!runtime.customWorkoutTargetEnabled) {
+            elements.workoutTargetHudGrid.innerHTML = "";
+            return;
+        }
 
         elements.workoutTargetHudGrid.innerHTML = `
             <div class="data-item">

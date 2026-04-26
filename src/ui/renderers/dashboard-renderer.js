@@ -3,6 +3,7 @@ import { buildDashboardViewModel } from "../../app/view-models/live-ride-view-mo
 import { buildTrajectoryOverviewSvg } from "./svg/dashboard-charts.js";
 import { createDashboardMetricsRenderer } from "./dashboard-metrics-renderer.js";
 import { createWorkoutRuntimeRenderer } from "./workout-runtime-renderer.js";
+import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 
 export function createDashboardRenderer({
     elements,
@@ -144,6 +145,7 @@ export function createDashboardRenderer({
         });
         const { ride, training, metricsData, enabledMetricKeys } = viewModel;
         const { snapshot: rideSnapshot, session, currentRecord, route, records, distanceKm } = ride;
+        const isGradeSimulation = training.mode === WORKOUT_MODES.GRADE_SIM;
 
         elements.rideDashboard.hidden = !ride.dashboardOpen;
         if (ride.dashboardOpen) {
@@ -195,7 +197,7 @@ export function createDashboardRenderer({
                 hasSession: false
             });
 
-            renderTrajectoryOverview(rideSnapshot, route, null);
+            renderTrajectoryOverview(rideSnapshot, route, null, isGradeSimulation);
             workoutRuntimeRenderer.render({ rideSnapshot, training, records });
             syncRideMap(rideSnapshot, route, null);
             return;
@@ -232,13 +234,20 @@ export function createDashboardRenderer({
             hasSession: true
         });
 
-        renderTrajectoryOverview(rideSnapshot, route, currentRecord);
+        renderTrajectoryOverview(rideSnapshot, route, currentRecord, isGradeSimulation);
         workoutRuntimeRenderer.render({ rideSnapshot, training, records });
         syncRideMap(rideSnapshot, route, currentRecord);
     }
 
-    function renderTrajectoryOverview(rideSnapshot, route, currentRecord) {
+    function renderTrajectoryOverview(rideSnapshot, route, currentRecord, isGradeSimulation) {
+        if (elements.trajectoryCard) {
+            elements.trajectoryCard.hidden = !isGradeSimulation;
+        }
         if (!elements.streetViewTrajectorySvg) return;
+        if (!isGradeSimulation) {
+            elements.streetViewTrajectorySvg.innerHTML = "";
+            return;
+        }
         elements.streetViewTrajectorySvg.innerHTML = buildTrajectoryOverviewSvg(
             rideSnapshot?.session?.route ?? route,
             rideSnapshot?.currentRecord ?? currentRecord

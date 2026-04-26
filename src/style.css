@@ -333,6 +333,10 @@ body {
     display: none !important;
 }
 
+.ride-dashboard.immersive-street-view .pip-controls-card {
+    display: none !important;
+}
+
 .ride-dashboard.immersive-street-view #immersiveMetricsCard {
     position: absolute;
     top: 8px;
@@ -407,6 +411,50 @@ body {
     height: 150px !important;
     background: transparent;
     border: 0;
+}
+
+.ride-dashboard.immersive-street-view #workoutTargetHudCard.erg-power-hud {
+    position: absolute;
+    left: 50%;
+    bottom: 10px;
+    transform: translateX(-50%);
+    width: min(620px, 58vw);
+    padding: 10px 12px;
+    z-index: 48;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.72));
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.28);
+}
+
+.ride-dashboard.immersive-street-view #workoutTargetHudCard.erg-power-hud h3 {
+    display: none;
+}
+
+.ride-dashboard.immersive-street-view #workoutTargetHudCard.erg-power-hud #workoutTargetHudGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+}
+
+.erg-power-hud-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: #cbd5e1;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.erg-power-hud-header strong {
+    color: #f8fafc;
+    font-size: 18px;
+}
+
+.erg-power-chart {
+    width: 100%;
+    height: 138px;
+    display: block;
 }
 
 .ride-dashboard.immersive-street-view #immersiveStreetViewBtn {

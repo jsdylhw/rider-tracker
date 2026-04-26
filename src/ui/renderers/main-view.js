@@ -9,6 +9,7 @@ import { createLayoutCoordinator } from "./layout-coordinator.js";
 import { createWorkoutRenderer } from "./workout-renderer.js";
 import { createCustomWorkoutTargetRenderer } from "./custom-workout-target-renderer.js";
 import { buildDistanceTimeChartSvg } from "./svg/session-charts.js";
+import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 
 export function createMainView({
     store,
@@ -168,6 +169,7 @@ export function createMainView({
         streetViewContainer: document.getElementById("streetViewContainer"),
         svPano1: document.getElementById("svPano1"),
         svPano2: document.getElementById("svPano2"),
+        trajectoryCard: document.getElementById("trajectoryCard"),
         streetViewTrajectorySvg: document.getElementById("streetViewTrajectorySvg"),
         workoutTargetHudCard: document.getElementById("workoutTargetHudCard"),
         workoutTargetHudGrid: document.getElementById("workoutTargetHudGrid"),
@@ -334,14 +336,14 @@ export function createMainView({
             elements.exportCardContainer.hidden = state.liveRide.isActive || !session;
         }
         if (elements.liveElevationCard) {
-            // Live 模式下，无论是否在骑行中，只要有路线就显示坡度图
-            elements.liveElevationCard.hidden = !session?.route && !state.route;
+            const isGradeSimulation = state.workout?.mode === WORKOUT_MODES.GRADE_SIM;
+            elements.liveElevationCard.hidden = !isGradeSimulation || (!session?.route && !state.route);
         }
 
         renderRecords(records, metrics);
         renderChart(records);
         
-        // 实时骑行中的预览使用 live session 路线+当前位置；非骑行状态使用当前选中的路线
+        // 瀹炴椂楠戣涓殑棰勮浣跨敤 live session 璺嚎+褰撳墠浣嶇疆锛涢潪楠戣鐘舵€佷娇鐢ㄥ綋鍓嶉€変腑鐨勮矾绾?
         const previewRoute = state.liveRide.isActive
             ? (state.liveRide.session?.route ?? state.route)
             : state.route;
@@ -355,7 +357,7 @@ export function createMainView({
         if (!elements.recordsTableBody) return;
         
         if (records.length === 0) {
-            elements.recordsTableBody.innerHTML = `<tr><td class="empty-state" colspan="6">运行模拟后将在这里显示记录。</td></tr>`;
+            elements.recordsTableBody.innerHTML = `<tr><td class="empty-state" colspan="6">杩愯妯℃嫙鍚庡皢鍦ㄨ繖閲屾樉绀鸿褰曘€?/td></tr>`;
             return;
         }
         
@@ -365,7 +367,7 @@ export function createMainView({
         const avgPower = Math.round(metrics.power.averageWatts);
         const avgHr = Math.round(metrics.heartRate.averageBpm);
 
-        const routeName = "当前路线总计";
+        const routeName = "褰撳墠璺嚎鎬昏";
         
         elements.recordsTableBody.innerHTML = `
             <tr>
