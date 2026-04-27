@@ -10,6 +10,10 @@ import { createWorkoutRenderer } from "./workout-renderer.js";
 import { createCustomWorkoutTargetRenderer } from "./custom-workout-target-renderer.js";
 import { buildDistanceTimeChartSvg } from "./svg/session-charts.js";
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
+import { createHomeView } from "../views/home-view.js";
+import { createSimulationView } from "../views/simulation-view.js";
+import { createLiveView } from "../views/live-view.js";
+import { createExportView } from "../views/export-view.js";
 
 export function createMainView({
     store,
@@ -47,153 +51,45 @@ export function createMainView({
     onUpdatePipConfig,
     pipController
 }) {
+    const homeView = createHomeView({
+        onSetUiMode,
+        onEnterSimulationMode,
+        onEnterLiveMode,
+        onUpdateSettings
+    });
+    const simulationView = createSimulationView({
+        onRunSimulation,
+        onUpdateSettings,
+        onUpdatePipConfig
+    });
+    const liveView = createLiveView({
+        onCloseRideDashboard,
+        onStartRide,
+        onStopRide
+    });
+    const exportView = createExportView({
+        onDownloadSession,
+        onDownloadFit,
+        onConnectStrava,
+        onUploadFit
+    });
+
     const elements = {
-        viewHome: document.getElementById("view-home"),
-        viewSimulation: document.getElementById("view-simulation"),
-        viewLive: document.getElementById("view-live"),
-        goToSimBtn: document.getElementById("goToSimBtn"),
-        goToLiveBtn: document.getElementById("goToLiveBtn"),
-        goHomeBtns: [...document.querySelectorAll(".go-home-btn")],
-        homeProfileCard: document.getElementById("homeProfileCard"),
-        homeHistoryCard: document.getElementById("homeHistoryCard"),
-        simCol1: document.getElementById("sim-col-1"),
-        liveCol1: document.getElementById("live-col-1"),
-        routeCardContainer: document.getElementById("routeCardContainer"),
-        routeCard: document.getElementById("routeCard"),
-        routeMapShell: document.getElementById("routeMapShell"),
-        setupElevationChartShell: document.getElementById("setupElevationChartShell"),
-        exportCardContainer: document.getElementById("exportCardContainer"),
-        liveExportSlot: document.getElementById("liveExportSlot"),
-        exportCardTemplate: document.getElementById("export-card-template"),
-        historyContainer: document.getElementById("historyContainer"),
-        personalSettingsForm: document.getElementById("personalSettingsForm"),
-        routeTableBody: document.getElementById("routeTableBody"),
-        routeTableShell: document.getElementById("routeTableShell"),
-        addSegmentBtn: document.getElementById("addSegmentBtn"),
-        resetRouteBtn: document.getElementById("resetRouteBtn"),
-        gpxFileInput: document.getElementById("gpxFileInput"),
-        customWorkoutTargetEnabled: document.getElementById("customWorkoutTargetEnabled"),
-        customWorkoutTargetPanel: document.getElementById("customWorkoutTargetPanel"),
-        customWorkoutTargetEditor: document.getElementById("customWorkoutTargetEditor"),
-        addCustomWorkoutTargetStepBtn: document.getElementById("addCustomWorkoutTargetStepBtn"),
-        customWorkoutTargetTableBody: document.getElementById("customWorkoutTargetTableBody"),
-        customWorkoutTargetStatus: document.getElementById("customWorkoutTargetStatus"),
-        routeSourceLabel: document.getElementById("routeSourceLabel"),
-        routeMapPreview: document.getElementById("routeMapPreview"),
-        routeSummary: document.getElementById("routeSummary"),
-        routeDistanceChip: document.getElementById("routeDistanceChip"),
-        routeElevationChip: document.getElementById("routeElevationChip"),
-        savedSessionChip: document.getElementById("savedSessionChip"),
-        simulationForm: document.getElementById("simulationForm"),
-        connectHrBtn: document.getElementById("connectHrBtn"),
-        connectPowerBtn: document.getElementById("connectPowerBtn"),
-        connectTrainerBtn: document.getElementById("connectTrainerBtn"),
-        workoutModeForm: document.getElementById("workoutModeForm"),
-        workoutModeSelect: document.getElementById("workoutModeSelect"),
-        workoutModeRadios: [...document.querySelectorAll('input[name="workoutMode"]')],
-        gradeDifficultyInput: document.getElementById("gradeDifficultyInput"),
-        gradeLookaheadInput: document.getElementById("gradeLookaheadInput"),
-        maxUphillInput: document.getElementById("maxUphillInput"),
-        maxDownhillInput: document.getElementById("maxDownhillInput"),
-        gradeSmoothingInput: document.getElementById("gradeSmoothingInput"),
-        ergTargetPowerInput: document.getElementById("ergTargetPowerInput"),
-        ergConfirmationRequiredInput: document.getElementById("ergConfirmationRequiredInput"),
-        resistanceLevelInput: document.getElementById("resistanceLevelInput"),
-        workoutModeLabel: document.getElementById("workoutModeLabel"),
-        trainerTargetLabel: document.getElementById("trainerTargetLabel"),
-        targetTrainerGradeValue: document.getElementById("targetTrainerGradeValue"),
-        workoutControlStatus: document.getElementById("workoutControlStatus"),
-        openRideDashboardBtn: document.getElementById("openRideDashboardBtn"),
-        hrDeviceStatus: document.getElementById("hrDeviceStatus"),
-        hrDeviceName: document.getElementById("hrDeviceName"),
-        powerDeviceStatus: document.getElementById("powerDeviceStatus"),
-        powerDeviceName: document.getElementById("powerDeviceName"),
-        trainerDeviceStatus: document.getElementById("trainerDeviceStatus"),
-        trainerDeviceName: document.getElementById("trainerDeviceName"),
-        rideStatusLabel: document.getElementById("rideStatusLabel"),
-        rideStatusMeta: document.getElementById("rideStatusMeta"),
-        rideSegmentLabel: document.getElementById("rideSegmentLabel"),
-        rideSegmentMeta: document.getElementById("rideSegmentMeta"),
-        liveHeartRateDisplay: document.getElementById("liveHeartRateDisplay"),
-        livePowerDisplay: document.getElementById("livePowerDisplay"),
-        liveCadenceDisplay: document.getElementById("liveCadenceDisplay"),
-        liveAvgPowerDisplay: document.getElementById("liveAvgPowerDisplay"),
-        liveSpeedDisplay: document.getElementById("liveSpeedDisplay"),
-        liveDistanceDisplay: document.getElementById("liveDistanceDisplay"),
-        rideDashboard: document.getElementById("rideDashboard"),
-        rideDashboardTitle: document.getElementById("rideDashboardTitle"),
-        rideDashboardSubtitle: document.getElementById("rideDashboardSubtitle"),
-        rideProgressHeadline: document.getElementById("rideProgressHeadline"),
-        rideProgressBar: document.getElementById("rideProgressBar"),
-        rideProgressDistance: document.getElementById("rideProgressDistance"),
-        rideProgressSegment: document.getElementById("rideProgressSegment"),
-        rideDashboardMap: document.getElementById("rideDashboardMap"),
-        dashboardAvgHr: document.getElementById("dashboardAvgHr"),
-        dashboardAvgPower: document.getElementById("dashboardAvgPower"),
-        dashboardMaxPower: document.getElementById("dashboardMaxPower"),
-        dashboardTss: document.getElementById("dashboardTss"),
-        dashboardCurrentSpeed: document.getElementById("dashboardCurrentSpeed"),
-        dashboardCurrentGrade: document.getElementById("dashboardCurrentGrade"),
-        startRideDashboardBtn: document.getElementById("startRideDashboardBtn"),
-        closeRideDashboardBtn: document.getElementById("closeRideDashboardBtn"),
-        immersiveBackBtn: document.getElementById("immersiveBackBtn"),
-        stopRideDashboardBtn: document.getElementById("stopRideDashboardBtn"),
-        runSimulationBtn: document.getElementById("runSimulationBtn"),
-        pipBtn: document.getElementById("pipBtn"),
-        statusText: document.getElementById("statusText"),
-        avgSpeedDisplay: document.getElementById("avgSpeedDisplay"),
-        distanceDisplay: document.getElementById("distanceDisplay"),
-        heartRateDisplay: document.getElementById("heartRateDisplay"),
-        elevationDisplay: document.getElementById("elevationDisplay"),
-        elapsedTimeValue: document.getElementById("elapsedTimeValue"),
-        routeProgressValue: document.getElementById("routeProgressValue"),
-        currentGradeValue: document.getElementById("currentGradeValue"),
-        recordCountValue: document.getElementById("recordCountValue"),
-        distanceChart: document.getElementById("distanceChart"),
-        recordsTableBody: document.getElementById("recordsTableBody"),
-        checkboxInputs: [...document.querySelectorAll(".checkbox-group input")],
-        dashboardMetricsGrid: document.getElementById("dashboardMetricsGrid"),
-        immersiveMetricsGrid: document.getElementById("immersiveMetricsGrid"),
-        customizeMetricsBtn: document.getElementById("customizeMetricsBtn"),
-        metricsCustomizer: document.getElementById("metricsCustomizer"),
-        elevationChart: document.getElementById("elevationChart"),
-        liveElevationCard: document.getElementById("liveElevationCard"),
-        setupElevationChart: document.getElementById("setupElevationChart"),
-        rideDashboardElevationChart: document.getElementById("rideDashboardElevationChart"),
-        trainerPushGradeValue: document.getElementById("trainerPushGradeValue"),
-        trainerPushGradeMeta: document.getElementById("trainerPushGradeMeta"),
-        mapProviderSelect: document.getElementById("mapProviderSelect"),
-        deviceControlsPanel: document.getElementById("deviceControlsPanel"),
-        loadStreetViewBtn: document.getElementById("loadStreetViewBtn"),
-        streetViewApiKey: document.getElementById("streetViewApiKey"),
-        immersiveStreetViewBtn: document.getElementById("immersiveStreetViewBtn"),
-        streetViewContainer: document.getElementById("streetViewContainer"),
-        svPano1: document.getElementById("svPano1"),
-        svPano2: document.getElementById("svPano2"),
-        trajectoryCard: document.getElementById("trajectoryCard"),
-        streetViewTrajectorySvg: document.getElementById("streetViewTrajectorySvg"),
-        workoutTargetHudCard: document.getElementById("workoutTargetHudCard"),
-        workoutTargetHudGrid: document.getElementById("workoutTargetHudGrid"),
-        workoutTargetChart: document.getElementById("workoutTargetChart"),
-        liveWorkoutTargetCard: document.getElementById("liveWorkoutTargetCard")
+        ...homeView.elements,
+        ...simulationView.elements,
+        ...liveView.elements,
+        ...exportView.elements,
+        pipBtn: document.getElementById("pipBtn")
     };
-
-    const layoutCoordinator = createLayoutCoordinator({ elements });
-
-    elements.fitExportForm = document.getElementById("fitExportForm");
-    elements.downloadSessionBtn = document.getElementById("downloadSessionBtn");
-    elements.downloadFitBtn = document.getElementById("downloadFitBtn");
-    elements.connectStravaBtn = document.getElementById("connectStravaBtn");
-    elements.uploadFitBtn = document.getElementById("uploadFitBtn");
 
     let lastRenderedSettingsSignature = "";
 
+    const layoutCoordinator = createLayoutCoordinator({ elements });
     const mapController = createMapController({
         previewElement: elements.routeMapPreview,
         dashboardElement: elements.rideDashboardMap,
         initialProviderKey: elements.mapProviderSelect?.value
     });
-
     const routeRenderer = createRouteRenderer({
         elements,
         mapController,
@@ -203,18 +99,13 @@ export function createMainView({
         onUpdateRouteSegment,
         onRemoveRouteSegment
     });
-
-    const dashboardRenderer = createDashboardRenderer({
-        elements,
-        mapController
-    });
+    const dashboardRenderer = createDashboardRenderer({ elements, mapController });
     dashboardRenderer.bindEvents(store);
 
     const exportRenderer = createExportRenderer({
         elements,
         onUpdateExportMetadata
     });
-
     const deviceRenderer = createDeviceRenderer({
         elements,
         onToggleHeartRate,
@@ -240,40 +131,6 @@ export function createMainView({
         onRemoveCustomWorkoutTargetStep
     });
 
-    function bind(el, event, handler) {
-        if (el) el.addEventListener(event, handler);
-    }
-
-    bind(elements.closeRideDashboardBtn, "click", onCloseRideDashboard);
-    bind(elements.startRideDashboardBtn, "click", onStartRide);
-    bind(elements.stopRideDashboardBtn, "click", onStopRide);
-    elements.goHomeBtns.forEach((button) => bind(button, "click", () => onSetUiMode("home")));
-    bind(elements.goToSimBtn, "click", onEnterSimulationMode);
-    bind(elements.goToLiveBtn, "click", onEnterLiveMode);
-    bind(elements.runSimulationBtn, "click", onRunSimulation);
-    bind(elements.downloadSessionBtn, "click", onDownloadSession);
-    bind(elements.downloadFitBtn, "click", onDownloadFit);
-    bind(elements.connectStravaBtn, "click", onConnectStrava);
-    bind(elements.uploadFitBtn, "click", onUploadFit);
-
-    if (elements.personalSettingsForm) {
-        elements.personalSettingsForm.addEventListener("input", () => {
-            onUpdateSettings(readSettingsFromForm(elements.personalSettingsForm));
-        });
-    }
-
-    if (elements.simulationForm) {
-        elements.simulationForm.addEventListener("input", () => {
-            onUpdateSettings(readSettingsFromForm(elements.simulationForm));
-        });
-    }
-
-    elements.checkboxInputs.forEach((input) => {
-        input.addEventListener("change", (event) => {
-            onUpdatePipConfig(event.target.value, event.target.checked);
-        });
-    });
-
     store.subscribe((state) => {
         layoutCoordinator.render(state);
         renderSettings(state);
@@ -289,21 +146,10 @@ export function createMainView({
 
     function renderSettings(state) {
         const signature = JSON.stringify(state.settings);
+        if (signature === lastRenderedSettingsSignature) return;
 
-        if (signature === lastRenderedSettingsSignature) {
-            return;
-        }
-
-        Object.entries(state.settings).forEach(([key, value]) => {
-            let field = null;
-            if (elements.personalSettingsForm) field = elements.personalSettingsForm.elements.namedItem(key);
-            if (!field && elements.simulationForm) field = elements.simulationForm.elements.namedItem(key);
-
-            if (field && document.activeElement !== field) {
-                field.value = value;
-            }
-        });
-
+        homeView.renderSettings(state);
+        simulationView.renderSettings(state);
         lastRenderedSettingsSignature = signature;
     }
 
@@ -328,7 +174,7 @@ export function createMainView({
         if (elements.currentGradeValue) elements.currentGradeValue.textContent = `${formatNumber(metrics.grade.currentPercent ?? 0, 1)}%`;
         if (elements.recordCountValue) elements.recordCountValue.textContent = String(records.length);
         if (elements.statusText) elements.statusText.textContent = state.statusText;
-        
+
         if (elements.downloadSessionBtn) elements.downloadSessionBtn.disabled = !session || state.liveRide.isActive;
         if (elements.downloadFitBtn) elements.downloadFitBtn.disabled = !session || state.liveRide.isActive;
         if (elements.connectStravaBtn) elements.connectStravaBtn.disabled = state.liveRide.isActive || !state.exportMetadata.stravaServerUrl;
@@ -346,8 +192,7 @@ export function createMainView({
 
         renderRecords(records, metrics);
         renderChart(records);
-        
-        // 瀹炴椂楠戣涓殑棰勮浣跨敤 live session 璺嚎+褰撳墠浣嶇疆锛涢潪楠戣鐘舵€佷娇鐢ㄥ綋鍓嶉€変腑鐨勮矾绾?
+
         const previewRoute = state.liveRide.isActive
             ? (state.liveRide.session?.route ?? state.route)
             : state.route;
@@ -359,20 +204,19 @@ export function createMainView({
 
     function renderRecords(records, metrics) {
         if (!elements.recordsTableBody) return;
-        
+
         if (records.length === 0) {
-            elements.recordsTableBody.innerHTML = `<tr><td class="empty-state" colspan="6">杩愯妯℃嫙鍚庡皢鍦ㄨ繖閲屾樉绀鸿褰曘€?/td></tr>`;
+            elements.recordsTableBody.innerHTML = `<tr><td class="empty-state" colspan="6">运行模拟后将在这里显示记录。</td></tr>`;
             return;
         }
-        
+
         const durationSeconds = metrics.ride.elapsedSeconds;
         const distanceKm = metrics.ride.distanceKm;
         const avgSpeedKph = metrics.speed.averageKph;
         const avgPower = Math.round(metrics.power.averageWatts);
         const avgHr = Math.round(metrics.heartRate.averageBpm);
+        const routeName = "当前路线总计";
 
-        const routeName = "褰撳墠璺嚎鎬昏";
-        
         elements.recordsTableBody.innerHTML = `
             <tr>
                 <td>${routeName}</td>
@@ -399,17 +243,4 @@ export function createMainView({
         pipController.render();
         pipController.sync();
     }
-}
-
-function readSettingsFromForm(form) {
-    const formData = new FormData(form);
-    const result = {};
-
-    ["power", "mass", "ftp", "restingHr", "maxHr", "cda", "crr", "windSpeed"].forEach((key) => {
-        if (form.elements.namedItem(key)) {
-            result[key] = Number(formData.get(key));
-        }
-    });
-
-    return result;
 }
