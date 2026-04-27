@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strava FIT Upload Demo</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <main class="page">
+        <header class="header">
+            <p class="eyebrow">Rider Tracker Demo</p>
+            <h1>Strava FIT Upload</h1>
+            <p class="lede">本地保存 Strava 凭证和 token，选择 FIT 文件后上传到 Strava，并轮询生成的 activity id。</p>
+        </header>
+
+        <section class="panel">
+            <h2>1. 本地配置</h2>
+            <form id="configForm" class="grid">
+                <label>
+                    <span>Client ID</span>
+                    <input name="clientId" inputmode="numeric" autocomplete="off" placeholder="12345">
+                </label>
+                <label>
+                    <span>Client Secret</span>
+                    <input name="clientSecret" type="password" autocomplete="off" placeholder="Strava app client secret">
+                </label>
+                <button type="submit">保存配置</button>
+            </form>
+            <dl class="facts">
+                <div><dt>Config</dt><dd id="configPath">--</dd></div>
+                <div><dt>Callback</dt><dd id="redirectUri">--</dd></div>
+                <div><dt>Scopes</dt><dd id="scopes">--</dd></div>
+            </dl>
+        </section>
+
+        <section class="panel">
+            <h2>2. 授权</h2>
+            <div class="actions">
+                <button id="connectBtn">连接 Strava</button>
+                <button id="refreshStatusBtn" type="button">刷新状态</button>
+            </div>
+            <p id="connectionText" class="status">正在读取本地配置...</p>
+        </section>
+
+        <section class="panel">
+            <h2>3. 上传 FIT</h2>
+            <form id="uploadForm" class="grid">
+                <label class="wide">
+                    <span>FIT 文件</span>
+                    <input name="file" type="file" accept=".fit,application/vnd.ant.fit" required>
+                </label>
+                <label>
+                    <span>活动名称</span>
+                    <input name="name" placeholder="Rider Tracker Virtual Ride">
+                </label>
+                <label>
+                    <span>Sport Type</span>
+                    <select name="sportType">
+                        <option value="VirtualRide">VirtualRide</option>
+                        <option value="Ride">Ride</option>
+                        <option value="MountainBikeRide">MountainBikeRide</option>
+                        <option value="GravelRide">GravelRide</option>
+                    </select>
+                </label>
+                <label class="wide">
+                    <span>描述</span>
+                    <textarea name="description" rows="5" placeholder="Uploaded from Rider Tracker demo."></textarea>
+                </label>
+                <label>
+                    <span>External ID</span>
+                    <input name="externalId" placeholder="rider-tracker-demo-...">
+                </label>
+                <div class="checks">
+                    <label><input name="trainer" type="checkbox" checked> Trainer</label>
+                    <label><input name="commute" type="checkbox"> Commute</label>
+                </div>
+                <button type="submit" class="wide">上传到 Strava</button>
+            </form>
+            <p id="uploadText" class="status">等待选择 FIT 文件。</p>
+        </section>
+
+        <section class="panel">
+            <h2>结果</h2>
+            <pre id="resultOutput">{}</pre>
+        </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+</body>
+</html>
