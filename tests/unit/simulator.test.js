@@ -53,6 +53,21 @@ export const suite = {
             }
         },
         {
+            name: "simulateRide clamps the final record to the route finish",
+            run() {
+                const route = buildRoute([
+                    { name: "Short", distanceKm: 0.1, gradePercent: 4 }
+                ]);
+                const session = simulateRide({ route, settings });
+                const finalRecord = session.records.at(-1);
+
+                assertApprox(finalRecord.distanceKm * 1000, route.totalDistanceMeters, 0.0001);
+                assertApprox(session.summary.metrics.ride.distanceKm * 1000, route.totalDistanceMeters, 0.0001);
+                assertEqual(finalRecord.routeProgress, 1);
+                assertApprox(finalRecord.elevationMeters, route.points.at(-1).elevationMeters, 0.0001);
+            }
+        },
+        {
             name: "simulateRide carries GPX-derived GPS coordinates into records",
             run() {
                 const route = buildRouteFromTrackPoints({

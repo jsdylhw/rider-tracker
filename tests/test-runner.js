@@ -21,6 +21,7 @@ import { suite as rideRegressionSuite } from "./integration/ride-regression.test
 import { suite as streetviewUiSuite } from "./integration/streetview-ui.test.js";
 import { suite as routeRendererImportSuite } from "./unit/route-renderer-import.test.js";
 import { suite as routeChartSvgSuite } from "./unit/route-chart-svg.test.js";
+import { suite as exportViewSuite } from "./unit/export-view.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
@@ -45,7 +46,8 @@ const suites = [
     rideRegressionSuite,
     streetviewUiSuite,
     routeRendererImportSuite,
-    routeChartSvgSuite
+    routeChartSvgSuite,
+    exportViewSuite
 ];
 
 runSuites(suites).then((results) => {

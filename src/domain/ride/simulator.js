@@ -33,6 +33,7 @@ export function simulateRide({ route, settings }) {
         const routeSample = getRouteSampleAtDistance(route, state.distanceMeters);
         const gradePercent = routeSample.gradePercent ?? 0;
 
+        const previousState = state;
         state = simulateStep({
             ...state,
             power: settings.power,
@@ -41,6 +42,11 @@ export function simulateRide({ route, settings }) {
             settings,
             durationSeconds: maxSimulationSeconds,
             dt: 1
+        });
+        state = clampStateToRouteFinish({
+            previousState,
+            nextState: state,
+            route
         });
         currentHeartRate = estimateHeartRate({
             currentHeartRate,
@@ -100,6 +106,35 @@ function createSummary(metrics) {
     return {
         metrics
     };
+}
+
+function clampStateToRouteFinish({ previousState, nextState, route }) {
+    const totalDistanceMeters = route?.totalDistanceMeters ?? 0;
+    if (totalDistanceMeters <= 0 || nextState.distanceMeters <= totalDistanceMeters) {
+        return nextState;
+    }
+
+    const previousDistanceMeters = previousState?.distanceMeters ?? 0;
+    const stepDistanceMeters = nextState.distanceMeters - previousDistanceMeters;
+    const completionRatio = stepDistanceMeters > 0
+        ? Math.min(1, Math.max(0, (totalDistanceMeters - previousDistanceMeters) / stepDistanceMeters))
+        : 0;
+    const routeSample = getRouteSampleAtDistance(route, totalDistanceMeters);
+
+    return {
+        ...nextState,
+        distanceMeters: totalDistanceMeters,
+        elevationMeters: routeSample.elevationMeters ?? interpolateNumber(previousState?.elevationMeters, nextState.elevationMeters, completionRatio),
+        ascentMeters: interpolateNumber(previousState?.ascentMeters, nextState.ascentMeters, completionRatio)
+    };
+}
+
+function interpolateNumber(start, end, ratio) {
+    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+        return Number.isFinite(end) ? end : (Number.isFinite(start) ? start : 0);
+    }
+
+    return start + (end - start) * ratio;
 }
 
 function formatDuration(totalSeconds) {
