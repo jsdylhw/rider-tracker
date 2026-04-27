@@ -243,6 +243,63 @@ body {
     background: #fff;
 }
 
+.metric-add-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-top: 16px;
+}
+
+.compact-field {
+    max-width: 360px;
+    flex: 1 1 260px;
+}
+
+.selected-metrics-list {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+}
+
+.metric-chip-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #f8fafc;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.metric-chip-group {
+    border-radius: 999px;
+    background: rgba(55, 66, 250, 0.1);
+    color: var(--primary);
+    padding: 2px 8px;
+    font-size: 12px;
+}
+
+.metric-chip-remove {
+    border: 0;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    color: var(--muted);
+    background: #e2e8f0;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.metric-chip-remove:hover {
+    color: #fff;
+    background: var(--danger);
+}
+
 .ride-dashboard.immersive-street-view .ride-dashboard-inner {
     width: 100%;
     max-width: 100%;

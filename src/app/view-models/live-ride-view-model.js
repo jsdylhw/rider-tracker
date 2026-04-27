@@ -142,7 +142,11 @@ function buildDashboardMetricsData({ sensor, ride, training }) {
         pushedGrade: { label: "推送坡度", value: formatNumber(training.runtime.targetTrainerGradePercent ?? 0, 1), unit: "%", color: "climb-color" },
         avgPower: { label: "平均功率", value: Math.round(metrics.power.averageWatts ?? 0), unit: "W", color: "power-color" },
         maxPower: { label: "最大功率", value: Math.round(metrics.power.maxWatts ?? 0), unit: "W", color: "power-color" },
+        normalizedPower: { label: "标准化功率", value: Math.round(metrics.power.normalizedPowerWatts ?? 0), unit: "W", color: "power-color" },
         avgHr: { label: "平均心率", value: Math.round(metrics.heartRate.averageBpm ?? 0), unit: "bpm", color: "" },
+        maxHr: { label: "最大心率", value: Math.round(metrics.heartRate.maxBpm ?? 0), unit: "bpm", color: "" },
+        avgCadence: { label: "平均踏频", value: metrics.cadence.averageRpm !== null ? Math.round(metrics.cadence.averageRpm) : 0, unit: "rpm", color: "accent-color" },
+        maxCadence: { label: "最大踏频", value: metrics.cadence.maxRpm !== null ? Math.round(metrics.cadence.maxRpm) : 0, unit: "rpm", color: "accent-color" },
         currentGrade: { label: "当前坡度", value: formatNumber(metrics.ride.currentGradePercent ?? 0, 1), unit: "%", color: "climb-color" },
         tss: { label: "预估 TSS", value: formatNumber(metrics.load.estimatedTss ?? 0, 1), unit: "", color: "accent-color" }
     };

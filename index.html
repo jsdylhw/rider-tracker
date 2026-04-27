@@ -486,23 +486,37 @@
             <div id="metricsCustomizer" class="card" hidden>
                 <div class="section-title-row">
                     <div>
-                        <h2>面板项配置</h2>
-                        <p class="section-subtitle">选择骑行大屏需要展示的核心指标。</p>
+                        <h2>自定义实时数据</h2>
+                        <p class="section-subtitle">按心率、功率、踏频分类添加需要展示的数据项。</p>
                     </div>
                 </div>
-                <div class="checkbox-group">
-                    <label><input type="checkbox" value="currentPower" checked> 实时功率</label>
-                    <label><input type="checkbox" value="avg3sPower" checked> 3秒均功率</label>
-                    <label><input type="checkbox" value="currentHr" checked> 当前心率</label>
-                    <label><input type="checkbox" value="currentSpeed" checked> 当前速度</label>
-                    <label><input type="checkbox" value="currentCadence" checked> 当前踏频</label>
-                    <label><input type="checkbox" value="pushedGrade" checked> 推送坡度</label>
-                    <label><input type="checkbox" value="avgPower"> 平均功率</label>
-                    <label><input type="checkbox" value="maxPower"> 最大功率</label>
-                    <label><input type="checkbox" value="avgHr"> 平均心率</label>
-                    <label><input type="checkbox" value="currentGrade" checked> 当前坡度</label>
-                    <label><input type="checkbox" value="tss"> TSS</label>
+                <div class="metric-add-row">
+                    <label class="field compact-field">
+                        <span>添加数据项</span>
+                        <select id="metricAddSelect">
+                            <option value="">选择心率 / 功率 / 踏频指标</option>
+                            <optgroup label="心率">
+                                <option value="currentHr">当前心率</option>
+                                <option value="avgHr">平均心率</option>
+                                <option value="maxHr">最大心率</option>
+                            </optgroup>
+                            <optgroup label="功率">
+                                <option value="currentPower">实时功率</option>
+                                <option value="avg3sPower">3秒均功率</option>
+                                <option value="avgPower">平均功率</option>
+                                <option value="maxPower">最大功率</option>
+                                <option value="normalizedPower">标准化功率</option>
+                            </optgroup>
+                            <optgroup label="踏频">
+                                <option value="currentCadence">实时踏频</option>
+                                <option value="avgCadence">平均踏频</option>
+                                <option value="maxCadence">最大踏频</option>
+                            </optgroup>
+                        </select>
+                    </label>
+                    <button id="addMetricBtn" class="btn secondary" type="button">添加</button>
                 </div>
+                <div id="selectedMetricsList" class="selected-metrics-list" aria-live="polite"></div>
             </div>
 
             <div id="deviceControlsPanel" class="live-setup-full">

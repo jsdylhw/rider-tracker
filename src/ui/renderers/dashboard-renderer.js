@@ -5,6 +5,26 @@ import { createDashboardMetricsRenderer } from "./dashboard-metrics-renderer.js"
 import { createWorkoutRuntimeRenderer } from "./workout-runtime-renderer.js";
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 
+const METRIC_OPTIONS = [
+    { key: "currentHr", label: "当前心率", group: "心率" },
+    { key: "avgHr", label: "平均心率", group: "心率" },
+    { key: "maxHr", label: "最大心率", group: "心率" },
+    { key: "currentPower", label: "实时功率", group: "功率" },
+    { key: "avg3sPower", label: "3秒均功率", group: "功率" },
+    { key: "avgPower", label: "平均功率", group: "功率" },
+    { key: "maxPower", label: "最大功率", group: "功率" },
+    { key: "normalizedPower", label: "标准化功率", group: "功率" },
+    { key: "currentCadence", label: "实时踏频", group: "踏频" },
+    { key: "avgCadence", label: "平均踏频", group: "踏频" },
+    { key: "maxCadence", label: "最大踏频", group: "踏频" },
+    { key: "currentSpeed", label: "当前速度", group: "基础" },
+    { key: "pushedGrade", label: "推送坡度", group: "基础" },
+    { key: "currentGrade", label: "当前坡度", group: "基础" },
+    { key: "tss", label: "预估 TSS", group: "基础" }
+];
+
+const METRIC_LABELS = Object.fromEntries(METRIC_OPTIONS.map((option) => [option.key, option]));
+
 export function createDashboardRenderer({
     elements,
     mapController
@@ -20,7 +40,11 @@ export function createDashboardRenderer({
         pushedGrade: true,
         avgPower: false,
         maxPower: false,
+        normalizedPower: false,
         avgHr: false,
+        maxHr: false,
+        avgCadence: false,
+        maxCadence: false,
         currentGrade: true,
         tss: false
     };
@@ -122,16 +146,82 @@ export function createDashboardRenderer({
             });
         }
 
-        if (elements.metricsCustomizer) {
-            const checkboxes = elements.metricsCustomizer.querySelectorAll("input[type=checkbox]");
-            checkboxes.forEach(cb => {
-                cb.addEventListener("change", (e) => {
-                    customMetricsState[e.target.value] = e.target.checked;
-                    if (store) {
-                        render(store.getState());
-                    }
-                });
-            });
+        bindCustomMetricControls(store);
+    }
+
+    function bindCustomMetricControls(store) {
+        renderSelectedMetrics();
+        syncMetricAddOptions();
+
+        elements.addMetricBtn?.addEventListener("click", () => {
+            const key = elements.metricAddSelect?.value;
+            if (!key || !Object.hasOwn(customMetricsState, key)) return;
+
+            customMetricsState[key] = true;
+            if (elements.metricAddSelect) {
+                elements.metricAddSelect.value = "";
+            }
+            renderSelectedMetrics();
+            syncMetricAddOptions();
+            if (store) render(store.getState());
+        });
+
+        elements.metricAddSelect?.addEventListener("change", () => {
+            if (elements.addMetricBtn) {
+                elements.addMetricBtn.disabled = !elements.metricAddSelect.value;
+            }
+        });
+
+        elements.selectedMetricsList?.addEventListener("click", (event) => {
+            const removeButton = event.target.closest("[data-remove-metric]");
+            if (!removeButton) return;
+
+            const key = removeButton.dataset.removeMetric;
+            if (!Object.hasOwn(customMetricsState, key)) return;
+
+            customMetricsState[key] = false;
+            renderSelectedMetrics();
+            syncMetricAddOptions();
+            if (store) render(store.getState());
+        });
+    }
+
+    function renderSelectedMetrics() {
+        if (!elements.selectedMetricsList) return;
+        const enabledOptions = METRIC_OPTIONS.filter((option) => customMetricsState[option.key]);
+
+        if (!enabledOptions.length) {
+            elements.selectedMetricsList.innerHTML = `<p class="section-subtitle">还没有选择数据项，请从上方下拉菜单添加。</p>`;
+            return;
+        }
+
+        elements.selectedMetricsList.innerHTML = enabledOptions
+            .map((option) => `
+                <span class="metric-chip-item">
+                    <span class="metric-chip-group">${option.group}</span>
+                    ${option.label}
+                    <button type="button" class="metric-chip-remove" data-remove-metric="${option.key}" aria-label="移除${option.label}">×</button>
+                </span>
+            `)
+            .join("");
+    }
+
+    function syncMetricAddOptions() {
+        if (!elements.metricAddSelect) return;
+
+        [...elements.metricAddSelect.options].forEach((option) => {
+            if (!option.value) return;
+            option.disabled = customMetricsState[option.value] === true;
+            const metric = METRIC_LABELS[option.value];
+            if (metric) {
+                option.textContent = customMetricsState[option.value]
+                    ? `${metric.label}（已添加）`
+                    : metric.label;
+            }
+        });
+
+        if (elements.addMetricBtn) {
+            elements.addMetricBtn.disabled = !elements.metricAddSelect.value;
         }
     }
 
