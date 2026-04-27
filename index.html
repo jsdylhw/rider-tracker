@@ -432,14 +432,19 @@
                     <span>仓库地址</span>
                     <input name="repositoryUrl" type="url">
                 </label>
-                <label class="field">
-                    <span>Strava Server</span>
-                    <input name="stravaServerUrl" type="url" placeholder="http://localhost:8787">
-                </label>
-                <label class="field">
-                    <span>Strava User ID</span>
-                    <input name="stravaUserId" type="text" maxlength="64" placeholder="default">
-                </label>
+                <details class="advanced-settings field-wide">
+                    <summary>高级设置</summary>
+                    <div class="advanced-settings-grid">
+                        <label class="field">
+                            <span>Strava Server</span>
+                            <input name="stravaServerUrl" type="url" placeholder="http://localhost:8787">
+                        </label>
+                        <label class="field">
+                            <span>Strava User ID</span>
+                            <input name="stravaUserId" type="text" maxlength="64" placeholder="default">
+                        </label>
+                    </div>
+                </details>
                 <label class="field field-wide">
                     <span>说明信息</span>
                     <textarea name="fitDescription" rows="3" maxlength="180"></textarea>

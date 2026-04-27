@@ -62,7 +62,7 @@ export function createStravaClient({ clientId, clientSecret, redirectUri, scopes
             body
         });
 
-        return parseJsonResponse(response, "Strava 上传");
+        return parseJsonResponse(response, "Strava upload");
     }
 
     async function getUploadStatus({ accessToken, uploadId }) {
@@ -72,7 +72,7 @@ export function createStravaClient({ clientId, clientSecret, redirectUri, scopes
             }
         });
 
-        return parseJsonResponse(response, "Strava 上传状态");
+        return parseJsonResponse(response, "Strava upload status");
     }
 
     async function requestToken(payload) {
@@ -84,7 +84,7 @@ export function createStravaClient({ clientId, clientSecret, redirectUri, scopes
             body: payload.toString()
         });
 
-        return parseJsonResponse(response, "Strava Token");
+        return parseJsonResponse(response, "Strava token");
     }
 
     return {
@@ -108,7 +108,7 @@ async function parseJsonResponse(response, actionLabel) {
 
     if (!response.ok) {
         const errorMessage = typeof data?.message === "string" ? data.message : JSON.stringify(data);
-        throw new Error(`${actionLabel}失败（${response.status}）：${errorMessage}`);
+        throw new Error(`${actionLabel} failed (${response.status}): ${errorMessage}`);
     }
 
     return data;

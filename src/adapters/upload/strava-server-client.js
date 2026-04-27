@@ -5,7 +5,7 @@ const DEFAULT_POLL_INTERVAL_MS = 1500;
 const DEFAULT_MAX_POLL_ATTEMPTS = 24;
 
 export function getDefaultStravaServerUrl() {
-    return DEFAULT_STRAVA_SERVER_URL;
+    return getCurrentOrigin() || DEFAULT_STRAVA_SERVER_URL;
 }
 
 export async function startStravaAuthorization({ serverUrl, userId }) {
@@ -21,6 +21,31 @@ export async function startStravaAuthorization({ serverUrl, userId }) {
 
     if (!body?.authUrl) {
         throw new Error("Strava server did not return an authorization URL.");
+    }
+
+    return body;
+}
+
+export async function getStravaConnection({ serverUrl, userId }) {
+    const baseUrl = normalizeServerUrl(serverUrl);
+    const url = new URL(`${baseUrl}/api/strava/connection`);
+    if (userId) url.searchParams.set("userId", userId);
+
+    const response = await fetch(url.toString());
+    const body = await safeReadJson(response);
+    if (!response.ok || body?.ok === false) {
+        throw new Error(buildServerErrorMessage(response, body, "Strava connection"));
+    }
+
+    return body;
+}
+
+export async function getStravaServerConfig({ serverUrl }) {
+    const baseUrl = normalizeServerUrl(serverUrl);
+    const response = await fetch(`${baseUrl}/api/strava/config`);
+    const body = await safeReadJson(response);
+    if (!response.ok || body?.ok === false) {
+        throw new Error(buildServerErrorMessage(response, body, "Strava config"));
     }
 
     return body;
@@ -121,7 +146,12 @@ async function getStravaUploadStatus({ baseUrl, userId, uploadId }) {
 }
 
 function normalizeServerUrl(serverUrl) {
-    return String(serverUrl || DEFAULT_STRAVA_SERVER_URL).trim().replace(/\/+$/, "") || DEFAULT_STRAVA_SERVER_URL;
+    const fallback = getDefaultStravaServerUrl();
+    return String(serverUrl || fallback).trim().replace(/\/+$/, "") || fallback;
+}
+
+function getCurrentOrigin() {
+    return globalThis.location?.origin || "";
 }
 
 function buildServerErrorMessage(response, body, actionLabel) {

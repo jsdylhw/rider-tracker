@@ -822,6 +822,27 @@ tbody tr:last-child td {
     grid-column: 1 / -1;
 }
 
+.advanced-settings {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: #f8fafc;
+    padding: 12px 14px;
+}
+
+.advanced-settings summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.advanced-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 14px;
+}
+
 .export-toggle {
     display: flex;
     align-items: center;
@@ -1372,6 +1393,7 @@ body:has(.pip-mode) {
     }
 
     .form-grid,
+    .advanced-settings-grid,
     .data-grid,
     .summary-grid,
     .device-status-grid,
