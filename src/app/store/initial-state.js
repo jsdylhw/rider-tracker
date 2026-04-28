@@ -4,6 +4,7 @@ import { TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { createDefaultCustomWorkoutTarget } from "../../domain/workout/custom-workout-target.js";
 import { createInitialSensorSamplingState } from "../realtime/sensor-sampling.js";
 import { clamp, normalizeText } from "../../shared/utils/common.js";
+import { DEFAULT_PIP_METRIC_SELECTION } from "../../shared/live-metrics.js";
 
 const DEFAULT_STRAVA_SERVER_URL = globalThis.location?.origin || "http://localhost:8787";
 
@@ -63,12 +64,8 @@ export function createInitialState(session) {
             ...(session?.exportMetadata ?? {})
         },
         hasPersistedSession: Boolean(session),
-        pipConfig: {
-            hr: true,
-            power: true,
-            time: true,
-            np: true
-        },
+        pipConfig: { ...DEFAULT_PIP_METRIC_SELECTION },
+        pipLayout: "grid",
         statusText: "请先设置路线与模拟参数。"
     };
 }

@@ -4,26 +4,12 @@ import { buildTrajectoryOverviewSvg } from "./svg/dashboard-charts.js";
 import { createDashboardMetricsRenderer } from "./dashboard-metrics-renderer.js";
 import { createWorkoutRuntimeRenderer } from "./workout-runtime-renderer.js";
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
-
-const METRIC_OPTIONS = [
-    { key: "currentHr", label: "当前心率", group: "心率" },
-    { key: "avgHr", label: "平均心率", group: "心率" },
-    { key: "maxHr", label: "最大心率", group: "心率" },
-    { key: "currentPower", label: "实时功率", group: "功率" },
-    { key: "avg3sPower", label: "3秒均功率", group: "功率" },
-    { key: "avgPower", label: "平均功率", group: "功率" },
-    { key: "maxPower", label: "最大功率", group: "功率" },
-    { key: "normalizedPower", label: "标准化功率", group: "功率" },
-    { key: "currentCadence", label: "实时踏频", group: "踏频" },
-    { key: "avgCadence", label: "平均踏频", group: "踏频" },
-    { key: "maxCadence", label: "最大踏频", group: "踏频" },
-    { key: "currentSpeed", label: "当前速度", group: "基础" },
-    { key: "pushedGrade", label: "推送坡度", group: "基础" },
-    { key: "currentGrade", label: "当前坡度", group: "基础" },
-    { key: "tss", label: "预估 TSS", group: "基础" }
-];
-
-const METRIC_LABELS = Object.fromEntries(METRIC_OPTIONS.map((option) => [option.key, option]));
+import {
+    DEFAULT_METRIC_SELECTION,
+    METRIC_LABELS,
+    METRIC_OPTIONS,
+    normalizeMetricSelection
+} from "../../shared/live-metrics.js";
 
 export function createDashboardRenderer({
     elements,
@@ -31,23 +17,7 @@ export function createDashboardRenderer({
 }) {
     const dashboardMetricsRenderer = createDashboardMetricsRenderer({ elements });
     const workoutRuntimeRenderer = createWorkoutRuntimeRenderer({ elements });
-    const customMetricsState = {
-        currentPower: true,
-        avg3sPower: true,
-        currentHr: true,
-        currentSpeed: true,
-        currentCadence: true,
-        pushedGrade: true,
-        avgPower: false,
-        maxPower: false,
-        normalizedPower: false,
-        avgHr: false,
-        maxHr: false,
-        avgCadence: false,
-        maxCadence: false,
-        currentGrade: true,
-        tss: false
-    };
+    const customMetricsState = normalizeMetricSelection(DEFAULT_METRIC_SELECTION);
 
     let alertStates = {
         halfway: false,

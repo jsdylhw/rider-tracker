@@ -32,10 +32,18 @@ export function createUiService({ store }) {
         }));
     }
 
+    function updatePipLayout(layout) {
+        store.setState((state) => ({
+            ...state,
+            pipLayout: ["compact", "grid", "wide"].includes(layout) ? layout : "grid"
+        }));
+    }
+
     return {
         setUiMode,
         enterSimulationMode,
         enterLiveMode,
-        updatePipConfig
+        updatePipConfig,
+        updatePipLayout
     };
 }

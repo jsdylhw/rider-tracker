@@ -49,6 +49,7 @@ export function createMainView({
     onUpdateSettings,
     onUpdateExportMetadata,
     onUpdatePipConfig,
+    onUpdatePipLayout,
     pipController
 }) {
     const homeView = createHomeView({
@@ -59,8 +60,7 @@ export function createMainView({
     });
     const simulationView = createSimulationView({
         onRunSimulation,
-        onUpdateSettings,
-        onUpdatePipConfig
+        onUpdateSettings
     });
     const liveView = createLiveView({
         onCloseRideDashboard,
@@ -101,6 +101,7 @@ export function createMainView({
     });
     const dashboardRenderer = createDashboardRenderer({ elements, mapController });
     dashboardRenderer.bindEvents(store);
+    bindPipMetricControls();
 
     const exportRenderer = createExportRenderer({
         elements,
@@ -240,7 +241,30 @@ export function createMainView({
         const hasRoute = state.route && state.route.segments.length > 0;
         elements.pipBtn.disabled = !pipController.isSupported || (!state.liveRide.isActive && !state.session && !hasLiveData && !hasRoute);
 
+        renderPipMetricControls(state);
         pipController.render();
         pipController.sync();
+    }
+
+    function bindPipMetricControls() {
+        elements.pipMetricInputs?.forEach((input) => {
+            input.addEventListener("change", (event) => {
+                onUpdatePipConfig(event.target.value, event.target.checked);
+            });
+        });
+
+        elements.pipLayoutSelect?.addEventListener("change", (event) => {
+            onUpdatePipLayout(event.target.value);
+        });
+    }
+
+    function renderPipMetricControls(state) {
+        elements.pipMetricInputs?.forEach((input) => {
+            input.checked = state.pipConfig?.[input.value] === true;
+        });
+
+        if (elements.pipLayoutSelect && elements.pipLayoutSelect.value !== state.pipLayout) {
+            elements.pipLayoutSelect.value = state.pipLayout ?? "grid";
+        }
     }
 }

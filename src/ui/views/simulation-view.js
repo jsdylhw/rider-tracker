@@ -1,6 +1,6 @@
 import { readSettingsFromForm, renderSettingsForm } from "./home-view.js";
 
-export function createSimulationView({ onRunSimulation, onUpdateSettings, onUpdatePipConfig }) {
+export function createSimulationView({ onRunSimulation, onUpdateSettings }) {
     const elements = {
         viewSimulation: document.getElementById("view-simulation"),
         simCol1: document.getElementById("sim-col-1"),
@@ -31,7 +31,6 @@ export function createSimulationView({ onRunSimulation, onUpdateSettings, onUpda
         recordCountValue: document.getElementById("recordCountValue"),
         distanceChart: document.getElementById("distanceChart"),
         recordsTableBody: document.getElementById("recordsTableBody"),
-        checkboxInputs: [...document.querySelectorAll(".checkbox-group input")],
         elevationChart: document.getElementById("elevationChart"),
         setupElevationChart: document.getElementById("setupElevationChart"),
         mapProviderSelect: document.getElementById("mapProviderSelect")
@@ -44,12 +43,6 @@ export function createSimulationView({ onRunSimulation, onUpdateSettings, onUpda
             onUpdateSettings(readSettingsFromForm(elements.simulationForm));
         });
     }
-
-    elements.checkboxInputs.forEach((input) => {
-        input.addEventListener("change", (event) => {
-            onUpdatePipConfig(event.target.value, event.target.checked);
-        });
-    });
 
     return {
         elements,

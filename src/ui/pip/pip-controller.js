@@ -1,3 +1,5 @@
+import { buildMetricCardsHtml } from "../../shared/live-metrics.js";
+
 export function createPipController({ button, template, getData }) {
     let pipWindow = null;
 
@@ -16,50 +18,61 @@ export function createPipController({ button, template, getData }) {
             <style>
                 body {
                     margin: 0;
-                    padding: 10px;
-                    background-color: var(--surface);
-                    color: var(--text);
+                    padding: 12px;
+                    background: #020617;
+                    color: #f8fafc;
                     font-family: system-ui, -apple-system, sans-serif;
                 }
                 .pip-metrics-grid {
                     display: flex;
                     flex-direction: column;
-                    gap: 10px;
+                    gap: 12px;
                 }
                 .pip-section {
-                    background: var(--background);
+                    background: #111827;
                     border-radius: 8px;
-                    padding: 8px;
-                    border: 1px solid var(--border);
+                    padding: 10px;
+                    border: 1px solid rgba(148, 163, 184, 0.24);
+                    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
                 }
                 .pip-section-title {
                     font-size: 11px;
-                    color: var(--muted);
-                    margin-bottom: 6px;
+                    color: #94a3b8;
+                    margin-bottom: 8px;
+                    font-weight: 800;
+                    text-transform: uppercase;
                 }
                 .pip-training-grid {
                     display: grid;
                     grid-template-columns: repeat(3, minmax(0, 1fr));
-                    gap: 6px;
+                    gap: 8px;
+                }
+                .pip-training-grid.compact {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+                .pip-training-grid.wide {
+                    grid-template-columns: 1fr;
                 }
                 .pip-metric {
-                    background: rgba(255, 255, 255, 0.02);
+                    background: #1f2937;
+                    border: 1px solid rgba(148, 163, 184, 0.18);
                     border-radius: 6px;
-                    padding: 6px 4px;
+                    padding: 8px 6px;
                     text-align: center;
                 }
                 .pip-metric-label {
                     font-size: 10px;
-                    color: var(--muted);
+                    color: #94a3b8;
                     margin-bottom: 3px;
                 }
                 .pip-metric-val {
-                    font-size: 15px;
+                    color: #f8fafc;
+                    font-size: 16px;
                     font-weight: bold;
                 }
                 .pip-metric-unit {
                     font-size: 10px;
-                    color: var(--muted);
+                    color: #94a3b8;
                     font-weight: normal;
                 }
                 .pip-grade-grid {
@@ -70,9 +83,10 @@ export function createPipController({ button, template, getData }) {
                 }
                 .pip-grade-card {
                     border-radius: 6px;
-                    padding: 6px 4px;
+                    padding: 8px 6px;
                     text-align: center;
-                    background: rgba(255, 255, 255, 0.02);
+                    background: #1f2937;
+                    border: 1px solid rgba(148, 163, 184, 0.18);
                 }
                 .pip-grade-value {
                     font-size: 16px;
@@ -81,7 +95,7 @@ export function createPipController({ button, template, getData }) {
                 .pip-status {
                     margin-top: 8px;
                     font-size: 10px;
-                    color: var(--muted);
+                    color: #cbd5e1;
                     line-height: 1.4;
                     min-height: 28px;
                 }
@@ -89,46 +103,17 @@ export function createPipController({ button, template, getData }) {
                     width: 100%;
                     height: 72px;
                     display: block;
-                    background: rgba(15, 23, 42, 0.24);
+                    background: #020617;
                     border-radius: 6px;
                 }
-                .power-color { color: var(--primary); }
-                .hr-color { color: var(--danger); }
-                .accent-color { color: var(--accent); }
+                .power-color { color: #22c55e; }
+                .hr-color { color: #fb7185; }
+                .accent-color { color: #38bdf8; }
                 .climb-color { color: #f97316; }
             </style>
             <section class="pip-section">
                 <div class="pip-section-title">训练数据</div>
-                <div class="pip-training-grid">
-                    <div class="pip-metric">
-                        <div class="pip-metric-label">模式</div>
-                        <div class="pip-metric-val"><span id="pipMode">--</span></div>
-                    </div>
-                    <div class="pip-metric">
-                        <div class="pip-metric-label">实时速度</div>
-                        <div class="pip-metric-val accent-color"><span id="pipSpeed">--</span> <span class="pip-metric-unit">km/h</span></div>
-                    </div>
-                    <div class="pip-metric">
-                        <div class="pip-metric-label">骑行距离</div>
-                        <div class="pip-metric-val"><span id="pipDist">--</span> <span class="pip-metric-unit">km</span></div>
-                    </div>
-                    <div class="pip-metric">
-                        <div class="pip-metric-label">实时功率</div>
-                        <div class="pip-metric-val power-color"><span id="pipPower">--</span> <span class="pip-metric-unit">W</span></div>
-                    </div>
-                    <div class="pip-metric">
-                        <div class="pip-metric-label">心率</div>
-                        <div class="pip-metric-val hr-color"><span id="pipHr">--</span> <span class="pip-metric-unit">bpm</span></div>
-                    </div>
-                    <div class="pip-metric">
-                        <div class="pip-metric-label">踏频</div>
-                        <div class="pip-metric-val accent-color"><span id="pipCadence">--</span> <span class="pip-metric-unit">rpm</span></div>
-                    </div>
-                    <div class="pip-metric" style="grid-column: span 3;">
-                        <div class="pip-metric-label">剩余距离</div>
-                        <div class="pip-metric-val"><span id="pipRem">--</span> <span class="pip-metric-unit">km</span></div>
-                    </div>
-                </div>
+                <div id="pipMetricsList" class="pip-training-grid"></div>
             </section>
             <section class="pip-section">
                 <div class="pip-section-title">实时坡度</div>
@@ -227,29 +212,28 @@ export function createPipController({ button, template, getData }) {
         }
 
         const data = getData();
-        const distEl = pipWindow.document.getElementById("pipDist");
-        const remEl = pipWindow.document.getElementById("pipRem");
-        const speedEl = pipWindow.document.getElementById("pipSpeed");
-        const powerEl = pipWindow.document.getElementById("pipPower");
-        const hrEl = pipWindow.document.getElementById("pipHr");
-        const cadenceEl = pipWindow.document.getElementById("pipCadence");
-        const modeEl = pipWindow.document.getElementById("pipMode");
-        const currentGradeEl = pipWindow.document.getElementById("pipCurrentGrade");
-        const lookaheadGradeEl = pipWindow.document.getElementById("pipLookaheadGrade");
         const targetGradeEl = pipWindow.document.getElementById("pipTargetGrade");
         const targetLabelEl = pipWindow.document.getElementById("pipTargetLabel");
         const targetUnitEl = pipWindow.document.getElementById("pipTargetUnit");
+        const currentGradeEl = pipWindow.document.getElementById("pipCurrentGrade");
+        const lookaheadGradeEl = pipWindow.document.getElementById("pipLookaheadGrade");
         const controlStatusEl = pipWindow.document.getElementById("pipControlStatus");
+        const metricsListEl = pipWindow.document.getElementById("pipMetricsList");
 
-        if (distEl) distEl.innerText = data.distance;
-        if (remEl) remEl.innerText = data.remaining;
-        if (speedEl) speedEl.innerText = data.speed;
-        if (powerEl) powerEl.innerText = data.power;
-        if (hrEl) hrEl.innerText = data.hr;
-        if (cadenceEl) cadenceEl.innerText = data.cadence;
-        if (modeEl) modeEl.innerText = data.modeLabel;
-        if (currentGradeEl) currentGradeEl.innerText = data.currentGrade;
-        if (lookaheadGradeEl) lookaheadGradeEl.innerText = data.lookaheadGrade;
+        if (metricsListEl) {
+            metricsListEl.className = `pip-training-grid ${data.pipLayout ?? "grid"}`;
+            metricsListEl.innerHTML = buildMetricCardsHtml({
+                metricsData: data.metricsData,
+                metricKeys: data.enabledMetricKeys,
+                itemClass: "pip-metric",
+                labelClass: "pip-metric-label",
+                valueClass: "pip-metric-val",
+                unitClass: "pip-metric-unit",
+                emptyMessage: "请在 PiP 显示中选择指标。"
+            });
+        }
+        if (currentGradeEl) currentGradeEl.innerText = data.metricsData?.currentGrade?.value ?? "--";
+        if (lookaheadGradeEl) lookaheadGradeEl.innerText = data.metricsData?.lookaheadGrade?.value ?? "--";
         if (targetLabelEl) targetLabelEl.innerText = data.targetControlLabel ?? "目标控制值";
         if (targetUnitEl) targetUnitEl.innerText = data.targetControlUnit ?? "%";
         if (targetGradeEl) targetGradeEl.innerText = data.targetControlValue ?? data.targetTrainerGrade;

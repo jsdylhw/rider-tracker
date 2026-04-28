@@ -1,3 +1,5 @@
+import { buildMetricCardsHtml } from "../../shared/live-metrics.js";
+
 export function createDashboardMetricsRenderer({ elements }) {
     function render({
         metricsData,
@@ -29,36 +31,19 @@ export function createDashboardMetricsRenderer({ elements }) {
 }
 
 function buildDefaultMetricsHtml(metricsData, enabledMetricKeys, hasSession) {
-    return enabledMetricKeys
-        .map((key) => {
-            const metric = metricsData[key];
-            if (!metric) {
-                return "";
-            }
-            return `
-                <div class="data-item">
-                    <div class="data-label">${metric.label}</div>
-                    <div class="data-display ${metric.color}">${hasSession ? metric.value : "--"} <span class="unit">${metric.unit}</span></div>
-                </div>
-            `;
-        })
-        .join("");
+    return buildMetricCardsHtml({
+        metricsData,
+        metricKeys: enabledMetricKeys,
+        hasSession,
+        emptyMessage: "还没有选择数据项，请打开自定义面板添加。"
+    });
 }
 
 function buildImmersiveMetricsHtml(metricsData, hasSession) {
     const immersiveKeys = ["currentSpeed", "currentPower", "currentGrade", "currentCadence", "currentHr"];
-    return immersiveKeys
-        .map((key) => {
-            const metric = metricsData[key];
-            if (!metric) {
-                return "";
-            }
-            return `
-                <div class="data-item">
-                    <div class="data-label">${metric.label}</div>
-                    <div class="data-display ${metric.color}">${hasSession ? metric.value : "--"} <span class="unit">${metric.unit}</span></div>
-                </div>
-            `;
-        })
-        .join("");
+    return buildMetricCardsHtml({
+        metricsData,
+        metricKeys: immersiveKeys,
+        hasSession
+    });
 }

@@ -251,6 +251,118 @@ body {
     margin-top: 16px;
 }
 
+.pip-config-popover {
+    position: relative;
+}
+
+.pip-config-popover summary {
+    display: inline-flex;
+    align-items: center;
+    min-height: 42px;
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+
+.pip-config-popover summary::-webkit-details-marker {
+    display: none;
+}
+
+.pip-config-popover[open] summary {
+    color: #fff;
+    background: #111827;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.22);
+}
+
+.pip-config-panel {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 120;
+    width: min(560px, calc(100vw - 28px));
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.36);
+    border-radius: 8px;
+    color: #f8fafc;
+    background: #111827;
+    box-shadow: 0 26px 70px rgba(15, 23, 42, 0.42);
+}
+
+.pip-config-panel::before {
+    content: "";
+    position: absolute;
+    top: -7px;
+    right: 30px;
+    width: 14px;
+    height: 14px;
+    border-left: 1px solid rgba(148, 163, 184, 0.36);
+    border-top: 1px solid rgba(148, 163, 184, 0.36);
+    background: #111827;
+    transform: rotate(45deg);
+}
+
+.pip-config-panel .field span {
+    color: #cbd5e1;
+}
+
+.pip-config-panel select {
+    color: #f8fafc;
+    border-color: rgba(148, 163, 184, 0.45);
+    background: #020617;
+}
+
+.pip-metric-checks {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: 260px;
+    overflow: auto;
+    padding: 4px 4px 2px;
+}
+
+.pip-metric-checks label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 8px;
+    color: #e5e7eb;
+    background: #1f2937;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.pip-metric-checks label:has(input:checked) {
+    color: #ecfdf5;
+    border-color: rgba(46, 213, 115, 0.55);
+    background: rgba(46, 213, 115, 0.14);
+}
+
+.pip-metric-checks input {
+    accent-color: var(--primary);
+}
+
+@media (max-width: 720px) {
+    .pip-config-panel {
+        right: auto;
+        left: 0;
+    }
+
+    .pip-config-panel::before {
+        right: auto;
+        left: 30px;
+    }
+
+    .pip-metric-checks {
+        grid-template-columns: 1fr;
+    }
+}
+
 .compact-field {
     max-width: 360px;
     flex: 1 1 260px;

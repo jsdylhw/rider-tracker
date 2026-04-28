@@ -64,6 +64,8 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
         dashboardMetricsGrid: document.getElementById("dashboardMetricsGrid"),
         immersiveMetricsGrid: document.getElementById("immersiveMetricsGrid"),
         customizeMetricsBtn: document.getElementById("customizeMetricsBtn"),
+        pipMetricInputs: [...document.querySelectorAll('input[name="pipMetric"]')],
+        pipLayoutSelect: document.getElementById("pipLayoutSelect"),
         metricsCustomizer: document.getElementById("metricsCustomizer"),
         metricAddSelect: document.getElementById("metricAddSelect"),
         addMetricBtn: document.getElementById("addMetricBtn"),

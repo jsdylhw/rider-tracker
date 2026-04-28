@@ -467,24 +467,41 @@
                     <button id="loadStreetViewBtn" class="btn secondary">加载街景</button>
                     <button id="immersiveStreetViewBtn" class="btn secondary" hidden>进入沉浸街景</button>
                     <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
+                    <details class="pip-config-popover">
+                        <summary class="btn secondary">PiP 显示</summary>
+                        <div class="pip-config-panel">
+                            <label class="field compact-field">
+                                <span>悬浮窗布局</span>
+                                <select id="pipLayoutSelect">
+                                    <option value="compact">紧凑双列</option>
+                                    <option value="grid" selected>三列网格</option>
+                                    <option value="wide">单列大字</option>
+                                </select>
+                            </label>
+                            <div class="pip-metric-checks checkbox-group" aria-label="PiP 显示项">
+                                <label><input name="pipMetric" type="checkbox" value="currentPower" checked> 实时功率</label>
+                                <label><input name="pipMetric" type="checkbox" value="currentHr" checked> 当前心率</label>
+                                <label><input name="pipMetric" type="checkbox" value="currentSpeed" checked> 当前速度</label>
+                                <label><input name="pipMetric" type="checkbox" value="currentCadence" checked> 实时踏频</label>
+                                <label><input name="pipMetric" type="checkbox" value="distanceKm" checked> 骑行距离</label>
+                                <label><input name="pipMetric" type="checkbox" value="remainingKm" checked> 剩余距离</label>
+                                <label><input name="pipMetric" type="checkbox" value="elapsedTime"> 骑行时间</label>
+                                <label><input name="pipMetric" type="checkbox" value="routeProgress"> 路线进度</label>
+                                <label><input name="pipMetric" type="checkbox" value="ascentMeters"> 累计爬升</label>
+                                <label><input name="pipMetric" type="checkbox" value="currentGrade" checked> 当前坡度</label>
+                                <label><input name="pipMetric" type="checkbox" value="lookaheadGrade" checked> 前方坡度</label>
+                                <label><input name="pipMetric" type="checkbox" value="targetControl" checked> 目标控制值</label>
+                                <label><input name="pipMetric" type="checkbox" value="avg3sPower"> 3秒均功率</label>
+                                <label><input name="pipMetric" type="checkbox" value="normalizedPower"> 标准化功率</label>
+                                <label><input name="pipMetric" type="checkbox" value="powerPerKg"> 实时 W/kg</label>
+                                <label><input name="pipMetric" type="checkbox" value="intensityFactor"> 强度系数 IF</label>
+                                <label><input name="pipMetric" type="checkbox" value="powerSignalStatus"> 功率信号</label>
+                            </div>
+                        </div>
+                    </details>
                     <button id="startRideDashboardBtn" class="btn primary">开始骑行</button>
                     <button id="stopRideDashboardBtn" class="btn ghost">结束骑行</button>
                     <button id="closeRideDashboardBtn" class="btn ghost">返回页面</button>
-                </div>
-            </div>
-
-            <div class="card pip-controls-card">
-                <div class="section-title-row">
-                    <div>
-                        <h2>PiP 显示项</h2>
-                        <p class="section-subtitle">开启悬浮窗前选择需要显示的指标。</p>
-                    </div>
-                </div>
-                <div class="checkbox-group">
-                    <label><input type="checkbox" value="hr" checked> 心率</label>
-                    <label><input type="checkbox" value="power" checked> 功率</label>
-                    <label><input type="checkbox" value="time" checked> 时间</label>
-                    <label><input type="checkbox" value="np" checked> 进度</label>
                 </div>
             </div>
 
@@ -492,30 +509,62 @@
                 <div class="section-title-row">
                     <div>
                         <h2>自定义实时数据</h2>
-                        <p class="section-subtitle">按心率、功率、踏频分类添加需要展示的数据项。</p>
+                        <p class="section-subtitle">按基础、心率、功率、踏频、强度与设备信号分类添加数据项。</p>
                     </div>
                 </div>
                 <div class="metric-add-row">
                     <label class="field compact-field">
                         <span>添加数据项</span>
                         <select id="metricAddSelect">
-                            <option value="">选择心率 / 功率 / 踏频指标</option>
+                            <option value="">选择实时骑行指标</option>
+                            <optgroup label="基础">
+                                <option value="currentSpeed">当前速度</option>
+                                <option value="avgSpeed">平均速度</option>
+                                <option value="maxSpeed">最高速度</option>
+                                <option value="distanceKm">骑行距离</option>
+                                <option value="remainingKm">剩余距离</option>
+                                <option value="elapsedTime">骑行时间</option>
+                                <option value="routeProgress">路线进度</option>
+                                <option value="ascentMeters">累计爬升</option>
+                                <option value="currentGrade">当前坡度</option>
+                                <option value="lookaheadGrade">前方坡度</option>
+                                <option value="avgGrade">平均坡度</option>
+                                <option value="maxClimbGrade">最大爬坡</option>
+                                <option value="maxDescentGrade">最大下坡</option>
+                                <option value="targetControl">目标控制值</option>
+                            </optgroup>
                             <optgroup label="心率">
                                 <option value="currentHr">当前心率</option>
                                 <option value="avgHr">平均心率</option>
                                 <option value="maxHr">最大心率</option>
+                                <option value="hrZone">心率区间</option>
                             </optgroup>
                             <optgroup label="功率">
                                 <option value="currentPower">实时功率</option>
                                 <option value="avg3sPower">3秒均功率</option>
+                                <option value="avg10sPower">10秒均功率</option>
                                 <option value="avgPower">平均功率</option>
                                 <option value="maxPower">最大功率</option>
                                 <option value="normalizedPower">标准化功率</option>
+                                <option value="powerPerKg">实时 W/kg</option>
+                                <option value="avgPowerPerKg">平均 W/kg</option>
+                                <option value="powerZone">功率区间</option>
                             </optgroup>
                             <optgroup label="踏频">
                                 <option value="currentCadence">实时踏频</option>
                                 <option value="avgCadence">平均踏频</option>
                                 <option value="maxCadence">最大踏频</option>
+                            </optgroup>
+                            <optgroup label="强度">
+                                <option value="intensityFactor">强度系数 IF</option>
+                                <option value="variabilityIndex">变异指数 VI</option>
+                                <option value="tss">预估 TSS</option>
+                            </optgroup>
+                            <optgroup label="设备">
+                                <option value="powerSource">功率来源</option>
+                                <option value="powerSignalHz">功率频率</option>
+                                <option value="powerSignalJitter">功率抖动</option>
+                                <option value="powerSignalStatus">功率信号</option>
                             </optgroup>
                         </select>
                     </label>

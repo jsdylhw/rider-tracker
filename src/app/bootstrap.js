@@ -76,7 +76,8 @@ createMainView({
     onRemoveRouteSegment: routeService.removeRouteSegment,
     onUpdateSettings: userService.updateSettings,
     onUpdateExportMetadata: exportService.updateExportMetadata,
-    onUpdatePipConfig: uiService.updatePipConfig
+    onUpdatePipConfig: uiService.updatePipConfig,
+    onUpdatePipLayout: uiService.updatePipLayout
 });
 
 // 4. 启动初始化流程
