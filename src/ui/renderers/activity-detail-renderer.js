@@ -1,6 +1,6 @@
 import { formatDuration, formatNumber } from "../../shared/format.js";
 
-const POWER_ZONES = [
+export const POWER_ZONES = [
     { key: "recovery", label: "恢复", min: 0, max: 0.55 },
     { key: "endurance", label: "耐力", min: 0.55, max: 0.75 },
     { key: "tempo", label: "节奏", min: 0.75, max: 0.9 },
@@ -9,7 +9,18 @@ const POWER_ZONES = [
     { key: "anaerobic", label: "无氧", min: 1.2, max: Infinity }
 ];
 
-export function buildActivityDetailHtml(activity) {
+export const HEART_RATE_RESERVE_ZONES = [
+    { key: "warmup", label: "热身", min: 0, max: 0.6 },
+    { key: "easy", label: "轻松", min: 0.6, max: 0.7 },
+    { key: "aerobic", label: "有氧", min: 0.7, max: 0.8 },
+    { key: "threshold", label: "阈值", min: 0.8, max: 0.9 },
+    { key: "max", label: "高强度", min: 0.9, max: Infinity }
+];
+
+export function buildActivityDetailHtml(activity, {
+    showCloseButton = true,
+    actionsHtml = ""
+} = {}) {
     if (!activity) {
         return "";
     }
@@ -23,6 +34,8 @@ export function buildActivityDetailHtml(activity) {
     const heartRate = metrics.heartRate ?? {};
     const load = metrics.load ?? {};
     const ftp = Number(session.settings?.ftp ?? session.rawSettings?.ftp);
+    const maxHr = Number(session.settings?.maxHr ?? session.rawSettings?.maxHr);
+    const restingHr = Number(session.settings?.restingHr ?? session.rawSettings?.restingHr);
     const normalizedPower = numberOrNull(activity.normalizedPower ?? power.normalizedPowerWatts);
     const averagePower = numberOrNull(activity.averagePower ?? power.averageWatts);
     const intensityFactor = numberOrNull(power.intensityFactor) ?? (
@@ -37,7 +50,7 @@ export function buildActivityDetailHtml(activity) {
                     <h3>${escapeHtml(activity.name)}</h3>
                     <p class="section-subtitle">${escapeHtml(formatActivityDate(activity.startedAt ?? activity.createdAt))} · ${escapeHtml(activity.sportType)} · ${escapeHtml(activity.source)}</p>
                 </div>
-                <button class="btn ghost compact-btn" data-activity-action="close-details" data-activity-id="${escapeHtml(activity.id)}">关闭</button>
+                ${showCloseButton ? `<button class="btn ghost compact-btn" data-activity-action="close-details" data-activity-id="${escapeHtml(activity.id)}">关闭</button>` : ""}
             </div>
             <div class="activity-detail-summary">
                 ${buildSummaryItem("距离", formatMetric(activity.distanceKm ?? ride.distanceKm, "km", 2))}
@@ -53,6 +66,7 @@ export function buildActivityDetailHtml(activity) {
             <div class="activity-detail-insight">
                 ${escapeHtml(buildPlainSummary({ activity, records, ftp, averagePower, normalizedPower, intensityFactor }))}
             </div>
+            ${actionsHtml}
             <div class="activity-detail-grid">
                 <div class="activity-detail-card">
                     <div class="activity-detail-card-title">功率 / 时间</div>
@@ -70,12 +84,57 @@ export function buildActivityDetailHtml(activity) {
                         label: "bpm"
                     })}</svg>
                 </div>
-                <div class="activity-detail-card activity-detail-card-wide">
+                <div class="activity-detail-card">
                     <div class="activity-detail-card-title">功率区间</div>
                     ${buildPowerZoneHtml(records, ftp)}
                 </div>
+                <div class="activity-detail-card">
+                    <div class="activity-detail-card-title">心率区间</div>
+                    ${buildHeartRateZoneHtml(records, { restingHr, maxHr })}
+                </div>
             </div>
         </section>
+    `;
+}
+
+export function buildActivityDetailPageHtml(activity) {
+    if (!activity) {
+        return `
+            <section class="activity-detail-page-empty">
+                <p class="eyebrow">Activity Detail</p>
+                <h2>未选择活动</h2>
+                <p class="section-subtitle">从历史记录选择一条活动，或在骑行结束后查看本页。</p>
+            </section>
+        `;
+    }
+
+    return buildActivityDetailHtml(activity, {
+        showCloseButton: false,
+        actionsHtml: buildActivityActionsHtml(activity)
+    });
+}
+
+function buildActivityActionsHtml(activity) {
+    const hasFitFile = Boolean(activity.fitFilePath);
+    const fitStatus = hasFitFile
+        ? `FIT 已保存：${activity.fitFilePath}`
+        : "FIT 暂未归档；上传 Strava 时会自动生成并保存。";
+    const fitSize = Number.isFinite(activity.fitFileSizeBytes)
+        ? ` · ${formatNumber(activity.fitFileSizeBytes / 1024, 1)} KB`
+        : "";
+
+    return `
+        <div class="activity-action-panel">
+            <div>
+                <p class="eyebrow">Sync</p>
+                <h4>活动文件与上传</h4>
+                <p class="section-subtitle">${escapeHtml(fitStatus)}${escapeHtml(fitSize)}</p>
+            </div>
+            <div class="activity-action-buttons">
+                <button class="btn secondary compact-btn" data-activity-page-action="connect-strava">连接 Strava</button>
+                <button class="btn primary compact-btn" data-activity-page-action="upload-strava" data-activity-id="${escapeHtml(activity.id)}">上传 Strava</button>
+            </div>
+        </div>
     `;
 }
 
@@ -139,7 +198,33 @@ export function summarizePowerZones(records, ftp) {
     return zones;
 }
 
-function buildPowerZoneHtml(records, ftp) {
+export function summarizeHeartRateZones(records, { restingHr, maxHr } = {}) {
+    const safeRestingHr = Number.isFinite(restingHr) && restingHr > 0 ? restingHr : null;
+    const safeMaxHr = Number.isFinite(maxHr) && maxHr > 0 ? maxHr : null;
+    const heartRateReserve = safeRestingHr !== null && safeMaxHr !== null ? safeMaxHr - safeRestingHr : null;
+    const zones = HEART_RATE_RESERVE_ZONES.map((zone) => ({ ...zone, seconds: 0 }));
+    if (!safeRestingHr || !safeMaxHr || !heartRateReserve || heartRateReserve <= 0 || records.length < 2) {
+        return zones;
+    }
+
+    for (let index = 1; index < records.length; index += 1) {
+        const previous = records[index - 1];
+        const current = records[index];
+        const heartRate = numberOrNull(current.heartRate);
+        const elapsed = numberOrNull(current.elapsedSeconds);
+        const previousElapsed = numberOrNull(previous.elapsedSeconds);
+        if (heartRate === null || elapsed === null || previousElapsed === null || elapsed <= previousElapsed) {
+            continue;
+        }
+        const ratio = (heartRate - safeRestingHr) / heartRateReserve;
+        const zone = zones.find((candidate) => ratio >= candidate.min && ratio < candidate.max) ?? zones.at(-1);
+        zone.seconds += elapsed - previousElapsed;
+    }
+
+    return zones;
+}
+
+export function buildPowerZoneHtml(records, ftp) {
     const zones = summarizePowerZones(records, ftp);
     const totalSeconds = zones.reduce((sum, zone) => sum + zone.seconds, 0);
     if (!Number.isFinite(ftp) || ftp <= 0) {
@@ -149,23 +234,46 @@ function buildPowerZoneHtml(records, ftp) {
         return `<div class="activity-history-empty">暂无功率区间数据。</div>`;
     }
 
+    return buildZoneListHtml(zones, totalSeconds, {
+        rangeFormatter: formatPowerZoneRange,
+        trackClass: "power-zone-track"
+    });
+}
+
+export function buildHeartRateZoneHtml(records, { restingHr, maxHr }) {
+    const zones = summarizeHeartRateZones(records, { restingHr, maxHr });
+    const totalSeconds = zones.reduce((sum, zone) => sum + zone.seconds, 0);
+    if (!Number.isFinite(restingHr) || restingHr <= 0 || !Number.isFinite(maxHr) || maxHr <= restingHr) {
+        return `<div class="activity-history-empty">缺少静息/最大心率，无法计算储备心率区间。</div>`;
+    }
+    if (totalSeconds <= 0) {
+        return `<div class="activity-history-empty">暂无心率区间数据。</div>`;
+    }
+
+    return buildZoneListHtml(zones, totalSeconds, {
+        rangeFormatter: (zone) => formatHeartRateZoneRange(zone, { restingHr, maxHr }),
+        trackClass: "heart-rate-zone-track"
+    });
+}
+
+function buildZoneListHtml(zones, totalSeconds, { rangeFormatter, trackClass }) {
     const rows = zones.map((zone) => {
         const percent = (zone.seconds / totalSeconds) * 100;
         return `
-            <div class="power-zone-row">
-                <div class="power-zone-label">
+            <div class="zone-row">
+                <div class="zone-label">
                     <strong>${escapeHtml(zone.label)}</strong>
-                    <span>${formatZoneRange(zone)}</span>
+                    <span>${escapeHtml(rangeFormatter(zone))}</span>
                 </div>
-                <div class="power-zone-track">
+                <div class="zone-track ${escapeHtml(trackClass)}">
                     <span style="width: ${formatNumber(percent, 2)}%;"></span>
                 </div>
-                <div class="power-zone-value">${escapeHtml(formatDuration(zone.seconds))}</div>
+                <div class="zone-value">${escapeHtml(formatDuration(zone.seconds))}</div>
             </div>
         `;
     }).join("");
 
-    return `<div class="power-zone-list">${rows}</div>`;
+    return `<div class="zone-list">${rows}</div>`;
 }
 
 function buildPlainSummary({ activity, records, ftp, averagePower, normalizedPower, intensityFactor }) {
@@ -198,11 +306,20 @@ function buildEmptyChartSvg(message) {
     `;
 }
 
-function formatZoneRange(zone) {
+function formatPowerZoneRange(zone) {
     if (zone.max === Infinity) {
         return `>${Math.round(zone.min * 100)}% FTP`;
     }
     return `${Math.round(zone.min * 100)}-${Math.round(zone.max * 100)}% FTP`;
+}
+
+function formatHeartRateZoneRange(zone, { restingHr, maxHr }) {
+    const reserve = maxHr - restingHr;
+    const minBpm = Math.round(restingHr + zone.min * reserve);
+    if (zone.max === Infinity) {
+        return `>${minBpm} bpm`;
+    }
+    return `${minBpm}-${Math.round(restingHr + zone.max * reserve)} bpm`;
 }
 
 function formatMetric(value, unit, digits) {

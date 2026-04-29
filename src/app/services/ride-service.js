@@ -87,9 +87,12 @@ export function createRideService({ store, deviceService, exportService }) {
                 finishedAt: new Date().toISOString()
             }
             : null;
+        const activitySavePromise = completedSession
+            ? saveSessionToActivityHistory(completedSession)
+            : Promise.resolve(null);
+
         if (completedSession) {
             saveLastSession(completedSession);
-            saveSessionToActivityHistory(completedSession);
         }
 
         const trainerControlMode = resolveTrainerControlModeForWorkoutMode(state.workout.mode);
@@ -136,11 +139,32 @@ export function createRideService({ store, deviceService, exportService }) {
             statusText: stoppedStatusMeta
         }));
 
-        // Trigger automatic FIT download for real rides that have recorded distance
         if ((completedMetrics?.ride.distanceKm ?? 0) > 0) {
-            setTimeout(() => {
-                exportService.downloadFit();
-            }, 500); // Small delay to let UI state settle
+            void activitySavePromise
+                .then(async (activity) => {
+                    const fitActivity = typeof exportService.archiveFitForSession === "function"
+                        ? await exportService.archiveFitForSession(completedSession)
+                        : null;
+                    const nextActivity = {
+                        ...(activity ?? {}),
+                        ...(fitActivity ?? {}),
+                        rawSession: completedSession
+                    };
+                    store.setState((currentState) => ({
+                        ...currentState,
+                        uiMode: "activity-detail",
+                        selectedActivity: nextActivity,
+                        session: completedSession,
+                        liveRide: {
+                            ...currentState.liveRide,
+                            dashboardOpen: false
+                        },
+                        statusText: "骑行已结束，已打开骑后报告。"
+                    }));
+                })
+                .catch((error) => {
+                    console.warn("[RideService] 打开骑后报告失败:", error);
+                });
         }
     }
 
@@ -327,19 +351,21 @@ export function createRideService({ store, deviceService, exportService }) {
 }
 
 function saveSessionToActivityHistory(session) {
-    void saveRiderSessionActivity(session)
+    return saveRiderSessionActivity(session)
         .then((activity) => {
             if (activity?.id) {
                 session.activityId = activity.id;
             }
-            if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
+            if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent !== "undefined") {
                 window.dispatchEvent(new CustomEvent("rider-tracker:activity-saved", {
                     detail: { activity }
                 }));
             }
+            return activity;
         })
         .catch((error) => {
             console.warn("[RideService] 保存活动历史失败:", error);
+            return null;
         });
 }
 

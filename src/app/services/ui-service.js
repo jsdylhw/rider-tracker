@@ -6,6 +6,16 @@ export function createUiService({ store }) {
         }));
     }
 
+    function openActivityDetail(activity) {
+        store.setState((state) => ({
+            ...state,
+            uiMode: "activity-detail",
+            selectedActivity: activity,
+            session: activity?.rawSession ?? state.session,
+            statusText: activity?.name ? `已打开活动详情：${activity.name}` : "已打开活动详情。"
+        }));
+    }
+
     function enterSimulationMode() {
         store.setState((state) => ({
             ...state,
@@ -41,6 +51,7 @@ export function createUiService({ store }) {
 
     return {
         setUiMode,
+        openActivityDetail,
         enterSimulationMode,
         enterLiveMode,
         updatePipConfig,

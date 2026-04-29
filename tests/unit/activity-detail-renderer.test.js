@@ -1,6 +1,10 @@
 import {
+    buildActivityDetailPageHtml,
     buildActivityDetailHtml,
+    buildHeartRateZoneHtml,
+    buildPowerZoneHtml,
     buildTimeSeriesChartSvg,
+    summarizeHeartRateZones,
     summarizePowerZones
 } from "../../src/ui/renderers/activity-detail-renderer.js";
 import { assert, assertEqual } from "../helpers/test-harness.js";
@@ -18,6 +22,21 @@ export const suite = {
                 assert(html.includes("功率 / 时间"), "power chart section should render");
                 assert(html.includes("心率 / 时间"), "heart-rate chart section should render");
                 assert(html.includes("功率区间"), "power zone section should render");
+                assert(html.includes("心率区间"), "heart-rate zone section should render");
+            }
+        },
+        {
+            name: "renders standalone detail page upload actions without download action",
+            run() {
+                const html = buildActivityDetailPageHtml({
+                    ...buildActivity(),
+                    fitFilePath: "data/files/fit/activity-1.fit",
+                    fitFileSizeBytes: 4096
+                });
+
+                assert(html.includes("上传 Strava"), "standalone detail should expose Strava upload");
+                assert(html.includes("FIT 已保存"), "standalone detail should show archived FIT status");
+                assert(!html.includes("导出 FIT"), "standalone detail should not expose browser FIT download");
             }
         },
         {
@@ -45,6 +64,34 @@ export const suite = {
                 assertEqual(tempo.seconds, 60);
                 assertEqual(threshold.seconds, 60);
             }
+        },
+        {
+            name: "summarizes heart-rate reserve zones by elapsed duration",
+            run() {
+                const zones = summarizeHeartRateZones(buildActivity().rawSession.records, {
+                    restingHr: 60,
+                    maxHr: 180
+                });
+                const easy = zones.find((zone) => zone.key === "easy");
+                const aerobic = zones.find((zone) => zone.key === "aerobic");
+
+                assertEqual(easy.seconds, 60);
+                assertEqual(aerobic.seconds, 120);
+            }
+        },
+        {
+            name: "exposes zone html builders for reuse",
+            run() {
+                const records = buildActivity().rawSession.records;
+                const powerHtml = buildPowerZoneHtml(records, 200);
+                const heartRateHtml = buildHeartRateZoneHtml(records, {
+                    restingHr: 60,
+                    maxHr: 180
+                });
+
+                assert(powerHtml.includes("zone-list"), "power zone builder should return zone list markup");
+                assert(heartRateHtml.includes("heart-rate-zone-track"), "heart-rate zone builder should use heart-rate track");
+            }
         }
     ]
 };
@@ -65,7 +112,9 @@ function buildActivity() {
         estimatedTss: 12,
         rawSession: {
             settings: {
-                ftp: 200
+                ftp: 200,
+                restingHr: 60,
+                maxHr: 180
             },
             summary: {
                 metrics: {

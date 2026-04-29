@@ -177,7 +177,7 @@ export const suite = {
             }
         },
         {
-            name: "stopRide 会关闭骑行并触发 FIT 自动导出",
+            name: "stopRide 会关闭骑行并打开骑后详情",
             async run() {
                 const store = createStore(createState());
                 const timerCallbacks = [];
@@ -202,22 +202,28 @@ export const suite = {
                     timeouts.push(cb);
                     return timeouts.length;
                 };
-                let downloadCount = 0;
+                let archiveCount = 0;
                 try {
                     const service = createRideService({
                         store,
                         deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
-                        exportService: { downloadFit() { downloadCount += 1; } }
+                        exportService: { archiveFitForSession() { archiveCount += 1; return null; } }
                     });
                     service.startRide();
                     timerCallbacks[0]();
                     service.stopRide();
 
                     timeouts.forEach((fn) => fn());
+                    await Promise.resolve();
+                    await Promise.resolve();
+                    await Promise.resolve();
+                    await Promise.resolve();
                     const state = store.getState();
                     assertEqual(state.liveRide.isActive, false);
                     assertEqual(state.liveRide.dashboardOpen, false);
-                    assertEqual(downloadCount, 1);
+                    assertEqual(archiveCount, 1);
+                    assertEqual(state.uiMode, "activity-detail");
+                    assertEqual(Boolean(state.selectedActivity?.rawSession), true);
                 } finally {
                     globalThis.setTimeout = originalSetTimeout;
                     if (originalLocalStorage === undefined) delete globalThis.localStorage;

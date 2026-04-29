@@ -7,6 +7,7 @@ export function createLayoutCoordinator({ elements }) {
         if (elements.viewHome) elements.viewHome.hidden = mode !== "home";
         if (elements.viewSimulation) elements.viewSimulation.hidden = mode !== "simulation";
         if (elements.viewLive) elements.viewLive.hidden = mode !== "live";
+        if (elements.viewActivityDetail) elements.viewActivityDetail.hidden = mode !== "activity-detail";
 
         if (mode === "home") {
             if (elements.routeCardContainer) {
@@ -57,9 +58,21 @@ export function createLayoutCoordinator({ elements }) {
                 elements.setupElevationChartShell.hidden = false;
             }
 
-            if (elements.liveExportSlot && elements.exportCardContainer) {
-                elements.liveExportSlot.appendChild(elements.exportCardContainer);
-                elements.exportCardContainer.hidden = !state.session && !state.liveRide.session;
+            if (elements.exportCardContainer) {
+                elements.exportCardContainer.hidden = true;
+            }
+        } else if (mode === "activity-detail") {
+            if (elements.routeCardContainer) {
+                elements.routeCardContainer.hidden = true;
+            }
+            if (elements.exportCardContainer) {
+                elements.exportCardContainer.hidden = true;
+            }
+            if (elements.routeMapShell) {
+                elements.routeMapShell.hidden = true;
+            }
+            if (elements.setupElevationChartShell) {
+                elements.setupElevationChartShell.hidden = true;
             }
         } else if (elements.routeCardContainer) {
             elements.routeCardContainer.hidden = true;

@@ -15,10 +15,13 @@ import { createHomeView } from "../views/home-view.js";
 import { createSimulationView } from "../views/simulation-view.js";
 import { createLiveView } from "../views/live-view.js";
 import { createExportView } from "../views/export-view.js";
+import { createActivityDetailView } from "../views/activity-detail-view.js";
+import { buildActivityDetailPageHtml } from "./activity-detail-renderer.js";
 
 export function createMainView({
     store,
     onSetUiMode,
+    onOpenActivityDetail,
     onEnterSimulationMode,
     onEnterLiveMode,
     onUpdateWorkoutMode,
@@ -44,6 +47,7 @@ export function createMainView({
     onDownloadFit,
     onConnectStrava,
     onUploadFit,
+    onUploadActivityFit,
     onImportGpx,
     onUpdateRouteSegment,
     onRemoveRouteSegment,
@@ -74,12 +78,18 @@ export function createMainView({
         onConnectStrava,
         onUploadFit
     });
+    const activityDetailView = createActivityDetailView({
+        onSetUiMode,
+        onConnectStrava,
+        onUploadActivityFit
+    });
 
     const elements = {
         ...homeView.elements,
         ...simulationView.elements,
         ...liveView.elements,
         ...exportView.elements,
+        ...activityDetailView.elements,
         pipBtn: document.getElementById("pipBtn")
     };
 
@@ -142,6 +152,9 @@ export function createMainView({
                 ...state,
                 statusText
             }));
+        },
+        onOpenActivityDetail: (activity) => {
+            onOpenActivityDetail(activity);
         }
     });
     void activityHistoryRenderer.refresh();
@@ -157,6 +170,7 @@ export function createMainView({
         deviceRenderer.render(state);
         renderSession(state);
         renderPostRideReport(state);
+        renderActivityDetail(state);
         renderPipControls(state);
     });
 
@@ -199,7 +213,7 @@ export function createMainView({
         }
         if (elements.runSimulationBtn) elements.runSimulationBtn.disabled = state.liveRide.isActive;
         if (elements.exportCardContainer && state.uiMode === "live") {
-            elements.exportCardContainer.hidden = state.liveRide.isActive || !session;
+            elements.exportCardContainer.hidden = true;
         }
         if (elements.liveElevationCard) {
             const isGradeSimulation = state.workout?.mode === WORKOUT_MODES.GRADE_SIM;
@@ -252,8 +266,12 @@ export function createMainView({
 
     function renderPostRideReport(state) {
         if (!elements.postRideReportCard) return;
-        const hasCompletedRide = Boolean(state.liveRide.lastCompletedAt || state.session);
-        elements.postRideReportCard.hidden = state.uiMode !== "live" || state.liveRide.isActive || !hasCompletedRide;
+        elements.postRideReportCard.hidden = true;
+    }
+
+    function renderActivityDetail(state) {
+        if (!elements.activityDetailContent) return;
+        elements.activityDetailContent.innerHTML = buildActivityDetailPageHtml(state.selectedActivity);
     }
 
     function renderPipControls(state) {

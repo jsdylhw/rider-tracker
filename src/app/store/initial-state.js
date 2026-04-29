@@ -57,6 +57,7 @@ export function createInitialState(session) {
         settings: { ...defaultSettings },
         workout: createInitialWorkoutState(),
         session,
+        selectedActivity: null,
         liveRide: createInitialLiveRideState(),
         ble: createInitialBleState(),
         exportMetadata: {
