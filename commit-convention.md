@@ -113,7 +113,7 @@ chore: rename demo folders for consistency
 
 适用场景：
 
-- 更新 `physics.md`
+- 更新 `project-structure.md`
 - 补充结构说明
 - 新增开发记录
 - 完善使用说明
@@ -121,9 +121,9 @@ chore: rename demo folders for consistency
 示例：
 
 ```text
-docs: add physics tuning notes
+docs: update local database notes
 docs: update project structure summary
-docs: record 0422 development notes
+docs: refresh setup notes
 ```
 
 ### `test`

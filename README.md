@@ -1,129 +1,232 @@
 # Rider Tracker
 
-Rider Tracker is a local browser-based virtual cycling app. It supports GPX route import, route simulation, live riding with Bluetooth devices, JSON/FIT export, and optional Strava OAuth/FIT upload through the bundled local server.
+## Overview / 项目简介
 
-## Quick Start
+Rider Tracker 是一个本地浏览器虚拟骑行平台，支持导入 GPX 路线、连接蓝牙设备（心率带 / 功率计 / 骑行台）、进行实时骑行与离线模拟，并导出 FIT/JSON 数据。项目现在内置 Node 本地服务器，用于打开前端、管理 Strava OAuth/FIT 上传，以及保存本地活动历史。  
+Rider Tracker is a local browser-based virtual cycling platform. It supports GPX route import, Bluetooth devices (HR monitor / power meter / trainer), real-time riding and offline simulation, plus FIT/JSON export. The project now includes a bundled Node server for serving the app, Strava OAuth/FIT upload, and local activity history storage.
 
-Run from the project root:
+---
 
-```powershell
-npm.cmd start
+## Quick Start / 快速启动
+
+由于 Web Bluetooth、Strava OAuth 和本地数据库都需要本地服务器，请从项目根目录启动，不要直接双击 `index.html`。  
+Because Web Bluetooth, Strava OAuth, and local history storage depend on the local server, start the app from the project root instead of opening `index.html` directly.
+
+首次运行先安装依赖：
+
+```bash
+npm install
 ```
 
-If dependencies have not been installed yet, run this once first:
-
-```powershell
-npm.cmd install
-```
-
-On macOS/Linux or shells where `npm` is not blocked:
+启动应用：
 
 ```bash
 npm start
 ```
 
-Then open:
+Windows PowerShell 如果 `npm` 被拦截，可以用：
+
+```powershell
+npm.cmd install
+npm.cmd start
+```
+
+打开浏览器访问：
 
 ```text
 http://127.0.0.1:8787
 ```
 
-You can also use:
+也可以访问：
 
 ```text
 http://localhost:8787
 ```
 
-If PowerShell returns immediately or blocks `npm`, use `npm.cmd start`. A normal running server keeps the terminal occupied until you stop it.
-
-To stop the server, press:
+正常启动后，终端会保持运行。停止服务按：
 
 ```text
 Ctrl + C
 ```
 
-## Local Server
+---
 
-The root `npm start` command runs:
+## Local Server / 本地服务
+
+`npm start` 实际运行：
 
 ```text
 node src/server/index.js
 ```
 
-The local server provides one app entry point:
+本地服务提供：
 
 ```text
-GET /        -> index.html
-GET /src/*   -> frontend modules and CSS
-GET /api/*   -> Strava OAuth/upload APIs
+GET  /        -> index.html
+GET  /src/*   -> frontend modules and CSS
+GET  /api/*   -> Strava, activity history, and upload APIs
 ```
 
-The export panel uses the current page origin as the default Strava server URL. The Strava server URL and user ID live under the panel's advanced settings, so the common workflow only needs the export/connect/upload buttons.
+健康检查：
 
-## Why node_modules Exists
+```bash
+curl http://127.0.0.1:8787/healthz
+```
 
-`node_modules` is the local dependency folder created by `npm install`. Rider Tracker uses a small Node.js server, and that server depends on packages such as `express`, `multer`, `cors`, and `dotenv`.
+默认端口是 `8787`。如需调整，可以创建本地 `.env`：
 
-Do not edit files under `node_modules`; they are third-party packages. If the folder is missing, run `npm.cmd install` again.
+```env
+PORT=8787
+HOST=127.0.0.1
+APP_BASE_URL=http://localhost:8787
+```
 
-## Strava Setup
+---
 
-The app can run without Strava credentials. In that mode, route import, simulation, live riding, and JSON/FIT export still work.
+## How To Use / 使用方法
 
-If you see this warning:
+### 1) 路线设置 | Route Setup
+
+支持手工分段路线和 GPX 导入。  
+You can build routes manually or import GPX files.
+
+### 2) 离线模拟 | Offline Simulation
+
+输入骑手参数与恒定功率后运行模拟，快速得到全程速度、时间、爬升和功率/心率估算。  
+Run a full-route simulation with rider settings and target power to estimate speed, duration, elevation gain, power, and heart-rate metrics.
+
+### 3) 实时骑行 | Live Ride
+
+连接心率带、功率计和骑行台后开始骑行。支持固定阻力、ERG 固定功率和按路线坡度模拟。  
+Connect HR, power, and trainer devices, then start riding. Supported trainer modes include resistance, ERG, and route-grade simulation.
+
+### 4) 沉浸街景 | Immersive Street View
+
+在骑行界面输入 Google Maps API Key，加载街景后可进入沉浸模式。  
+Enter a Google Maps API key in the live dashboard, load Street View, then enter immersive mode.
+
+### 5) 数据导出与上传 | Export and Upload
+
+骑行后可导出 JSON/FIT，也可以连接 Strava 后上传 FIT。  
+After a ride, export JSON/FIT files or connect Strava and upload FIT files.
+
+### 6) 活动历史 | Activity History
+
+模拟完成或实时骑行结束后，活动会写入本地 SQLite 数据库。首页和骑后区域会显示最近活动，并支持改名和删除。  
+Completed simulation and live ride sessions are saved into a local SQLite database. The home page and post-ride panel show recent activities with rename and delete actions.
+
+---
+
+## Strava Setup / Strava 配置
+
+Rider Tracker 可以在没有 Strava 凭证的情况下运行。此时路线导入、模拟、实时骑行、JSON/FIT 导出、本地活动历史仍然可用。  
+Rider Tracker works without Strava credentials. Route import, simulation, live riding, JSON/FIT export, and local activity history remain available.
+
+如果看到：
 
 ```text
 STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET 未配置，授权与上传接口不可用。
 ```
 
-it only means Strava authorization and upload are disabled.
+说明 Strava 授权与上传未启用。
 
-To enable Strava, either copy `.env.example` to `.env` in the project root:
-
-```env
-STRAVA_CLIENT_ID=your_client_id
-STRAVA_CLIENT_SECRET=your_client_secret
-```
-
-The default callback URL is:
-
-```text
-http://localhost:8787/api/strava/auth/callback
-```
-
-Configure the same callback URL in the Strava API application settings.
-
-You can also configure Strava from the browser. Click `Connect Strava`, or open:
+推荐方式是在浏览器中配置。点击 `Connect Strava`，或打开：
 
 ```text
 http://127.0.0.1:8787/strava/login
 ```
 
-That local page saves the Client ID and Client Secret under `data/strava-config.json`, then continues to the Strava authorization page.
+该页面会把 Client ID 和 Client Secret 保存到：
 
-## Tests
-
-Run:
-
-```powershell
-npm.cmd test
+```text
+data/strava-config.json
 ```
 
-or:
+也可以手动创建本地 `.env`：
+
+```env
+STRAVA_CLIENT_ID=your_client_id
+STRAVA_CLIENT_SECRET=your_client_secret
+STRAVA_REDIRECT_URI=http://localhost:8787/api/strava/auth/callback
+STRAVA_SCOPES=activity:read_all,activity:write
+```
+
+Strava API 应用里的 callback URL 使用：
+
+```text
+http://localhost:8787/api/strava/auth/callback
+```
+
+---
+
+## Local Data / 本地数据
+
+本地运行数据默认保存在：
+
+```text
+data/
+```
+
+主要文件：
+
+```text
+data/rider-tracker.db       -> SQLite 活动历史数据库
+data/strava-config.json     -> 浏览器配置的 Strava app credentials
+data/strava-tokens.json     -> Strava OAuth tokens
+data/README.md              -> SQLite 查询说明
+```
+
+`data/` 已在 `.gitignore` 中，不会提交到仓库。
+
+查看最近活动：
+
+```bash
+sqlite3 -header -column data/rider-tracker.db "
+select name, sport_type, distance_km, estimated_tss
+from activities
+order by created_at desc
+limit 10;
+"
+```
+
+也可以通过本地 API 查询：
+
+```bash
+curl "http://127.0.0.1:8787/api/activities?limit=10"
+```
+
+---
+
+## Tests / 测试
+
+运行测试：
 
 ```bash
 npm test
 ```
 
-## Main Features
+Windows PowerShell：
 
-- Import GPX routes or build route segments manually.
-- Run offline cycling simulation from route and rider settings.
-- Connect Bluetooth heart-rate, power-meter, and trainer devices in supported Chromium browsers.
-- Export ride sessions as JSON or FIT.
-- Connect Strava and upload FIT files when server credentials are configured.
-- Use Street View and PiP overlays during live riding.
+```powershell
+npm.cmd test
+```
 
-## Browser Notes
+---
 
-Use a Chromium-based browser such as Chrome or Edge. Safari and Firefox have limited Web Bluetooth and Document PiP support.
+## Compatibility / 兼容性
+
+- **操作系统 / OS:** Windows 10/11, macOS, Linux
+- **浏览器 / Browser:** Chromium-based browsers (Chrome / Edge recommended)
+- **不支持 / Not Supported:** Safari, Firefox have limited Web Bluetooth / Document PiP support
+
+---
+
+## Notes / 说明
+
+- `node_modules/` 是 `npm install` 生成的依赖目录，不要手动编辑。
+- 本项目是本地单用户工具，当前 SQLite 数据库用于活动历史、后续 Garmin/AI 分析和 Strava 描述生成扩展。
+- 如果 `npm start` 立即退出，先确认是否已有服务占用端口：
+
+```bash
+curl http://127.0.0.1:8787/healthz
+```

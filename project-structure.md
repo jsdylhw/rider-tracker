@@ -29,11 +29,13 @@
 - `src/style.css`
   - 全局样式（当前仍为单文件）
 - `README.md`
-  - 使用说明与功能文档
-- `log.md`
-  - 迭代变更记录
+  - 项目启动、Strava 配置、测试与主要功能说明
+- `commit-convention.md`
+  - 提交信息与开发记录约定
 - `project-structure.md`
-  - 本文档
+  - 根目录保留的项目结构说明
+- `package.json` / `package-lock.json`
+  - Node 本地服务与测试脚本配置
 - `tests/`
   - 单元/集成测试、测试夹具 GPX、测试运行器
 - `demos/`
@@ -41,8 +43,6 @@
   - `streetview-load-demo/`：街景加载独立验证页
   - `power-demo/`：BLE 功率/FTMS 控制独立验证页
   - `ftms-frequency-demo/`：FTMS 骑行台数据通知频率测试页
-- `server/`
-  - 服务端示例（Strava token / 上传相关）
 
 > 说明：根目录当前没有固定的示例 GPX 文件；测试 GPX 样本位于 `tests/gpx/`。
 
