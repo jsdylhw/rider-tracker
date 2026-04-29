@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
@@ -29,6 +30,7 @@ const REDIRECT_URI = process.env.STRAVA_REDIRECT_URI || `${APP_BASE_URL}/api/str
 const FRONTEND_REDIRECT_URL = process.env.FRONTEND_REDIRECT_URL || "";
 const CONFIG_STORE_PATH = process.env.STRAVA_CONFIG_PATH;
 const TOKEN_STORE_PATH = process.env.TOKEN_STORE_PATH;
+const FIT_FILE_DIR = process.env.FIT_FILE_DIR || path.join(PROJECT_ROOT, "data", "files", "fit");
 
 const configStore = createConfigStore(CONFIG_STORE_PATH);
 const tokenStore = createTokenStore(TOKEN_STORE_PATH);
@@ -101,6 +103,55 @@ app.get("/api/activities/:activityId", (req, res) => {
         return res.json({
             ok: true,
             activity
+        });
+    } catch (err) {
+        return res.status(500).json({
+            ok: false,
+            error: err.message
+        });
+    }
+});
+
+app.post("/api/activities/:activityId/fit", upload.single("file"), (req, res) => {
+    try {
+        const activityId = normalizeText(req.params.activityId);
+        const activity = activityStore.getActivity(activityId);
+        const uploadedFile = req.file;
+
+        if (!activity) {
+            return res.status(404).json({
+                ok: false,
+                error: "Activity not found."
+            });
+        }
+
+        if (!uploadedFile) {
+            return res.status(400).json({
+                ok: false,
+                error: "Missing FIT file. Send multipart field named file."
+            });
+        }
+
+        fs.mkdirSync(FIT_FILE_DIR, { recursive: true });
+        const safeOriginalName = normalizeFileToken(path.basename(uploadedFile.originalname || `${activityId}.fit`));
+        const filenameBase = safeOriginalName.endsWith(".fit") ? safeOriginalName : `${safeOriginalName}.fit`;
+        const filename = `${normalizeFileToken(activityId)}-${filenameBase}`;
+        const fitPath = path.join(FIT_FILE_DIR, filename);
+        fs.writeFileSync(fitPath, uploadedFile.buffer);
+
+        const relativePath = path.relative(PROJECT_ROOT, fitPath).split(path.sep).join("/");
+        const updatedActivity = activityStore.updateActivityFitFile(activityId, {
+            fitFilePath: relativePath,
+            fitFileSizeBytes: uploadedFile.buffer.length
+        });
+
+        return res.json({
+            ok: true,
+            activity: updatedActivity,
+            fitFile: {
+                path: relativePath,
+                sizeBytes: uploadedFile.buffer.length
+            }
         });
     } catch (err) {
         return res.status(500).json({
@@ -439,6 +490,14 @@ function ensureStravaConfig(res, config) {
 function normalizeUserId(value) {
     const text = String(value || "").trim();
     return text || "default";
+}
+
+function normalizeFileToken(value) {
+    const text = normalizeText(value);
+    return (text || "file")
+        .replaceAll(/\s+/g, "-")
+        .replaceAll(/[^a-zA-Z0-9._-]/g, "")
+        .slice(0, 120) || "file";
 }
 
 function normalizeText(value) {

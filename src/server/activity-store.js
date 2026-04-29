@@ -28,6 +28,9 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
                 average_hr REAL,
                 estimated_tss REAL,
                 has_gps_track INTEGER NOT NULL DEFAULT 0,
+                fit_file_path TEXT,
+                fit_file_size_bytes INTEGER,
+                fit_file_created_at TEXT,
                 raw_json TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -36,6 +39,11 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
             CREATE INDEX IF NOT EXISTS idx_activities_source ON activities(source);
             CREATE INDEX IF NOT EXISTS idx_activities_sport_type ON activities(sport_type);
         `);
+        ensureActivityColumns([
+            { name: "fit_file_path", definition: "TEXT" },
+            { name: "fit_file_size_bytes", definition: "INTEGER" },
+            { name: "fit_file_created_at", definition: "TEXT" }
+        ]);
     }
 
     function saveRiderSession(session, options = {}) {
@@ -117,6 +125,9 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
                 average_hr AS averageHr,
                 estimated_tss AS estimatedTss,
                 has_gps_track AS hasGpsTrack,
+                fit_file_path AS fitFilePath,
+                fit_file_size_bytes AS fitFileSizeBytes,
+                fit_file_created_at AS fitFileCreatedAt,
                 created_at AS createdAt,
                 updated_at AS updatedAt
             FROM activities
@@ -143,6 +154,9 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
                 average_hr AS averageHr,
                 estimated_tss AS estimatedTss,
                 has_gps_track AS hasGpsTrack,
+                fit_file_path AS fitFilePath,
+                fit_file_size_bytes AS fitFileSizeBytes,
+                fit_file_created_at AS fitFileCreatedAt,
                 created_at AS createdAt,
                 updated_at AS updatedAt
             FROM activities
@@ -170,6 +184,9 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
                 average_hr AS averageHr,
                 estimated_tss AS estimatedTss,
                 has_gps_track AS hasGpsTrack,
+                fit_file_path AS fitFilePath,
+                fit_file_size_bytes AS fitFileSizeBytes,
+                fit_file_created_at AS fitFileCreatedAt,
                 raw_json AS rawJson,
                 created_at AS createdAt,
                 updated_at AS updatedAt
@@ -200,6 +217,33 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
             UPDATE activities
             SET
                 name = ${sqlValue(normalizedName)},
+                updated_at = ${sqlValue(new Date().toISOString())}
+            WHERE id = ${sqlValue(id)};
+        `);
+
+        const activity = getActivity(id);
+        if (!activity) {
+            throw new Error("Activity not found.");
+        }
+        return activity;
+    }
+
+    function updateActivityFitFile(id, {
+        fitFilePath,
+        fitFileSizeBytes,
+        fitFileCreatedAt = new Date().toISOString()
+    } = {}) {
+        initialize();
+        if (!id || !fitFilePath) {
+            throw new Error("Activity id and FIT file path are required.");
+        }
+
+        runSql(`
+            UPDATE activities
+            SET
+                fit_file_path = ${sqlValue(fitFilePath)},
+                fit_file_size_bytes = ${sqlValue(fitFileSizeBytes)},
+                fit_file_created_at = ${sqlValue(fitFileCreatedAt)},
                 updated_at = ${sqlValue(new Date().toISOString())}
             WHERE id = ${sqlValue(id)};
         `);
@@ -253,6 +297,15 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         return output ? JSON.parse(output) : [];
     }
 
+    function ensureActivityColumns(columns) {
+        const existingColumns = new Set(queryJson("PRAGMA table_info(activities);").map((column) => column.name));
+        columns.forEach((column) => {
+            if (!existingColumns.has(column.name)) {
+                runSql(`ALTER TABLE activities ADD COLUMN ${column.name} ${column.definition};`);
+            }
+        });
+    }
+
     function runSqliteWithSqlFile(extraArgs, sql) {
         const tempDir = fs.mkdtempSync(path.join(osTmpDir(), "rider-tracker-sql-"));
         const sqlPath = path.join(tempDir, "query.sql");
@@ -286,6 +339,7 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         getActivity,
         getActivityDetail,
         updateActivityName,
+        updateActivityFitFile,
         deleteActivity,
         getSummary
     };
@@ -378,7 +432,8 @@ function normalizeActivityRow(row) {
         normalizedPower: finiteOrNull(row.normalizedPower),
         averageHr: finiteOrNull(row.averageHr),
         estimatedTss: finiteOrNull(row.estimatedTss),
-        hasGpsTrack: Boolean(row.hasGpsTrack)
+        hasGpsTrack: Boolean(row.hasGpsTrack),
+        fitFileSizeBytes: finiteOrNull(row.fitFileSizeBytes)
     };
 }
 

@@ -85,6 +85,33 @@ export async function getActivity(activityId, {
     return body.activity;
 }
 
+export async function saveActivityFitFile(activityId, {
+    fitBytes,
+    filename,
+    serverUrl = globalThis.location?.origin || ""
+} = {}) {
+    if (!activityId || !fitBytes || !serverUrl) {
+        return null;
+    }
+
+    const payload = fitBytes instanceof Uint8Array ? fitBytes : new Uint8Array(fitBytes);
+    const fitBlob = new Blob([payload], { type: "application/vnd.ant.fit" });
+    const formData = new FormData();
+    formData.append("file", fitBlob, filename || `${activityId}.fit`);
+
+    const response = await fetch(`${serverUrl}/api/activities/${encodeURIComponent(activityId)}/fit`, {
+        method: "POST",
+        body: formData
+    });
+
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.ok === false) {
+        throw new Error(body?.error || "Activity FIT save failed.");
+    }
+
+    return body.activity;
+}
+
 export async function deleteActivity(activityId, {
     serverUrl = globalThis.location?.origin || ""
 } = {}) {

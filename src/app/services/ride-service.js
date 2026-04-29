@@ -329,6 +329,9 @@ export function createRideService({ store, deviceService, exportService }) {
 function saveSessionToActivityHistory(session) {
     void saveRiderSessionActivity(session)
         .then((activity) => {
+            if (activity?.id) {
+                session.activityId = activity.id;
+            }
             if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
                 window.dispatchEvent(new CustomEvent("rider-tracker:activity-saved", {
                     detail: { activity }

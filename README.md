@@ -171,6 +171,7 @@ data/
 
 ```text
 data/rider-tracker.db       -> SQLite 活动历史数据库
+data/files/fit/             -> 本地保存的 FIT 文件
 data/strava-config.json     -> 浏览器配置的 Strava app credentials
 data/strava-tokens.json     -> Strava OAuth tokens
 data/README.md              -> SQLite 查询说明

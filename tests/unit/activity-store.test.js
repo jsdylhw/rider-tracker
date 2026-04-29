@@ -52,6 +52,26 @@ export const suite = {
                 assertEqual(store.listActivities().length, 0);
                 assertEqual(store.getSummary().activityCount, 0);
             }
+        },
+        {
+            name: "stores fit file metadata on activities",
+            run() {
+                const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
+                const dbPath = path.join(tempDir, "activities.db");
+                const store = createActivityStore(dbPath);
+                const saved = store.saveRiderSession(buildVirtualRideSession());
+
+                const updated = store.updateActivityFitFile(saved.id, {
+                    fitFilePath: "data/files/fit/test.fit",
+                    fitFileSizeBytes: 128
+                });
+                const detail = store.getActivityDetail(saved.id);
+
+                assertEqual(updated.fitFilePath, "data/files/fit/test.fit");
+                assertEqual(updated.fitFileSizeBytes, 128);
+                assertEqual(detail.fitFilePath, "data/files/fit/test.fit");
+                assertEqual(detail.fitFileSizeBytes, 128);
+            }
         }
     ]
 };

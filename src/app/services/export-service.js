@@ -5,6 +5,10 @@ import {
     startStravaAuthorization,
     uploadFitToStravaServer
 } from "../../adapters/upload/strava-server-client.js";
+import {
+    saveActivityFitFile,
+    saveRiderSessionActivity
+} from "../../adapters/storage/activity-history-client.js";
 import { downloadBinary, downloadJson } from "../../shared/format.js";
 import { sanitizeExportMetadata } from "../store/initial-state.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
@@ -138,7 +142,9 @@ export function createExportService({ store }) {
                 markVirtualActivity: exportMetadata?.markVirtualActivity
             });
             const timestamp = session.createdAt.replaceAll(":", "-").split(".")[0];
-            downloadBinary(`virtual-ride-${timestamp}.fit`, fitBytes, "application/vnd.ant.fit");
+            const filename = `virtual-ride-${timestamp}.fit`;
+            await saveFitFileForSession({ session, fitBytes, filename });
+            downloadBinary(filename, fitBytes, "application/vnd.ant.fit");
 
             store.setState((state) => ({
                 ...state,
@@ -201,6 +207,7 @@ export function createExportService({ store }) {
             });
             const timestamp = session.createdAt.replaceAll(":", "-").split(".")[0];
             const filename = `virtual-ride-${timestamp}.fit`;
+            await saveFitFileForSession({ session, fitBytes, filename });
             const uploadAsVirtual = exportMetadata?.markVirtualActivity !== false;
             const hasGpsTrack = sessionHasGpsTrack(session);
 
@@ -239,6 +246,23 @@ export function createExportService({ store }) {
         downloadFit,
         uploadFit
     };
+}
+
+async function saveFitFileForSession({ session, fitBytes, filename }) {
+    try {
+        const activity = session.activityId
+            ? { id: session.activityId }
+            : await saveRiderSessionActivity(session);
+        if (activity?.id) {
+            session.activityId = activity.id;
+            await saveActivityFitFile(activity.id, {
+                fitBytes,
+                filename
+            });
+        }
+    } catch (error) {
+        console.warn("[ExportService] 保存本地 FIT 文件失败:", error);
+    }
 }
 
 function buildMissingStravaConfigMessage(config) {
