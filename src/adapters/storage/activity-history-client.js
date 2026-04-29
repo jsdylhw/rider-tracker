@@ -69,6 +69,22 @@ export async function renameActivity(activityId, name, {
     return body.activity;
 }
 
+export async function getActivity(activityId, {
+    serverUrl = globalThis.location?.origin || ""
+} = {}) {
+    if (!activityId || !serverUrl) {
+        return null;
+    }
+
+    const response = await fetch(`${serverUrl}/api/activities/${encodeURIComponent(activityId)}`);
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.ok === false) {
+        throw new Error(body?.error || "Activity fetch failed.");
+    }
+
+    return body.activity;
+}
+
 export async function deleteActivity(activityId, {
     serverUrl = globalThis.location?.origin || ""
 } = {}) {

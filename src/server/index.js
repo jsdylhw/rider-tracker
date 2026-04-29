@@ -88,6 +88,28 @@ app.post("/api/activities/rider-session", (req, res) => {
     }
 });
 
+app.get("/api/activities/:activityId", (req, res) => {
+    try {
+        const activity = activityStore.getActivityDetail(req.params.activityId);
+        if (!activity) {
+            return res.status(404).json({
+                ok: false,
+                error: "Activity not found."
+            });
+        }
+
+        return res.json({
+            ok: true,
+            activity
+        });
+    } catch (err) {
+        return res.status(500).json({
+            ok: false,
+            error: err.message
+        });
+    }
+});
+
 app.patch("/api/activities/:activityId", (req, res) => {
     try {
         const activity = activityStore.updateActivityName(req.params.activityId, req.body?.name);

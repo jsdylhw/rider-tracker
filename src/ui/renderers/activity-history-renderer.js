@@ -1,4 +1,5 @@
-import { deleteActivity, listActivities, renameActivity } from "../../adapters/storage/activity-history-client.js";
+import { deleteActivity, getActivity, listActivities, renameActivity } from "../../adapters/storage/activity-history-client.js";
+import { buildActivityDetailHtml } from "./activity-detail-renderer.js";
 import { formatDuration, formatNumber } from "../../shared/format.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
 
@@ -11,6 +12,7 @@ export function createActivityHistoryRenderer({
 } = {}) {
     const mountedContainers = containers.filter(Boolean);
     let activities = [];
+    let selectedActivity = null;
     let loading = false;
     let statusText = "";
     let bound = false;
@@ -33,7 +35,11 @@ export function createActivityHistoryRenderer({
                     void handleDelete(activityId);
                 }
                 if (action === "details") {
-                    onStatus("活动详情页稍后接入。");
+                    void handleDetails(activityId);
+                }
+                if (action === "close-details") {
+                    selectedActivity = null;
+                    render();
                 }
             });
         });
@@ -67,10 +73,26 @@ export function createActivityHistoryRenderer({
         mountedContainers.forEach((container) => {
             container.innerHTML = buildHistoryHtml({
                 activities,
+                selectedActivity,
                 statusText,
                 loading
             });
         });
+    }
+
+    async function handleDetails(activityId) {
+        try {
+            statusText = "正在读取活动详情...";
+            render();
+            selectedActivity = await getActivity(activityId);
+            statusText = "";
+            onStatus("活动详情已加载。");
+            render();
+        } catch (error) {
+            statusText = `活动详情读取失败：${extractErrorMessage(error)}`;
+            onStatus(statusText);
+            render();
+        }
     }
 
     async function handleRename(activityId) {
@@ -104,6 +126,9 @@ export function createActivityHistoryRenderer({
 
         try {
             await deleteActivity(activityId);
+            if (selectedActivity?.id === activityId) {
+                selectedActivity = null;
+            }
             onStatus("活动已删除。");
             await refresh();
         } catch (error) {
@@ -120,7 +145,7 @@ export function createActivityHistoryRenderer({
     };
 }
 
-function buildHistoryHtml({ activities, statusText, loading }) {
+function buildHistoryHtml({ activities, selectedActivity, statusText, loading }) {
     if (loading) {
         return `<div class="activity-history-empty">正在读取历史记录...</div>`;
     }
@@ -129,6 +154,7 @@ function buildHistoryHtml({ activities, statusText, loading }) {
         return `<div class="activity-history-empty">${escapeHtml(statusText || "暂无历史记录。")}</div>`;
     }
 
+    const detailHtml = selectedActivity ? buildActivityDetailHtml(selectedActivity) : "";
     const rows = activities.map((activity) => {
         const startedAt = formatActivityDate(activity.startedAt ?? activity.createdAt);
         const distance = Number.isFinite(activity.distanceKm) ? `${formatNumber(activity.distanceKm, 2)} km` : "-";
@@ -154,7 +180,7 @@ function buildHistoryHtml({ activities, statusText, loading }) {
                     </div>
                 </div>
                 <div class="activity-history-actions">
-                    <button class="btn ghost compact-btn" data-activity-action="details" data-activity-id="${escapeHtml(activity.id)}" disabled>详情</button>
+                    <button class="btn ghost compact-btn" data-activity-action="details" data-activity-id="${escapeHtml(activity.id)}">详情</button>
                     <button class="btn secondary compact-btn" data-activity-action="rename" data-activity-id="${escapeHtml(activity.id)}">改名</button>
                     <button class="btn ghost compact-btn danger-btn" data-activity-action="delete" data-activity-id="${escapeHtml(activity.id)}">删除</button>
                 </div>
@@ -162,7 +188,8 @@ function buildHistoryHtml({ activities, statusText, loading }) {
         `;
     }).join("");
 
-    return `<div class="activity-history-list">${rows}</div>`;
+    const statusHtml = statusText ? `<div class="activity-history-empty">${escapeHtml(statusText)}</div>` : "";
+    return `${detailHtml}${statusHtml}<div class="activity-history-list">${rows}</div>`;
 }
 
 function formatActivityDate(value) {

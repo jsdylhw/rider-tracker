@@ -152,6 +152,43 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         return rows[0] ? normalizeActivityRow(rows[0]) : null;
     }
 
+    function getActivityDetail(id) {
+        initialize();
+        const rows = queryJson(`
+            SELECT
+                id,
+                source,
+                sport_type AS sportType,
+                name,
+                started_at AS startedAt,
+                finished_at AS finishedAt,
+                elapsed_seconds AS elapsedSeconds,
+                distance_km AS distanceKm,
+                ascent_meters AS ascentMeters,
+                average_power AS averagePower,
+                normalized_power AS normalizedPower,
+                average_hr AS averageHr,
+                estimated_tss AS estimatedTss,
+                has_gps_track AS hasGpsTrack,
+                raw_json AS rawJson,
+                created_at AS createdAt,
+                updated_at AS updatedAt
+            FROM activities
+            WHERE id = ${sqlValue(id)}
+            LIMIT 1;
+        `);
+
+        if (!rows[0]) {
+            return null;
+        }
+
+        const activity = normalizeActivityRow(rows[0]);
+        return {
+            ...activity,
+            rawSession: parseRawSession(rows[0].rawJson)
+        };
+    }
+
     function updateActivityName(id, name) {
         initialize();
         const normalizedName = normalizeText(name, "", 120);
@@ -247,10 +284,19 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         saveRiderSession,
         listActivities,
         getActivity,
+        getActivityDetail,
         updateActivityName,
         deleteActivity,
         getSummary
     };
+}
+
+function parseRawSession(rawJson) {
+    try {
+        return rawJson ? JSON.parse(rawJson) : null;
+    } catch (_error) {
+        return null;
+    }
 }
 
 function osTmpDir() {

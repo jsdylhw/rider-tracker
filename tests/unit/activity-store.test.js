@@ -30,6 +30,9 @@ export const suite = {
                 assertEqual(activities[0].id, saved.id);
                 assertEqual(summary.activityCount, 1);
                 assertApprox(summary.totalDistanceKm, 12.34, 0.0001);
+                const detail = store.getActivityDetail(saved.id);
+                assertEqual(detail.rawSession.exportMetadata.activityName, "Test Virtual Ride");
+                assertEqual(detail.rawSession.records.length, 2);
             }
         },
         {
