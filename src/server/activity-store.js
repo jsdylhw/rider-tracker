@@ -1,10 +1,9 @@
-import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 const DEFAULT_DB_PATH = path.resolve(process.cwd(), "data", "rider-tracker.db");
-const SQLITE_BIN = process.env.SQLITE_BIN || "sqlite3";
 
 export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH || DEFAULT_DB_PATH) {
     const dbPath = path.resolve(filePath);
@@ -289,12 +288,13 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
     }
 
     function runSql(sql) {
-        runSqliteWithSqlFile([], sql);
+        withDatabase((db) => {
+            db.exec(sql);
+        });
     }
 
     function queryJson(sql) {
-        const output = runSqliteWithSqlFile(["-json"], sql).trim();
-        return output ? JSON.parse(output) : [];
+        return withDatabase((db) => db.prepare(sql).all());
     }
 
     function ensureActivityColumns(columns) {
@@ -306,28 +306,12 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         });
     }
 
-    function runSqliteWithSqlFile(extraArgs, sql) {
-        const tempDir = fs.mkdtempSync(path.join(osTmpDir(), "rider-tracker-sql-"));
-        const sqlPath = path.join(tempDir, "query.sql");
-        fs.writeFileSync(sqlPath, sql, "utf8");
-
+    function withDatabase(callback) {
+        const db = new DatabaseSync(dbPath);
         try {
-            const result = spawnSync(SQLITE_BIN, [
-                "-batch",
-                ...extraArgs,
-                dbPath,
-                `.read ${sqlPath}`
-            ], {
-                encoding: "utf8"
-            });
-
-            if (result.status !== 0) {
-                throw new Error(result.stderr || result.error?.message || "sqlite3 command failed.");
-            }
-
-            return result.stdout || "";
+            return callback(db);
         } finally {
-            fs.rmSync(tempDir, { recursive: true, force: true });
+            db.close();
         }
     }
 
@@ -351,10 +335,6 @@ function parseRawSession(rawJson) {
     } catch (_error) {
         return null;
     }
-}
-
-function osTmpDir() {
-    return process.env.TMPDIR || "/tmp";
 }
 
 export function normalizeRiderSession(session, options = {}) {

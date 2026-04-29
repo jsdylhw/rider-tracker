@@ -2,9 +2,12 @@
   "name": "rider-tracker",
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "start": "node src/server/index.js",
-    "test": "node tests/test-runner.js"
+    "start": "node --disable-warning=ExperimentalWarning src/server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning tests/test-runner.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
