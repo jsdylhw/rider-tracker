@@ -13,6 +13,7 @@ import {
     buildRuntimeByControlMode
 } from "../realtime/ride-engine.js";
 import { saveLastSession } from "../../adapters/storage/session-storage.js";
+import { saveRiderSessionActivity } from "../../adapters/storage/activity-history-client.js";
 import { formatNumber } from "../../shared/format.js";
 import { sanitizeSessionExportMetadata } from "../store/initial-state.js";
 
@@ -88,6 +89,7 @@ export function createRideService({ store, deviceService, exportService }) {
             : null;
         if (completedSession) {
             saveLastSession(completedSession);
+            saveSessionToActivityHistory(completedSession);
         }
 
         const trainerControlMode = resolveTrainerControlModeForWorkoutMode(state.workout.mode);
@@ -274,6 +276,7 @@ export function createRideService({ store, deviceService, exportService }) {
         };
 
         saveLastSession(session);
+        saveSessionToActivityHistory(session);
 
         store.setState((currentState) => ({
             ...currentState,
@@ -321,6 +324,20 @@ export function createRideService({ store, deviceService, exportService }) {
         liveRideTimerId = null;
         liveRideTickIntervalMs = DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS;
     }
+}
+
+function saveSessionToActivityHistory(session) {
+    void saveRiderSessionActivity(session)
+        .then((activity) => {
+            if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
+                window.dispatchEvent(new CustomEvent("rider-tracker:activity-saved", {
+                    detail: { activity }
+                }));
+            }
+        })
+        .catch((error) => {
+            console.warn("[RideService] 保存活动历史失败:", error);
+        });
 }
 
 function createInitialCommandDispatchState() {

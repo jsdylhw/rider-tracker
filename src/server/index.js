@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 import { createStravaClient } from "./strava-client.js";
 import { createConfigStore } from "./config-store.js";
 import { createTokenStore } from "./token-store.js";
+import { createActivityStore } from "./activity-store.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,10 +20,11 @@ const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
 const PORT = Number(process.env.PORT || 8787);
+const HOST = process.env.HOST || "127.0.0.1";
 const CLIENT_ID = process.env.STRAVA_CLIENT_ID;
 const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
 const SCOPES = process.env.STRAVA_SCOPES || "activity:read_all,activity:write";
-const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${PORT}`;
+const APP_BASE_URL = process.env.APP_BASE_URL || `http://${HOST === "127.0.0.1" ? "localhost" : HOST}:${PORT}`;
 const REDIRECT_URI = process.env.STRAVA_REDIRECT_URI || `${APP_BASE_URL}/api/strava/auth/callback`;
 const FRONTEND_REDIRECT_URL = process.env.FRONTEND_REDIRECT_URL || "";
 const CONFIG_STORE_PATH = process.env.STRAVA_CONFIG_PATH;
@@ -30,6 +32,8 @@ const TOKEN_STORE_PATH = process.env.TOKEN_STORE_PATH;
 
 const configStore = createConfigStore(CONFIG_STORE_PATH);
 const tokenStore = createTokenStore(TOKEN_STORE_PATH);
+const activityStore = createActivityStore();
+activityStore.initialize();
 
 const oauthStateMap = new Map();
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -44,6 +48,74 @@ app.get("/", (_req, res) => {
 
 app.get("/healthz", (_req, res) => {
     res.json({ ok: true, service: "rider-tracker" });
+});
+
+app.get("/api/activities", (req, res) => {
+    try {
+        const activities = activityStore.listActivities({
+            limit: req.query.limit
+        });
+        return res.json({
+            ok: true,
+            dbPath: activityStore.filePath,
+            summary: activityStore.getSummary(),
+            activities
+        });
+    } catch (err) {
+        return res.status(500).json({
+            ok: false,
+            error: err.message
+        });
+    }
+});
+
+app.post("/api/activities/rider-session", (req, res) => {
+    try {
+        const activity = activityStore.saveRiderSession(req.body?.session, {
+            name: req.body?.name,
+            sportType: req.body?.sportType
+        });
+        return res.json({
+            ok: true,
+            dbPath: activityStore.filePath,
+            activity
+        });
+    } catch (err) {
+        return res.status(400).json({
+            ok: false,
+            error: err.message
+        });
+    }
+});
+
+app.patch("/api/activities/:activityId", (req, res) => {
+    try {
+        const activity = activityStore.updateActivityName(req.params.activityId, req.body?.name);
+        return res.json({
+            ok: true,
+            activity
+        });
+    } catch (err) {
+        return res.status(err.message === "Activity not found." ? 404 : 400).json({
+            ok: false,
+            error: err.message
+        });
+    }
+});
+
+app.delete("/api/activities/:activityId", (req, res) => {
+    try {
+        const activity = activityStore.deleteActivity(req.params.activityId);
+        return res.json({
+            ok: true,
+            activity
+        });
+    } catch (err) {
+        return res.status(err.message === "Activity not found." ? 404 : 400).json({
+            ok: false,
+            error: err.message
+        });
+    }
 });
 
 app.get("/api/strava/config", (_req, res) => {
@@ -281,11 +353,22 @@ app.get("/api/strava/upload-status/:uploadId", async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, HOST, (err) => {
+    if (err) {
+        console.error(`[rider-tracker] failed to listen on ${APP_BASE_URL}: ${err.message}`);
+        process.exitCode = 1;
+        return;
+    }
+
     console.log(`[rider-tracker] listening on ${APP_BASE_URL}`);
     if (!CLIENT_ID || !CLIENT_SECRET) {
         console.warn(`[rider-tracker] Strava env credentials are not configured. Use ${APP_BASE_URL}/strava/login to save local credentials.`);
     }
+});
+
+server.on("error", (err) => {
+    console.error(`[rider-tracker] server error: ${err.message}`);
+    process.exitCode = 1;
 });
 
 async function getStravaConfig() {

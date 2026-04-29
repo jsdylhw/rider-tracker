@@ -8,6 +8,7 @@ import { createDeviceRenderer } from "./device-renderer.js";
 import { createLayoutCoordinator } from "./layout-coordinator.js";
 import { createWorkoutRenderer } from "./workout-renderer.js";
 import { createCustomWorkoutTargetRenderer } from "./custom-workout-target-renderer.js";
+import { createActivityHistoryRenderer } from "./activity-history-renderer.js";
 import { buildDistanceTimeChartSvg } from "./svg/session-charts.js";
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 import { createHomeView } from "../views/home-view.js";
@@ -131,6 +132,19 @@ export function createMainView({
         onUpdateCustomWorkoutTargetStep,
         onRemoveCustomWorkoutTargetStep
     });
+    const activityHistoryRenderer = createActivityHistoryRenderer({
+        containers: [
+            elements.historyContainer,
+            elements.postRideHistoryContainer
+        ],
+        onStatus: (statusText) => {
+            store.setState((state) => ({
+                ...state,
+                statusText
+            }));
+        }
+    });
+    void activityHistoryRenderer.refresh();
 
     store.subscribe((state) => {
         layoutCoordinator.render(state);
@@ -142,6 +156,7 @@ export function createMainView({
         customWorkoutTargetRenderer.render(state);
         deviceRenderer.render(state);
         renderSession(state);
+        renderPostRideReport(state);
         renderPipControls(state);
     });
 
@@ -233,6 +248,12 @@ export function createMainView({
     function renderChart(records) {
         if (!elements.distanceChart) return;
         elements.distanceChart.innerHTML = buildDistanceTimeChartSvg(records);
+    }
+
+    function renderPostRideReport(state) {
+        if (!elements.postRideReportCard) return;
+        const hasCompletedRide = Boolean(state.liveRide.lastCompletedAt || state.session);
+        elements.postRideReportCard.hidden = state.uiMode !== "live" || state.liveRide.isActive || !hasCompletedRide;
     }
 
     function renderPipControls(state) {

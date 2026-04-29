@@ -1,6 +1,3 @@
-import { formatDuration, formatNumber } from "../../shared/format.js";
-import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
-
 export function createLayoutCoordinator({ elements }) {
     mountSharedExportCard(elements);
 
@@ -79,42 +76,6 @@ export function createLayoutCoordinator({ elements }) {
             }
         }
 
-        renderHomeSummary(state);
-    }
-
-    function renderHomeSummary(state) {
-        if (state.uiMode !== "home" || !elements.historyContainer) {
-            return;
-        }
-
-        const summary = state.session?.summary;
-        const metrics = resolveRideMetrics({
-            summary,
-            records: state.session?.records ?? [],
-            ftp: state.settings?.ftp ?? null
-        });
-
-        if (!summary) {
-            elements.historyContainer.innerHTML = "暂无历史记录。";
-            return;
-        }
-
-        elements.historyContainer.innerHTML = `
-            <div style="display: grid; gap: 12px; margin-top: 8px;">
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="color: var(--muted);">总距离</span>
-                    <strong>${formatNumber(metrics.ride.distanceKm, 2)} km</strong>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="color: var(--muted);">总用时</span>
-                    <strong>${formatDuration(metrics.ride.elapsedSeconds)}</strong>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="color: var(--muted);">平均速度</span>
-                    <strong>${formatNumber(metrics.speed.averageKph, 1)} km/h</strong>
-                </div>
-            </div>
-        `;
     }
 
     return {

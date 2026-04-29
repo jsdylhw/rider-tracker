@@ -1101,6 +1101,111 @@ tbody tr:last-child td {
     background-color: #e2e8f0;
 }
 
+.compact-btn {
+    min-width: 58px;
+    padding: 8px 10px;
+    font-size: 12px;
+    border-radius: 8px;
+}
+
+.danger-btn {
+    color: #b91c1c;
+    background-color: #fee2e2;
+}
+
+.danger-btn:hover:not(:disabled) {
+    background-color: #fecaca;
+}
+
+.activity-history-panel {
+    display: grid;
+    gap: 10px;
+}
+
+.activity-history-empty {
+    color: var(--muted);
+    padding: 14px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.activity-history-list {
+    display: grid;
+    gap: 10px;
+}
+
+.activity-history-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.activity-history-main {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.activity-history-title-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+}
+
+.activity-history-title-row strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.activity-history-title-row span {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: #f1f5f9;
+}
+
+.activity-history-meta,
+.activity-history-stats {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.activity-history-stats {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.activity-history-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+    .activity-history-row {
+        grid-template-columns: 1fr;
+    }
+
+    .activity-history-actions {
+        justify-content: flex-start;
+    }
+}
+
 /* Device & Ride Buttons Styles */
 .btn-device, .btn-ride {
     display: inline-flex;

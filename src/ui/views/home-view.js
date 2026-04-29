@@ -7,6 +7,8 @@ export function createHomeView({ onSetUiMode, onEnterSimulationMode, onEnterLive
         homeProfileCard: document.getElementById("homeProfileCard"),
         homeHistoryCard: document.getElementById("homeHistoryCard"),
         historyContainer: document.getElementById("historyContainer"),
+        postRideReportCard: document.getElementById("postRideReportCard"),
+        postRideHistoryContainer: document.getElementById("postRideHistoryContainer"),
         personalSettingsForm: document.getElementById("personalSettingsForm"),
         savedSessionChip: document.getElementById("savedSessionChip")
     };

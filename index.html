@@ -61,10 +61,10 @@
                         <div class="section-title-row">
                             <div>
                                 <h2>历史骑行记录</h2>
-                                <p class="section-subtitle">最近一次的会话摘要。</p>
+                                <p class="section-subtitle">最近保存到本地数据库的活动。</p>
                             </div>
                         </div>
-                        <div id="historyContainer" class="route-summary">
+                        <div id="historyContainer" class="activity-history-panel">
                             暂无历史记录。
                         </div>
                     </div>
@@ -276,6 +276,17 @@
             <section class="layout-grid live-setup-grid">
                 <div class="column" id="live-col-1">
                     <div id="liveExportSlot"></div>
+                    <div id="postRideReportCard" class="card" hidden>
+                        <div class="section-title-row">
+                            <div>
+                                <h2>骑后分析报告</h2>
+                                <p class="section-subtitle">当前先展示最近活动，后续会接入详情、趋势图和 AI 分析。</p>
+                            </div>
+                        </div>
+                        <div id="postRideHistoryContainer" class="activity-history-panel">
+                            暂无历史记录。
+                        </div>
+                    </div>
                 </div>
 
                 <div class="column" id="live-col-2">

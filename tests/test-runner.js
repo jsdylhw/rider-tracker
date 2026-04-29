@@ -26,6 +26,7 @@ import { suite as liveRideViewModelSuite } from "./unit/live-ride-view-model.tes
 import { suite as liveMetricsSuite } from "./unit/live-metrics.test.js";
 import { suite as pipElevationChartSuite } from "./unit/pip-elevation-chart.test.js";
 import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js";
+import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
@@ -55,7 +56,8 @@ const suites = [
     liveRideViewModelSuite,
     liveMetricsSuite,
     pipElevationChartSuite,
-    rideSeriesChartSuite
+    rideSeriesChartSuite,
+    activityStoreSuite
 ];
 
 runSuites(suites).then((results) => {
