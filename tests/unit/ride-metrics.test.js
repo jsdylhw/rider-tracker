@@ -85,6 +85,9 @@ export const suite = {
                 assertEqual(metrics.grade.maxPositivePercent, 4);
                 assertApprox(metrics.speed.averageKph, 36, 0.0001);
                 assertEqual(metrics.load.estimatedTss > 0, true);
+                assertEqual(metrics.energy.mechanicalWorkKj, 0.9);
+                assertEqual(metrics.energy.estimatedCaloriesKcal, 0.9);
+                assertEqual(metrics.energy.method, "power");
                 assertEqual(metrics.power.normalizedPowerWatts > 0, true);
             }
         },
@@ -177,6 +180,7 @@ export const suite = {
                 assertEqual(metrics.cadence.averageRpm, null);
                 assertEqual(metrics.grade.currentPercent, 0);
                 assertEqual(metrics.load.estimatedTss, 0);
+                assertEqual(metrics.energy.estimatedCaloriesKcal, 0);
             }
         }
     ]

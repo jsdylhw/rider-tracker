@@ -33,6 +33,7 @@ export function buildActivityDetailHtml(activity, {
     const power = metrics.power ?? {};
     const heartRate = metrics.heartRate ?? {};
     const load = metrics.load ?? {};
+    const energy = metrics.energy ?? {};
     const ftp = Number(session.settings?.ftp ?? session.rawSettings?.ftp);
     const maxHr = Number(session.settings?.maxHr ?? session.rawSettings?.maxHr);
     const restingHr = Number(session.settings?.restingHr ?? session.rawSettings?.restingHr);
@@ -61,6 +62,7 @@ export function buildActivityDetailHtml(activity, {
                 ${buildSummaryItem("NP", formatMetric(normalizedPower, "W", 0))}
                 ${buildSummaryItem("IF", intensityFactor === null ? "-" : formatNumber(intensityFactor, 2))}
                 ${buildSummaryItem("TSS", formatNumber(numberOrNull(activity.estimatedTss ?? load.estimatedTss) ?? 0, 1))}
+                ${buildSummaryItem("消耗", formatEnergyMetric(energy))}
                 ${buildSummaryItem("均心率", formatMetric(activity.averageHr ?? heartRate.averageBpm, "bpm", 0))}
             </div>
             <div class="activity-detail-insight">
@@ -328,6 +330,18 @@ function formatMetric(value, unit, digits) {
         return "-";
     }
     return `${formatNumber(numeric, digits)} ${unit}`;
+}
+
+function formatEnergyMetric(energy) {
+    const calories = numberOrNull(energy?.estimatedCaloriesKcal);
+    const work = numberOrNull(energy?.mechanicalWorkKj);
+    if (calories === null && work === null) {
+        return "-";
+    }
+
+    const caloriesText = calories === null ? "-" : `${formatNumber(calories, 0)} kcal`;
+    const workText = work === null ? "-" : `${formatNumber(work, 0)} kJ`;
+    return `${caloriesText} / ${workText}`;
 }
 
 function formatActivityDate(value) {

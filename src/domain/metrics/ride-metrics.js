@@ -32,6 +32,7 @@ export function buildRideMetrics({
     });
     const intensityFactor = calculateIntensityFactor(powerMetrics.normalizedPowerWatts, ftp);
     const variabilityIndex = calculateVariabilityIndex(powerMetrics.normalizedPowerWatts, powerMetrics.averageWatts);
+    const energyMetrics = calculateEnergyMetrics(records);
 
     return {
         ride: {
@@ -76,7 +77,8 @@ export function buildRideMetrics({
                 intensityFactor,
                 elapsedSeconds
             })
-        }
+        },
+        energy: energyMetrics
     };
 }
 
@@ -130,6 +132,11 @@ export function createEmptyRideMetrics(powerWindowSeconds = DEFAULT_POWER_WINDOW
         },
         load: {
             estimatedTss: 0
+        },
+        energy: {
+            mechanicalWorkKj: 0,
+            estimatedCaloriesKcal: 0,
+            method: "power"
         }
     };
 }
@@ -212,6 +219,36 @@ function calculateEstimatedTss({ intensityFactor, elapsedSeconds }) {
 
     const durationHours = elapsedSeconds / 3600;
     return durationHours * intensityFactor * intensityFactor * 100;
+}
+
+function calculateEnergyMetrics(records) {
+    if (!records.length) {
+        return {
+            mechanicalWorkKj: 0,
+            estimatedCaloriesKcal: 0,
+            method: "power"
+        };
+    }
+
+    let joules = 0;
+    for (let index = 1; index < records.length; index += 1) {
+        const previous = records[index - 1];
+        const current = records[index];
+        const power = normalizeFiniteNumber(current?.power);
+        const elapsed = normalizeFiniteNumber(current?.elapsedSeconds);
+        const previousElapsed = normalizeFiniteNumber(previous?.elapsedSeconds);
+        if (power === null || elapsed === null || previousElapsed === null || elapsed <= previousElapsed) {
+            continue;
+        }
+        joules += power * (elapsed - previousElapsed);
+    }
+
+    const mechanicalWorkKj = joules / 1000;
+    return {
+        mechanicalWorkKj,
+        estimatedCaloriesKcal: mechanicalWorkKj,
+        method: "power"
+    };
 }
 
 function summarizeGrades(records) {

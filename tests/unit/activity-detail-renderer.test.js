@@ -23,6 +23,7 @@ export const suite = {
                 assert(html.includes("心率 / 时间"), "heart-rate chart section should render");
                 assert(html.includes("功率区间"), "power zone section should render");
                 assert(html.includes("心率区间"), "heart-rate zone section should render");
+                assert(html.includes("27 kcal / 27 kJ"), "energy summary should render kcal and kJ");
             }
         },
         {
@@ -136,6 +137,11 @@ function buildActivity() {
                     },
                     load: {
                         estimatedTss: 12
+                    },
+                    energy: {
+                        estimatedCaloriesKcal: 27,
+                        mechanicalWorkKj: 27,
+                        method: "power"
                     }
                 }
             },
