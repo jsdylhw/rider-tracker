@@ -1,0 +1,282 @@
+.ride-dashboard.immersive-street-view .ride-dashboard-inner {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.streetview-hud {
+    display: none;
+}
+
+.streetview-hud-card {
+    background: rgba(15, 23, 42, 0.82);
+    color: #e2e8f0;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-radius: 14px;
+    padding: 12px;
+    backdrop-filter: blur(6px);
+}
+
+.streetview-hud-card h3 {
+    margin: 0 0 10px;
+    font-size: 14px;
+}
+
+.ride-dashboard.immersive-street-view #rideStreetViewStage {
+    min-height: 100%;
+    border-radius: 0;
+    border: none;
+    padding: 0;
+    background: #000;
+    margin: 0;
+}
+
+.ride-dashboard.immersive-street-view .ride-map-large {
+    height: 100%;
+    border-radius: 0;
+    overflow: hidden;
+    margin: 0;
+}
+
+.ride-dashboard.immersive-street-view #rideDashboardMap {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ride-dashboard.immersive-street-view #streetViewContainer {
+    display: block !important;
+    z-index: 20 !important;
+}
+
+.ride-dashboard.immersive-street-view .streetview-hud {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    z-index: 35;
+    display: block;
+    pointer-events: none;
+}
+
+.ride-dashboard.immersive-street-view #rideStreetViewStage > .section-title-row {
+    display: none;
+}
+
+.ride-dashboard.immersive-street-view #rideDashboardGrid {
+    grid-template-columns: 1fr;
+    gap: 0;
+    min-height: 100%;
+    margin: 0;
+}
+
+.ride-dashboard.immersive-street-view .ride-dashboard-header {
+    display: none;
+}
+
+.ride-dashboard.immersive-street-view .ride-progress-card {
+    display: none;
+}
+
+.ride-dashboard.immersive-street-view .ride-metrics-column {
+    display: none;
+}
+
+.ride-dashboard.immersive-street-view #metricsCustomizer {
+    display: none !important;
+}
+
+.ride-dashboard.immersive-street-view .pip-controls-card {
+    display: none !important;
+}
+
+.ride-dashboard.immersive-street-view #immersiveMetricsCard {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 200px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    backdrop-filter: none;
+}
+
+.ride-dashboard.immersive-street-view #immersiveMetricsCard h3 {
+    display: none;
+}
+
+.ride-dashboard.immersive-street-view #immersiveMetricsGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+}
+
+.ride-dashboard.immersive-street-view #immersiveMetricsCard .data-item {
+    background: rgba(31, 41, 55, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.38);
+    border-radius: 12px;
+    padding: 8px 12px;
+    min-height: 66px;
+}
+
+.ride-dashboard.immersive-street-view #immersiveMetricsCard .data-label {
+    color: #9ca3af;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display {
+    margin-top: 2px;
+    color: #f8fafc;
+    font-size: 40px;
+    line-height: 1;
+    font-weight: 800;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
+.ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display .unit {
+    font-size: 28px;
+    opacity: 0.9;
+}
+
+.ride-dashboard.immersive-street-view #trajectoryCard {
+    position: absolute;
+    right: 8px;
+    bottom: 6px;
+    width: 280px;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.76), rgba(15, 23, 42, 0.56));
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 16px;
+    padding: 10px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
+    backdrop-filter: blur(8px);
+}
+
+.ride-dashboard.immersive-street-view #trajectoryCard h3,
+.ride-dashboard.immersive-street-view #trajectoryCard .section-subtitle {
+    display: none;
+}
+
+.ride-dashboard.immersive-street-view #trajectoryCard .chart-shell {
+    height: 150px !important;
+    background: transparent;
+    border: 0;
+}
+
+.ride-dashboard.immersive-street-view #workoutTargetHudCard.erg-power-hud {
+    position: absolute;
+    left: 50%;
+    bottom: 10px;
+    transform: translateX(-50%);
+    width: min(620px, 58vw);
+    padding: 10px 12px;
+    z-index: 48;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.72));
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.28);
+}
+
+.ride-dashboard.immersive-street-view #workoutTargetHudCard.erg-power-hud h3 {
+    display: none;
+}
+
+.ride-dashboard.immersive-street-view #workoutTargetHudCard.erg-power-hud #workoutTargetHudGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+}
+
+.erg-power-hud-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: #cbd5e1;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.erg-power-hud-header strong {
+    color: #f8fafc;
+    font-size: 18px;
+}
+
+.erg-power-chart {
+    width: 100%;
+    height: 138px;
+    display: block;
+}
+
+.ride-dashboard.immersive-street-view #immersiveStreetViewBtn {
+    position: fixed;
+    top: 16px;
+    right: 142px;
+    z-index: 70;
+    pointer-events: auto;
+    background: rgba(31, 41, 55, 0.82);
+    border: 1px solid rgba(148, 163, 184, 0.45);
+}
+
+.ride-dashboard.immersive-street-view #immersiveBackBtn {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 70;
+    pointer-events: auto;
+    background: rgba(31, 41, 55, 0.82);
+    color: #e5e7eb;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+}
+
+.ride-dashboard.immersive-street-view #liveElevationCard {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 10px;
+    width: min(68vw, 980px);
+    z-index: 50;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.7));
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 16px;
+    padding: 10px 12px;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.26);
+    backdrop-filter: blur(8px);
+}
+
+.ride-dashboard.immersive-street-view {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    z-index: 999;
+}
+
+html:has(body.immersive-street-view-active),
+body.immersive-street-view-active {
+    width: 100%;
+    height: 100%;
+    overflow: hidden !important;
+}
+
+.ride-dashboard.immersive-street-view #liveElevationCard .section-title-row {
+    margin-bottom: 6px;
+}
+
+.ride-dashboard.immersive-street-view #liveElevationCard h2 {
+    color: #e5e7eb;
+    font-size: 14px;
+}
+
+.ride-dashboard.immersive-street-view #liveElevationCard .section-subtitle {
+    color: #cbd5e1;
+    font-size: 12px;
+}
+

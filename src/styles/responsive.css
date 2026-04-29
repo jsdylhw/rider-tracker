@@ -1,0 +1,38 @@
+@media (max-width: 1024px) {
+    .layout-grid,
+    .hero,
+    .ride-dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .container {
+        padding: 20px 14px 32px;
+    }
+
+    .card {
+        padding: 18px;
+    }
+
+    .form-grid,
+    .advanced-settings-grid,
+    .data-grid,
+    .summary-grid,
+    .device-status-grid,
+    .ride-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .data-display {
+        font-size: 32px;
+    }
+
+    .ride-dashboard {
+        padding: 14px;
+    }
+
+    .ride-map-large {
+        height: 320px;
+    }
+}

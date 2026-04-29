@@ -1,0 +1,219 @@
+.ride-dashboard {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: #f1f5f9;
+    padding: 24px;
+    overflow-y: auto;
+}
+
+body.dashboard-open .app-shell {
+    display: none;
+}
+
+.ride-dashboard-inner {
+    max-width: 1360px;
+    margin: 0 auto;
+    display: grid;
+    gap: 20px;
+}
+
+.ride-dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(223, 228, 234, 0.9);
+    border-radius: 24px;
+    padding: 22px 24px;
+    box-shadow: var(--shadow);
+}
+
+.compact-progress-container {
+    background: #f8fafc;
+    padding: 12px 20px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.ride-dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.ride-dashboard-grid .data-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+}
+
+.ride-dashboard-grid .data-display {
+    font-size: 28px; /* 缩小数字字体 */
+    letter-spacing: -0.5px;
+}
+
+.ride-dashboard-grid .unit {
+    font-size: 14px;
+}
+
+/* 骑行提示框样式 */
+.ride-alerts {
+    position: fixed;
+    top: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.ride-alert-toast {
+    background: #0ea5e9;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 100px;
+    font-weight: 600;
+    font-size: 15px;
+    box-shadow: 0 10px 25px rgba(14, 165, 233, 0.3);
+    animation: alert-slide-down 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes alert-slide-down {
+    0% { transform: translateY(-40px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+}
+
+.ride-map-card,
+.ride-metrics-column {
+    display: grid;
+    gap: 20px;
+}
+
+.ride-map-large {
+    height: 520px;
+}
+
+#rideDashboardMap {
+    width: 100%;
+    height: 100%;
+}
+
+.ride-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.status {
+    margin-top: 16px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--text);
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid var(--border);
+}
+
+.checkbox-label input {
+    cursor: inherit;
+}
+
+.empty-state {
+    text-align: center;
+    color: var(--muted);
+    padding: 24px;
+}
+
+.action-cell {
+    width: 56px;
+}
+
+.remove-segment-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 71, 87, 0.12);
+    color: var(--danger);
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.remove-segment-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.pip-mode {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background-color: #1e272e;
+    color: white;
+    font-family: "Segoe UI", sans-serif;
+    margin: 0;
+}
+
+body:has(.pip-mode) {
+    margin: 0;
+    padding: 0;
+    background-color: #1e272e;
+    overflow: hidden;
+}
+
+.pip-data-row {
+    display: flex;
+    gap: 32px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 0 16px;
+}
+
+.pip-data {
+    font-size: 52px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pip-data:nth-child(1) {
+    color: #ff4757;
+}
+
+.pip-data:nth-child(2) {
+    color: #ffa502;
+}
+
+.pip-data.time-color {
+    color: #2ed573;
+}
+
+.pip-data.np-color {
+    color: #3742fa;
+}
+
+.pip-icon {
+    font-size: 28px;
+}
+
+.pip-unit {
+    font-size: 18px;
+    color: #a4b0be;
+    font-weight: 500;
+}
+

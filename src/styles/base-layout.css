@@ -1,0 +1,214 @@
+:root {
+    --primary: #2ed573;
+    --primary-hover: #27ae60;
+    --secondary: #3742fa;
+    --secondary-hover: #5352ed;
+    --bg: #f3f5fb;
+    --text: #222f3e;
+    --muted: #64748b;
+    --card-bg: #ffffff;
+    --danger: #ff4757;
+    --border: #dfe4ea;
+    --accent: #0ea5e9;
+    --climb: #9b59b6;
+    --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
+
+[hidden] {
+    display: none !important;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background:
+        radial-gradient(circle at top left, rgba(55, 66, 250, 0.12), transparent 30%),
+        radial-gradient(circle at top right, rgba(46, 213, 115, 0.12), transparent 35%),
+        var(--bg);
+    color: var(--text);
+    margin: 0;
+    min-height: 100vh;
+}
+
+.container {
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 32px 20px 48px;
+}
+
+.app-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* 新增的视图层布局样式 */
+.view-section {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.view-section[hidden] {
+    display: none !important;
+}
+
+.layout-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+    gap: 24px;
+    align-items: start;
+}
+
+.view-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 0;
+    padding: 16px 24px;
+}
+
+.view-header h2 {
+    margin: 0;
+}
+
+.mode-controls {
+    margin-top: 24px;
+    display: flex;
+    gap: 16px;
+}
+
+.card {
+    background: var(--card-bg);
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+}
+
+.hero {
+    display: grid;
+    grid-template-columns: 1.8fr 1fr;
+    gap: 24px;
+    align-items: center;
+}
+
+.hero h1,
+.card h2,
+.card h3 {
+    margin: 0;
+}
+
+.eyebrow {
+    margin: 0 0 8px;
+    color: var(--secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.hero-text,
+.section-subtitle {
+    margin: 8px 0 0;
+    color: var(--muted);
+    line-height: 1.6;
+}
+
+.hero-metrics,
+.summary-grid,
+.data-grid,
+.form-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.hero-metrics {
+    grid-template-columns: 1fr;
+}
+
+.metric-chip,
+.summary-card {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+}
+
+.metric-chip span,
+.summary-card span {
+    display: block;
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.metric-chip strong,
+.summary-card strong {
+    font-size: 22px;
+}
+
+.device-meta {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.device-status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+#deviceControlsPanel {
+    display: block;
+}
+
+#deviceControlsPanel .column-main {
+    display: block;
+}
+
+#deviceControlsPanel .card {
+    padding: 18px;
+}
+
+#deviceControlsPanel .controls {
+    margin-top: 12px;
+}
+
+#deviceControlsPanel .device-status-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+#deviceControlsPanel .summary-card {
+    padding: 12px;
+}
+
+#deviceControlsPanel .summary-card span {
+    margin-bottom: 4px;
+}
+
+#deviceControlsPanel .summary-card strong {
+    font-size: 18px;
+}
+
+#deviceControlsPanel .device-meta {
+    margin-top: 6px;
+}
+
+.live-setup-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+}
+
+.live-setup-full {
+    grid-column: 1 / -1;
+    width: 100%;
+}
+
