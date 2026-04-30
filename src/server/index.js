@@ -61,6 +61,10 @@ app.get("/", (_req, res) => {
     res.sendFile(path.join(PROJECT_ROOT, "index.html"));
 });
 
+app.get("/user-profile.json", (_req, res) => {
+    res.sendFile(path.join(PROJECT_ROOT, "user-profile.json"));
+});
+
 app.get("/healthz", (_req, res) => {
     res.json({ ok: true, service: "rider-tracker" });
 });
