@@ -276,6 +276,50 @@ export function createExportService({ store }) {
         }
     }
 
+    async function archiveSessionAsFitActivity(sessionArg = null, options = {}) {
+        const { session, exportMetadata } = store.getState();
+        const targetSession = sessionArg ?? session;
+
+        if (!targetSession) {
+            return null;
+        }
+
+        try {
+            const metadata = {
+                ...exportMetadata,
+                ...(targetSession.exportMetadata ?? {}),
+                ...(options.exportMetadata ?? {})
+            };
+            const fitBytes = await exportSessionAsFit(targetSession, metadata, {
+                markVirtualActivity: options.markVirtualActivity ?? metadata?.markVirtualActivity
+            });
+            const timestamp = resolveSessionTimestamp(targetSession);
+            const filename = options.filename ?? `virtual-ride-${timestamp}.fit`;
+            const compactSession = buildCompactFitSession(targetSession);
+            const savedActivity = await importActivityFitFile({
+                session: compactSession,
+                fitBytes,
+                filename,
+                name: options.name ?? metadata.activityName ?? targetSession.exportMetadata?.activityName,
+                sportType: options.sportType ?? inferSportTypeForSession(targetSession, metadata)
+            });
+
+            if (savedActivity?.id) {
+                targetSession.activityId = savedActivity.id;
+            }
+            notifyActivitySaved(savedActivity);
+            updateSelectedActivityFit(savedActivity, targetSession);
+            return savedActivity;
+        } catch (error) {
+            console.error("FIT activity archive failed", error);
+            store.setState((state) => ({
+                ...state,
+                statusText: `FIT 活动保存失败：${extractErrorMessage(error)}`
+            }));
+            return null;
+        }
+    }
+
     async function uploadSessionFit({ session, exportMetadata, selectedActivity = null }) {
         if (!exportMetadata.stravaServerUrl) {
             store.setState((state) => ({
@@ -381,7 +425,8 @@ export function createExportService({ store }) {
         importFit,
         uploadFit,
         uploadActivityFit,
-        archiveFitForSession
+        archiveFitForSession,
+        archiveSessionAsFitActivity
     };
 }
 
@@ -442,7 +487,7 @@ function buildCompactFitSession(session) {
     return {
         id: session.id,
         activityId: session.activityId,
-        source: session.source,
+        source: session.source ?? "rider-tracker",
         createdAt: session.createdAt,
         startedAt: session.startedAt,
         finishedAt: session.finishedAt,
@@ -452,6 +497,11 @@ function buildCompactFitSession(session) {
         hasGpsTrack: sessionHasGpsTrack(session),
         records: []
     };
+}
+
+function inferSportTypeForSession(session, exportMetadata = {}) {
+    const uploadAsVirtual = exportMetadata?.markVirtualActivity !== false;
+    return uploadAsVirtual || !sessionHasGpsTrack(session) ? "VirtualRide" : "Ride";
 }
 
 function resolveSessionTimestamp(session) {

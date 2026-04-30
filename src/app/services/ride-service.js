@@ -303,7 +303,7 @@ export function createRideService({ store, deviceService, exportService }) {
         };
 
         saveLastSession(session);
-        saveSessionToActivityHistory(session);
+        archiveSimulationSession(session, exportService);
 
         store.setState((currentState) => ({
             ...currentState,
@@ -368,6 +368,27 @@ function saveSessionToActivityHistory(session) {
         })
         .catch((error) => {
             console.warn("[RideService] 保存活动历史失败:", error);
+            return null;
+        });
+}
+
+function archiveSimulationSession(session, exportService) {
+    const savePromise = typeof exportService?.archiveSessionAsFitActivity === "function"
+        ? exportService.archiveSessionAsFitActivity(session, {
+            sportType: "VirtualRide",
+            markVirtualActivity: session.exportMetadata?.markVirtualActivity
+        })
+        : saveSessionToActivityHistory(session);
+
+    return Promise.resolve(savePromise)
+        .then((activity) => {
+            if (activity?.id) {
+                session.activityId = activity.id;
+            }
+            return activity;
+        })
+        .catch((error) => {
+            console.warn("[RideService] 保存模拟活动 FIT 失败:", error);
             return null;
         });
 }

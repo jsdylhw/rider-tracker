@@ -248,6 +248,49 @@ export const suite = {
             }
         },
         {
+            name: "runSimulation 会通过 FIT 活动归档保存历史",
+            async run() {
+                const store = createStore(createState());
+                const originalLocalStorage = globalThis.localStorage;
+                globalThis.localStorage = {
+                    setItem() {},
+                    getItem() { return null; },
+                    removeItem() {}
+                };
+                let archivedSession = null;
+                let archivedOptions = null;
+
+                try {
+                    const service = createRideService({
+                        store,
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: {
+                            archiveSessionAsFitActivity(session, options) {
+                                archivedSession = session;
+                                archivedOptions = options;
+                                return Promise.resolve({
+                                    id: "sim-fit-activity",
+                                    fitFilePath: "data/files/fit/sim-fit-activity.fit"
+                                });
+                            }
+                        }
+                    });
+
+                    service.runSimulation();
+                    await Promise.resolve();
+                    await Promise.resolve();
+
+                    assertEqual(Boolean(archivedSession?.records?.length), true);
+                    assertEqual(Boolean(archivedSession?.summary?.metrics), true);
+                    assertEqual(archivedOptions.sportType, "VirtualRide");
+                    assertEqual(store.getState().session.activityId, "sim-fit-activity");
+                } finally {
+                    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+                    else globalThis.localStorage = originalLocalStorage;
+                }
+            }
+        },
+        {
             name: "SIM 模式下 trainer 命令按 500ms 节流且不重复下发相同坡度",
             run() {
                 const store = createStore({

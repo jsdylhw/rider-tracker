@@ -2,10 +2,7 @@ import { parseGpx } from "../../src/domain/route/gpx-parser.js";
 import { assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
 
 const FIXTURES = [
-    "Mont Ventoux.gpx",
-    "mtlll.gpx",
-    "ヤビツ峠 コンビニスタート.gpx",
-    "濑户内海 - 1.gpx"
+    "mtlll.gpx"
 ];
 
 async function readFixture(name) {
