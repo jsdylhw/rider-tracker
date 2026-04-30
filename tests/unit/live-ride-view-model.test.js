@@ -40,15 +40,14 @@ export const suite = {
                         dashboardOpen: true,
                         isActive: true,
                         canStart: true,
-                        snapshot: null,
                         statusMeta: "",
                         session: {
-                            route: { totalDistanceMeters: 2000 },
-                            records: [
-                                { elapsedSeconds: 1, distanceKm: 0.01, speedKph: 20, power: 200, heartRate: 140, cadence: 85, gradePercent: 2, ascentMeters: 2, routeProgress: 0.1 },
-                                { elapsedSeconds: 2, distanceKm: 0.03, speedKph: 30, power: 300, heartRate: 150, cadence: 90, gradePercent: 5, ascentMeters: 8, routeProgress: 0.3 }
-                            ]
-                        }
+                            route: { totalDistanceMeters: 2000 }
+                        },
+                        records: [
+                            { elapsedSeconds: 1, distanceKm: 0.01, speedKph: 20, power: 200, heartRate: 140, cadence: 85, gradePercent: 2, ascentMeters: 2, routeProgress: 0.1 },
+                            { elapsedSeconds: 2, distanceKm: 0.03, speedKph: 30, power: 300, heartRate: 150, cadence: 90, gradePercent: 5, ascentMeters: 8, routeProgress: 0.3 }
+                        ]
                     },
                     workout: {
                         mode: "grade-sim",

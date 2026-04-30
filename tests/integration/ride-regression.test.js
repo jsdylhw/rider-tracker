@@ -43,10 +43,9 @@ function createState() {
             isActive: false,
             canStart: true,
             dashboardOpen: false,
-            snapshot: null,
             session: null,
-            trainerControlMode: null,
-            commandSequence: 0,
+            records: [],
+            summary: null,
             commandDispatch: {
                 lastSentAtMs: null,
                 lastSentControlMode: null,
@@ -54,7 +53,6 @@ function createState() {
                 lastSentPowerWatts: null,
                 lastSentResistanceLevel: null
             },
-            startedAt: null,
             lastCompletedAt: null,
             statusMeta: "准备开始"
         },

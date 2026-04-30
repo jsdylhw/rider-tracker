@@ -27,8 +27,17 @@ export function createLiveRideSession({ route, settings, startedAt, initialHeart
     };
 }
 
-export function advanceLiveRideSession({ session, power, heartRate, cadence, workoutTarget = null, dt = 1 }) {
-    const elapsedSeconds = (session.summary.metrics?.ride?.elapsedSeconds ?? 0) + dt;
+export function advanceLiveRideSession({
+    session,
+    records = session.records ?? [],
+    summary = session.summary ?? createEmptySummary(),
+    power,
+    heartRate,
+    cadence,
+    workoutTarget = null,
+    dt = 1
+}) {
+    const elapsedSeconds = (summary.metrics?.ride?.elapsedSeconds ?? 0) + dt;
     const routeSample = getRouteSampleAtDistance(session.route, session.physicsState.distanceMeters);
     const gradePercent = routeSample.gradePercent ?? 0;
     const nextHeartRateState = advanceLiveHeartRateState({
@@ -75,14 +84,32 @@ export function advanceLiveRideSession({ session, power, heartRate, cadence, wor
         positionLong: nextRouteSample.longitude
     };
 
-    const records = [...session.records, record];
+    const nextRecords = [...records, record];
+    const nextSummary = buildSummary(nextRecords, session.settings);
+
+    return {
+        ...session,
+        records: nextRecords,
+        physicsState: nextState,
+        heartRateState: nextHeartRateState,
+        summary: nextSummary
+    };
+}
+
+export function stripLiveRideSessionHistory(session) {
+    if (!session) return null;
+
+    const { records, summary, ...currentSession } = session;
+    return currentSession;
+}
+
+export function buildRideActivitySession({ session, records = [], summary = null }) {
+    if (!session) return null;
 
     return {
         ...session,
         records,
-        physicsState: nextState,
-        heartRateState: nextHeartRateState,
-        summary: buildSummary(records, session.settings)
+        summary: summary ?? buildSummary(records, session.settings)
     };
 }
 

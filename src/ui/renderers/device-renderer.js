@@ -25,11 +25,12 @@ export function createDeviceRenderer({
         const trainer = state.ble.trainer;
         const liveRide = state.liveRide;
         const liveSession = liveRide.session;
-        const currentRecord = liveSession?.records?.at(-1) ?? null;
-        const workoutRuntime = state.workout.runtime;
+        const liveRecords = liveRide.records ?? liveSession?.records ?? [];
+        const currentRecord = liveSession?.currentRecord ?? liveRecords.at(-1) ?? null;
+        const workoutRuntime = liveSession?.workoutRuntime ?? state.workout.runtime;
         const sessionMetrics = resolveRideMetrics({
-            summary: liveSession?.summary ?? null,
-            records: liveSession?.records ?? [],
+            summary: liveRide.summary ?? liveSession?.summary ?? null,
+            records: liveRecords,
             ftp: state.settings?.ftp ?? null
         });
 
@@ -64,7 +65,7 @@ export function createDeviceRenderer({
         }
         if (elements.trainerPushGradeMeta) {
             elements.trainerPushGradeMeta.textContent = liveRide.isActive
-                ? `序列 #${liveRide.commandSequence ?? 0} · ${workoutRuntime.controlStatus ?? "等待控制状态"}`
+                ? `序列 #${liveSession?.commandSequence ?? 0} · ${workoutRuntime.controlStatus ?? "等待控制状态"}`
                 : "等待骑行开始后推送";
         }
         if (elements.rideSegmentLabel) elements.rideSegmentLabel.textContent = currentRecord?.segmentName ?? "等待开始";

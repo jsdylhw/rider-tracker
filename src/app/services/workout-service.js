@@ -233,11 +233,11 @@ function deriveRuntime(state, mode, gradeSimulation, customWorkoutTarget) {
     const trainerControlMode = resolveTrainerControlModeForWorkoutMode(mode);
     const activeWorkoutTarget = resolveWorkoutTargetPlanForControlMode(
         trainerControlMode,
-        state.liveRide.customWorkoutTargetPlan ?? customWorkoutTarget
+        state.liveRide.session?.customWorkoutTargetPlan ?? customWorkoutTarget
     );
     const workoutTargetRuntime = buildWorkoutTargetRuntime({
         target: activeWorkoutTarget,
-        elapsedSeconds: state.liveRide.session?.summary?.elapsedSeconds ?? 0,
+        elapsedSeconds: state.liveRide.summary?.metrics?.ride?.elapsedSeconds ?? 0,
         ftp: state.settings.ftp
     });
 
@@ -256,7 +256,7 @@ function deriveRuntime(state, mode, gradeSimulation, customWorkoutTarget) {
         }), workoutTargetRuntime);
     }
 
-    const liveDistanceMeters = (state.liveRide.session?.summary?.distanceKm ?? 0) * 1000;
+    const liveDistanceMeters = (state.liveRide.summary?.metrics?.ride?.distanceKm ?? 0) * 1000;
     const preview = buildGradeSimulationState({
         route: state.liveRide.session?.route ?? state.route,
         distanceMeters: liveDistanceMeters,

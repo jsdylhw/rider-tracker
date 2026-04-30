@@ -1,4 +1,4 @@
-import { advanceLiveRideSession } from "../../domain/ride/live-ride-session.js";
+import { advanceLiveRideSession, stripLiveRideSessionHistory } from "../../domain/ride/live-ride-session.js";
 import { buildGradeSimulationState } from "../../domain/workout/grade-sim-mode.js";
 import { buildErgControlState } from "../../domain/workout/erg-mode.js";
 import { buildResistanceControlState } from "../../domain/workout/resistance-mode.js";
@@ -10,20 +10,23 @@ import {
 import { resolveTrainerControlModeForWorkoutMode, TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { formatDuration, formatNumber } from "../../shared/format.js";
 
-export function buildNextRideSnapshot({
+export function buildNextRideSessionState({
     state,
     sampledSensors,
     dt = 1
 }) {
-    const trainerControlMode = state.liveRide.trainerControlMode
+    const currentSession = state.liveRide.session;
+    const currentRecords = state.liveRide.records ?? currentSession?.records ?? [];
+    const currentSummary = state.liveRide.summary ?? currentSession?.summary;
+    const trainerControlMode = currentSession?.trainerControlMode
         ?? resolveTrainerControlModeForWorkoutMode(state.workout.mode);
     const customWorkoutTargetPlan = resolveWorkoutTargetPlanForControlMode(
         trainerControlMode,
-        state.liveRide.customWorkoutTargetPlan ?? state.workout.customWorkoutTarget
+        currentSession?.customWorkoutTargetPlan ?? state.workout.customWorkoutTarget
     );
-    const nextCommandSequence = (state.liveRide.commandSequence ?? 0) + 1;
-    const rideId = state.liveRide.startedAt ?? state.liveRide.session.startedAt;
-    const nextElapsedSeconds = (state.liveRide.session.summary?.metrics?.ride?.elapsedSeconds ?? 0) + dt;
+    const nextCommandSequence = (currentSession?.commandSequence ?? 0) + 1;
+    const rideId = currentSession.startedAt;
+    const nextElapsedSeconds = (currentSummary?.metrics?.ride?.elapsedSeconds ?? 0) + dt;
     const resolvedWorkoutTarget = resolveWorkoutTargetAtElapsed({
         target: customWorkoutTargetPlan,
         elapsedSeconds: nextElapsedSeconds,
@@ -31,7 +34,9 @@ export function buildNextRideSnapshot({
     });
 
     const nextSession = advanceLiveRideSession({
-        session: state.liveRide.session,
+        session: currentSession,
+        records: currentRecords,
+        summary: currentSummary,
         power: sampledSensors.power ?? 0,
         heartRate: sampledSensors.heartRate,
         cadence: sampledSensors.cadence,
@@ -60,6 +65,7 @@ export function buildNextRideSnapshot({
         : buildRuntimeByControlMode({
             trainerControlMode,
             state,
+            session: currentSession,
             active: true,
             rideId,
             commandSequence: nextCommandSequence,
@@ -67,7 +73,7 @@ export function buildNextRideSnapshot({
             elapsedSeconds: nextSession.summary.metrics.ride.elapsedSeconds
         });
 
-    return buildRideSnapshot({
+    return buildRideSessionState({
         sampledSensors,
         trainerControlMode,
         customWorkoutTargetPlan,
@@ -77,7 +83,7 @@ export function buildNextRideSnapshot({
     });
 }
 
-export function buildInitialRideSnapshot({
+export function buildInitialRideSessionState({
     session,
     sampledSensors,
     trainerControlMode,
@@ -85,7 +91,7 @@ export function buildInitialRideSnapshot({
     workoutRuntime,
     statusMeta = ""
 }) {
-    return buildRideSnapshot({
+    return buildRideSessionState({
         sampledSensors,
         trainerControlMode,
         customWorkoutTargetPlan,
@@ -99,6 +105,7 @@ export function buildInitialRideSnapshot({
 export function buildRuntimeByControlMode({
     trainerControlMode,
     state,
+    session = state.liveRide?.session,
     active,
     rideId = null,
     commandSequence = 0,
@@ -136,7 +143,7 @@ export function buildRuntimeByControlMode({
     }
 
     return enrichRuntimeWithWorkoutTarget({
-        ...state.workout.runtime,
+        ...(session?.workoutRuntime ?? state.workout.runtime),
         pendingTrainerCommand: null
     }, workoutTargetRuntime);
 }
@@ -152,16 +159,18 @@ function resolveWorkoutTargetPlanForControlMode(trainerControlMode, customWorkou
     };
 }
 
-export function buildRideLogMessage(rideSnapshot) {
-    const power = rideSnapshot.sampledSensors.power ?? 0;
-    const cadence = rideSnapshot.sampledSensors.cadence ?? 0;
+export function buildRideLogMessage(rideState) {
+    const sampledSensors = rideState.session?.sampledSensors ?? {};
+    const power = sampledSensors.power ?? 0;
+    const cadence = sampledSensors.cadence ?? 0;
+    const summary = rideState.summary.metrics;
 
-    if (rideSnapshot.pendingTrainerCommand) {
-        const cmd = rideSnapshot.pendingTrainerCommand;
-        return `[Ride Log] Distance: ${rideSnapshot.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${rideSnapshot.summary.grade.currentPercent.toFixed(1)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${rideSnapshot.summary.speed.currentKph.toFixed(1)}km/h | Next Command: ${formatTrainerCommand(cmd)}`;
+    if (rideState.session.pendingTrainerCommand) {
+        const cmd = rideState.session.pendingTrainerCommand;
+        return `[Ride Log] Distance: ${rideState.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${summary.grade.currentPercent.toFixed(1)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${summary.speed.currentKph.toFixed(1)}km/h | Next Command: ${formatTrainerCommand(cmd)}`;
     }
 
-    return `[Ride Log] Distance: ${rideSnapshot.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${rideSnapshot.summary.grade.currentPercent.toFixed(1)}% | Target Grade: ${rideSnapshot.workoutRuntime.targetTrainerGradePercent?.toFixed(2)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${rideSnapshot.summary.speed.currentKph.toFixed(1)}km/h`;
+    return `[Ride Log] Distance: ${rideState.session.physicsState.distanceMeters.toFixed(1)}m | Current Grade: ${summary.grade.currentPercent.toFixed(1)}% | Target Grade: ${rideState.session.workoutRuntime.targetTrainerGradePercent?.toFixed(2)}% | Power: ${power}W | Cadence: ${cadence}rpm | Speed: ${summary.speed.currentKph.toFixed(1)}km/h`;
 }
 
 function formatTrainerCommand(command) {
@@ -181,7 +190,7 @@ function formatTrainerCommand(command) {
     return `SIM ${Number(targetGradePercent ?? 0).toFixed(2)}%`;
 }
 
-function buildRideSnapshot({
+function buildRideSessionState({
     sampledSensors,
     trainerControlMode,
     customWorkoutTargetPlan,
@@ -191,27 +200,32 @@ function buildRideSnapshot({
     statusMetaOverride = null
 }) {
     const currentRecord = nextSession.records.at(-1) ?? null;
-
-    return {
+    const summary = nextSession.summary;
+    const session = {
+        ...stripLiveRideSessionHistory(nextSession),
         sampledSensors,
         trainerControlMode,
         customWorkoutTargetPlan,
         commandSequence: nextCommandSequence,
-        session: nextSession,
-        summary: nextSession.summary.metrics,
         currentRecord,
         workoutRuntime,
         pendingTrainerCommand: workoutRuntime.pendingTrainerCommand ?? null,
         statusMeta: statusMetaOverride ?? buildRideStatusMeta({
             trainerControlMode,
             workoutRuntime,
-            nextSession
+            summary
         })
+    };
+
+    return {
+        session,
+        records: nextSession.records,
+        summary
     };
 }
 
-function buildRideStatusMeta({ trainerControlMode, workoutRuntime, nextSession }) {
+function buildRideStatusMeta({ trainerControlMode, workoutRuntime, summary }) {
     return trainerControlMode === TRAINER_CONTROL_MODES.SIM
-        ? `${workoutRuntime.controlStatus} 当前速度 ${formatNumber(nextSession.summary.metrics.speed.currentKph, 1)} km/h`
-        : `已骑行 ${formatDuration(nextSession.summary.metrics.ride.elapsedSeconds)}，当前速度 ${formatNumber(nextSession.summary.metrics.speed.currentKph, 1)} km/h`;
+        ? `${workoutRuntime.controlStatus} 当前速度 ${formatNumber(summary.metrics.speed.currentKph, 1)} km/h`
+        : `已骑行 ${formatDuration(summary.metrics.ride.elapsedSeconds)}，当前速度 ${formatNumber(summary.metrics.speed.currentKph, 1)} km/h`;
 }

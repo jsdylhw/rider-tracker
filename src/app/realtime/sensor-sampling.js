@@ -118,31 +118,53 @@ export function buildEffectiveSensorSnapshot(
         staleThresholdMs = SENSOR_STALE_THRESHOLD_MS
     } = {}
 ) {
-    const heartRateFresh = isFresh(samplingState.heartRate.timestamp, now, staleThresholdMs);
-    const powerFresh = isFresh(samplingState.power.timestamp, now, staleThresholdMs);
-    const cadenceFresh = isFresh(samplingState.cadence.timestamp, now, staleThresholdMs);
+    const normalizedSamplingState = normalizeSamplingState(samplingState);
+    const heartRateFresh = isFresh(normalizedSamplingState.heartRate.timestamp, now, staleThresholdMs);
+    const powerFresh = isFresh(normalizedSamplingState.power.timestamp, now, staleThresholdMs);
+    const cadenceFresh = isFresh(normalizedSamplingState.cadence.timestamp, now, staleThresholdMs);
 
     return {
-        power: powerFresh ? samplingState.power.value : null,
-        cadence: cadenceFresh ? samplingState.cadence.value : null,
-        heartRate: heartRateFresh ? samplingState.heartRate.value : null,
-        powerSourceType: powerFresh ? samplingState.power.sourceType : "none",
-        powerTimestamp: samplingState.power.timestamp,
-        cadenceTimestamp: samplingState.cadence.timestamp,
-        heartRateTimestamp: samplingState.heartRate.timestamp,
-        lastUpdated: samplingState.lastUpdated,
+        power: powerFresh ? normalizedSamplingState.power.value : null,
+        cadence: cadenceFresh ? normalizedSamplingState.cadence.value : null,
+        heartRate: heartRateFresh ? normalizedSamplingState.heartRate.value : null,
+        powerSourceType: powerFresh ? normalizedSamplingState.power.sourceType : "none",
+        powerTimestamp: normalizedSamplingState.power.timestamp,
+        cadenceTimestamp: normalizedSamplingState.cadence.timestamp,
+        heartRateTimestamp: normalizedSamplingState.heartRate.timestamp,
+        lastUpdated: normalizedSamplingState.lastUpdated,
         powerSignal: {
-            observedIntervalMs: powerFresh ? samplingState.power.lastIntervalMs : null,
-            estimatedIntervalMs: powerFresh ? samplingState.power.estimatedIntervalMs : null,
-            estimatedHz: powerFresh ? samplingState.power.estimatedHz : null,
-            jitterMs: powerFresh ? samplingState.power.jitterMs : null,
-            isStable: powerFresh ? samplingState.power.isSignalStable : false,
-            intervalSampleCount: powerFresh ? samplingState.power.intervalSampleCount : 0
+            observedIntervalMs: powerFresh ? normalizedSamplingState.power.lastIntervalMs : null,
+            estimatedIntervalMs: powerFresh ? normalizedSamplingState.power.estimatedIntervalMs : null,
+            estimatedHz: powerFresh ? normalizedSamplingState.power.estimatedHz : null,
+            jitterMs: powerFresh ? normalizedSamplingState.power.jitterMs : null,
+            isStable: powerFresh ? normalizedSamplingState.power.isSignalStable : false,
+            intervalSampleCount: powerFresh ? normalizedSamplingState.power.intervalSampleCount : 0
         },
         freshness: {
             power: powerFresh,
             cadence: cadenceFresh,
             heartRate: heartRateFresh
+        }
+    };
+}
+
+function normalizeSamplingState(samplingState) {
+    const initial = createInitialSensorSamplingState();
+
+    return {
+        ...initial,
+        ...samplingState,
+        heartRate: {
+            ...initial.heartRate,
+            ...(samplingState?.heartRate ?? {})
+        },
+        power: {
+            ...initial.power,
+            ...(samplingState?.power ?? {})
+        },
+        cadence: {
+            ...initial.cadence,
+            ...(samplingState?.cadence ?? {})
         }
     };
 }

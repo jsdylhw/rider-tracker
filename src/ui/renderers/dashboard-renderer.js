@@ -204,7 +204,7 @@ export function createDashboardRenderer({
             streetViewLoaded
         });
         const { ride, training, metricsData, enabledMetricKeys } = viewModel;
-        const { snapshot: rideSnapshot, session, currentRecord, route, records, distanceKm } = ride;
+        const { session, currentRecord, route, records, distanceKm } = ride;
         const isGradeSimulation = training.mode === WORKOUT_MODES.GRADE_SIM;
 
         elements.rideDashboard.hidden = !ride.dashboardOpen;
@@ -257,9 +257,9 @@ export function createDashboardRenderer({
                 hasSession: false
             });
 
-            renderTrajectoryOverview(rideSnapshot, route, null, isGradeSimulation);
-            workoutRuntimeRenderer.render({ rideSnapshot, training, records });
-            syncRideMap(rideSnapshot, route, null);
+            renderTrajectoryOverview(route, null, isGradeSimulation);
+            workoutRuntimeRenderer.render({ liveSession: session, training, records });
+            syncRideMap(route, null);
             return;
         }
 
@@ -294,12 +294,12 @@ export function createDashboardRenderer({
             hasSession: true
         });
 
-        renderTrajectoryOverview(rideSnapshot, route, currentRecord, isGradeSimulation);
-        workoutRuntimeRenderer.render({ rideSnapshot, training, records });
-        syncRideMap(rideSnapshot, route, currentRecord);
+        renderTrajectoryOverview(route, currentRecord, isGradeSimulation);
+        workoutRuntimeRenderer.render({ liveSession: session, training, records });
+        syncRideMap(route, currentRecord);
     }
 
-    function renderTrajectoryOverview(rideSnapshot, route, currentRecord, isGradeSimulation) {
+    function renderTrajectoryOverview(route, currentRecord, isGradeSimulation) {
         if (elements.trajectoryCard) {
             elements.trajectoryCard.hidden = !isGradeSimulation;
         }
@@ -309,15 +309,15 @@ export function createDashboardRenderer({
             return;
         }
         elements.streetViewTrajectorySvg.innerHTML = buildTrajectoryOverviewSvg(
-            rideSnapshot?.session?.route ?? route,
-            rideSnapshot?.currentRecord ?? currentRecord
+            route,
+            currentRecord
         );
     }
 
-    function syncRideMap(rideSnapshot, route, currentRecord) {
+    function syncRideMap(route, currentRecord) {
         mapController.syncRide(
-            rideSnapshot?.session?.route ?? route,
-            rideSnapshot?.currentRecord ?? currentRecord
+            route,
+            currentRecord
         );
     }
 

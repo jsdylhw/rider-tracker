@@ -184,11 +184,16 @@ export function createMainView({
     }
 
     function renderSession(state) {
-        const session = state.uiMode === "live"
+        const isLiveMode = state.uiMode === "live";
+        const session = isLiveMode
             ? (state.liveRide.session ?? state.session)
             : state.session;
-        const summary = session?.summary;
-        const records = session?.records ?? [];
+        const summary = isLiveMode
+            ? (state.liveRide.summary ?? session?.summary)
+            : session?.summary;
+        const records = isLiveMode
+            ? (state.liveRide.records ?? session?.records ?? [])
+            : (session?.records ?? []);
         const metrics = resolveRideMetrics({
             summary,
             records,
@@ -227,7 +232,7 @@ export function createMainView({
             ? (state.liveRide.session?.route ?? state.route)
             : state.route;
         const currentRecord = state.liveRide.isActive
-            ? (state.liveRide.session?.records?.at(-1) ?? null)
+            ? (state.liveRide.session?.currentRecord ?? state.liveRide.records?.at(-1) ?? null)
             : null;
         routeRenderer.renderElevationChart(previewRoute, currentRecord);
     }

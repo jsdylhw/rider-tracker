@@ -11,8 +11,8 @@ import {
 
 export function buildSensorSnapshot(state) {
     const powerMeter = state.ble?.powerMeter ?? {};
-    const rideSnapshot = state.liveRide?.snapshot ?? null;
-    const effectiveSampling = rideSnapshot?.sampledSensors ?? buildEffectiveSensorSnapshot(state.ble?.sampling);
+    const liveSession = state.liveRide?.session ?? null;
+    const effectiveSampling = liveSession?.sampledSensors ?? buildEffectiveSensorSnapshot(state.ble?.sampling);
 
     return {
         power: effectiveSampling.power,
@@ -28,12 +28,11 @@ export function buildSensorSnapshot(state) {
 
 export function buildRideSnapshot(state) {
     const liveRide = state.liveRide ?? {};
-    const snapshot = liveRide.snapshot ?? null;
-    const session = snapshot?.session ?? liveRide.session ?? null;
+    const session = liveRide.session ?? null;
     const route = session?.route ?? state.route ?? null;
-    const summary = snapshot?.summary ?? session?.summary ?? null;
-    const records = session?.records ?? [];
-    const currentRecord = snapshot?.currentRecord ?? records.at(-1) ?? null;
+    const records = liveRide.records ?? session?.records ?? [];
+    const summary = liveRide.summary ?? session?.summary ?? null;
+    const currentRecord = session?.currentRecord ?? records.at(-1) ?? null;
     const metrics = resolveRideMetrics({
         summary,
         records,
@@ -48,7 +47,6 @@ export function buildRideSnapshot(state) {
         dashboardOpen: Boolean(liveRide.dashboardOpen),
         isActive: Boolean(liveRide.isActive),
         canStart: Boolean(liveRide.canStart),
-        snapshot,
         session,
         route,
         summary,
@@ -59,16 +57,16 @@ export function buildRideSnapshot(state) {
         remainingKm,
         progressPercent,
         metrics,
-        trainerControlMode: liveRide.trainerControlMode ?? null,
-        statusMeta: liveRide.statusMeta ?? ""
+        trainerControlMode: session?.trainerControlMode ?? null,
+        statusMeta: session?.statusMeta ?? liveRide.statusMeta ?? ""
     };
 }
 
 export function buildTrainingSnapshot(state) {
     const workout = state.workout ?? {};
-    const rideSnapshot = state.liveRide?.snapshot ?? null;
-    const runtime = rideSnapshot?.workoutRuntime ?? workout.runtime ?? {};
-    const customWorkoutTarget = rideSnapshot?.customWorkoutTargetPlan ?? state.liveRide?.customWorkoutTargetPlan ?? workout.customWorkoutTarget ?? null;
+    const liveSession = state.liveRide?.session ?? null;
+    const runtime = liveSession?.workoutRuntime ?? workout.runtime ?? {};
+    const customWorkoutTarget = liveSession?.customWorkoutTargetPlan ?? workout.customWorkoutTarget ?? null;
 
     return {
         mode: workout.mode,
@@ -77,7 +75,7 @@ export function buildTrainingSnapshot(state) {
         customWorkoutTarget,
         ftp: state.settings?.ftp ?? 0,
         trainerTarget: resolveTrainerTarget(runtime),
-        rideSnapshot
+        liveSession
     };
 }
 

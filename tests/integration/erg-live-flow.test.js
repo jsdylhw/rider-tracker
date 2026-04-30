@@ -43,9 +43,8 @@ function createIntegrationState() {
             canStart: true,
             dashboardOpen: false,
             session: null,
-            trainerControlMode: null,
-            commandSequence: 0,
-            startedAt: null,
+            records: [],
+            summary: null,
             lastCompletedAt: null,
             statusMeta: "准备开始"
         },

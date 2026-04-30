@@ -1,4 +1,7 @@
-import { createLiveRideSession } from "../../domain/ride/live-ride-session.js";
+import {
+    buildRideActivitySession,
+    createLiveRideSession
+} from "../../domain/ride/live-ride-session.js";
 import { simulateRide } from "../../domain/ride/simulator.js";
 import { buildEffectiveSensorSnapshot } from "../realtime/sensor-sampling.js";
 import {
@@ -7,8 +10,8 @@ import {
 import { getWorkoutModeLabel } from "../../domain/workout/workout-mode.js";
 import { resolveTrainerControlModeForWorkoutMode, TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import {
-    buildInitialRideSnapshot,
-    buildNextRideSnapshot,
+    buildInitialRideSessionState,
+    buildNextRideSessionState,
     buildRideLogMessage,
     buildRuntimeByControlMode
 } from "../realtime/ride-engine.js";
@@ -34,18 +37,26 @@ export function createRideService({ store, deviceService, exportService }) {
         const startedAt = new Date().toISOString();
         const trainerControlMode = resolveTrainerControlModeForWorkoutMode(state.workout.mode);
         const sampledSensors = buildEffectiveSensorSnapshot(state.ble.sampling);
-        const session = createLiveRideSession({
+        const baseSession = createLiveRideSession({
             route: state.route,
             settings: state.settings,
             startedAt,
             initialHeartRate: sampledSensors.heartRate
         });
 
-        session.exportMetadata = sanitizeSessionExportMetadata(state.exportMetadata);
+        baseSession.exportMetadata = sanitizeSessionExportMetadata(state.exportMetadata);
 
         restartLiveRideLoop(resolveAdaptivePhysicsTickMs(sampledSensors));
 
         const initialStatusMeta = `正在根据实时功率和路线坡度更新速度，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`;
+        const initialRideState = buildInitialRideSessionState({
+            session: baseSession,
+            sampledSensors,
+            trainerControlMode,
+            customWorkoutTargetPlan: sanitizeCustomWorkoutTarget(state.workout.customWorkoutTarget),
+            workoutRuntime: state.workout.runtime,
+            statusMeta: initialStatusMeta
+        });
 
         store.setState((currentState) => ({
             ...currentState,
@@ -53,19 +64,9 @@ export function createRideService({ store, deviceService, exportService }) {
                 ...currentState.liveRide,
                 isActive: true,
                 dashboardOpen: true,
-                snapshot: buildInitialRideSnapshot({
-                    session,
-                    sampledSensors,
-                    trainerControlMode,
-                    customWorkoutTargetPlan: sanitizeCustomWorkoutTarget(currentState.workout.customWorkoutTarget),
-                    workoutRuntime: currentState.workout.runtime,
-                    statusMeta: initialStatusMeta
-                }),
-                session,
-                startedAt,
-                trainerControlMode,
-                customWorkoutTargetPlan: sanitizeCustomWorkoutTarget(currentState.workout.customWorkoutTarget),
-                commandSequence: 0,
+                session: initialRideState.session,
+                records: initialRideState.records,
+                summary: initialRideState.summary,
                 commandDispatch: createInitialCommandDispatchState(),
                 statusMeta: initialStatusMeta
             },
@@ -83,7 +84,11 @@ export function createRideService({ store, deviceService, exportService }) {
 
         const completedSession = state.liveRide.session
             ? {
-                ...state.liveRide.session,
+                ...buildRideActivitySession({
+                    session: state.liveRide.session,
+                    records: state.liveRide.records,
+                    summary: state.liveRide.summary
+                }),
                 finishedAt: new Date().toISOString()
             }
             : null;
@@ -99,21 +104,22 @@ export function createRideService({ store, deviceService, exportService }) {
         const stoppedRuntime = buildRuntimeByControlMode({
             trainerControlMode,
             state,
+            session: state.liveRide.session,
             active: false
         });
         const completedMetrics = completedSession?.summary?.metrics ?? null;
         const stoppedStatusMeta = completedSession
             ? `骑行结束：${formatNumber(completedMetrics?.ride.distanceKm ?? 0, 2)} km / 平均速度 ${formatNumber(completedMetrics?.speed.averageKph ?? 0, 1)} km/h`
             : "骑行已停止。";
-        const stoppedSnapshot = completedSession
-            ? buildInitialRideSnapshot({
+        const stoppedSession = completedSession
+            ? buildInitialRideSessionState({
                 session: completedSession,
                 sampledSensors: buildEffectiveSensorSnapshot(state.ble.sampling),
                 trainerControlMode,
-                customWorkoutTargetPlan: state.liveRide.customWorkoutTargetPlan,
+                customWorkoutTargetPlan: state.liveRide.session?.customWorkoutTargetPlan,
                 workoutRuntime: stoppedRuntime,
                 statusMeta: stoppedStatusMeta
-            })
+            }).session
             : null;
 
         store.setState((currentState) => ({
@@ -128,10 +134,9 @@ export function createRideService({ store, deviceService, exportService }) {
                 ...currentState.liveRide,
                 isActive: false,
                 dashboardOpen: false,
-                snapshot: stoppedSnapshot,
-                trainerControlMode: null,
-                customWorkoutTargetPlan: null,
-                commandSequence: 0,
+                session: stoppedSession,
+                records: completedSession?.records ?? currentState.liveRide.records,
+                summary: completedSession?.summary ?? currentState.liveRide.summary,
                 commandDispatch: createInitialCommandDispatchState(),
                 lastCompletedAt: new Date().toISOString(),
                 statusMeta: stoppedStatusMeta
@@ -178,7 +183,7 @@ export function createRideService({ store, deviceService, exportService }) {
         const currentTickIntervalMs = liveRideTickIntervalMs;
         const sampledSensors = buildEffectiveSensorSnapshot(state.ble.sampling);
         const nextTickIntervalMs = resolveAdaptivePhysicsTickMs(sampledSensors);
-        const rideSnapshot = buildNextRideSnapshot({
+        const rideState = buildNextRideSessionState({
             state,
             sampledSensors,
             dt: currentTickIntervalMs / 1000
@@ -187,20 +192,20 @@ export function createRideService({ store, deviceService, exportService }) {
         const now = Date.now();
         let dispatchedCommand = null;
         const shouldDispatchTrainerCommand = canDispatchTrainerCommand({
-            command: rideSnapshot.pendingTrainerCommand,
+            command: rideState.session.pendingTrainerCommand,
             dispatchState: state.liveRide.commandDispatch,
             now
         });
 
-        if (rideSnapshot.pendingTrainerCommand && shouldDispatchTrainerCommand) {
-            const cmd = rideSnapshot.pendingTrainerCommand;
+        if (rideState.session.pendingTrainerCommand && shouldDispatchTrainerCommand) {
+            const cmd = rideState.session.pendingTrainerCommand;
             const controlMode = cmd.controlMode ?? cmd.mode;
             const targetGradePercent = cmd.targetGradePercent ?? cmd.payload?.gradePercent;
             const targetPowerWatts = cmd.targetPowerWatts ?? cmd.payload?.targetPowerWatts;
             const targetResistanceLevel = cmd.targetResistanceLevel ?? cmd.payload?.resistanceLevel;
             const requiresConfirmation = cmd.requireConfirmation === true;
             dispatchedCommand = cmd;
-            console.log(buildRideLogMessage(rideSnapshot));
+            console.log(buildRideLogMessage(rideState));
 
             const dispatchPromise = dispatchTrainerCommand({
                 deviceService,
@@ -242,16 +247,16 @@ export function createRideService({ store, deviceService, exportService }) {
                 void dispatchPromise.catch((error) => {
                     console.error(`[RideService] 下发 trainer ${controlMode} 命令失败:`, error);
                 });
-                rideSnapshot.workoutRuntime.pendingTrainerCommand = null;
-                rideSnapshot.pendingTrainerCommand = null;
+                rideState.session.workoutRuntime.pendingTrainerCommand = null;
+                rideState.session.pendingTrainerCommand = null;
             }
-        } else if (!rideSnapshot.pendingTrainerCommand) {
+        } else if (!rideState.session.pendingTrainerCommand) {
             // 每隔约 5 秒打一次常规日志，防止刷屏
             if (shouldEmitRideLog({
-                previousElapsedSeconds: state.liveRide.session.summary?.metrics?.ride?.elapsedSeconds ?? 0,
-                nextElapsedSeconds: rideSnapshot.session.summary.metrics.ride.elapsedSeconds
+                previousElapsedSeconds: state.liveRide.summary?.metrics?.ride?.elapsedSeconds ?? 0,
+                nextElapsedSeconds: rideState.summary.metrics.ride.elapsedSeconds
             })) {
-                console.log(buildRideLogMessage(rideSnapshot));
+                console.log(buildRideLogMessage(rideState));
             }
         }
 
@@ -273,17 +278,15 @@ export function createRideService({ store, deviceService, exportService }) {
             ...currentState,
             workout: {
                 ...currentState.workout,
-                runtime: rideSnapshot.workoutRuntime
+                runtime: rideState.session.workoutRuntime
             },
             liveRide: {
                 ...currentState.liveRide,
-                snapshot: rideSnapshot,
-                session: rideSnapshot.session,
-                trainerControlMode: rideSnapshot.trainerControlMode,
-                customWorkoutTargetPlan: rideSnapshot.customWorkoutTargetPlan,
-                commandSequence: rideSnapshot.commandSequence,
+                session: rideState.session,
+                records: rideState.records,
+                summary: rideState.summary,
                 commandDispatch: nextCommandDispatch,
-                statusMeta: rideSnapshot.statusMeta
+                statusMeta: rideState.session.statusMeta
             }
         }));
 

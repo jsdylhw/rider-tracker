@@ -2,15 +2,15 @@ import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 import { buildErgPowerChartSvg, buildWorkoutTargetChartSvg } from "./svg/dashboard-charts.js";
 
 export function createWorkoutRuntimeRenderer({ elements }) {
-    function render({ rideSnapshot, training, records }) {
-        const runtime = rideSnapshot?.workoutRuntime ?? training?.runtime ?? {};
-        const effectiveRecords = rideSnapshot?.session?.records ?? records ?? [];
-        const effectiveTraining = rideSnapshot
+    function render({ liveSession, training, records }) {
+        const runtime = liveSession?.workoutRuntime ?? training?.runtime ?? {};
+        const effectiveRecords = records ?? [];
+        const effectiveTraining = liveSession
             ? {
                 ...training,
                 runtime,
-                customWorkoutTarget: rideSnapshot.customWorkoutTargetPlan ?? training?.customWorkoutTarget,
-                rideSnapshot
+                customWorkoutTarget: liveSession.customWorkoutTargetPlan ?? training?.customWorkoutTarget,
+                liveSession
             }
             : (training ?? {});
 
@@ -29,8 +29,8 @@ export function createWorkoutRuntimeRenderer({ elements }) {
         if (!elements.workoutTargetHudGrid) return;
 
         if (shouldShowErgHud) {
-            const progressPercent = training?.rideSnapshot?.summary?.ride?.routeProgress != null
-                ? training.rideSnapshot.summary.ride.routeProgress * 100
+            const progressPercent = training?.liveSession?.currentRecord?.routeProgress != null
+                ? training.liveSession.currentRecord.routeProgress * 100
                 : ((records.at(-1)?.routeProgress ?? 0) * 100);
             const targetPowerWatts = runtime.targetErgPowerWatts ?? records.at(-1)?.power ?? 0;
             elements.workoutTargetHudGrid.innerHTML = `
