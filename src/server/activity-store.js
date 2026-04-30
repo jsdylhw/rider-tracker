@@ -358,7 +358,7 @@ export function normalizeRiderSession(session, options = {}) {
 
     return {
         id,
-        source: "rider-tracker",
+        source: options.source || session.source || "rider-tracker",
         sportType: options.sportType || inferSportType(session),
         name,
         startedAt,
@@ -370,7 +370,7 @@ export function normalizeRiderSession(session, options = {}) {
         normalizedPower: finiteOrNull(power.normalizedPowerWatts),
         averageHr: finiteOrNull(heartRate.averageBpm ?? session.summary?.averageHeartRate),
         estimatedTss: finiteOrNull(load.estimatedTss),
-        hasGpsTrack: sessionHasGpsTrack(session),
+        hasGpsTrack: Boolean(session.hasGpsTrack) || sessionHasGpsTrack(session),
         createdAt: now,
         updatedAt: now
     };

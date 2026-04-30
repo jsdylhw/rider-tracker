@@ -1,6 +1,8 @@
 import express from "express";
 import fs from "node:fs";
 import path from "node:path";
+import { Decoder, Stream } from "@garmin/fitsdk";
+import { buildSessionFromFitMessages } from "../../adapters/fit/fit-importer.js";
 import { normalizeFileToken, normalizeText } from "../shared/http-utils.js";
 
 export function createActivityRoutes({ activityStore, upload, fitFileDir, projectRoot }) {
@@ -44,9 +46,56 @@ export function createActivityRoutes({ activityStore, upload, fitFileDir, projec
         }
     });
 
+    router.post("/api/activities/fit-import", upload.single("file"), (req, res) => {
+        try {
+            const uploadedFile = req.file;
+            const session = parseSessionField(req.body?.session);
+
+            if (!uploadedFile) {
+                return res.status(400).json({
+                    ok: false,
+                    error: "Missing FIT file. Send multipart field named file."
+                });
+            }
+            if (!session) {
+                return res.status(400).json({
+                    ok: false,
+                    error: "Missing compact session metadata."
+                });
+            }
+
+            const activity = activityStore.saveRiderSession(session, {
+                name: req.body?.name,
+                sportType: req.body?.sportType || "Ride",
+                source: session.source || "fit-import"
+            });
+            const savedActivity = saveFitFileForActivity({
+                activity,
+                uploadedFile,
+                activityStore,
+                fitFileDir,
+                projectRoot
+            });
+
+            return res.json({
+                ok: true,
+                dbPath: activityStore.filePath,
+                activity: savedActivity
+            });
+        } catch (err) {
+            return res.status(400).json({
+                ok: false,
+                error: err.message
+            });
+        }
+    });
+
     router.get("/api/activities/:activityId", (req, res) => {
         try {
-            const activity = activityStore.getActivityDetail(req.params.activityId);
+            const activity = hydrateActivityDetailFromFit({
+                activity: activityStore.getActivityDetail(req.params.activityId),
+                projectRoot
+            });
             if (!activity) {
                 return res.status(404).json({
                     ok: false,
@@ -86,24 +135,19 @@ export function createActivityRoutes({ activityStore, upload, fitFileDir, projec
                 });
             }
 
-            fs.mkdirSync(fitFileDir, { recursive: true });
-            const safeOriginalName = normalizeFileToken(path.basename(uploadedFile.originalname || `${activityId}.fit`));
-            const filenameBase = safeOriginalName.endsWith(".fit") ? safeOriginalName : `${safeOriginalName}.fit`;
-            const filename = `${normalizeFileToken(activityId)}-${filenameBase}`;
-            const fitPath = path.join(fitFileDir, filename);
-            fs.writeFileSync(fitPath, uploadedFile.buffer);
-
-            const relativePath = path.relative(projectRoot, fitPath).split(path.sep).join("/");
-            const updatedActivity = activityStore.updateActivityFitFile(activityId, {
-                fitFilePath: relativePath,
-                fitFileSizeBytes: uploadedFile.buffer.length
+            const updatedActivity = saveFitFileForActivity({
+                activity,
+                uploadedFile,
+                activityStore,
+                fitFileDir,
+                projectRoot
             });
 
             return res.json({
                 ok: true,
                 activity: updatedActivity,
                 fitFile: {
-                    path: relativePath,
+                    path: updatedActivity.fitFilePath,
                     sizeBytes: uploadedFile.buffer.length
                 }
             });
@@ -133,6 +177,10 @@ export function createActivityRoutes({ activityStore, upload, fitFileDir, projec
     router.delete("/api/activities/:activityId", (req, res) => {
         try {
             const activity = activityStore.deleteActivity(req.params.activityId);
+            deleteFitFileIfLocal({
+                activity,
+                projectRoot
+            });
             return res.json({
                 ok: true,
                 activity
@@ -146,4 +194,82 @@ export function createActivityRoutes({ activityStore, upload, fitFileDir, projec
     });
 
     return router;
+}
+
+function saveFitFileForActivity({ activity, uploadedFile, activityStore, fitFileDir, projectRoot }) {
+    fs.mkdirSync(fitFileDir, { recursive: true });
+    const safeOriginalName = normalizeFileToken(path.basename(uploadedFile.originalname || `${activity.id}.fit`));
+    const filenameBase = safeOriginalName.endsWith(".fit") ? safeOriginalName : `${safeOriginalName}.fit`;
+    const filename = `${normalizeFileToken(activity.id)}-${filenameBase}`;
+    const fitPath = path.join(fitFileDir, filename);
+    fs.writeFileSync(fitPath, uploadedFile.buffer);
+
+    const relativePath = path.relative(projectRoot, fitPath).split(path.sep).join("/");
+    return activityStore.updateActivityFitFile(activity.id, {
+        fitFilePath: relativePath,
+        fitFileSizeBytes: uploadedFile.buffer.length
+    });
+}
+
+function parseSessionField(value) {
+    if (!value) {
+        return null;
+    }
+    if (typeof value === "object") {
+        return value;
+    }
+    try {
+        return JSON.parse(value);
+    } catch (_error) {
+        return null;
+    }
+}
+
+function hydrateActivityDetailFromFit({ activity, projectRoot }) {
+    if (!activity?.fitFilePath) {
+        return activity;
+    }
+
+    const fitPath = path.resolve(projectRoot, activity.fitFilePath);
+    if (!fitPath.startsWith(projectRoot) || !fs.existsSync(fitPath)) {
+        return activity;
+    }
+
+    const fitBytes = fs.readFileSync(fitPath);
+    const decoder = new Decoder(Stream.fromBuffer(fitBytes));
+    const { messages, errors } = decoder.read();
+    if (errors.length > 0) {
+        return activity;
+    }
+
+    const { session } = buildSessionFromFitMessages({
+        messages,
+        fileName: path.basename(fitPath),
+        settings: activity.rawSession?.settings ?? {}
+    });
+
+    return {
+        ...activity,
+        rawSession: {
+            ...session,
+            activityId: activity.id,
+            exportMetadata: {
+                ...session.exportMetadata,
+                activityName: activity.name
+            }
+        }
+    };
+}
+
+function deleteFitFileIfLocal({ activity, projectRoot }) {
+    if (!activity?.fitFilePath) {
+        return;
+    }
+
+    const fitPath = path.resolve(projectRoot, activity.fitFilePath);
+    if (!fitPath.startsWith(projectRoot) || !fs.existsSync(fitPath)) {
+        return;
+    }
+
+    fs.unlinkSync(fitPath);
 }

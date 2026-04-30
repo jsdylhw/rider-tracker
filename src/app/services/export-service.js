@@ -7,6 +7,7 @@ import {
     uploadFitToStravaServer
 } from "../../adapters/upload/strava-server-client.js";
 import {
+    importActivityFitFile,
     saveActivityFitFile,
     saveRiderSessionActivity
 } from "../../adapters/storage/activity-history-client.js";
@@ -187,7 +188,7 @@ export function createExportService({ store }) {
                 fileName: file.name,
                 settings
             });
-            const savedActivity = await saveImportedFitActivity({
+            const savedActivity = await saveImportedFitActivityFile({
                 session,
                 activity,
                 fitBytes,
@@ -198,6 +199,7 @@ export function createExportService({ store }) {
                 ...(savedActivity ?? {}),
                 rawSession: session
             };
+            notifyActivitySaved(savedActivity ?? selectedActivity);
 
             store.setState((state) => ({
                 ...state,
@@ -401,24 +403,55 @@ async function saveFitFileForSession({ session, fitBytes, filename }) {
     return null;
 }
 
-async function saveImportedFitActivity({ session, activity, fitBytes, filename }) {
+async function saveImportedFitActivityFile({ session, activity, fitBytes, filename }) {
     try {
-        const savedActivity = await saveRiderSessionActivity(session, {
+        const compactSession = buildCompactFitSession(session);
+        const savedActivity = await importActivityFitFile({
+            session: compactSession,
+            fitBytes,
+            filename,
             name: activity?.name ?? session?.exportMetadata?.activityName,
             sportType: "Ride"
         });
         if (savedActivity?.id) {
             session.activityId = savedActivity.id;
-            return await saveActivityFitFile(savedActivity.id, {
-                fitBytes,
-                filename
-            });
         }
         return savedActivity;
     } catch (error) {
         console.warn("[ExportService] 保存导入 FIT 活动失败:", error);
         return null;
     }
+}
+
+function notifyActivitySaved(activity) {
+    if (!activity?.id) {
+        return;
+    }
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent !== "undefined") {
+        window.dispatchEvent(new CustomEvent("rider-tracker:activity-saved", {
+            detail: { activity }
+        }));
+    }
+}
+
+function buildCompactFitSession(session) {
+    if (!session) {
+        return null;
+    }
+
+    return {
+        id: session.id,
+        activityId: session.activityId,
+        source: session.source,
+        createdAt: session.createdAt,
+        startedAt: session.startedAt,
+        finishedAt: session.finishedAt,
+        settings: session.settings,
+        summary: session.summary,
+        exportMetadata: session.exportMetadata,
+        hasGpsTrack: sessionHasGpsTrack(session),
+        records: []
+    };
 }
 
 function resolveSessionTimestamp(session) {

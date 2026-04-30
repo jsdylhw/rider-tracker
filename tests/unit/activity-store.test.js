@@ -72,6 +72,37 @@ export const suite = {
                 assertEqual(detail.fitFilePath, "data/files/fit/test.fit");
                 assertEqual(detail.fitFileSizeBytes, 128);
             }
+        },
+        {
+            name: "saves imported fit activities as compact metadata",
+            run() {
+                const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
+                const dbPath = path.join(tempDir, "activities.db");
+                const store = createActivityStore(dbPath);
+                const session = {
+                    ...buildVirtualRideSession(),
+                    source: "fit-import",
+                    exportMetadata: {
+                        activityName: "Imported FIT Ride",
+                        markVirtualActivity: false
+                    },
+                    hasGpsTrack: true,
+                    records: []
+                };
+
+                const saved = store.saveRiderSession(session, {
+                    sportType: "Ride",
+                    source: "fit-import"
+                });
+                const detail = store.getActivityDetail(saved.id);
+
+                assertEqual(saved.source, "fit-import");
+                assertEqual(saved.sportType, "Ride");
+                assertEqual(saved.name, "Imported FIT Ride");
+                assertEqual(saved.hasGpsTrack, true);
+                assertApprox(saved.distanceKm, 12.34, 0.0001);
+                assertEqual(detail.rawSession.records.length, 0);
+            }
         }
     ]
 };

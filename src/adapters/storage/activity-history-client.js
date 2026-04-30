@@ -112,6 +112,39 @@ export async function saveActivityFitFile(activityId, {
     return body.activity;
 }
 
+export async function importActivityFitFile({
+    fitBytes,
+    filename,
+    session,
+    name = session?.exportMetadata?.activityName,
+    sportType = "Ride",
+    serverUrl = globalThis.location?.origin || ""
+} = {}) {
+    if (!fitBytes || !session || !serverUrl) {
+        return null;
+    }
+
+    const payload = fitBytes instanceof Uint8Array ? fitBytes : new Uint8Array(fitBytes);
+    const fitBlob = new Blob([payload], { type: "application/vnd.ant.fit" });
+    const formData = new FormData();
+    formData.append("file", fitBlob, filename || "activity.fit");
+    formData.append("session", JSON.stringify(session));
+    if (name) formData.append("name", name);
+    if (sportType) formData.append("sportType", sportType);
+
+    const response = await fetch(`${serverUrl}/api/activities/fit-import`, {
+        method: "POST",
+        body: formData
+    });
+
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.ok === false) {
+        throw new Error(body?.error || "Activity FIT import save failed.");
+    }
+
+    return body.activity;
+}
+
 export async function deleteActivity(activityId, {
     serverUrl = globalThis.location?.origin || ""
 } = {}) {
