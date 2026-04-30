@@ -1,15 +1,10 @@
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
+import { loadFitSdk } from "../fit/fit-sdk-loader.js";
 
-const FIT_SDK_URLS = [
-    "https://esm.sh/@garmin/fitsdk@21.178.0/es2022/fitsdk.mjs",
-    "https://cdn.jsdelivr.net/npm/@garmin/fitsdk@21.178.0/es2022/fitsdk.mjs"
-];
 const APP_PRODUCT_ID = 5101;
 const APP_SOFTWARE_VERSION = 1;
 const APP_SERIAL_NUMBER = 51010001;
 const FIT_EPOCH_MS = 631065600000;
-
-let fitSdkPromise;
 
 export async function exportSessionAsFit(session, exportMetadata, options = {}) {
     const { Encoder, Profile } = await loadFitSdk();
@@ -215,27 +210,6 @@ export function resolveFitExportSummary({ summary = {}, records = [] } = {}) {
             )
         }
     };
-}
-
-async function loadFitSdk() {
-    if (!fitSdkPromise) {
-        fitSdkPromise = loadFirstAvailableFitSdk();
-    }
-
-    return fitSdkPromise;
-}
-
-async function loadFirstAvailableFitSdk() {
-    const errors = [];
-    for (const url of FIT_SDK_URLS) {
-        try {
-            return await import(url);
-        } catch (err) {
-            errors.push(err);
-        }
-    }
-    const message = errors.map((err) => (err instanceof Error ? err.message : String(err))).filter(Boolean).join(" | ");
-    throw new Error(`加载 FIT SDK 失败：${message || "未知错误"}`);
 }
 
 function toFitLocalTimestamp(date) {

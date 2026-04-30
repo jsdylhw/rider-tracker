@@ -398,6 +398,10 @@ function sessionHasGpsTrack(session) {
     return Array.isArray(session?.records) && session.records.some((record) => (
         Number.isFinite(record?.lat) ||
         Number.isFinite(record?.latitude) ||
+        (
+            Number.isFinite(record?.positionLat) &&
+            Number.isFinite(record?.positionLong)
+        ) ||
         Array.isArray(record?.latlng)
     ));
 }

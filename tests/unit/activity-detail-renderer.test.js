@@ -4,6 +4,7 @@ import {
     buildHeartRateZoneHtml,
     buildPowerZoneHtml,
     buildTimeSeriesChartSvg,
+    downsamplePoints,
     summarizeHeartRateZones,
     summarizePowerZones
 } from "../../src/ui/renderers/activity-detail-renderer.js";
@@ -51,6 +52,20 @@ export const suite = {
 
                 assert(svg.includes("<polyline"), "chart should include a polyline");
                 assert(svg.includes("W"), "chart should include axis label");
+            }
+        },
+        {
+            name: "downsamples dense chart points while preserving endpoints",
+            run() {
+                const points = Array.from({ length: 1200 }, (_, index) => ({
+                    x: index,
+                    y: index * 2
+                }));
+                const sampled = downsamplePoints(points, 500);
+
+                assertEqual(sampled.length, 500);
+                assertEqual(sampled[0].x, 0);
+                assertEqual(sampled.at(-1).x, 1199);
             }
         },
         {

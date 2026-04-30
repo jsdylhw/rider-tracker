@@ -70,6 +70,7 @@ createMainView({
     onRunSimulation: rideService.runSimulation,
     onDownloadSession: exportService.downloadSession,
     onDownloadFit: exportService.downloadFit,
+    onImportFit: exportService.importFit,
     onConnectStrava: exportService.connectStrava,
     onUploadFit: exportService.uploadFit,
     onUploadActivityFit: exportService.uploadActivityFit,

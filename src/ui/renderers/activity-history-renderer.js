@@ -22,8 +22,9 @@ export function createActivityHistoryRenderer({
 
         mountedContainers.forEach((container) => {
             container.addEventListener("click", (event) => {
-                const action = event.target?.dataset?.activityAction;
-                const activityId = event.target?.dataset?.activityId;
+                const actionTarget = event.target?.closest?.("[data-activity-action]");
+                const action = actionTarget?.dataset?.activityAction;
+                const activityId = actionTarget?.dataset?.activityId;
                 if (!action || !activityId) {
                     return;
                 }

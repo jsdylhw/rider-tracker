@@ -17,6 +17,8 @@ export const HEART_RATE_RESERVE_ZONES = [
     { key: "max", label: "高强度", min: 0.9, max: Infinity }
 ];
 
+const MAX_CHART_POINTS = 500;
+
 export function buildActivityDetailHtml(activity, {
     showCloseButton = true,
     actionsHtml = ""
@@ -141,12 +143,12 @@ function buildActivityActionsHtml(activity) {
 }
 
 export function buildTimeSeriesChartSvg(records, { field, color, label }) {
-    const points = records
+    const points = downsamplePoints(records
         .map((record) => ({
             x: numberOrNull(record.elapsedSeconds),
             y: numberOrNull(record[field])
         }))
-        .filter((point) => point.x !== null && point.y !== null);
+        .filter((point) => point.x !== null && point.y !== null));
 
     if (points.length < 2) {
         return buildEmptyChartSvg("暂无曲线数据");
@@ -174,6 +176,29 @@ export function buildTimeSeriesChartSvg(records, { field, color, label }) {
         <text x="${padding - 8}" y="${height - padding}" fill="#64748b" font-size="12" text-anchor="end">${formatNumber(minY, 0)}</text>
         <text x="${padding - 8}" y="${padding}" fill="#64748b" font-size="12" text-anchor="end">${formatNumber(maxY, 0)} ${escapeHtml(label)}</text>
     `;
+}
+
+export function downsamplePoints(points, maxPoints = MAX_CHART_POINTS) {
+    if (points.length <= maxPoints) {
+        return points;
+    }
+
+    const result = [];
+    const lastIndex = points.length - 1;
+    const step = lastIndex / (maxPoints - 1);
+    let previousIndex = -1;
+
+    for (let index = 0; index < maxPoints; index += 1) {
+        const sourceIndex = index === maxPoints - 1
+            ? lastIndex
+            : Math.round(index * step);
+        if (sourceIndex !== previousIndex) {
+            result.push(points[sourceIndex]);
+            previousIndex = sourceIndex;
+        }
+    }
+
+    return result;
 }
 
 export function summarizePowerZones(records, ftp) {

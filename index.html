@@ -63,10 +63,15 @@
                                 <h2>历史骑行记录</h2>
                                 <p class="section-subtitle">最近保存到本地数据库的活动。</p>
                             </div>
+                            <div class="inline-actions">
+                                <input id="homeImportFitInput" type="file" accept=".fit,application/vnd.ant.fit" hidden>
+                                <button id="homeImportFitBtn" class="btn secondary compact-btn" type="button">导入 FIT</button>
+                            </div>
                         </div>
                         <div id="historyContainer" class="activity-history-panel">
                             暂无历史记录。
                         </div>
+                        <div id="homeStatusText" class="home-status-text" aria-live="polite"></div>
                     </div>
 
                 </div>
@@ -428,6 +433,8 @@
             <div class="controls">
                 <button id="downloadSessionBtn" class="btn power-btn" disabled>导出 JSON</button>
                 <button id="downloadFitBtn" class="btn secondary" disabled>导出 FIT</button>
+                <input id="importFitInput" type="file" accept=".fit,application/vnd.ant.fit" hidden>
+                <button id="importFitBtn" class="btn secondary" type="button">导入 FIT</button>
                 <button id="connectStravaBtn" class="btn secondary" disabled>连接 Strava</button>
                 <button id="uploadFitBtn" class="btn primary" disabled>上传 FIT</button>
             </div>

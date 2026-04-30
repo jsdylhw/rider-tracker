@@ -9,6 +9,7 @@ import { suite as simulatorSuite } from "./unit/simulator.test.js";
 import { suite as liveRideSuite } from "./unit/live-ride-session.test.js";
 import { suite as rideMetricsSuite } from "./unit/ride-metrics.test.js";
 import { suite as fitExporterSuite } from "./unit/fit-exporter.test.js";
+import { suite as fitImporterSuite } from "./unit/fit-importer.test.js";
 import { suite as gradeSimSuite } from "./unit/grade-sim-mode.test.js";
 import { suite as ergSuite } from "./unit/erg-mode.test.js";
 import { suite as resistanceSuite } from "./unit/resistance-mode.test.js";
@@ -41,6 +42,7 @@ const suites = [
     liveRideSuite,
     rideMetricsSuite,
     fitExporterSuite,
+    fitImporterSuite,
     gradeSimSuite,
     ergSuite,
     resistanceSuite,

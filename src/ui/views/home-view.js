@@ -7,6 +7,7 @@ export function createHomeView({ onSetUiMode, onEnterSimulationMode, onEnterLive
         homeProfileCard: document.getElementById("homeProfileCard"),
         homeHistoryCard: document.getElementById("homeHistoryCard"),
         historyContainer: document.getElementById("historyContainer"),
+        homeStatusText: document.getElementById("homeStatusText"),
         postRideReportCard: document.getElementById("postRideReportCard"),
         postRideHistoryContainer: document.getElementById("postRideHistoryContainer"),
         personalSettingsForm: document.getElementById("personalSettingsForm"),

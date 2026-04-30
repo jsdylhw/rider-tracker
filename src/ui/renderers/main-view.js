@@ -45,6 +45,7 @@ export function createMainView({
     onRunSimulation,
     onDownloadSession,
     onDownloadFit,
+    onImportFit,
     onConnectStrava,
     onUploadFit,
     onUploadActivityFit,
@@ -75,6 +76,7 @@ export function createMainView({
     const exportView = createExportView({
         onDownloadSession,
         onDownloadFit,
+        onImportFit,
         onConnectStrava,
         onUploadFit
     });
@@ -94,6 +96,7 @@ export function createMainView({
     };
 
     let lastRenderedSettingsSignature = "";
+    let lastRenderedActivityDetailSignature = "";
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
     const mapController = createMapController({
@@ -209,9 +212,15 @@ export function createMainView({
         if (elements.currentGradeValue) elements.currentGradeValue.textContent = `${formatNumber(metrics.grade.currentPercent ?? 0, 1)}%`;
         if (elements.recordCountValue) elements.recordCountValue.textContent = String(records.length);
         if (elements.statusText) elements.statusText.textContent = state.statusText;
+        if (elements.homeStatusText) {
+            elements.homeStatusText.textContent = state.statusText ?? "";
+            elements.homeStatusText.hidden = !state.statusText;
+        }
 
         if (elements.downloadSessionBtn) elements.downloadSessionBtn.disabled = !session || state.liveRide.isActive;
         if (elements.downloadFitBtn) elements.downloadFitBtn.disabled = !session || state.liveRide.isActive;
+        if (elements.importFitBtn) elements.importFitBtn.disabled = state.liveRide.isActive;
+        if (elements.homeImportFitBtn) elements.homeImportFitBtn.disabled = state.liveRide.isActive;
         if (elements.connectStravaBtn) elements.connectStravaBtn.disabled = state.liveRide.isActive || !state.exportMetadata.stravaServerUrl;
         if (elements.uploadFitBtn) {
             elements.uploadFitBtn.disabled = !session || state.liveRide.isActive || !state.exportMetadata.stravaServerUrl;
@@ -276,6 +285,19 @@ export function createMainView({
 
     function renderActivityDetail(state) {
         if (!elements.activityDetailContent) return;
+        const activity = state.selectedActivity;
+        const signature = activity
+            ? [
+                activity.id ?? "",
+                activity.updatedAt ?? "",
+                activity.rawSession?.records?.length ?? 0,
+                activity.rawSession?.createdAt ?? ""
+            ].join("|")
+            : "empty";
+        if (signature === lastRenderedActivityDetailSignature) {
+            return;
+        }
+        lastRenderedActivityDetailSignature = signature;
         elements.activityDetailContent.innerHTML = buildActivityDetailPageHtml(state.selectedActivity);
     }
 

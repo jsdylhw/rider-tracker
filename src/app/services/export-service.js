@@ -1,4 +1,5 @@
 import { exportSessionAsFit } from "../../adapters/export/fit-exporter.js";
+import { importFitActivity } from "../../adapters/fit/fit-importer.js";
 import {
     getStravaConnection,
     getStravaServerConfig,
@@ -169,6 +170,52 @@ export function createExportService({ store }) {
         await uploadSessionFit({ session, exportMetadata });
     }
 
+    async function importFit(file) {
+        if (!file) {
+            return;
+        }
+
+        store.setState((state) => ({
+            ...state,
+            statusText: "正在解析本地 FIT 文件..."
+        }));
+
+        try {
+            const { settings } = store.getState();
+            const fitBytes = new Uint8Array(await file.arrayBuffer());
+            const { session, activity } = await importFitActivity(fitBytes, {
+                fileName: file.name,
+                settings
+            });
+            const savedActivity = await saveImportedFitActivity({
+                session,
+                activity,
+                fitBytes,
+                filename: file.name
+            });
+            const selectedActivity = {
+                ...activity,
+                ...(savedActivity ?? {}),
+                rawSession: session
+            };
+
+            store.setState((state) => ({
+                ...state,
+                session,
+                selectedActivity,
+                uiMode: "activity-detail",
+                hasPersistedSession: true,
+                statusText: `已导入 FIT 文件：${file.name}。`
+            }));
+        } catch (error) {
+            console.error("FIT import failed", error);
+            store.setState((state) => ({
+                ...state,
+                statusText: `FIT 导入失败：${extractErrorMessage(error)}`
+            }));
+        }
+    }
+
     async function uploadActivityFit() {
         const { selectedActivity, session, exportMetadata } = store.getState();
         const activitySession = selectedActivity?.rawSession ?? session;
@@ -329,6 +376,7 @@ export function createExportService({ store }) {
         connectStrava,
         downloadSession,
         downloadFit,
+        importFit,
         uploadFit,
         uploadActivityFit,
         archiveFitForSession
@@ -351,6 +399,26 @@ async function saveFitFileForSession({ session, fitBytes, filename }) {
         console.warn("[ExportService] 保存本地 FIT 文件失败:", error);
     }
     return null;
+}
+
+async function saveImportedFitActivity({ session, activity, fitBytes, filename }) {
+    try {
+        const savedActivity = await saveRiderSessionActivity(session, {
+            name: activity?.name ?? session?.exportMetadata?.activityName,
+            sportType: "Ride"
+        });
+        if (savedActivity?.id) {
+            session.activityId = savedActivity.id;
+            return await saveActivityFitFile(savedActivity.id, {
+                fitBytes,
+                filename
+            });
+        }
+        return savedActivity;
+    } catch (error) {
+        console.warn("[ExportService] 保存导入 FIT 活动失败:", error);
+        return null;
+    }
 }
 
 function resolveSessionTimestamp(session) {

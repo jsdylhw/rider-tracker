@@ -5,6 +5,7 @@ user-profile.json
 auuki-architecture-physics-analysis.md
 # 系统或编辑器产生的文件
 .DS_Store
+*:Zone.Identifier
 .vscode/
 .idea/
 *.suo

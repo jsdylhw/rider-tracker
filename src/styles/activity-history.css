@@ -11,6 +11,13 @@
     background: #f8fafc;
 }
 
+.home-status-text {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 .activity-history-list {
     display: grid;
     gap: 10px;

@@ -39,6 +39,7 @@ activityStore.initialize();
 app.use(cors());
 app.use(express.json());
 app.use("/src", express.static(path.join(PROJECT_ROOT, "src")));
+app.use("/vendor/@garmin/fitsdk", express.static(path.join(PROJECT_ROOT, "node_modules", "@garmin", "fitsdk")));
 app.use(createActivityRoutes({
     activityStore,
     upload,
