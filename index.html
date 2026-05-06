@@ -629,22 +629,13 @@
                             <button id="connectTrainerBtn" class="btn secondary">连接骑行台</button>
                         </div>
 
-                        <div class="device-status-grid">
-                            <div class="summary-card">
-                                <span>心率设备</span>
-                                <strong id="hrDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="hrDeviceName">等待连接</p>
-                            </div>
-                            <div class="summary-card">
-                                <span>功率设备</span>
-                                <strong id="powerDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="powerDeviceName">等待连接</p>
-                            </div>
-                            <div class="summary-card">
-                                <span>骑行台控制</span>
-                                <strong id="trainerDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="trainerDeviceName">等待连接</p>
-                            </div>
+                        <div class="device-status-grid" hidden>
+                            <strong id="hrDeviceStatus">未连接</strong>
+                            <p class="device-meta" id="hrDeviceName">等待连接</p>
+                            <strong id="powerDeviceStatus">未连接</strong>
+                            <p class="device-meta" id="powerDeviceName">等待连接</p>
+                            <strong id="trainerDeviceStatus">未连接</strong>
+                            <p class="device-meta" id="trainerDeviceName">等待连接</p>
                             <span id="rideStatusLabel" hidden>未开始</span>
                             <span id="rideStatusMeta" hidden>连接功率计后即可开始骑行。</span>
                             <span id="trainerPushGradeValue" hidden>0.0%</span>

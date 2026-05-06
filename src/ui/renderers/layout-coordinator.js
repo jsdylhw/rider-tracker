@@ -38,10 +38,10 @@ export function createLayoutCoordinator({ elements }) {
                 elements.exportCardContainer.hidden = false;
             }
         } else if (mode === "live" && elements.liveCol1 && elements.routeCardContainer) {
-            if (elements.deviceControlsPanel) {
-                elements.liveCol1.parentElement?.insertBefore(
+            if (elements.deviceControlsPanel && elements.liveCol2) {
+                elements.liveCol2.insertBefore(
                     elements.deviceControlsPanel,
-                    elements.liveCol1
+                    elements.liveCol2.firstChild
                 );
             }
 

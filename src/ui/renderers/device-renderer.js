@@ -36,17 +36,33 @@ export function createDeviceRenderer({
 
         if (elements.connectHrBtn) {
             elements.connectHrBtn.disabled = !state.ble.supported || heartRate.isConnecting;
-            elements.connectHrBtn.textContent = heartRate.isConnected ? "断开心率带" : (heartRate.isConnecting ? "连接中心率带..." : "连接心率带");
+            elements.connectHrBtn.textContent = resolveDeviceButtonLabel({
+                label: "心率带",
+                isConnected: heartRate.isConnected,
+                isConnecting: heartRate.isConnecting,
+                deviceName: heartRate.deviceName
+            });
+            elements.connectHrBtn.title = heartRate.isConnected ? "点击断开心率带" : "";
         }
         if (elements.connectPowerBtn) {
             elements.connectPowerBtn.disabled = !state.ble.supported || powerMeter.externalConnecting;
-            elements.connectPowerBtn.textContent = powerMeter.externalConnected
-                ? "断开外置功率计"
-                : (powerMeter.externalConnecting ? "连接中外置功率计..." : "连接外置功率计");
+            elements.connectPowerBtn.textContent = resolveDeviceButtonLabel({
+                label: "功率计",
+                isConnected: powerMeter.externalConnected,
+                isConnecting: powerMeter.externalConnecting,
+                deviceName: powerMeter.externalDeviceName
+            });
+            elements.connectPowerBtn.title = powerMeter.externalConnected ? "点击断开功率计" : "";
         }
         if (elements.connectTrainerBtn) {
             elements.connectTrainerBtn.disabled = !state.ble.supported || trainer.isConnecting;
-            elements.connectTrainerBtn.textContent = trainer.isConnected ? "断开骑行台" : (trainer.isConnecting ? "连接中骑行台..." : "连接骑行台");
+            elements.connectTrainerBtn.textContent = resolveDeviceButtonLabel({
+                label: "骑行台",
+                isConnected: trainer.isConnected,
+                isConnecting: trainer.isConnecting,
+                deviceName: trainer.deviceName
+            });
+            elements.connectTrainerBtn.title = trainer.isConnected ? "点击断开骑行台" : "";
         }
         if (elements.startRideBtn) elements.startRideBtn.disabled = !liveRide.canStart || liveRide.isActive;
         if (elements.stopRideBtn) elements.stopRideBtn.disabled = !liveRide.isActive;
@@ -92,4 +108,19 @@ export function createDeviceRenderer({
     return {
         render
     };
+}
+
+function resolveDeviceButtonLabel({ label, isConnected, isConnecting, deviceName }) {
+    if (isConnected) {
+        return `已连接：${resolveConnectedDeviceName(deviceName, label)}`;
+    }
+    if (isConnecting) {
+        return `连接中${label}...`;
+    }
+    return `连接${label}`;
+}
+
+function resolveConnectedDeviceName(deviceName, fallbackLabel) {
+    if (!deviceName || deviceName === "等待连接") return fallbackLabel;
+    return deviceName;
 }

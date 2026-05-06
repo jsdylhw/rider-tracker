@@ -2,6 +2,7 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
     const elements = {
         viewLive: document.getElementById("view-live"),
         liveCol1: document.getElementById("live-col-1"),
+        liveCol2: document.getElementById("live-col-2"),
         connectHrBtn: document.getElementById("connectHrBtn"),
         connectPowerBtn: document.getElementById("connectPowerBtn"),
         connectTrainerBtn: document.getElementById("connectTrainerBtn"),
