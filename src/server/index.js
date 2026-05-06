@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
@@ -30,6 +31,7 @@ const FRONTEND_REDIRECT_URL = process.env.FRONTEND_REDIRECT_URL || "";
 const CONFIG_STORE_PATH = process.env.STRAVA_CONFIG_PATH;
 const TOKEN_STORE_PATH = process.env.TOKEN_STORE_PATH;
 const FIT_FILE_DIR = process.env.FIT_FILE_DIR || path.join(PROJECT_ROOT, "data", "files", "fit");
+const USER_PROFILE_PATH = path.join(PROJECT_ROOT, "user-profile.json");
 
 const configStore = createConfigStore(CONFIG_STORE_PATH);
 const tokenStore = createTokenStore(TOKEN_STORE_PATH);
@@ -62,7 +64,17 @@ app.get("/", (_req, res) => {
 });
 
 app.get("/user-profile.json", (_req, res) => {
-    res.sendFile(path.join(PROJECT_ROOT, "user-profile.json"));
+    res.sendFile(USER_PROFILE_PATH);
+});
+
+app.put("/api/user-profile", async (req, res) => {
+    try {
+        const profile = sanitizeUserProfile(req.body ?? {});
+        await fs.writeFile(USER_PROFILE_PATH, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
+        res.json({ ok: true, profile });
+    } catch (error) {
+        res.status(400).json({ ok: false, error: error.message });
+    }
 });
 
 app.get("/healthz", (_req, res) => {
@@ -86,3 +98,31 @@ server.on("error", (err) => {
     console.error(`[rider-tracker] server error: ${err.message}`);
     process.exitCode = 1;
 });
+
+function sanitizeUserProfile(profile) {
+    const next = {};
+    const fields = {
+        power: [80, 600],
+        mass: [40, 150],
+        ftp: [120, 450],
+        restingHr: [40, 100],
+        maxHr: [120, 220],
+        cda: [0.2, 0.8],
+        crr: [0.001, 0.02],
+        windSpeed: [-10, 10]
+    };
+
+    for (const [key, [min, max]] of Object.entries(fields)) {
+        if (profile[key] === undefined || profile[key] === null || profile[key] === "") {
+            continue;
+        }
+
+        const value = Number(profile[key]);
+        if (!Number.isFinite(value)) {
+            throw new Error(`Invalid user profile field: ${key}`);
+        }
+        next[key] = Math.min(max, Math.max(min, value));
+    }
+
+    return next;
+}

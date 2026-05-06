@@ -4,10 +4,12 @@ export function createUserService({ store }) {
     function updateSettings(partialSettings) {
         store.setState((state) => {
             const mergedSettings = { ...state.settings, ...partialSettings };
+            const nextSettings = sanitizeSettings(mergedSettings);
+            saveUserProfile(nextSettings);
             return {
                 ...state,
-                settings: sanitizeSettings(mergedSettings),
-                statusText: "设置已更新。"
+                settings: nextSettings,
+                statusText: "设置已更新，并将写入根目录 user-profile.json。"
             };
         });
     }
@@ -24,7 +26,7 @@ export function createUserService({ store }) {
                 store.setState((state) => ({
                     ...state,
                     settings: sanitizeSettings({ ...state.settings, ...profile }),
-                    statusText: "已加载本地用户配置 user-profile.json"
+                    statusText: "已加载根目录 user-profile.json"
                 }));
             })
             .catch((error) => {
@@ -36,4 +38,14 @@ export function createUserService({ store }) {
         updateSettings,
         loadUserProfile
     };
+}
+
+function saveUserProfile(settings) {
+    fetch("/api/user-profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings)
+    }).catch((error) => {
+        console.error("保存根目录 user-profile.json 失败", error);
+    });
 }

@@ -161,16 +161,28 @@ export function buildTimeSeriesChartSvg(records, { field, color, label }) {
     const maxY = Math.max(...points.map((point) => point.y), 1);
     const minY = Math.min(0, ...points.map((point) => point.y));
     const yRange = Math.max(maxY - minY, 1);
-    const polyline = points.map((point) => {
+    const chartPoints = points.map((point) => {
         const x = padding + (point.x / maxX) * (width - padding * 2);
         const y = height - padding - ((point.y - minY) / yRange) * (height - padding * 2);
-        return `${formatNumber(x, 2)},${formatNumber(y, 2)}`;
-    }).join(" ");
+        return {
+            ...point,
+            chartX: x,
+            chartY: y
+        };
+    });
+    const polyline = chartPoints.map((point) => `${formatNumber(point.chartX, 2)},${formatNumber(point.chartY, 2)}`).join(" ");
+    const hoverPoints = chartPoints.map((point) => {
+        const title = `${formatDuration(point.x)} · ${formatNumber(point.y, 0)} ${label}`;
+        return `
+            <circle cx="${formatNumber(point.chartX, 2)}" cy="${formatNumber(point.chartY, 2)}" r="8" fill="transparent" stroke="transparent" pointer-events="all" data-chart-tooltip="${escapeHtml(title)}" style="cursor: crosshair;"></circle>
+        `;
+    }).join("");
 
     return `
         <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#cbd5e1" stroke-width="1" />
         <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#cbd5e1" stroke-width="1" />
         <polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" />
+        ${hoverPoints}
         <text x="${padding}" y="${height - 10}" fill="#64748b" font-size="12">0:00</text>
         <text x="${width - padding}" y="${height - 10}" fill="#64748b" font-size="12" text-anchor="end">${escapeHtml(formatDuration(maxX))}</text>
         <text x="${padding - 8}" y="${height - padding}" fill="#64748b" font-size="12" text-anchor="end">${formatNumber(minY, 0)}</text>
@@ -359,14 +371,11 @@ function formatMetric(value, unit, digits) {
 
 function formatEnergyMetric(energy) {
     const calories = numberOrNull(energy?.estimatedCaloriesKcal);
-    const work = numberOrNull(energy?.mechanicalWorkKj);
-    if (calories === null && work === null) {
+    if (calories === null) {
         return "-";
     }
 
-    const caloriesText = calories === null ? "-" : `${formatNumber(calories, 0)} kcal`;
-    const workText = work === null ? "-" : `${formatNumber(work, 0)} kJ`;
-    return `${caloriesText} / ${workText}`;
+    return `${formatNumber(calories, 0)} kcal`;
 }
 
 function formatActivityDate(value) {

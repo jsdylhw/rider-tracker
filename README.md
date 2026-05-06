@@ -102,13 +102,14 @@ data/
 常见文件：
 
 ```text
+user-profile.json             根目录个人基础数据，不提交到仓库
 data/rider-tracker.db       SQLite 活动历史数据库
 data/files/fit/             本地保存的 FIT 文件
 data/strava-config.json     Strava app 配置
 data/strava-tokens.json     Strava OAuth token
 ```
 
-`data/` 不提交到仓库。
+`user-profile.json` 和 `data/` 不提交到仓库。
 
 ## Strava 配置
 
