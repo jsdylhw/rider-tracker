@@ -10,13 +10,16 @@ export function createPipController({ button, template, getData }) {
             return;
         }
 
-        const container = pipWindow.document.getElementById("pip-metrics-grid");
+        const container = pipWindow.document.getElementById("pip-content");
 
         if (!container) {
             return;
         }
 
-        container.innerHTML = buildPipContentHtml();
+        if (container.dataset.mounted !== "true") {
+            container.innerHTML = buildPipContentHtml();
+            container.dataset.mounted = "true";
+        }
 
         sync();
     }

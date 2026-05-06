@@ -37,7 +37,7 @@ function buildPipStyleHtml() {
                 color: #f8fafc;
                 font-family: system-ui, -apple-system, sans-serif;
             }
-            .pip-metrics-grid {
+            .pip-content {
                 display: flex;
                 flex-direction: column;
                 gap: 12px;

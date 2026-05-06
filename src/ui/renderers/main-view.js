@@ -305,7 +305,7 @@ export function createMainView({
         if (!elements.pipBtn) return;
         const hasLiveData = state.ble.heartRate.value !== null || state.ble.powerMeter.power !== null;
         const hasRoute = state.route && state.route.segments.length > 0;
-        elements.pipBtn.disabled = !pipController.isSupported || (!state.liveRide.isActive && !state.session && !hasLiveData && !hasRoute);
+        elements.pipBtn.disabled = !pipController.isSupported || (!state.liveRide.isActive && !hasLiveData && !hasRoute);
 
         renderPipMetricControls(state);
         pipController.render();
