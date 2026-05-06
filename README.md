@@ -4,6 +4,14 @@ Rider Tracker 是一个本地运行的虚拟骑行与 FIT 活动分析工具。�
 
 ## 怎么用
 
+Windows 用户可以直接双击：
+
+```text
+start-windows.bat
+```
+
+它会检查 Node.js 版本、安装依赖、启动本地服务，并自动打开浏览器。
+
 先安装依赖：
 
 ```bash
