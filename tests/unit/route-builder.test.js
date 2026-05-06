@@ -1,6 +1,7 @@
 import {
     buildRoute,
     buildRouteFromTrackPoints,
+    getMinimumCurveSpeedLimitAhead,
     getRouteSampleAtDistance,
     getSegmentAtDistance,
     sanitizeSegments
@@ -81,6 +82,29 @@ export const suite = {
             }
         },
         {
+            name: "buildRouteFromTrackPoints annotates tight GPX curve speed limits",
+            run() {
+                const route = buildRouteFromTrackPoints({
+                    name: "Curve Route",
+                    points: [
+                        buildGeoPoint({ x: 0, y: 0, distanceMeters: 0 }),
+                        buildGeoPoint({ x: 30, y: 0, distanceMeters: 100 }),
+                        buildGeoPoint({ x: 30, y: 30, distanceMeters: 130 }),
+                        buildGeoPoint({ x: 30, y: 90, distanceMeters: 190 })
+                    ],
+                    segments: [
+                        { name: "Curve", distanceMeters: 190, gradePercent: -4, elevationDelta: -8, startDistanceMeters: 0, endDistanceMeters: 190 }
+                    ]
+                });
+
+                const limit = getMinimumCurveSpeedLimitAhead(route, 80, 80);
+                assert(Number.isFinite(route.points[1].curveRadiusMeters), "紧弯应生成弯道半径");
+                assert(Number.isFinite(route.points[1].curveSpeedLimitKph), "紧弯应生成限速");
+                assertGreaterThan(route.points[1].curveSpeedLimitKph, 20);
+                assert(limit < 40, "前方紧弯限速应低于高速下坡速度");
+            }
+        },
+        {
             name: "manual route sampling falls back to segment grade without coordinates",
             run() {
                 const route = buildRoute([
@@ -95,3 +119,18 @@ export const suite = {
         }
     ]
 };
+
+function buildGeoPoint({ x, y, distanceMeters }) {
+    const originLat = 31;
+    const originLng = 121;
+    const metersPerDegreeLat = 111320;
+    const metersPerDegreeLng = metersPerDegreeLat * Math.cos(originLat * Math.PI / 180);
+
+    return {
+        latitude: originLat + y / metersPerDegreeLat,
+        longitude: originLng + x / metersPerDegreeLng,
+        elevationMeters: -distanceMeters * 0.04,
+        distanceMeters,
+        gradePercent: -4
+    };
+}

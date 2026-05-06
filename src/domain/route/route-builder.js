@@ -1,4 +1,10 @@
 const MIN_SEGMENT_DISTANCE_KM = 0.1;
+const EARTH_RADIUS_METERS = 6371000;
+const MIN_CURVE_RADIUS_METERS = 8;
+const MAX_CURVE_RADIUS_METERS = 500;
+const DEFAULT_CURVE_LATERAL_G = 0.3;
+const MIN_CURVE_SPEED_KPH = 12;
+const MAX_CURVE_SPEED_KPH = 90;
 
 export function sanitizeSegments(segments) {
     return segments.map((segment, index) => ({
@@ -65,7 +71,7 @@ export function getSegmentAtDistance(route, distanceMeters) {
 }
 
 export function buildRouteFromTrackPoints({ name, points, segments, hasElevationData = true }) {
-    const safePoints = points.map((point, index) => ({
+    const basePoints = points.map((point, index) => ({
         latitude: point.latitude,
         longitude: point.longitude,
         elevationMeters: point.elevationMeters,
@@ -73,6 +79,7 @@ export function buildRouteFromTrackPoints({ name, points, segments, hasElevation
         gradePercent: point.gradePercent ?? 0,
         name: point.name ?? `轨迹点 ${index + 1}`
     }));
+    const safePoints = annotateCurveLimits(basePoints);
 
     const safeSegments = segments.map((segment, index) => ({
         id: crypto.randomUUID(),
@@ -135,8 +142,25 @@ export function getRouteSampleAtDistance(route, distanceMeters) {
         latitude: interpolate(previousPoint.latitude, nextPoint.latitude, ratio),
         longitude: interpolate(previousPoint.longitude, nextPoint.longitude, ratio),
         elevationMeters: interpolate(previousPoint.elevationMeters, nextPoint.elevationMeters, ratio),
-        gradePercent: isFinished ? 0 : interpolate(previousPoint.gradePercent, nextPoint.gradePercent, ratio)
+        gradePercent: isFinished ? 0 : interpolate(previousPoint.gradePercent, nextPoint.gradePercent, ratio),
+        curveRadiusMeters: interpolate(previousPoint.curveRadiusMeters, nextPoint.curveRadiusMeters, ratio),
+        curveSpeedLimitKph: resolveSampleCurveSpeedLimit(previousPoint, nextPoint)
     };
+}
+
+export function getMinimumCurveSpeedLimitAhead(route, distanceMeters, lookaheadMeters = 120) {
+    if (!route?.points?.length) {
+        return null;
+    }
+
+    const startDistance = Math.max(0, distanceMeters);
+    const endDistance = Math.min(route.totalDistanceMeters ?? startDistance, startDistance + Math.max(0, lookaheadMeters));
+    const limits = route.points
+        .filter((point) => point.distanceMeters >= startDistance && point.distanceMeters <= endDistance)
+        .map((point) => point.curveSpeedLimitKph)
+        .filter(Number.isFinite);
+
+    return limits.length > 0 ? Math.min(...limits) : null;
 }
 
 function createRouteObject({ source, name, segments, totalDistanceMeters, totalElevationGainMeters, totalDescentMeters, points, hasElevationData = true }) {
@@ -150,6 +174,85 @@ function createRouteObject({ source, name, segments, totalDistanceMeters, totalE
         totalDescentMeters,
         hasElevationData
     };
+}
+
+function annotateCurveLimits(points) {
+    if (points.length < 3 || !points.every(hasCoordinates)) {
+        return points.map((point) => ({
+            ...point,
+            curveRadiusMeters: null,
+            curveSpeedLimitKph: null
+        }));
+    }
+
+    return points.map((point, index) => {
+        if (index === 0 || index === points.length - 1) {
+            return {
+                ...point,
+                curveRadiusMeters: null,
+                curveSpeedLimitKph: null
+            };
+        }
+
+        const radius = calculateCurveRadiusMeters(points[index - 1], point, points[index + 1]);
+        const hasCurveLimit = Number.isFinite(radius) && radius >= MIN_CURVE_RADIUS_METERS && radius <= MAX_CURVE_RADIUS_METERS;
+
+        return {
+            ...point,
+            curveRadiusMeters: hasCurveLimit ? radius : null,
+            curveSpeedLimitKph: hasCurveLimit ? calculateCurveSpeedLimitKph(radius) : null
+        };
+    });
+}
+
+function calculateCurveRadiusMeters(previousPoint, point, nextPoint) {
+    const originLat = point.latitude;
+    const originLng = point.longitude;
+    const previous = projectToLocalMeters(previousPoint, originLat, originLng);
+    const current = projectToLocalMeters(point, originLat, originLng);
+    const next = projectToLocalMeters(nextPoint, originLat, originLng);
+    const sideA = distanceBetweenLocalPoints(current, next);
+    const sideB = distanceBetweenLocalPoints(previous, next);
+    const sideC = distanceBetweenLocalPoints(previous, current);
+    const areaTwice = Math.abs(
+        previous.x * (current.y - next.y)
+        + current.x * (next.y - previous.y)
+        + next.x * (previous.y - current.y)
+    );
+
+    if (sideA <= 0 || sideB <= 0 || sideC <= 0 || areaTwice <= 0.001) {
+        return Infinity;
+    }
+
+    return (sideA * sideB * sideC) / (2 * areaTwice);
+}
+
+function calculateCurveSpeedLimitKph(radiusMeters) {
+    const speedMps = Math.sqrt(DEFAULT_CURVE_LATERAL_G * 9.80665 * radiusMeters);
+    return Math.min(MAX_CURVE_SPEED_KPH, Math.max(MIN_CURVE_SPEED_KPH, speedMps * 3.6));
+}
+
+function projectToLocalMeters(point, originLat, originLng) {
+    const latRadians = toRadians(originLat);
+
+    return {
+        x: toRadians(point.longitude - originLng) * EARTH_RADIUS_METERS * Math.cos(latRadians),
+        y: toRadians(point.latitude - originLat) * EARTH_RADIUS_METERS
+    };
+}
+
+function distanceBetweenLocalPoints(first, second) {
+    return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function resolveSampleCurveSpeedLimit(previousPoint, nextPoint) {
+    const limits = [previousPoint.curveSpeedLimitKph, nextPoint.curveSpeedLimitKph].filter(Number.isFinite);
+
+    return limits.length > 0 ? Math.min(...limits) : null;
+}
+
+function hasCoordinates(point) {
+    return Number.isFinite(point.latitude) && Number.isFinite(point.longitude);
 }
 
 function interpolate(start, end, ratio) {
@@ -168,4 +271,8 @@ function clampNumber(value, min, max, fallback) {
     }
 
     return Math.min(max, Math.max(min, parsed));
+}
+
+function toRadians(value) {
+    return value * Math.PI / 180;
 }

@@ -41,6 +41,8 @@ export function simulateStep({
     power,
     gradePercent,
     settings,
+    speedLimitMps = null,
+    brakingDecelerationMps2 = 2.2,
     dt
 }) {
     const mass = settings.mass;
@@ -91,6 +93,11 @@ export function simulateStep({
     // 限制最大速度 (比如下坡时不踩踏也可能会无限加速，这里做一个合理的极速限制 120km/h = 33.3 m/s)
     if (nextSpeed > 33.3) {
         nextSpeed = 33.3;
+    }
+
+    if (Number.isFinite(speedLimitMps) && speedLimitMps >= 0 && nextSpeed > speedLimitMps) {
+        const brakingLimitedSpeed = Math.max(speedLimitMps, speed - Math.max(0, brakingDecelerationMps2) * dt);
+        nextSpeed = Math.min(nextSpeed, brakingLimitedSpeed);
     }
 
     const nextDistanceMeters = distanceMeters + nextSpeed * dt;

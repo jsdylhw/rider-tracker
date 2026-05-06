@@ -29,7 +29,7 @@ export const defaultSettings = {
     ftp: 250,
     restingHr: 58,
     maxHr: 182,
-    cda: 0.32,
+    cda: 0.35,
     crr: 0.004,
     windSpeed: 0
 };

@@ -90,6 +90,46 @@ export const suite = {
             }
         },
         {
+            name: "simulateRide slows before tight downhill GPX curves",
+            run() {
+                const curvedRoute = buildRouteFromTrackPoints({
+                    name: "Downhill Hairpin",
+                    points: [
+                        buildGeoPoint({ x: 0, y: 0, distanceMeters: 0 }),
+                        buildGeoPoint({ x: 400, y: 0, distanceMeters: 400 }),
+                        buildGeoPoint({ x: 430, y: 0, distanceMeters: 500 }),
+                        buildGeoPoint({ x: 430, y: 30, distanceMeters: 530 }),
+                        buildGeoPoint({ x: 430, y: 250, distanceMeters: 900 })
+                    ],
+                    segments: [
+                        { name: "Downhill", distanceMeters: 900, gradePercent: -8, elevationDelta: -72, startDistanceMeters: 0, endDistanceMeters: 900 }
+                    ]
+                });
+                const straightRoute = buildRouteFromTrackPoints({
+                    name: "Straight Downhill",
+                    points: [
+                        buildGeoPoint({ x: 0, y: 0, distanceMeters: 0 }),
+                        buildGeoPoint({ x: 900, y: 0, distanceMeters: 900 })
+                    ],
+                    segments: [
+                        { name: "Downhill", distanceMeters: 900, gradePercent: -8, elevationDelta: -72, startDistanceMeters: 0, endDistanceMeters: 900 }
+                    ]
+                });
+
+                const curvedSession = simulateRide({ route: curvedRoute, settings });
+                const straightSession = simulateRide({ route: straightRoute, settings });
+                const curvedApproachMax = Math.max(...curvedSession.records
+                    .filter((record) => record.distanceKm * 1000 >= 430 && record.distanceKm * 1000 <= 560)
+                    .map((record) => record.speedKph));
+                const straightApproachMax = Math.max(...straightSession.records
+                    .filter((record) => record.distanceKm * 1000 >= 430 && record.distanceKm * 1000 <= 560)
+                    .map((record) => record.speedKph));
+
+                assertGreaterThan(straightApproachMax, curvedApproachMax + 5);
+                assert(curvedSession.records.some((record) => Number.isFinite(record.curveSpeedLimitKph)), "弯道模拟记录应保留限速信息");
+            }
+        },
+        {
             name: "simulateRide computes consistent metrics on a flat route",
             run() {
                 const lowerPowerSession = simulateFixedGradeRide({ gradePercent: 0, power: 180 });
@@ -155,3 +195,18 @@ export const suite = {
         }
     ]
 };
+
+function buildGeoPoint({ x, y, distanceMeters }) {
+    const originLat = 31;
+    const originLng = 121;
+    const metersPerDegreeLat = 111320;
+    const metersPerDegreeLng = metersPerDegreeLat * Math.cos(originLat * Math.PI / 180);
+
+    return {
+        latitude: originLat + y / metersPerDegreeLat,
+        longitude: originLng + x / metersPerDegreeLng,
+        elevationMeters: -distanceMeters * 0.08,
+        distanceMeters,
+        gradePercent: -8
+    };
+}

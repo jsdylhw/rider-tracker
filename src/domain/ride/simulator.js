@@ -1,4 +1,4 @@
-import { getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
+import { getMinimumCurveSpeedLimitAhead, getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
 import { simulateStep } from "../physics/cycling-model.js";
 import { estimateHeartRate } from "../physiology/heart-rate-model.js";
 import { buildRideMetrics, createEmptyRideMetrics } from "../metrics/ride-metrics.js";
@@ -32,12 +32,15 @@ export function simulateRide({ route, settings }) {
     for (let elapsedSeconds = 1; elapsedSeconds <= maxSimulationSeconds; elapsedSeconds += 1) {
         const routeSample = getRouteSampleAtDistance(route, state.distanceMeters);
         const gradePercent = routeSample.gradePercent ?? 0;
+        const curveSpeedLimitKph = getMinimumCurveSpeedLimitAhead(route, state.distanceMeters, resolveCurveLookaheadMeters(state.speed));
 
         const previousState = state;
         state = simulateStep({
             ...state,
             power: settings.power,
             gradePercent,
+            speedLimitMps: Number.isFinite(curveSpeedLimitKph) ? curveSpeedLimitKph / 3.6 : null,
+            brakingDecelerationMps2: gradePercent < -2 ? 2.6 : 2.2,
             elapsedSeconds,
             settings,
             durationSeconds: maxSimulationSeconds,
@@ -72,6 +75,7 @@ export function simulateRide({ route, settings }) {
             distanceKm: state.distanceMeters / 1000,
             heartRate: Math.round(currentHeartRate),
             gradePercent,
+            curveSpeedLimitKph,
             elevationMeters,
             ascentMeters: state.ascentMeters,
             segmentName: getSegmentAtDistance(route, state.distanceMeters)?.name ?? "终点后",
@@ -100,6 +104,16 @@ export function simulateRide({ route, settings }) {
         records,
         summary: createSummary(metrics)
     };
+}
+
+function resolveCurveLookaheadMeters(speedMps) {
+    const reactionBufferMeters = 25;
+    const brakingDecelerationMps2 = 2.2;
+    const brakingDistanceMeters = Number.isFinite(speedMps)
+        ? (speedMps * speedMps) / (2 * brakingDecelerationMps2)
+        : 0;
+
+    return Math.min(180, Math.max(80, brakingDistanceMeters + reactionBufferMeters));
 }
 
 function createSummary(metrics) {
