@@ -1,5 +1,6 @@
 import {
     DEFAULT_METRIC_SELECTION,
+    DEFAULT_PIP_CHART_SELECTION,
     DEFAULT_PIP_METRIC_SELECTION,
     buildMetricCardsHtml,
     getEnabledMetricKeys,
@@ -36,6 +37,17 @@ export const suite = {
                 assertEqual(keys.includes("lookaheadGrade"), true);
                 assertEqual(keys.includes("targetControl"), true);
                 assertEqual(keys.includes("avg3sPower"), false);
+            }
+        },
+        {
+            name: "PiP 默认图表只启用坡度图",
+            run() {
+                const keys = getEnabledMetricKeys(DEFAULT_PIP_CHART_SELECTION);
+
+                assertEqual(keys.includes("elevation"), true);
+                assertEqual(keys.includes("powerHeartRate"), false);
+                assertEqual(keys.includes("speedCadence"), false);
+                assertEqual(keys.includes("powerZone"), false);
             }
         },
         {

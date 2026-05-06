@@ -6,22 +6,8 @@ export function buildPipContentHtml() {
             <div id="pipMetricsList" class="pip-training-grid"></div>
         </section>
         <section class="pip-section">
-            <div class="pip-section-title">实时坡度</div>
-            <div class="pip-grade-grid">
-                <div class="pip-grade-card">
-                    <div class="pip-metric-label">当前坡度</div>
-                    <div class="pip-grade-value climb-color"><span id="pipCurrentGrade">--</span><span class="pip-metric-unit">%</span></div>
-                </div>
-                <div class="pip-grade-card">
-                    <div class="pip-metric-label">前方坡度</div>
-                    <div class="pip-grade-value accent-color"><span id="pipLookaheadGrade">--</span><span class="pip-metric-unit">%</span></div>
-                </div>
-                <div class="pip-grade-card">
-                    <div id="pipTargetLabel" class="pip-metric-label">目标控制值</div>
-                    <div class="pip-grade-value power-color"><span id="pipTargetGrade">--</span><span id="pipTargetUnit" class="pip-metric-unit">%</span></div>
-                </div>
-            </div>
-            <svg id="pipElevationChart" class="pip-grade-svg" viewBox="0 0 320 72" preserveAspectRatio="none"></svg>
+            <div class="pip-section-title">图表</div>
+            <div id="pipChartsList" class="pip-charts-list"></div>
             <div id="pipControlStatus" class="pip-status">--</div>
         </section>
     `;
@@ -89,22 +75,28 @@ function buildPipStyleHtml() {
                 color: #94a3b8;
                 font-weight: normal;
             }
-            .pip-grade-grid {
+            .pip-charts-list {
                 display: grid;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-                gap: 6px;
-                margin-bottom: 8px;
+                gap: 8px;
             }
-            .pip-grade-card {
-                border-radius: 6px;
-                padding: 8px 6px;
-                text-align: center;
+            .pip-chart-card {
                 background: #1f2937;
                 border: 1px solid rgba(148, 163, 184, 0.18);
+                border-radius: 6px;
+                padding: 7px;
             }
-            .pip-grade-value {
-                font-size: 16px;
-                font-weight: 700;
+            .pip-chart-title {
+                margin-bottom: 5px;
+                color: #cbd5e1;
+                font-size: 10px;
+                font-weight: 800;
+            }
+            .pip-chart-svg {
+                width: 100%;
+                height: 88px;
+                display: block;
+                background: #020617;
+                border-radius: 6px;
             }
             .pip-status {
                 margin-top: 8px;
@@ -113,12 +105,10 @@ function buildPipStyleHtml() {
                 line-height: 1.4;
                 min-height: 28px;
             }
-            .pip-grade-svg {
-                width: 100%;
-                height: 72px;
-                display: block;
-                background: #020617;
-                border-radius: 6px;
+            .pip-empty {
+                margin: 0;
+                color: #94a3b8;
+                font-size: 11px;
             }
             .power-color { color: #22c55e; }
             .hr-color { color: #fb7185; }

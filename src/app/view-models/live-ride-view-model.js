@@ -4,6 +4,7 @@ import { buildEffectiveSensorSnapshot } from "../realtime/sensor-sampling.js";
 import { formatDuration, formatNumber } from "../../shared/format.js";
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
 import {
+    DEFAULT_PIP_CHART_SELECTION,
     DEFAULT_PIP_METRIC_SELECTION,
     getEnabledMetricKeys,
     normalizeMetricSelection
@@ -119,6 +120,7 @@ export function buildPipViewModel(state) {
         settings: state.settings
     });
     const pipMetricSelection = normalizeMetricSelection(state.pipConfig, DEFAULT_PIP_METRIC_SELECTION);
+    const pipChartSelection = normalizeMetricSelection(state.pipChartConfig, DEFAULT_PIP_CHART_SELECTION);
 
     return {
         distance: formatNumber(ride.distanceKm, 2),
@@ -137,8 +139,11 @@ export function buildPipViewModel(state) {
         controlStatus: training.runtime.controlStatus,
         route: ride.route,
         currentRecord: ride.currentRecord,
+        records: ride.records,
+        ftp: training.ftp,
         metricsData,
         enabledMetricKeys: getEnabledMetricKeys(pipMetricSelection),
+        enabledChartKeys: getEnabledMetricKeys(pipChartSelection),
         pipLayout: state.pipLayout ?? "grid"
     };
 }

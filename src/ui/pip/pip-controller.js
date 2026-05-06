@@ -1,5 +1,5 @@
 import { buildMetricCardsHtml } from "../../shared/live-metrics.js";
-import { buildPipElevationChartSvg } from "./pip-elevation-chart.js";
+import { buildPipChartsHtml } from "./pip-charts.js";
 import { buildPipContentHtml } from "./pip-template.js";
 
 export function createPipController({ button, template, getData }) {
@@ -24,27 +24,15 @@ export function createPipController({ button, template, getData }) {
         sync();
     }
 
-    function renderElevationChart(route, currentRecord) {
-        if (!pipWindow) return;
-        const chartEl = pipWindow.document.getElementById("pipElevationChart");
-        if (!chartEl) return;
-
-        chartEl.innerHTML = buildPipElevationChartSvg(route, currentRecord);
-    }
-
     function sync() {
         if (!pipWindow) {
             return;
         }
 
         const data = getData();
-        const targetGradeEl = pipWindow.document.getElementById("pipTargetGrade");
-        const targetLabelEl = pipWindow.document.getElementById("pipTargetLabel");
-        const targetUnitEl = pipWindow.document.getElementById("pipTargetUnit");
-        const currentGradeEl = pipWindow.document.getElementById("pipCurrentGrade");
-        const lookaheadGradeEl = pipWindow.document.getElementById("pipLookaheadGrade");
         const controlStatusEl = pipWindow.document.getElementById("pipControlStatus");
         const metricsListEl = pipWindow.document.getElementById("pipMetricsList");
+        const chartsListEl = pipWindow.document.getElementById("pipChartsList");
 
         if (metricsListEl) {
             metricsListEl.className = `pip-training-grid ${data.pipLayout ?? "grid"}`;
@@ -58,14 +46,16 @@ export function createPipController({ button, template, getData }) {
                 emptyMessage: "请在 PiP 显示中选择指标。"
             });
         }
-        if (currentGradeEl) currentGradeEl.innerText = data.metricsData?.currentGrade?.value ?? "--";
-        if (lookaheadGradeEl) lookaheadGradeEl.innerText = data.metricsData?.lookaheadGrade?.value ?? "--";
-        if (targetLabelEl) targetLabelEl.innerText = data.targetControlLabel ?? "目标控制值";
-        if (targetUnitEl) targetUnitEl.innerText = data.targetControlUnit ?? "%";
-        if (targetGradeEl) targetGradeEl.innerText = data.targetControlValue ?? data.targetTrainerGrade;
+        if (chartsListEl) {
+            chartsListEl.innerHTML = buildPipChartsHtml({
+                chartKeys: data.enabledChartKeys,
+                route: data.route,
+                currentRecord: data.currentRecord,
+                records: data.records,
+                ftp: data.ftp
+            });
+        }
         if (controlStatusEl) controlStatusEl.innerText = data.controlStatus;
-
-        renderElevationChart(data.route, data.currentRecord);
     }
 
     function refreshButtonState() {

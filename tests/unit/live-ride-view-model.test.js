@@ -1,4 +1,4 @@
-import { buildDashboardViewModel } from "../../src/app/view-models/live-ride-view-model.js";
+import { buildDashboardViewModel, buildPipViewModel } from "../../src/app/view-models/live-ride-view-model.js";
 import { DEFAULT_METRIC_SELECTION } from "../../src/shared/live-metrics.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
@@ -52,6 +52,12 @@ export const suite = {
                     workout: {
                         mode: "grade-sim",
                         runtime: { targetTrainerGradePercent: 5, lookaheadGradePercent: 4 }
+                    },
+                    pipChartConfig: {
+                        elevation: true,
+                        powerHeartRate: true,
+                        speedCadence: false,
+                        powerZone: false
                     }
                 };
 
@@ -68,6 +74,11 @@ export const suite = {
                 assertEqual(viewModel.metricsData.ascentMeters.value, 8);
                 assertEqual(viewModel.metricsData.powerSource.value, "外置功率计");
                 assertEqual(viewModel.metricsData.powerSignalStatus.value, "稳定");
+                const pipViewModel = buildPipViewModel(state);
+                assertEqual(pipViewModel.enabledChartKeys.includes("elevation"), true);
+                assertEqual(pipViewModel.enabledChartKeys.includes("powerHeartRate"), true);
+                assertEqual(pipViewModel.records.length, 2);
+                assertEqual(pipViewModel.ftp, 250);
             }
         }
     ]

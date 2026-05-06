@@ -42,6 +42,16 @@ export function createUiService({ store }) {
         }));
     }
 
+    function updatePipChartConfig(key, checked) {
+        store.setState((state) => ({
+            ...state,
+            pipChartConfig: {
+                ...state.pipChartConfig,
+                [key]: checked
+            }
+        }));
+    }
+
     function updatePipLayout(layout) {
         store.setState((state) => ({
             ...state,
@@ -55,6 +65,7 @@ export function createUiService({ store }) {
         enterSimulationMode,
         enterLiveMode,
         updatePipConfig,
+        updatePipChartConfig,
         updatePipLayout
     };
 }

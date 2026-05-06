@@ -93,6 +93,13 @@
     color: #cbd5e1;
 }
 
+.pip-config-subtitle {
+    margin: 10px 4px 2px;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 800;
+}
+
 .pip-config-panel select {
     color: #f8fafc;
     border-color: rgba(148, 163, 184, 0.45);
@@ -197,4 +204,3 @@
     color: #fff;
     background: var(--danger);
 }
-

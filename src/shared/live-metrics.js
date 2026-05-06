@@ -93,6 +93,20 @@ export const DEFAULT_PIP_METRIC_SELECTION = {
     targetControl: true
 };
 
+export const PIP_CHART_OPTIONS = [
+    { key: "elevation", label: "坡度图" },
+    { key: "powerHeartRate", label: "功率 / 心率" },
+    { key: "speedCadence", label: "速度 / 踏频" },
+    { key: "powerZone", label: "功率区间" }
+];
+
+export const DEFAULT_PIP_CHART_SELECTION = {
+    elevation: true,
+    powerHeartRate: false,
+    speedCadence: false,
+    powerZone: false
+};
+
 export function normalizeMetricSelection(selection, fallbackSelection = DEFAULT_METRIC_SELECTION) {
     const normalized = { ...fallbackSelection };
 

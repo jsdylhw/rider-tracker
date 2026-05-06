@@ -55,6 +55,7 @@ export function createMainView({
     onUpdateSettings,
     onUpdateExportMetadata,
     onUpdatePipConfig,
+    onUpdatePipChartConfig,
     onUpdatePipLayout,
     pipController
 }) {
@@ -319,6 +320,12 @@ export function createMainView({
             });
         });
 
+        elements.pipChartInputs?.forEach((input) => {
+            input.addEventListener("change", (event) => {
+                onUpdatePipChartConfig(event.target.value, event.target.checked);
+            });
+        });
+
         elements.pipLayoutSelect?.addEventListener("change", (event) => {
             onUpdatePipLayout(event.target.value);
         });
@@ -327,6 +334,10 @@ export function createMainView({
     function renderPipMetricControls(state) {
         elements.pipMetricInputs?.forEach((input) => {
             input.checked = state.pipConfig?.[input.value] === true;
+        });
+
+        elements.pipChartInputs?.forEach((input) => {
+            input.checked = state.pipChartConfig?.[input.value] === true;
         });
 
         if (elements.pipLayoutSelect && elements.pipLayoutSelect.value !== state.pipLayout) {

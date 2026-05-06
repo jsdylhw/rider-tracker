@@ -80,6 +80,7 @@ createMainView({
     onUpdateSettings: userService.updateSettings,
     onUpdateExportMetadata: exportService.updateExportMetadata,
     onUpdatePipConfig: uiService.updatePipConfig,
+    onUpdatePipChartConfig: uiService.updatePipChartConfig,
     onUpdatePipLayout: uiService.updatePipLayout
 });
 

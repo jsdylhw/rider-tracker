@@ -25,6 +25,7 @@ import { suite as routeChartSvgSuite } from "./unit/route-chart-svg.test.js";
 import { suite as exportViewSuite } from "./unit/export-view.test.js";
 import { suite as liveRideViewModelSuite } from "./unit/live-ride-view-model.test.js";
 import { suite as liveMetricsSuite } from "./unit/live-metrics.test.js";
+import { suite as pipChartsSuite } from "./unit/pip-charts.test.js";
 import { suite as pipElevationChartSuite } from "./unit/pip-elevation-chart.test.js";
 import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js";
 import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
@@ -58,6 +59,7 @@ const suites = [
     exportViewSuite,
     liveRideViewModelSuite,
     liveMetricsSuite,
+    pipChartsSuite,
     pipElevationChartSuite,
     rideSeriesChartSuite,
     activityStoreSuite,
