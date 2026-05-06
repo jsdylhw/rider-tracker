@@ -1,4 +1,8 @@
-import { buildDashboardViewModel, buildPipViewModel } from "../../src/app/view-models/live-ride-view-model.js";
+import {
+    buildDashboardViewModel,
+    buildPipViewModel,
+    selectRecentChartRecords
+} from "../../src/app/view-models/live-ride-view-model.js";
 import { DEFAULT_METRIC_SELECTION } from "../../src/shared/live-metrics.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
@@ -79,6 +83,42 @@ export const suite = {
                 assertEqual(pipViewModel.enabledChartKeys.includes("powerHeartRate"), true);
                 assertEqual(pipViewModel.records.length, 2);
                 assertEqual(pipViewModel.ftp, 250);
+            }
+        },
+        {
+            name: "PiP 图表记录只保留最近窗口并限制点数",
+            run() {
+                const records = Array.from({ length: 1200 }, (_, index) => ({
+                    elapsedSeconds: index,
+                    power: index
+                }));
+
+                const selected = selectRecentChartRecords(records, {
+                    windowSeconds: 300,
+                    maxRecords: 200
+                });
+
+                assertEqual(selected.length, 200);
+                assertEqual(selected[0].elapsedSeconds >= 899, true);
+                assertEqual(selected.at(-1).elapsedSeconds, 1199);
+            }
+        },
+        {
+            name: "PiP 图表记录少于上限时仍按时间窗口裁剪",
+            run() {
+                const records = Array.from({ length: 500 }, (_, index) => ({
+                    elapsedSeconds: index * 10,
+                    power: index
+                }));
+
+                const selected = selectRecentChartRecords(records, {
+                    windowSeconds: 300,
+                    maxRecords: 600
+                });
+
+                assertEqual(selected.length < records.length, true);
+                assertEqual(selected[0].elapsedSeconds >= 4690, true);
+                assertEqual(selected.at(-1).elapsedSeconds, 4990);
             }
         }
     ]

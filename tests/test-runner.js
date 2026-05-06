@@ -27,6 +27,7 @@ import { suite as liveRideViewModelSuite } from "./unit/live-ride-view-model.tes
 import { suite as liveMetricsSuite } from "./unit/live-metrics.test.js";
 import { suite as pipChartsSuite } from "./unit/pip-charts.test.js";
 import { suite as pipElevationChartSuite } from "./unit/pip-elevation-chart.test.js";
+import { suite as pipPreferencesSuite } from "./unit/pip-preferences.test.js";
 import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js";
 import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
 import { suite as activityDetailRendererSuite } from "./unit/activity-detail-renderer.test.js";
@@ -61,6 +62,7 @@ const suites = [
     liveMetricsSuite,
     pipChartsSuite,
     pipElevationChartSuite,
+    pipPreferencesSuite,
     rideSeriesChartSuite,
     activityStoreSuite,
     activityDetailRendererSuite

@@ -10,6 +10,9 @@ import {
     normalizeMetricSelection
 } from "../../shared/live-metrics.js";
 
+const PIP_CHART_WINDOW_SECONDS = 600;
+const PIP_CHART_MAX_RECORDS = 600;
+
 export function buildSensorSnapshot(state) {
     const powerMeter = state.ble?.powerMeter ?? {};
     const liveSession = state.liveRide?.session ?? null;
@@ -121,6 +124,10 @@ export function buildPipViewModel(state) {
     });
     const pipMetricSelection = normalizeMetricSelection(state.pipConfig, DEFAULT_PIP_METRIC_SELECTION);
     const pipChartSelection = normalizeMetricSelection(state.pipChartConfig, DEFAULT_PIP_CHART_SELECTION);
+    const chartRecords = selectRecentChartRecords(ride.records, {
+        windowSeconds: PIP_CHART_WINDOW_SECONDS,
+        maxRecords: PIP_CHART_MAX_RECORDS
+    });
 
     return {
         distance: formatNumber(ride.distanceKm, 2),
@@ -139,13 +146,53 @@ export function buildPipViewModel(state) {
         controlStatus: training.runtime.controlStatus,
         route: ride.route,
         currentRecord: ride.currentRecord,
-        records: ride.records,
+        records: chartRecords,
         ftp: training.ftp,
         metricsData,
         enabledMetricKeys: getEnabledMetricKeys(pipMetricSelection),
         enabledChartKeys: getEnabledMetricKeys(pipChartSelection),
         pipLayout: state.pipLayout ?? "grid"
     };
+}
+
+export function selectRecentChartRecords(records, { windowSeconds = PIP_CHART_WINDOW_SECONDS, maxRecords = PIP_CHART_MAX_RECORDS } = {}) {
+    const safeRecords = Array.isArray(records) ? records : [];
+    if (safeRecords.length <= 2) {
+        return safeRecords;
+    }
+
+    const latestElapsed = Number(safeRecords.at(-1)?.elapsedSeconds);
+    const windowStart = Number.isFinite(latestElapsed) ? latestElapsed - windowSeconds : null;
+    const windowedRecords = windowStart === null
+        ? safeRecords
+        : safeRecords.filter((record) => {
+            const elapsed = Number(record?.elapsedSeconds);
+            return Number.isFinite(elapsed) && elapsed >= windowStart;
+        });
+    const sourceRecords = windowedRecords.length >= 2 ? windowedRecords : safeRecords;
+
+    if (sourceRecords.length <= maxRecords) {
+        return sourceRecords;
+    }
+
+    return downsampleRecords(sourceRecords, maxRecords);
+}
+
+function downsampleRecords(records, maxRecords) {
+    const result = [];
+    const lastIndex = records.length - 1;
+    const step = lastIndex / (maxRecords - 1);
+    let previousIndex = -1;
+
+    for (let index = 0; index < maxRecords; index += 1) {
+        const sourceIndex = index === maxRecords - 1 ? lastIndex : Math.round(index * step);
+        if (sourceIndex !== previousIndex) {
+            result.push(records[sourceIndex]);
+            previousIndex = sourceIndex;
+        }
+    }
+
+    return result;
 }
 
 function buildDashboardMetricsData({ sensor, ride, training, settings = {} }) {

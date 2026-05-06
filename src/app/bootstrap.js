@@ -1,6 +1,6 @@
 import { createStore } from "./store/app-store.js";
 import { createInitialState } from "./store/initial-state.js";
-import { loadLastSession } from "../adapters/storage/session-storage.js";
+import { loadLastSession, loadPipPreferences } from "../adapters/storage/session-storage.js";
 import { createMainView } from "../ui/renderers/main-view.js";
 import { createPipController } from "../ui/pip/pip-controller.js";
 import { formatDuration, formatNumber } from "../shared/format.js";
@@ -16,7 +16,8 @@ import { createWorkoutService } from "./services/workout-service.js";
 
 // 1. 初始化状态与 Store
 const persistedSession = loadLastSession();
-const store = createStore(createInitialState(persistedSession));
+const pipPreferences = loadPipPreferences();
+const store = createStore(createInitialState(persistedSession, { pipPreferences }));
 const inferredInitialUiMode = inferInitialUiMode();
 
 if (inferredInitialUiMode !== store.getState().uiMode) {

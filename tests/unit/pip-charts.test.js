@@ -1,8 +1,8 @@
 import {
-    buildDualSeriesChartSvg,
     buildPipChartsHtml,
     buildPowerZoneChartSvg
 } from "../../src/ui/pip/pip-charts.js";
+import { buildDualSeriesChartSvg } from "../../src/ui/renderers/svg/dual-series-chart.js";
 import { assert, assertEqual } from "../helpers/test-harness.js";
 
 const records = [

@@ -46,9 +46,10 @@ export const defaultExportMetadata = {
 
 export const STREET_VIEW_UPDATE_INTERVAL_MS = 3000;
 
-export function createInitialState(session) {
+export function createInitialState(session, options = {}) {
     const routeSegments = sanitizeSegments(defaultRouteSegments);
     const route = buildRoute(routeSegments);
+    const pipPreferences = options.pipPreferences ?? {};
 
     return {
         uiMode: "home",
@@ -65,9 +66,9 @@ export function createInitialState(session) {
             ...(session?.exportMetadata ?? {})
         },
         hasPersistedSession: Boolean(session),
-        pipConfig: { ...DEFAULT_PIP_METRIC_SELECTION },
-        pipChartConfig: { ...DEFAULT_PIP_CHART_SELECTION },
-        pipLayout: "grid",
+        pipConfig: normalizeSelection(pipPreferences.pipConfig, DEFAULT_PIP_METRIC_SELECTION),
+        pipChartConfig: normalizeSelection(pipPreferences.pipChartConfig, DEFAULT_PIP_CHART_SELECTION),
+        pipLayout: ["compact", "grid", "wide"].includes(pipPreferences.pipLayout) ? pipPreferences.pipLayout : "grid",
         statusText: "请先设置路线与模拟参数。"
     };
 }
@@ -113,6 +114,16 @@ function normalizeBoolean(value, fallback) {
         if (text === "false") return false;
     }
     return fallback;
+}
+
+function normalizeSelection(selection, fallbackSelection) {
+    const normalized = { ...fallbackSelection };
+    Object.keys(selection ?? {}).forEach((key) => {
+        if (Object.hasOwn(normalized, key)) {
+            normalized[key] = selection[key] === true;
+        }
+    });
+    return normalized;
 }
 
 function createInitialLiveRideState() {

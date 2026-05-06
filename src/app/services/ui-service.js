@@ -1,3 +1,5 @@
+import { savePipPreferences } from "../../adapters/storage/session-storage.js";
+
 export function createUiService({ store }) {
     function setUiMode(mode) {
         store.setState((state) => ({
@@ -40,6 +42,7 @@ export function createUiService({ store }) {
                 [key]: checked
             }
         }));
+        persistPipPreferences();
     }
 
     function updatePipChartConfig(key, checked) {
@@ -50,6 +53,7 @@ export function createUiService({ store }) {
                 [key]: checked
             }
         }));
+        persistPipPreferences();
     }
 
     function updatePipLayout(layout) {
@@ -57,6 +61,7 @@ export function createUiService({ store }) {
             ...state,
             pipLayout: ["compact", "grid", "wide"].includes(layout) ? layout : "grid"
         }));
+        persistPipPreferences();
     }
 
     return {
@@ -68,4 +73,13 @@ export function createUiService({ store }) {
         updatePipChartConfig,
         updatePipLayout
     };
+
+    function persistPipPreferences() {
+        const state = store.getState();
+        savePipPreferences({
+            pipConfig: state.pipConfig,
+            pipChartConfig: state.pipChartConfig,
+            pipLayout: state.pipLayout
+        });
+    }
 }
