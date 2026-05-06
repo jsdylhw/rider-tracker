@@ -20,6 +20,13 @@ const PIP_CHART_RENDERERS = {
             right: { field: "power", label: "W", color: "#22c55e" }
         })
     },
+    powerTarget: {
+        title: "功率 / 目标功率",
+        render: ({ records }) => buildDualSeriesChartSvg(records, {
+            left: { field: "power", label: "实际 W", color: "#22c55e" },
+            right: { field: "targetPowerWatts", label: "目标 W", color: "#f59e0b" }
+        })
+    },
     speedCadence: {
         title: "速度 / 踏频",
         render: ({ records }) => buildDualSeriesChartSvg(records, {

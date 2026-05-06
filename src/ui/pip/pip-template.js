@@ -2,11 +2,9 @@ export function buildPipContentHtml() {
     return `
         ${buildPipStyleHtml()}
         <section class="pip-section">
-            <div class="pip-section-title">训练数据</div>
             <div id="pipMetricsList" class="pip-training-grid"></div>
         </section>
         <section class="pip-section">
-            <div class="pip-section-title">图表</div>
             <div id="pipChartsList" class="pip-charts-list"></div>
             <div id="pipControlStatus" class="pip-status">--</div>
         </section>
@@ -34,13 +32,6 @@ function buildPipStyleHtml() {
                 padding: 10px;
                 border: 1px solid rgba(148, 163, 184, 0.24);
                 box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
-            }
-            .pip-section-title {
-                font-size: 11px;
-                color: #94a3b8;
-                margin-bottom: 8px;
-                font-weight: 800;
-                text-transform: uppercase;
             }
             .pip-training-grid {
                 display: grid;

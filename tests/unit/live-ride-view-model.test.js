@@ -49,17 +49,28 @@ export const suite = {
                             route: { totalDistanceMeters: 2000 }
                         },
                         records: [
-                            { elapsedSeconds: 1, distanceKm: 0.01, speedKph: 20, power: 200, heartRate: 140, cadence: 85, gradePercent: 2, ascentMeters: 2, routeProgress: 0.1 },
-                            { elapsedSeconds: 2, distanceKm: 0.03, speedKph: 30, power: 300, heartRate: 150, cadence: 90, gradePercent: 5, ascentMeters: 8, routeProgress: 0.3 }
+                            { elapsedSeconds: 1, distanceKm: 0.01, speedKph: 20, power: 200, targetPowerWatts: 220, heartRate: 140, cadence: 85, gradePercent: 2, ascentMeters: 2, routeProgress: 0.1 },
+                            { elapsedSeconds: 2, distanceKm: 0.03, speedKph: 30, power: 300, targetPowerWatts: 240, heartRate: 150, cadence: 90, gradePercent: 5, ascentMeters: 8, routeProgress: 0.3 }
                         ]
                     },
                     workout: {
                         mode: "grade-sim",
-                        runtime: { targetTrainerGradePercent: 5, lookaheadGradePercent: 4 }
+                        runtime: {
+                            targetTrainerGradePercent: 5,
+                            lookaheadGradePercent: 4,
+                            customWorkoutTargetEnabled: true,
+                            customWorkoutTargetActive: true,
+                            customWorkoutTargetStepIndex: 0,
+                            customWorkoutTargetStepLabel: "第 1 段 · 恒定",
+                            customWorkoutTargetPowerWatts: 220,
+                            customWorkoutTargetSteps: [{ durationMinutes: 8 }],
+                            customWorkoutTargetRemainingSeconds: 420
+                        }
                     },
                     pipChartConfig: {
                         elevation: true,
                         powerHeartRate: true,
+                        powerTarget: true,
                         speedCadence: false,
                         powerZone: false
                     }
@@ -78,9 +89,12 @@ export const suite = {
                 assertEqual(viewModel.metricsData.ascentMeters.value, 8);
                 assertEqual(viewModel.metricsData.powerSource.value, "外置功率计");
                 assertEqual(viewModel.metricsData.powerSignalStatus.value, "稳定");
+                assertEqual(viewModel.metricsData.workoutTargetStep.value, "Ride at 220W");
+                assertEqual(viewModel.metricsData.workoutTargetStep.unit, "01:00 / 剩 07:00");
                 const pipViewModel = buildPipViewModel(state);
                 assertEqual(pipViewModel.enabledChartKeys.includes("elevation"), true);
                 assertEqual(pipViewModel.enabledChartKeys.includes("powerHeartRate"), true);
+                assertEqual(pipViewModel.enabledChartKeys.includes("powerTarget"), true);
                 assertEqual(pipViewModel.records.length, 2);
                 assertEqual(pipViewModel.ftp, 250);
             }

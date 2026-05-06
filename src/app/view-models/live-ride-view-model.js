@@ -233,6 +233,12 @@ function buildDashboardMetricsData({ sensor, ride, training, settings = {} }) {
         maxClimbGrade: { label: "最大爬坡", value: formatNumber(metrics.grade.maxPositivePercent ?? 0, 1), unit: "%", color: "climb-color" },
         maxDescentGrade: { label: "最大下坡", value: formatNumber(metrics.grade.maxNegativePercent ?? 0, 1), unit: "%", color: "accent-color" },
         targetControl: { label: training.trainerTarget.label, value: training.trainerTarget.value, unit: training.trainerTarget.unit, color: "power-color" },
+        workoutTargetStep: {
+            label: "ERG 课程",
+            value: formatWorkoutTargetStep(training.runtime),
+            unit: formatWorkoutTargetTiming(training.runtime),
+            color: "power-color"
+        },
         intensityFactor: { label: "强度系数 IF", value: formatNullableNumber(metrics.power.intensityFactor, 2), unit: "", color: "power-color" },
         variabilityIndex: { label: "变异指数 VI", value: formatNullableNumber(metrics.power.variabilityIndex, 2), unit: "", color: "power-color" },
         tss: { label: "预估 TSS", value: formatNumber(metrics.load.estimatedTss ?? 0, 1), unit: "", color: "accent-color" },
@@ -294,6 +300,55 @@ function formatPowerSignalStatus(sensor) {
     }
 
     return sensor.powerSignal?.isStable ? "稳定" : "波动";
+}
+
+function formatWorkoutTargetStep(runtime = {}) {
+    if (runtime.customWorkoutTargetCompleted) {
+        return "已完成";
+    }
+
+    if (!runtime.customWorkoutTargetEnabled || !runtime.customWorkoutTargetActive) {
+        return "--";
+    }
+
+    const targetPowerWatts = Number(runtime.customWorkoutTargetPowerWatts);
+    if (Number.isFinite(targetPowerWatts)) {
+        return `Ride at ${Math.round(targetPowerWatts)}W`;
+    }
+
+    return runtime.customWorkoutTargetStepLabel ?? `第 ${(runtime.customWorkoutTargetStepIndex ?? 0) + 1} 段`;
+}
+
+function formatWorkoutTargetTiming(runtime = {}) {
+    if (runtime.customWorkoutTargetCompleted) {
+        return "课程结束";
+    }
+
+    if (!runtime.customWorkoutTargetEnabled || !runtime.customWorkoutTargetActive) {
+        return "";
+    }
+
+    const remainingSeconds = Number(runtime.customWorkoutTargetRemainingSeconds);
+    const durationSeconds = getCurrentWorkoutTargetDurationSeconds(runtime);
+    if (!Number.isFinite(remainingSeconds) || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+        return "";
+    }
+
+    const elapsedSeconds = Math.max(0, durationSeconds - remainingSeconds);
+    return `${formatDuration(elapsedSeconds)} / 剩 ${formatDuration(remainingSeconds)}`;
+}
+
+function getCurrentWorkoutTargetDurationSeconds(runtime = {}) {
+    const stepIndex = Number(runtime.customWorkoutTargetStepIndex);
+    const steps = runtime.customWorkoutTargetSteps;
+    if (!Number.isInteger(stepIndex) || !Array.isArray(steps) || !steps[stepIndex]) {
+        return null;
+    }
+
+    const durationMinutes = Number(steps[stepIndex].durationMinutes);
+    return Number.isFinite(durationMinutes) && durationMinutes > 0
+        ? Math.round(durationMinutes * 60)
+        : null;
 }
 
 function resolveTrainerTarget(runtime) {

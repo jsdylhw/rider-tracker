@@ -36,6 +36,7 @@ export const suite = {
                 assertEqual(keys.includes("currentGrade"), true);
                 assertEqual(keys.includes("lookaheadGrade"), true);
                 assertEqual(keys.includes("targetControl"), true);
+                assertEqual(keys.includes("workoutTargetStep"), false);
                 assertEqual(keys.includes("avg3sPower"), false);
             }
         },
@@ -46,6 +47,7 @@ export const suite = {
 
                 assertEqual(keys.includes("elevation"), true);
                 assertEqual(keys.includes("powerHeartRate"), false);
+                assertEqual(keys.includes("powerTarget"), false);
                 assertEqual(keys.includes("speedCadence"), false);
                 assertEqual(keys.includes("powerZone"), false);
             }

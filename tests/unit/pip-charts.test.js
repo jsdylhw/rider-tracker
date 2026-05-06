@@ -6,9 +6,9 @@ import { buildDualSeriesChartSvg } from "../../src/ui/renderers/svg/dual-series-
 import { assert, assertEqual } from "../helpers/test-harness.js";
 
 const records = [
-    { elapsedSeconds: 0, power: 100, heartRate: 120, speedKph: 20, cadence: 80 },
-    { elapsedSeconds: 60, power: 150, heartRate: 135, speedKph: 24, cadence: 85 },
-    { elapsedSeconds: 120, power: 230, heartRate: 150, speedKph: 28, cadence: 90 }
+    { elapsedSeconds: 0, power: 100, targetPowerWatts: 120, heartRate: 120, speedKph: 20, cadence: 80 },
+    { elapsedSeconds: 60, power: 150, targetPowerWatts: 170, heartRate: 135, speedKph: 24, cadence: 85 },
+    { elapsedSeconds: 120, power: 230, targetPowerWatts: 210, heartRate: 150, speedKph: 28, cadence: 90 }
 ];
 
 export const suite = {
@@ -18,7 +18,7 @@ export const suite = {
             name: "渲染选中的 PiP 图表卡片",
             run() {
                 const html = buildPipChartsHtml({
-                    chartKeys: ["elevation", "powerHeartRate", "speedCadence", "powerZone"],
+                    chartKeys: ["elevation", "powerHeartRate", "powerTarget", "speedCadence", "powerZone"],
                     route: {
                         totalDistanceMeters: 1000,
                         points: [
@@ -33,6 +33,7 @@ export const suite = {
 
                 assert(html.includes("坡度图"));
                 assert(html.includes("功率 / 心率"));
+                assert(html.includes("功率 / 目标功率"));
                 assert(html.includes("速度 / 踏频"));
                 assert(html.includes("功率区间"));
             }
@@ -56,6 +57,20 @@ export const suite = {
                 assertEqual((svg.match(/<polyline/g) ?? []).length, 2);
                 assert(svg.includes("bpm"));
                 assert(svg.includes("W"));
+            }
+        },
+        {
+            name: "功率目标时间图渲染实际和目标功率",
+            run() {
+                const html = buildPipChartsHtml({
+                    chartKeys: ["powerTarget"],
+                    records
+                });
+
+                assert(html.includes("功率 / 目标功率"));
+                assert(html.includes("实际 W"));
+                assert(html.includes("目标 W"));
+                assertEqual((html.match(/<polyline/g) ?? []).length, 2);
             }
         },
         {

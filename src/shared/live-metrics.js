@@ -30,6 +30,7 @@ export const METRIC_OPTIONS = [
     { key: "maxClimbGrade", label: "最大爬坡", group: "基础" },
     { key: "maxDescentGrade", label: "最大下坡", group: "基础" },
     { key: "targetControl", label: "目标控制值", group: "基础" },
+    { key: "workoutTargetStep", label: "ERG 课程", group: "训练" },
     { key: "intensityFactor", label: "强度系数 IF", group: "强度" },
     { key: "variabilityIndex", label: "变异指数 VI", group: "强度" },
     { key: "tss", label: "预估 TSS", group: "强度" },
@@ -73,6 +74,7 @@ export const DEFAULT_METRIC_SELECTION = {
     maxClimbGrade: false,
     maxDescentGrade: false,
     targetControl: false,
+    workoutTargetStep: false,
     intensityFactor: false,
     variabilityIndex: false,
     tss: false,
@@ -90,12 +92,14 @@ export const DEFAULT_PIP_METRIC_SELECTION = {
     remainingKm: true,
     currentGrade: true,
     lookaheadGrade: true,
-    targetControl: true
+    targetControl: true,
+    workoutTargetStep: false
 };
 
 export const PIP_CHART_OPTIONS = [
     { key: "elevation", label: "坡度图" },
     { key: "powerHeartRate", label: "功率 / 心率" },
+    { key: "powerTarget", label: "功率 / 目标功率" },
     { key: "speedCadence", label: "速度 / 踏频" },
     { key: "powerZone", label: "功率区间" }
 ];
@@ -103,6 +107,7 @@ export const PIP_CHART_OPTIONS = [
 export const DEFAULT_PIP_CHART_SELECTION = {
     elevation: true,
     powerHeartRate: false,
+    powerTarget: false,
     speedCadence: false,
     powerZone: false
 };

@@ -2,7 +2,6 @@
 log.md
 local-project-docs.md
 user-profile.json
-auuki-architecture-physics-analysis.md
 # 系统或编辑器产生的文件
 .DS_Store
 *:Zone.Identifier
@@ -16,6 +15,4 @@ node_modules/
 dist/
 build/
 coverage/
-Auuki/
-.trae/
 /data
