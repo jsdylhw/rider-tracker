@@ -7,7 +7,8 @@ import { assertEqual } from "../helpers/test-harness.js";
 function createBaseState(mode = WORKOUT_MODES.FIXED_POWER) {
     return {
         settings: {
-            power: 220
+            power: 220,
+            ftp: 250
         },
         route: {
             totalDistanceMeters: 1000,
@@ -31,6 +32,10 @@ function createBaseState(mode = WORKOUT_MODES.FIXED_POWER) {
             },
             runtime: {
                 targetTrainerGradePercent: 0
+            },
+            customWorkoutTarget: {
+                enabled: false,
+                steps: []
             }
         },
         liveRide: {
@@ -108,6 +113,41 @@ export const suite = {
                 assertEqual(store.getState().workout.mode, WORKOUT_MODES.GRADE_SIM);
                 assertEqual(invokedModes.length, 1);
                 assertEqual(invokedModes[0], WORKOUT_MODES.GRADE_SIM);
+            }
+        },
+        {
+            name: "applyCustomWorkoutTargetPreset 会套用预设 ERG 课程",
+            run() {
+                const store = createStore(createBaseState(WORKOUT_MODES.FIXED_POWER));
+                const service = createWorkoutService({ store });
+
+                service.applyCustomWorkoutTargetPreset("ramp-test");
+                const state = store.getState();
+
+                assertEqual(state.workout.customWorkoutTarget.enabled, true);
+                assertEqual(state.workout.customWorkoutTarget.source, "preset");
+                assertEqual(state.workout.customWorkoutTarget.presetKey, "ramp-test");
+                assertEqual(state.workout.customWorkoutTarget.steps.length, 3);
+                assertEqual(state.workout.customWorkoutTarget.steps[1].blockType, "ramp-up");
+                assertEqual(state.workout.runtime.customWorkoutTargetEnabled, true);
+                assertEqual(state.statusText, "已套用预设训练课程。");
+            }
+        },
+        {
+            name: "editCustomWorkoutTarget 会切换回可编辑自定义课程",
+            run() {
+                const store = createStore(createBaseState(WORKOUT_MODES.FIXED_POWER));
+                const service = createWorkoutService({ store });
+
+                service.applyCustomWorkoutTargetPreset("ramp-test");
+                service.editCustomWorkoutTarget();
+                const state = store.getState();
+
+                assertEqual(state.workout.customWorkoutTarget.enabled, true);
+                assertEqual(state.workout.customWorkoutTarget.source, "custom");
+                assertEqual(state.workout.customWorkoutTarget.presetKey, null);
+                assertEqual(state.workout.customWorkoutTarget.steps.length, 3);
+                assertEqual(state.statusText, "已切换为自定义训练课程。");
             }
         }
     ]

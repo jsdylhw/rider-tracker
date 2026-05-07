@@ -363,6 +363,9 @@
                                     <p class="section-subtitle">使用固定目标功率，或启用按时间分段的 FTP 目标计划；两者只在 ERG 模式下控制骑行台。</p>
                                 </div>
                                 <div class="inline-actions">
+                                    <select id="customWorkoutTargetPresetSelect" class="workout-target-preset-select" aria-label="预设训练课程"></select>
+                                    <button id="applyCustomWorkoutTargetPresetBtn" type="button" class="btn secondary">套用课程</button>
+                                    <button id="editCustomWorkoutTargetBtn" type="button" class="btn secondary">自定义课程</button>
                                     <button id="addCustomWorkoutTargetStepBtn" type="button" class="btn secondary">新增阶段</button>
                                 </div>
                             </div>
@@ -378,7 +381,8 @@
                                 </div>
                             </label>
                             <div id="customWorkoutTargetEditor">
-                                <div class="table-shell">
+                                <svg id="customWorkoutTargetChart" class="workout-target-chart" viewBox="0 0 640 220" role="img" aria-label="训练课程功率时间图"></svg>
+                                <div id="customWorkoutTargetTableShell" class="table-shell">
                                     <table class="route-table">
                                         <thead>
                                             <tr>

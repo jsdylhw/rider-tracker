@@ -57,6 +57,8 @@ createMainView({
     onUpdateResistanceLevel: workoutService.updateResistanceLevel,
     onUpdateCustomWorkoutTargetEnabled: workoutService.updateCustomWorkoutTargetEnabled,
     onAddCustomWorkoutTargetStep: workoutService.addCustomWorkoutTargetStep,
+    onEditCustomWorkoutTarget: workoutService.editCustomWorkoutTarget,
+    onApplyCustomWorkoutTargetPreset: workoutService.applyCustomWorkoutTargetPreset,
     onUpdateCustomWorkoutTargetStep: workoutService.updateCustomWorkoutTargetStep,
     onRemoveCustomWorkoutTargetStep: workoutService.removeCustomWorkoutTargetStep,
     onAddSegment: routeService.addSegment,

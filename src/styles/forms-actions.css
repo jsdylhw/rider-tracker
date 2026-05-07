@@ -200,8 +200,23 @@ tbody tr:last-child td {
     width: 64px;
 }
 
+.workout-target-preset-select {
+    min-width: 156px;
+    width: 180px;
+}
+
 .workout-target-input {
     width: 80px;
+}
+
+.workout-target-chart {
+    width: 100%;
+    height: auto;
+    min-height: 160px;
+    margin-bottom: 12px;
+    background: #ffffff;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 8px;
 }
 
 #customWorkoutTargetPanel .route-table th,
@@ -420,4 +435,3 @@ tbody tr:last-child td {
 .danger-btn:hover:not(:disabled) {
     background-color: #fecaca;
 }
-

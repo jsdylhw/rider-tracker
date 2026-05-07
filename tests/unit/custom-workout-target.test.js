@@ -1,5 +1,7 @@
 import {
     buildWorkoutTargetRuntime,
+    createCustomWorkoutTargetFromPreset,
+    getWorkoutTargetPresetOptions,
     resolveWorkoutTargetAtElapsed,
     sanitizeCustomWorkoutTarget,
     WORKOUT_TARGET_BLOCK_TYPES
@@ -101,6 +103,22 @@ export const suite = {
                 assertEqual(runtime.customWorkoutTargetCompleted, true);
                 assertEqual(runtime.customWorkoutTargetPowerWatts, null);
                 assertEqual(runtime.customWorkoutTargetStepLabel, "训练目标已完成");
+            }
+        },
+        {
+            name: "createCustomWorkoutTargetFromPreset builds editable preset steps",
+            run() {
+                const options = getWorkoutTargetPresetOptions();
+                const presetTarget = createCustomWorkoutTargetFromPreset("ramp-test");
+
+                assertEqual(options.some((option) => option.key === "ramp-test"), true);
+                assertEqual(presetTarget.enabled, true);
+                assertEqual(presetTarget.source, "preset");
+                assertEqual(presetTarget.presetKey, "ramp-test");
+                assertEqual(presetTarget.steps.length, 3);
+                assertEqual(presetTarget.steps[1].blockType, WORKOUT_TARGET_BLOCK_TYPES.RAMP_UP);
+                assertEqual(presetTarget.steps[1].ftpPercent, 60);
+                assertEqual(presetTarget.steps[1].endFtpPercent, 130);
             }
         }
     ]

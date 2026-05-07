@@ -31,6 +31,8 @@ export function createMainView({
     onUpdateResistanceLevel,
     onUpdateCustomWorkoutTargetEnabled,
     onAddCustomWorkoutTargetStep,
+    onEditCustomWorkoutTarget,
+    onApplyCustomWorkoutTargetPreset,
     onUpdateCustomWorkoutTargetStep,
     onRemoveCustomWorkoutTargetStep,
     onAddSegment,
@@ -143,6 +145,8 @@ export function createMainView({
         elements,
         onUpdateCustomWorkoutTargetEnabled,
         onAddCustomWorkoutTargetStep,
+        onEditCustomWorkoutTarget,
+        onApplyCustomWorkoutTargetPreset,
         onUpdateCustomWorkoutTargetStep,
         onRemoveCustomWorkoutTargetStep
     });

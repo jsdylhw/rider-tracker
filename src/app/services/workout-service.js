@@ -4,6 +4,7 @@ import { buildErgControlState } from "../../domain/workout/erg-mode.js";
 import { buildResistanceControlState } from "../../domain/workout/resistance-mode.js";
 import {
     buildWorkoutTargetRuntime,
+    createCustomWorkoutTargetFromPreset,
     createWorkoutTargetStep,
     enrichRuntimeWithWorkoutTarget,
     sanitizeCustomWorkoutTarget
@@ -159,6 +160,8 @@ export function createWorkoutService({ store, deviceService = null }) {
         store.setState((state) => {
             const nextTarget = sanitizeCustomWorkoutTarget({
                 ...state.workout.customWorkoutTarget,
+                source: "custom",
+                presetKey: null,
                 steps: [
                     ...state.workout.customWorkoutTarget.steps,
                     createWorkoutTargetStep()
@@ -177,10 +180,52 @@ export function createWorkoutService({ store, deviceService = null }) {
         });
     }
 
+    function editCustomWorkoutTarget() {
+        store.setState((state) => {
+            const nextTarget = sanitizeCustomWorkoutTarget({
+                ...state.workout.customWorkoutTarget,
+                enabled: true,
+                source: "custom",
+                presetKey: null
+            });
+
+            return {
+                ...state,
+                workout: {
+                    ...state.workout,
+                    customWorkoutTarget: nextTarget,
+                    runtime: deriveRuntime(state, state.workout.mode, state.workout.gradeSimulation, nextTarget)
+                },
+                statusText: "已切换为自定义训练课程。"
+            };
+        });
+    }
+
+    function applyCustomWorkoutTargetPreset(presetKey) {
+        store.setState((state) => {
+            const nextTarget = createCustomWorkoutTargetFromPreset(presetKey, { enabled: true });
+            if (!nextTarget || state.liveRide.isActive) {
+                return state;
+            }
+
+            return {
+                ...state,
+                workout: {
+                    ...state.workout,
+                    customWorkoutTarget: nextTarget,
+                    runtime: deriveRuntime(state, state.workout.mode, state.workout.gradeSimulation, nextTarget)
+                },
+                statusText: "已套用预设训练课程。"
+            };
+        });
+    }
+
     function updateCustomWorkoutTargetStep(stepId, partialStep) {
         store.setState((state) => {
             const nextTarget = sanitizeCustomWorkoutTarget({
                 ...state.workout.customWorkoutTarget,
+                source: "custom",
+                presetKey: null,
                 steps: state.workout.customWorkoutTarget.steps.map((step) => step.id === stepId
                     ? { ...step, ...partialStep }
                     : step)
@@ -201,6 +246,8 @@ export function createWorkoutService({ store, deviceService = null }) {
         store.setState((state) => {
             const nextTarget = sanitizeCustomWorkoutTarget({
                 ...state.workout.customWorkoutTarget,
+                source: "custom",
+                presetKey: null,
                 steps: state.workout.customWorkoutTarget.steps.filter((step) => step.id !== stepId)
             });
 
@@ -224,6 +271,8 @@ export function createWorkoutService({ store, deviceService = null }) {
         updateResistanceLevel,
         updateCustomWorkoutTargetEnabled,
         addCustomWorkoutTargetStep,
+        editCustomWorkoutTarget,
+        applyCustomWorkoutTargetPreset,
         updateCustomWorkoutTargetStep,
         removeCustomWorkoutTargetStep
     };

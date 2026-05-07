@@ -6,9 +6,61 @@ export const WORKOUT_TARGET_BLOCK_TYPES = {
     RAMP_DOWN: "ramp-down"
 };
 
+export const WORKOUT_TARGET_PRESETS = [
+    {
+        key: "ramp-test",
+        label: "Ramp Test",
+        description: "渐进升功率，用于估算 FTP。",
+        steps: [
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 10, ftpPercent: 50 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.RAMP_UP, durationMinutes: 25, ftpPercent: 60, endFtpPercent: 130 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 8, ftpPercent: 45 }
+        ]
+    },
+    {
+        key: "ftp-20min-test",
+        label: "20 分钟 FTP Test",
+        description: "热身、激活、20 分钟测试和冷身。",
+        steps: [
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 10, ftpPercent: 55 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.RAMP_UP, durationMinutes: 5, ftpPercent: 60, endFtpPercent: 90 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 3, ftpPercent: 105 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 5, ftpPercent: 50 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 20, ftpPercent: 100 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 10, ftpPercent: 45 }
+        ]
+    },
+    {
+        key: "sweet-spot-3x10",
+        label: "Sweet Spot 3 x 10",
+        description: "常用甜区耐力训练。",
+        steps: [
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 10, ftpPercent: 55 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 10, ftpPercent: 90 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 5, ftpPercent: 55 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 10, ftpPercent: 92 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 5, ftpPercent: 55 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 10, ftpPercent: 90 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 8, ftpPercent: 45 }
+        ]
+    },
+    {
+        key: "endurance-60",
+        label: "Endurance 60",
+        description: "一小时 Z2 有氧骑。",
+        steps: [
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.RAMP_UP, durationMinutes: 10, ftpPercent: 45, endFtpPercent: 65 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 40, ftpPercent: 68 },
+            { blockType: WORKOUT_TARGET_BLOCK_TYPES.STEADY, durationMinutes: 10, ftpPercent: 45 }
+        ]
+    }
+];
+
 export function createDefaultCustomWorkoutTarget() {
     return {
         enabled: false,
+        source: "custom",
+        presetKey: null,
         steps: [
             createWorkoutTargetStep({
                 id: "step-1",
@@ -32,6 +84,31 @@ export function createDefaultCustomWorkoutTarget() {
             })
         ]
     };
+}
+
+export function getWorkoutTargetPresetOptions() {
+    return WORKOUT_TARGET_PRESETS.map(({ key, label, description }) => ({
+        key,
+        label,
+        description
+    }));
+}
+
+export function createCustomWorkoutTargetFromPreset(presetKey, { enabled = true } = {}) {
+    const preset = WORKOUT_TARGET_PRESETS.find((item) => item.key === presetKey);
+    if (!preset) {
+        return null;
+    }
+
+    return sanitizeCustomWorkoutTarget({
+        enabled,
+        source: "preset",
+        presetKey: preset.key,
+        steps: preset.steps.map((step, index) => ({
+            ...step,
+            id: `${preset.key}-${index + 1}`
+        }))
+    });
 }
 
 export function createWorkoutTargetStep(step = {}) {
@@ -65,6 +142,8 @@ export function sanitizeCustomWorkoutTarget(target = createDefaultCustomWorkoutT
 
     return {
         enabled: Boolean(normalized.enabled),
+        source: normalized.source === "preset" ? "preset" : "custom",
+        presetKey: normalized.source === "preset" ? normalizePresetKey(normalized.presetKey) : null,
         steps
     };
 }
@@ -211,6 +290,12 @@ function normalizeBlockType(blockType) {
         return WORKOUT_TARGET_BLOCK_TYPES.RAMP_DOWN;
     }
     return WORKOUT_TARGET_BLOCK_TYPES.STEADY;
+}
+
+function normalizePresetKey(presetKey) {
+    return WORKOUT_TARGET_PRESETS.some((preset) => preset.key === presetKey)
+        ? presetKey
+        : null;
 }
 
 function normalizeEndFtpPercent({ blockType, ftpPercent, endFtpPercent, fallbackEnd }) {
