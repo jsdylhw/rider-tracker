@@ -233,6 +233,24 @@
     border: 1px solid rgba(148, 163, 184, 0.45);
 }
 
+.ride-dashboard.immersive-street-view #immersiveUiToggleBtn {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    z-index: 80;
+    pointer-events: auto;
+    background: rgba(31, 41, 55, 0.82);
+    color: #e5e7eb;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+}
+
+.ride-dashboard.immersive-street-view.immersive-ui-hidden #immersiveMetricsCard,
+.ride-dashboard.immersive-street-view.immersive-ui-hidden #workoutTargetHudCard,
+.ride-dashboard.immersive-street-view.immersive-ui-hidden #trajectoryCard,
+.ride-dashboard.immersive-street-view.immersive-ui-hidden #liveElevationCard {
+    display: none !important;
+}
+
 .ride-dashboard.immersive-street-view #liveElevationCard {
     position: fixed;
     left: 50%;

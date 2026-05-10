@@ -55,6 +55,7 @@ function createElements() {
         svPano2: createFakeElement(),
         immersiveStreetViewBtn: createFakeElement({ hidden: true }),
         immersiveBackBtn: createFakeElement(),
+        immersiveUiToggleBtn: createFakeElement(),
         stopRideDashboardBtn: createFakeElement(),
         startRideDashboardBtn: createFakeElement(),
         deviceControlsPanel: createFakeElement({ style: {} }),
@@ -131,6 +132,38 @@ export const suite = {
                 renderer.bindEvents(store);
                 elements.immersiveBackBtn.dispatch("click");
                 assertEqual(elements.immersiveStreetViewBtn.textContent, "进入沉浸街景");
+            }
+        },
+        {
+            name: "沉浸模式左下角按钮可以隐藏和显示骑行 UI",
+            async run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.liveRide.isActive = true;
+                const store = createStore(state);
+
+                const renderer = createDashboardRenderer({
+                    elements,
+                    mapController: {
+                        async enableStreetView() {},
+                        syncRide() {}
+                    }
+                });
+
+                elements.streetViewApiKey.value = "test-key";
+                renderer.bindEvents(store);
+                elements.loadStreetViewBtn.dispatch("click");
+                await Promise.resolve();
+                renderer.render(store.getState());
+                elements.immersiveStreetViewBtn.dispatch("click");
+
+                elements.immersiveUiToggleBtn.dispatch("click");
+                assertEqual(elements.rideDashboard.classList.contains("immersive-ui-hidden"), true);
+                assertEqual(elements.immersiveUiToggleBtn.textContent, "显示 UI");
+
+                elements.immersiveUiToggleBtn.dispatch("click");
+                assertEqual(elements.rideDashboard.classList.contains("immersive-ui-hidden"), false);
+                assertEqual(elements.immersiveUiToggleBtn.textContent, "隐藏 UI");
             }
         }
     ]

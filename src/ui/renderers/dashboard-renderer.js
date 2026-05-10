@@ -25,6 +25,25 @@ export function createDashboardRenderer({
     };
     let streetViewLoaded = false;
     let immersiveStreetViewMode = false;
+    let immersiveUiHidden = false;
+
+    function setImmersiveUiHidden(hidden) {
+        immersiveUiHidden = hidden;
+        elements.rideDashboard?.classList.toggle("immersive-ui-hidden", immersiveUiHidden);
+        if (elements.immersiveUiToggleBtn) {
+            elements.immersiveUiToggleBtn.textContent = immersiveUiHidden ? "显示 UI" : "隐藏 UI";
+        }
+    }
+
+    function exitImmersiveStreetView() {
+        immersiveStreetViewMode = false;
+        setImmersiveUiHidden(false);
+        elements.rideDashboard?.classList.remove("immersive-street-view");
+        document.body.classList.remove("immersive-street-view-active");
+        if (elements.immersiveStreetViewBtn) {
+            elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
+        }
+    }
 
     function showRideAlert(message) {
         let container = document.getElementById("rideAlertsContainer");
@@ -86,6 +105,7 @@ export function createDashboardRenderer({
                     if (elements.immersiveStreetViewBtn) {
                         elements.immersiveStreetViewBtn.hidden = true;
                     }
+                    setImmersiveUiHidden(false);
                 }
             });
         }
@@ -100,19 +120,25 @@ export function createDashboardRenderer({
                 if (immersiveStreetViewMode && elements.metricsCustomizer) {
                     elements.metricsCustomizer.hidden = true;
                 }
+                if (!immersiveStreetViewMode) {
+                    setImmersiveUiHidden(false);
+                }
                 elements.rideDashboard?.classList.toggle("immersive-street-view", immersiveStreetViewMode);
                 elements.immersiveStreetViewBtn.textContent = immersiveStreetViewMode ? "退出沉浸模式" : "进入沉浸街景";
             });
         }
 
+        if (elements.immersiveUiToggleBtn) {
+            elements.immersiveUiToggleBtn.textContent = "隐藏 UI";
+            elements.immersiveUiToggleBtn.addEventListener("click", () => {
+                if (!immersiveStreetViewMode) return;
+                setImmersiveUiHidden(!immersiveUiHidden);
+            });
+        }
+
         if (elements.immersiveBackBtn) {
             elements.immersiveBackBtn.addEventListener("click", () => {
-                immersiveStreetViewMode = false;
-                elements.rideDashboard?.classList.remove("immersive-street-view");
-                document.body.classList.remove("immersive-street-view-active");
-                if (elements.immersiveStreetViewBtn) {
-                    elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
-                }
+                exitImmersiveStreetView();
             });
         }
 
@@ -225,15 +251,14 @@ export function createDashboardRenderer({
         }
         if (elements.rideDashboard) {
             elements.rideDashboard.classList.toggle("immersive-street-view", immersiveStreetViewMode);
+            elements.rideDashboard.classList.toggle("immersive-ui-hidden", immersiveUiHidden);
         }
         document.body.classList.toggle("immersive-street-view-active", immersiveStreetViewMode && ride.dashboardOpen);
         if (elements.immersiveStreetViewBtn) {
             const canShow = viewModel.canShowImmersiveStreetView;
             elements.immersiveStreetViewBtn.hidden = !canShow;
             if (!canShow && immersiveStreetViewMode) {
-                immersiveStreetViewMode = false;
-                elements.rideDashboard?.classList.remove("immersive-street-view");
-                document.body.classList.remove("immersive-street-view-active");
+                exitImmersiveStreetView();
             }
             if (!immersiveStreetViewMode) {
                 elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
@@ -244,7 +269,7 @@ export function createDashboardRenderer({
             alertStates.halfway = false;
             alertStates.last3k = false;
             if (elements.rideDashboardTitle) elements.rideDashboardTitle.textContent = "实时骑行界面";
-            if (elements.rideDashboardSubtitle) elements.rideDashboardSubtitle.textContent = "开始骑行后这里会显示实时进度、地图位置与核心训练指标。";
+            if (elements.rideDashboardSubtitle) elements.rideDashboardSubtitle.textContent = "";
             if (elements.rideProgressHeadline) elements.rideProgressHeadline.textContent = "0%";
             if (elements.rideProgressBar) elements.rideProgressBar.style.width = "0%";
             if (elements.rideProgressDistance) elements.rideProgressDistance.textContent = "0.00 / 0.00 km";

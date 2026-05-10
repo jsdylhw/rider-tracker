@@ -66,6 +66,7 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
         startRideDashboardBtn: document.getElementById("startRideDashboardBtn"),
         closeRideDashboardBtn: document.getElementById("closeRideDashboardBtn"),
         immersiveBackBtn: document.getElementById("immersiveBackBtn"),
+        immersiveUiToggleBtn: document.getElementById("immersiveUiToggleBtn"),
         stopRideDashboardBtn: document.getElementById("stopRideDashboardBtn"),
         dashboardMetricsGrid: document.getElementById("dashboardMetricsGrid"),
         immersiveMetricsGrid: document.getElementById("immersiveMetricsGrid"),
