@@ -1,4 +1,5 @@
-export function buildTrajectoryOverviewSvg(route, currentRecord) {
+export function buildTrajectoryOverviewSvg(route, currentRecord, options = {}) {
+    const { showDetail = true } = options;
     const points = (route?.points ?? []).filter((point) => typeof point.latitude === "number" && typeof point.longitude === "number");
     if (points.length < 2) {
         return buildCenteredMessageSvg({
@@ -30,6 +31,38 @@ export function buildTrajectoryOverviewSvg(route, currentRecord) {
     const currentPointByDistance = getRoutePointAtDistance(points, currentDistanceMeters);
     const currentLat = typeof currentRecord?.positionLat === "number" ? currentRecord.positionLat : currentPointByDistance.latitude;
     const currentLng = typeof currentRecord?.positionLong === "number" ? currentRecord.positionLong : currentPointByDistance.longitude;
+
+    const toOverviewX = (lng) => overviewPadding + ((lng - minLng) / lngRange) * (width - overviewPadding * 2);
+    const toOverviewY = (lat) => 68 - ((lat - minLat) / latRange) * (68 - 18);
+    const polyline = points.map((point) => `${toOverviewX(point.longitude).toFixed(1)},${toOverviewY(point.latitude).toFixed(1)}`).join(" ");
+    const start = points[0];
+    const end = points.at(-1);
+
+    if (!showDetail) {
+        const routePadding = 18;
+        const toFullRouteX = (lng) => routePadding + ((lng - minLng) / lngRange) * (width - routePadding * 2);
+        const toFullRouteY = (lat) => 150 - ((lat - minLat) / latRange) * (150 - 34);
+        const fullRoutePolyline = points.map((point) => `${toFullRouteX(point.longitude).toFixed(1)},${toFullRouteY(point.latitude).toFixed(1)}`).join(" ");
+        const currentX = toFullRouteX(currentLng);
+        const currentY = toFullRouteY(currentLat);
+        const currentPillX = clamp(currentX - 40, routePadding + 2, width - routePadding - 82);
+
+        return `
+            <rect x="0" y="0" width="${width}" height="${height}" fill="#0f172a" rx="12"></rect>
+            <rect x="0" y="0" width="${width}" height="${height}" fill="rgba(56, 189, 248, 0.04)" rx="12"></rect>
+            <text x="${routePadding}" y="18" fill="#cbd5e1" font-size="11" font-weight="700">鍏ㄧ▼璺嚎</text>
+            <text x="${width - routePadding}" y="18" text-anchor="end" fill="#94a3b8" font-size="10.5">${formatDistanceLabel(totalDistanceMeters)}</text>
+            <polyline points="${fullRoutePolyline}" fill="none" stroke="rgba(248, 250, 252, 0.26)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></polyline>
+            <polyline points="${fullRoutePolyline}" fill="none" stroke="#67e8f9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>
+            <circle cx="${toFullRouteX(start.longitude).toFixed(1)}" cy="${toFullRouteY(start.latitude).toFixed(1)}" r="4.2" fill="#22c55e"></circle>
+            <circle cx="${toFullRouteX(end.longitude).toFixed(1)}" cy="${toFullRouteY(end.latitude).toFixed(1)}" r="4.2" fill="#ef4444"></circle>
+            <circle cx="${currentX.toFixed(1)}" cy="${currentY.toFixed(1)}" r="8" fill="rgba(56, 189, 248, 0.16)"></circle>
+            <circle cx="${currentX.toFixed(1)}" cy="${currentY.toFixed(1)}" r="5.2" fill="#f8fafc" stroke="#38bdf8" stroke-width="2"></circle>
+            <rect x="${currentPillX.toFixed(1)}" y="148" width="80" height="22" rx="11" fill="rgba(15, 23, 42, 0.88)" stroke="rgba(148, 163, 184, 0.35)" stroke-width="1"></rect>
+            <text x="${(currentPillX + 40).toFixed(1)}" y="162" text-anchor="middle" fill="#f8fafc" font-size="10.5" font-weight="700">${formatDistanceLabel(currentDistanceMeters)}</text>
+        `;
+    }
+
     const localWindowSpan = Math.min(totalDistanceMeters, Math.max(1200, Math.min(totalDistanceMeters * 0.15, 5000)));
     const localWindowStart = clamp(currentDistanceMeters - localWindowSpan / 2, 0, Math.max(totalDistanceMeters - localWindowSpan, 0));
     const localWindowEnd = Math.min(localWindowStart + localWindowSpan, totalDistanceMeters);
@@ -43,15 +76,10 @@ export function buildTrajectoryOverviewSvg(route, currentRecord) {
     const localLatRange = Math.max(localMaxLat - localMinLat, 1e-9);
     const localLngRange = Math.max(localMaxLng - localMinLng, 1e-9);
 
-    const toOverviewX = (lng) => overviewPadding + ((lng - minLng) / lngRange) * (width - overviewPadding * 2);
-    const toOverviewY = (lat) => 68 - ((lat - minLat) / latRange) * (68 - 18);
     const toDetailX = (lng) => detail.x + ((lng - localMinLng) / localLngRange) * detail.width;
     const toDetailY = (lat) => detail.y + detail.height - ((lat - localMinLat) / localLatRange) * detail.height;
 
-    const polyline = points.map((point) => `${toOverviewX(point.longitude).toFixed(1)},${toOverviewY(point.latitude).toFixed(1)}`).join(" ");
     const detailPolyline = localPoints.map((point) => `${toDetailX(point.longitude).toFixed(1)},${toDetailY(point.latitude).toFixed(1)}`).join(" ");
-    const start = points[0];
-    const end = points.at(-1);
     const localWindowRect = buildOverviewWindowRect({
         points,
         windowStart: localWindowStart,

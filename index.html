@@ -13,7 +13,7 @@
             <section class="hero card">
                 <div class="hero-copy">
                     <h1>Rider Tracker 🚴‍♂️</h1>
-                    <p class="hero-text">一个基于 GPX 路线、蓝牙功率计、心率带和 FTMS 骑行台的本地虚拟骑行工具。先配置个人数据，再进入台子模拟骑行。</p>
+                    <p class="hero-kicker">让室内骑行更轻量、更自由</p>
                     <div class="controls mode-controls">
                         <button id="goToSimBtn" class="btn primary" hidden>模拟骑行</button>
                         <button id="goToLiveBtn" class="btn secondary">台子模拟骑行</button>
@@ -55,7 +55,6 @@
                         <div class="section-title-row">
                             <div>
                                 <h2>本地活动</h2>
-                                <p class="section-subtitle">最近保存到本地数据库的活动。</p>
                             </div>
                             <div class="inline-actions">
                                 <input id="homeImportFitInput" type="file" accept=".fit,application/vnd.ant.fit" hidden>
@@ -76,7 +75,6 @@
                 <div class="hero-copy">
                     <p class="eyebrow">Simulation</p>
                     <h1>按路线模拟整段骑行</h1>
-                    <p class="hero-text">在单一入口下完成路线导入、参数设置、结果查看与导出。</p>
                     <div class="controls mode-controls">
                         <button class="btn ghost go-home-btn">返回首页</button>
                     </div>
@@ -95,7 +93,6 @@
                         <div class="section-title-row">
                             <div>
                                 <h2>模拟参数</h2>
-                                <p class="section-subtitle">输入恒定功率，系统会按整条路线持续模拟直到完成路线。</p>
                             </div>
                         </div>
                         <form id="simulationForm" class="form-grid">
@@ -141,7 +138,6 @@
                         <div class="section-title-row">
                             <div>
                                 <h2>模拟结果</h2>
-                                <p class="section-subtitle">显示当前会话的汇总指标、图表与记录。</p>
                             </div>
                         </div>
                         <div class="data-grid">
@@ -199,7 +195,6 @@
                             <div class="section-title-row">
                                 <div>
                                     <h2>路线轨迹设置</h2>
-                                    <p class="section-subtitle">支持手工路线和 GPX 导入；可查看距离-海拔剖面、地图轨迹与路线明细。</p>
                                 </div>
                                 <div class="inline-actions">
                                     <button id="addSegmentBtn" class="btn secondary">新增路段</button>
@@ -213,10 +208,6 @@
                                     <input id="gpxFileInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
                                 </label>
                                 <div>
-                                    <div class="route-source-row" style="margin-bottom: 8px;">
-                                        <span>距离 / 海拔预览</span>
-                                        <strong>GPX 下方即时渲染</strong>
-                                    </div>
                                     <div id="setupElevationChartShell" class="chart-shell" style="margin-top: 0;">
                                         <svg id="setupElevationChart" viewBox="0 0 640 180" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block;"></svg>
                                     </div>
@@ -263,7 +254,6 @@
                 <div class="hero-copy">
                     <p class="eyebrow">Live Ride</p>
                     <h1>实时虚拟骑行</h1>
-                    <p class="hero-text">先连接设备、确认路线，再选择骑行台控制模式。开始后系统会用实时功率推进虚拟位置，并按所选模式控制骑行台。</p>
                     <div class="controls mode-controls">
                         <button class="btn ghost go-home-btn">返回首页</button>
                         <button id="openRideDashboardBtn" class="btn primary">进入骑行界面</button>
@@ -278,7 +268,6 @@
                         <div class="section-title-row">
                             <div>
                                 <h2>骑后分析报告</h2>
-                                <p class="section-subtitle">当前先展示最近活动，后续会接入详情、趋势图和 AI 分析。</p>
                             </div>
                         </div>
                         <div id="postRideHistoryContainer" class="activity-history-panel">
@@ -292,7 +281,6 @@
                         <div class="section-title-row">
                             <div>
                                 <h2>骑行台控制模式</h2>
-                                <p class="section-subtitle">选择骑行台如何执行训练：固定阻力、ERG 固定功率或按路线坡度模拟。自定义训练目标仅用于 ERG。</p>
                             </div>
                         </div>
                         <form id="workoutModeForm" class="form-grid">
@@ -353,7 +341,6 @@
                             <div class="section-title-row">
                                 <div>
                                     <h3>ERG 目标来源</h3>
-                                    <p class="section-subtitle">使用固定目标功率，或启用按时间分段的 FTP 目标计划；两者只在 ERG 模式下控制骑行台。</p>
                                 </div>
                                 <div class="inline-actions">
                                     <select id="customWorkoutTargetPresetSelect" class="workout-target-preset-select" aria-label="预设训练课程"></select>
@@ -362,17 +349,17 @@
                                     <button id="addCustomWorkoutTargetStepBtn" type="button" class="btn secondary">新增阶段</button>
                                 </div>
                             </div>
-                            <label class="field field-wide">
+                            <div class="field field-wide">
                                 <span>目标计划</span>
-                                <div class="setting-toggle">
-                                    <input id="customWorkoutTargetEnabled" type="checkbox">
+                                <div id="customWorkoutTargetToggle" class="setting-toggle" role="switch" tabindex="0" aria-checked="false">
+                                    <input id="customWorkoutTargetEnabled" type="checkbox" tabindex="-1" aria-hidden="true">
                                     <span class="setting-toggle-track" aria-hidden="true"></span>
                                     <span class="setting-toggle-copy">
                                         <strong>分段 FTP 目标</strong>
                                         <small>按时间改写 ERG 目标功率</small>
                                     </span>
                                 </div>
-                            </label>
+                            </div>
                             <div id="customWorkoutTargetEditor">
                                 <svg id="customWorkoutTargetChart" class="workout-target-chart" viewBox="0 0 640 220" role="img" aria-label="训练课程功率时间图"></svg>
                                 <div id="customWorkoutTargetTableShell" class="table-shell">
@@ -403,7 +390,6 @@
                 <div>
                     <p class="eyebrow">Ride Analysis</p>
                     <h1>活动详情</h1>
-                    <p class="hero-text">骑后报告、FIT 文件状态与 Strava 上传集中在这里处理。</p>
                 </div>
                 <div class="inline-actions">
                     <button id="activityDetailBackBtn" class="btn ghost" type="button">返回首页</button>
@@ -424,7 +410,6 @@
             <div class="section-title-row">
                 <div>
                     <h2>会话导出</h2>
-                    <p class="section-subtitle">统一管理 JSON / FIT 导出以及活动元信息。</p>
                 </div>
             </div>
             <div class="controls">
@@ -488,7 +473,6 @@
                 <div>
                     <p class="eyebrow">Ride Dashboard</p>
                     <h2 id="rideDashboardTitle">实时骑行界面</h2>
-                    <p class="section-subtitle" id="rideDashboardSubtitle">根据实时功率与 GPX 路线推进虚拟骑行。</p>
                 </div>
                 <div class="inline-actions">
                     <button id="customizeMetricsBtn" class="btn secondary">自定义面板</button>
@@ -547,7 +531,6 @@
                 <div class="section-title-row">
                     <div>
                         <h2>自定义实时数据</h2>
-                        <p class="section-subtitle">按基础、心率、功率、踏频、强度与设备信号分类添加数据项。</p>
                     </div>
                 </div>
                 <div class="metric-add-row">
@@ -617,7 +600,6 @@
                         <div class="section-title-row">
                             <div>
                                 <h2>设备连接与骑行控制</h2>
-                                <p class="section-subtitle">管理心率带、功率计与骑行台的连接状态，或开启悬浮窗。</p>
                             </div>
                         </div>
                         <div class="controls">
@@ -698,9 +680,8 @@
                             </div>
                             <div id="trajectoryCard" class="streetview-hud-card">
                                 <h3>路线总览</h3>
-                                <p class="section-subtitle">无底图 + 当前位置</p>
                                 <div class="chart-shell" style="height: 180px; position: relative;">
-                                    <svg id="streetViewTrajectorySvg" viewBox="0 0 300 180" preserveAspectRatio="none" style="width: 100%; height: 100%;"></svg>
+                                    <svg id="streetViewTrajectorySvg" viewBox="0 0 300 180" preserveAspectRatio="xMidYMid meet" style="width: 100%; height: 100%;"></svg>
                                 </div>
                             </div>
                         </div>
@@ -720,7 +701,6 @@
                     <div class="section-title-row">
                         <div>
                             <h2>功率目标跟踪</h2>
-                            <p class="section-subtitle">实时对比当前输入功率与训练目标功率。</p>
                         </div>
                     </div>
                     <div class="chart-shell" style="height: 220px; position: relative;">
@@ -731,8 +711,7 @@
                 <div class="card" id="liveElevationCard" style="grid-column: 1 / -1;">
                     <div class="section-title-row">
                         <div>
-                            <h2>路线海拔剖面</h2>
-                            <p class="section-subtitle">距离-坡度图（含当前骑行位置）。</p>
+                            <h2 id="rideElevationChartTitle">路线海拔剖面</h2>
                         </div>
                     </div>
                     <div class="chart-shell ride-elevation-chart-shell">

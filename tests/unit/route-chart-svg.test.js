@@ -31,6 +31,14 @@ export const suite = {
             }
         },
         {
+            name: "透明坡度图不渲染白色背景并保留当前位置坡度",
+            run() {
+                const svg = buildGradeChartSvg(createRoute(), { distanceKm: 5 }, { transparent: true });
+                assert(!svg.includes('fill="#ffffff" stroke="rgba(148, 163, 184, 0.28)"'));
+                assert(svg.includes(">+2.5%<"));
+            }
+        },
+        {
             name: "距离海拔图在有当前位置时显示当前位置海拔标签",
             run() {
                 const svg = buildElevationProfileSvg(createRoute(), { distanceKm: 5 });

@@ -174,12 +174,12 @@ export function createMainView({
         layoutCoordinator.render(state);
         renderSettings(state);
         routeRenderer.render(state);
-        dashboardRenderer.render(state);
         exportRenderer.render(state);
         workoutRenderer.render(state);
         customWorkoutTargetRenderer.render(state);
         deviceRenderer.render(state);
         renderSession(state);
+        dashboardRenderer.render(state);
         renderPostRideReport(state);
         renderActivityDetail(state);
         renderPipControls(state);

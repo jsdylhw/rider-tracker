@@ -1,5 +1,7 @@
 import express from "express";
 import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { createStravaClient } from "../strava-client.js";
 import { buildStravaLoginPage } from "../pages/strava-login-page.js";
 import { sendOAuthResultPage } from "../pages/oauth-result-page.js";
@@ -10,7 +12,9 @@ const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 export function createStravaRoutes({
     configStore,
     tokenStore,
+    activityStore,
     upload,
+    projectRoot,
     clientId,
     clientSecret,
     scopes,
@@ -286,6 +290,62 @@ export function createStravaRoutes({
         }
     });
 
+    router.post("/api/strava/upload-activity-fit", async (req, res) => {
+        const config = await getStravaConfig();
+        if (!ensureStravaConfig(res, config)) return;
+
+        const userId = normalizeUserId(req.body.userId);
+        const activityId = normalizeText(req.body.activityId);
+        const activity = activityStore?.getActivity?.(activityId);
+
+        if (!activity) {
+            return res.status(404).json({
+                ok: false,
+                error: "Activity not found."
+            });
+        }
+        if (!activity.fitFilePath) {
+            return res.status(409).json({
+                ok: false,
+                error: "Activity does not have an archived FIT file."
+            });
+        }
+
+        try {
+            const accessToken = await ensureValidAccessToken(userId);
+            const fitPath = resolveActivityFitPath({ projectRoot, fitFilePath: activity.fitFilePath });
+            const fitBytes = await fs.readFile(fitPath);
+            const sourceMessage = normalizeText(req.body.message || req.body.generatedMessage);
+            const fitDescription = normalizeText(req.body.fitDescription);
+            const fullDescription = [fitDescription, sourceMessage].filter(Boolean).join("\n\n");
+
+            const uploadResponse = await createClient(config).createUpload({
+                accessToken,
+                fileBlob: new Blob([fitBytes], { type: "application/vnd.ant.fit" }),
+                filename: path.basename(activity.fitFilePath),
+                dataType: "fit",
+                name: normalizeText(req.body.activityName) || activity.name,
+                description: fullDescription || undefined,
+                trainer: parseBoolean(req.body.trainer),
+                commute: parseBoolean(req.body.commute),
+                externalId: activity.id,
+                sportType: normalizeText(req.body.sportType) || activity.sportType
+            });
+
+            return res.json({
+                ok: true,
+                userId,
+                activityId: activity.id,
+                upload: uploadResponse
+            });
+        } catch (err) {
+            return res.status(500).json({
+                ok: false,
+                error: err.message
+            });
+        }
+    });
+
     router.get("/api/strava/upload-status/:uploadId", async (req, res) => {
         const config = await getStravaConfig();
         if (!ensureStravaConfig(res, config)) return;
@@ -321,6 +381,15 @@ export function createStravaRoutes({
     });
 
     return router;
+}
+
+function resolveActivityFitPath({ projectRoot, fitFilePath }) {
+    const root = path.resolve(projectRoot);
+    const fitPath = path.resolve(root, fitFilePath);
+    if (!fitPath.startsWith(`${root}${path.sep}`)) {
+        throw new Error("Activity FIT path is outside project root.");
+    }
+    return fitPath;
 }
 
 function toStoredTokenPayload(raw) {

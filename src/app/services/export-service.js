@@ -4,7 +4,7 @@ import {
     getStravaConnection,
     getStravaServerConfig,
     startStravaAuthorization,
-    uploadFitToStravaServer
+    uploadSavedActivityFitToStravaServer,
 } from "../../adapters/upload/strava-server-client.js";
 import {
     importActivityFitFile,
@@ -222,7 +222,7 @@ export function createExportService({ store }) {
         const { selectedActivity, session, exportMetadata } = store.getState();
         const activitySession = selectedActivity?.rawSession ?? session;
 
-        if (!activitySession) {
+        if (!activitySession && !selectedActivity?.id) {
             store.setState((state) => ({
                 ...state,
                 statusText: "没有可上传的活动数据。"
@@ -230,18 +230,18 @@ export function createExportService({ store }) {
             return;
         }
 
-        if (selectedActivity?.id) {
+        if (selectedActivity?.id && activitySession) {
             activitySession.activityId = selectedActivity.id;
         }
 
-        await uploadSessionFit({
+        await uploadActivityFitFromDatabase({
+            activity: selectedActivity,
             session: activitySession,
             exportMetadata: {
                 ...exportMetadata,
-                ...(activitySession.exportMetadata ?? {}),
-                activityName: selectedActivity?.name ?? activitySession.exportMetadata?.activityName ?? exportMetadata.activityName
-            },
-            selectedActivity
+                ...(activitySession?.exportMetadata ?? {}),
+                activityName: selectedActivity?.name ?? activitySession?.exportMetadata?.activityName ?? exportMetadata.activityName
+            }
         });
     }
 
@@ -367,11 +367,14 @@ export function createExportService({ store }) {
             const uploadAsVirtual = exportMetadata?.markVirtualActivity !== false;
             const hasGpsTrack = sessionHasGpsTrack(session);
 
-            const upload = await uploadFitToStravaServer({
+            if (!savedActivity?.id || !savedActivity?.fitFilePath) {
+                throw new Error("Activity FIT archive is missing.");
+            }
+
+            const upload = await uploadSavedActivityFitToStravaServer({
                 serverUrl: exportMetadata.stravaServerUrl,
                 userId: exportMetadata.stravaUserId,
-                fitBytes,
-                filename,
+                activityId: savedActivity.id,
                 activityName: exportMetadata.activityName,
                 fitDescription: exportMetadata.fitDescription,
                 repositoryUrl: exportMetadata.repositoryUrl,
@@ -382,6 +385,82 @@ export function createExportService({ store }) {
                 externalId: buildExternalId(session, timestamp)
             });
 
+            store.setState((state) => ({
+                ...state,
+                statusText: `Strava upload complete. Activity ID: ${upload.activity_id}.`
+            }));
+        } catch (error) {
+            console.error("FIT upload failed", error);
+            store.setState((state) => ({
+                ...state,
+                statusText: `FIT upload failed: ${extractErrorMessage(error)}`
+            }));
+        }
+    }
+
+    async function uploadActivityFitFromDatabase({ activity, session, exportMetadata }) {
+        if (!exportMetadata.stravaServerUrl) {
+            store.setState((state) => ({
+                ...state,
+                statusText: "Missing Strava server URL."
+            }));
+            return;
+        }
+
+        store.setState((state) => ({
+            ...state,
+            statusText: "Checking Strava connection..."
+        }));
+
+        try {
+            const connection = await getStravaConnection({
+                serverUrl: exportMetadata.stravaServerUrl,
+                userId: exportMetadata.stravaUserId
+            });
+
+            if (!connection?.configured) {
+                throw new Error("Strava credentials are not configured on the local server.");
+            }
+            if (!connection?.connected) {
+                store.setState((state) => ({
+                    ...state,
+                    statusText: "Click Connect Strava first, then upload FIT."
+                }));
+                return;
+            }
+
+            let activityForUpload = activity;
+            if (!activityForUpload?.fitFilePath) {
+                if (!session) {
+                    throw new Error("Activity does not have an archived FIT file.");
+                }
+                activityForUpload = await archiveFitForSession(session);
+            }
+            if (!activityForUpload?.id || !activityForUpload?.fitFilePath) {
+                throw new Error("Activity FIT archive is missing.");
+            }
+
+            store.setState((state) => ({
+                ...state,
+                statusText: "Uploading archived FIT file..."
+            }));
+
+            const uploadAsVirtual = exportMetadata?.markVirtualActivity !== false;
+            const hasGpsTrack = session ? sessionHasGpsTrack(session) : activityForUpload.hasGpsTrack === true;
+            const upload = await uploadSavedActivityFitToStravaServer({
+                serverUrl: exportMetadata.stravaServerUrl,
+                userId: exportMetadata.stravaUserId,
+                activityId: activityForUpload.id,
+                activityName: exportMetadata.activityName ?? activityForUpload.name,
+                fitDescription: exportMetadata.fitDescription,
+                repositoryUrl: exportMetadata.repositoryUrl,
+                generatedMessage: buildGeneratedMessage(exportMetadata.repositoryUrl),
+                trainer: uploadAsVirtual && !hasGpsTrack,
+                commute: false,
+                sportType: uploadAsVirtual ? "VirtualRide" : "Ride"
+            });
+
+            updateSelectedActivityFit(activityForUpload, session ?? activityForUpload.rawSession, activity);
             store.setState((state) => ({
                 ...state,
                 statusText: `Strava upload complete. Activity ID: ${upload.activity_id}.`

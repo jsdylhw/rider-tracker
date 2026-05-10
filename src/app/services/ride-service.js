@@ -93,7 +93,7 @@ export function createRideService({ store, deviceService, exportService }) {
             }
             : null;
         const activitySavePromise = completedSession
-            ? saveSessionToActivityHistory(completedSession)
+            ? archiveCompletedRideSession(completedSession, exportService)
             : Promise.resolve(null);
 
         if (completedSession) {
@@ -144,15 +144,11 @@ export function createRideService({ store, deviceService, exportService }) {
             statusText: stoppedStatusMeta
         }));
 
-        if ((completedMetrics?.ride.distanceKm ?? 0) > 0) {
+        if (completedSession) {
             void activitySavePromise
                 .then(async (activity) => {
-                    const fitActivity = typeof exportService.archiveFitForSession === "function"
-                        ? await exportService.archiveFitForSession(completedSession)
-                        : null;
                     const nextActivity = {
                         ...(activity ?? {}),
-                        ...(fitActivity ?? {}),
                         rawSession: completedSession
                     };
                     store.setState((currentState) => ({
@@ -369,6 +365,28 @@ function saveSessionToActivityHistory(session) {
         .catch((error) => {
             console.warn("[RideService] 保存活动历史失败:", error);
             return null;
+        });
+}
+
+function archiveCompletedRideSession(session, exportService) {
+    const savePromise = typeof exportService?.archiveSessionAsFitActivity === "function"
+        ? exportService.archiveSessionAsFitActivity(session, {
+            sportType: "VirtualRide",
+            markVirtualActivity: session.exportMetadata?.markVirtualActivity
+        })
+        : saveSessionToActivityHistory(session);
+
+    return Promise.resolve(savePromise)
+        .then((activity) => {
+            if (activity?.id) {
+                session.activityId = activity.id;
+                return activity;
+            }
+            return saveSessionToActivityHistory(session);
+        })
+        .catch((error) => {
+            console.warn("[RideService] FIT 活动归档失败，降级保存活动历史:", error);
+            return saveSessionToActivityHistory(session);
         });
 }
 

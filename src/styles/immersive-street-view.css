@@ -255,13 +255,13 @@
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: 10px;
-    width: min(68vw, 980px);
+    bottom: 12px;
+    width: min(72vw, 680px);
     z-index: 50;
     background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.7));
     border: 1px solid rgba(148, 163, 184, 0.28);
-    border-radius: 16px;
-    padding: 10px 12px;
+    border-radius: 12px;
+    padding: 6px 8px;
     box-shadow: 0 16px 32px rgba(15, 23, 42, 0.26);
     backdrop-filter: blur(8px);
 }
@@ -285,16 +285,24 @@ body.immersive-street-view-active {
 }
 
 .ride-dashboard.immersive-street-view #liveElevationCard .section-title-row {
-    margin-bottom: 6px;
+    display: none;
 }
 
 .ride-dashboard.immersive-street-view #liveElevationCard h2 {
     color: #e5e7eb;
-    font-size: 14px;
+    font-size: 13px;
 }
 
 .ride-dashboard.immersive-street-view #liveElevationCard .section-subtitle {
     color: #cbd5e1;
-    font-size: 12px;
+    font-size: 11px;
+}
+
+.ride-dashboard.immersive-street-view #liveElevationCard .ride-elevation-chart-shell {
+    width: 640px;
+    height: 180px;
+    min-height: 0;
+    max-width: 100%;
+    aspect-ratio: 640 / 180;
 }
 

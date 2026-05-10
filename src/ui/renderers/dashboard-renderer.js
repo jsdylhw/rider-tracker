@@ -1,6 +1,7 @@
 import { formatNumber } from "../../shared/format.js";
 import { buildDashboardViewModel } from "../../app/view-models/live-ride-view-model.js";
 import { buildTrajectoryOverviewSvg } from "./svg/dashboard-charts.js";
+import { buildGradeChartSvg } from "./svg/route-charts.js";
 import { createDashboardMetricsRenderer } from "./dashboard-metrics-renderer.js";
 import { createWorkoutRuntimeRenderer } from "./workout-runtime-renderer.js";
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
@@ -253,6 +254,7 @@ export function createDashboardRenderer({
             elements.rideDashboard.classList.toggle("immersive-street-view", immersiveStreetViewMode);
             elements.rideDashboard.classList.toggle("immersive-ui-hidden", immersiveUiHidden);
         }
+        syncElevationChartCopy();
         document.body.classList.toggle("immersive-street-view-active", immersiveStreetViewMode && ride.dashboardOpen);
         if (elements.immersiveStreetViewBtn) {
             const canShow = viewModel.canShowImmersiveStreetView;
@@ -320,6 +322,7 @@ export function createDashboardRenderer({
         });
 
         renderTrajectoryOverview(route, currentRecord, isGradeSimulation);
+        renderImmersiveGradeChart(route, currentRecord, isGradeSimulation);
         workoutRuntimeRenderer.render({ liveSession: session, training, records });
         syncRideMap(route, currentRecord);
     }
@@ -335,7 +338,36 @@ export function createDashboardRenderer({
         }
         elements.streetViewTrajectorySvg.innerHTML = buildTrajectoryOverviewSvg(
             route,
-            currentRecord
+            currentRecord,
+            { showDetail: false }
+        );
+    }
+
+    function renderImmersiveGradeChart(route, currentRecord, isGradeSimulation) {
+        if (!elements.rideDashboardElevationChart || !immersiveStreetViewMode || !isGradeSimulation) {
+            return;
+        }
+
+        elements.rideDashboardElevationChart.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        elements.rideDashboardElevationChart.innerHTML = buildGradeChartSvg(
+            route,
+            currentRecord,
+            { transparent: true }
+        );
+    }
+
+    function syncElevationChartCopy() {
+        if (elements.rideElevationChartTitle) {
+            elements.rideElevationChartTitle.textContent = immersiveStreetViewMode ? "路线坡度图" : "路线海拔剖面";
+        }
+        if (elements.rideElevationChartSubtitle) {
+            elements.rideElevationChartSubtitle.textContent = immersiveStreetViewMode
+                ? "全程坡度图，右侧显示当前位置附近的短距离坡度。"
+                : "距离-海拔图（含当前骑行位置）。";
+        }
+        elements.rideDashboardElevationChart?.setAttribute(
+            "preserveAspectRatio",
+            "xMidYMid meet"
         );
     }
 

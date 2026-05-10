@@ -102,6 +102,13 @@ body {
     margin: 0;
 }
 
+.hero-kicker {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
 .eyebrow {
     margin: 0 0 8px;
     color: var(--secondary);

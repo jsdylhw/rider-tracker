@@ -30,6 +30,20 @@ export function createCustomWorkoutTargetRenderer({
             });
         }
 
+        if (elements.customWorkoutTargetToggle) {
+            elements.customWorkoutTargetToggle.addEventListener("click", (event) => {
+                event.preventDefault?.();
+                toggleCustomWorkoutTarget();
+            });
+            elements.customWorkoutTargetToggle.addEventListener("keydown", (event) => {
+                if (event.key !== "Enter" && event.key !== " ") {
+                    return;
+                }
+                event.preventDefault?.();
+                toggleCustomWorkoutTarget();
+            });
+        }
+
         if (elements.addCustomWorkoutTargetStepBtn) {
             elements.addCustomWorkoutTargetStepBtn.addEventListener("click", () => {
                 onAddCustomWorkoutTargetStep();
@@ -165,6 +179,13 @@ export function createCustomWorkoutTargetRenderer({
         if (elements.customWorkoutTargetEnabled && document.activeElement !== elements.customWorkoutTargetEnabled) {
             elements.customWorkoutTargetEnabled.checked = customWorkoutTarget.enabled;
             elements.customWorkoutTargetEnabled.disabled = isLocked || !isErgMode;
+        }
+        if (elements.customWorkoutTargetToggle) {
+            const disabled = isLocked || !isErgMode;
+            elements.customWorkoutTargetToggle.setAttribute("aria-checked", customWorkoutTarget.enabled ? "true" : "false");
+            elements.customWorkoutTargetToggle.setAttribute("aria-disabled", disabled ? "true" : "false");
+            elements.customWorkoutTargetToggle.classList.toggle("is-disabled", disabled);
+            elements.customWorkoutTargetToggle.tabIndex = disabled ? -1 : 0;
         }
 
         if (elements.addCustomWorkoutTargetStepBtn) {
@@ -312,6 +333,15 @@ export function createCustomWorkoutTargetRenderer({
     return {
         render
     };
+
+    function toggleCustomWorkoutTarget() {
+        if (!elements.customWorkoutTargetEnabled || elements.customWorkoutTargetEnabled.disabled) {
+            return;
+        }
+        const nextChecked = !elements.customWorkoutTargetEnabled.checked;
+        elements.customWorkoutTargetEnabled.checked = nextChecked;
+        onUpdateCustomWorkoutTargetEnabled(nextChecked);
+    }
 
     function commitTableField(fieldElement) {
         clearScheduledCommit();

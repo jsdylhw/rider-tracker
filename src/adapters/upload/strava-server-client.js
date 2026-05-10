@@ -102,6 +102,58 @@ export async function uploadFitToStravaServer({
     });
 }
 
+export async function uploadSavedActivityFitToStravaServer({
+    serverUrl,
+    userId,
+    activityId,
+    activityName,
+    fitDescription,
+    repositoryUrl,
+    generatedMessage,
+    trainer = true,
+    commute = false,
+    sportType = "VirtualRide",
+    pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+    maxPollAttempts = DEFAULT_MAX_POLL_ATTEMPTS
+}) {
+    const baseUrl = normalizeServerUrl(serverUrl);
+    const response = await fetch(`${baseUrl}/api/strava/upload-activity-fit`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            userId: userId || "default",
+            activityId,
+            activityName,
+            fitDescription,
+            repositoryUrl,
+            generatedMessage,
+            trainer,
+            commute,
+            sportType
+        })
+    });
+    const body = await safeReadJson(response);
+    if (!response.ok || body?.ok === false) {
+        throw new Error(buildServerErrorMessage(response, body, "Strava saved activity upload"));
+    }
+
+    const upload = body?.upload ?? body;
+    const uploadId = upload?.id_str ?? upload?.id;
+    if (!uploadId) {
+        throw new Error("Strava server did not return an upload id.");
+    }
+
+    return pollStravaUploadStatus({
+        baseUrl,
+        userId: userId || "default",
+        uploadId,
+        pollIntervalMs,
+        maxPollAttempts
+    });
+}
+
 async function pollStravaUploadStatus({
     baseUrl,
     userId,

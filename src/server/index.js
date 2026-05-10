@@ -51,7 +51,9 @@ app.use(createActivityRoutes({
 app.use(createStravaRoutes({
     configStore,
     tokenStore,
+    activityStore,
     upload,
+    projectRoot: PROJECT_ROOT,
     clientId: CLIENT_ID,
     clientSecret: CLIENT_SECRET,
     scopes: SCOPES,

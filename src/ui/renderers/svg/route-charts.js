@@ -27,9 +27,30 @@ export function buildRouteChartEmptyStateSvg(message) {
     });
 }
 
-export function buildGradeChartSvg(route, currentRecord) {
+export function buildGradeChartSvg(route, currentRecord, { transparent = false, compact = false } = {}) {
     const width = DEFAULT_ROUTE_CHART_WIDTH;
-    const height = DEFAULT_ROUTE_CHART_HEIGHT;
+    const height = compact ? 128 : DEFAULT_ROUTE_CHART_HEIGHT;
+    const colors = transparent
+        ? {
+            ...ROUTE_CHART_COLORS,
+            text: "#f8fafc",
+            muted: "#cbd5e1",
+            dim: "#94a3b8",
+            grid: "rgba(226, 232, 240, 0.18)",
+            gridStrong: "rgba(226, 232, 240, 0.34)",
+            routeArea: "rgba(34, 197, 94, 0.18)",
+            detailArea: "rgba(34, 197, 94, 0.24)",
+            currentText: "#f8fafc",
+            insetFill: "rgba(15, 23, 42, 0.46)",
+            insetStroke: "rgba(226, 232, 240, 0.18)",
+            routeShadow: "rgba(15, 23, 42, 0.42)"
+        }
+        : {
+            ...ROUTE_CHART_COLORS,
+            insetFill: "#ffffff",
+            insetStroke: "rgba(148, 163, 184, 0.28)",
+            routeShadow: "rgba(203, 213, 225, 0.68)"
+        };
     const totalDist = Math.max(route.totalDistanceMeters, 1);
     const currentDistanceMeters = clamp(
         typeof currentRecord?.distanceKm === "number" ? currentRecord.distanceKm * 1000 : 0,
@@ -39,9 +60,15 @@ export function buildGradeChartSvg(route, currentRecord) {
     const allGrades = route.points.map((point) => point.gradePercent ?? 0);
     const overviewMinGrade = Math.min(...allGrades, -5);
     const overviewMaxGrade = Math.max(...allGrades, 5);
-    const mainChart = { x: 40, y: 40, width: 430, height: 86 };
-    const insetCard = { x: 488, y: 20, width: 126, height: 104 };
-    const insetPlot = { x: insetCard.x + 10, y: insetCard.y + 28, width: insetCard.width - 20, height: insetCard.height - 42 };
+    const mainChart = compact
+        ? { x: 36, y: 28, width: 438, height: 62 }
+        : { x: 40, y: 40, width: 430, height: 86 };
+    const insetCard = compact
+        ? { x: 492, y: 18, width: 124, height: 78 }
+        : { x: 488, y: 20, width: 126, height: 104 };
+    const insetPlot = compact
+        ? { x: insetCard.x + 10, y: insetCard.y + 24, width: insetCard.width - 20, height: insetCard.height - 36 }
+        : { x: insetCard.x + 10, y: insetCard.y + 28, width: insetCard.width - 20, height: insetCard.height - 42 };
     const detailWindowSpan = currentRecord
         ? Math.min(totalDist, Math.max(1600, Math.min(totalDist * 0.18, 8000)))
         : totalDist;
@@ -81,32 +108,34 @@ export function buildGradeChartSvg(route, currentRecord) {
     const zeroY = mapValueToY(0, overviewMinGrade, overviewMaxGrade, mainChart.y, mainChart.height);
 
     return `
-        <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="${ROUTE_CHART_COLORS.background}"></rect>
-        <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="${ROUTE_CHART_COLORS.surface}"></rect>
-        <text x="${mainChart.x}" y="${mainChart.y - 12}" fill="${ROUTE_CHART_COLORS.text}" font-size="12" font-weight="700">全程概览</text>
-        <text x="${mainChart.x + mainChart.width}" y="${mainChart.y - 12}" text-anchor="end" fill="${ROUTE_CHART_COLORS.dim}" font-size="10.5">x 轴: 距离 / y 轴: 坡度</text>
-        <line x1="${mainChart.x}" y1="${zeroY.toFixed(1)}" x2="${mainChart.x + mainChart.width}" y2="${zeroY.toFixed(1)}" stroke="${ROUTE_CHART_COLORS.gridStrong}" stroke-width="1" stroke-dasharray="4 5"></line>
-        ${buildGradeGuideLines(mainChart, overviewMinGrade, overviewMaxGrade)}
-        <path d="${buildAreaPath(overviewPoints, mainChart.y + mainChart.height)}" fill="${ROUTE_CHART_COLORS.routeArea}"></path>
-        <polyline points="${buildPolylineString(overviewPoints)}" fill="none" stroke="${ROUTE_CHART_COLORS.routeLine}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"></polyline>
+        ${transparent ? "" : `
+            <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="${colors.background}"></rect>
+            <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="${colors.surface}"></rect>
+        `}
+        <text x="${mainChart.x}" y="${mainChart.y - 12}" fill="${colors.text}" font-size="12" font-weight="700">全程概览</text>
+        <text x="${mainChart.x + mainChart.width}" y="${mainChart.y - 12}" text-anchor="end" fill="${colors.dim}" font-size="10.5">x 轴: 距离 / y 轴: 坡度</text>
+        <line x1="${mainChart.x}" y1="${zeroY.toFixed(1)}" x2="${mainChart.x + mainChart.width}" y2="${zeroY.toFixed(1)}" stroke="${colors.gridStrong}" stroke-width="1" stroke-dasharray="4 5"></line>
+        ${buildGradeGuideLines(mainChart, overviewMinGrade, overviewMaxGrade, colors)}
+        <path d="${buildAreaPath(overviewPoints, mainChart.y + mainChart.height)}" fill="${colors.routeArea}"></path>
+        <polyline points="${buildPolylineString(overviewPoints)}" fill="none" stroke="${colors.routeLine}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"></polyline>
         ${currentRecord ? `<rect x="${(mainChart.x + (detailWindowStart / totalDist) * mainChart.width).toFixed(1)}" y="${(mainChart.y + 2).toFixed(1)}" width="${Math.max((detailWindowSpan / totalDist) * mainChart.width, 8).toFixed(1)}" height="${(mainChart.height - 4).toFixed(1)}" rx="8" fill="rgba(248, 250, 252, 0.1)" stroke="rgba(226, 232, 240, 0.28)" stroke-width="1"></rect>` : ""}
-        ${currentRecord ? `<circle cx="${currentOverviewX.toFixed(1)}" cy="${currentOverviewY.toFixed(1)}" r="4.6" fill="#ffffff" stroke="${ROUTE_CHART_COLORS.current}" stroke-width="2"></circle>` : ""}
+        ${currentRecord ? `<circle cx="${currentOverviewX.toFixed(1)}" cy="${currentOverviewY.toFixed(1)}" r="4.6" fill="#ffffff" stroke="${colors.current}" stroke-width="2"></circle>` : ""}
         ${xTicks.map((tickValue) => `
-            <line x1="${(mainChart.x + (tickValue / totalDist) * mainChart.width).toFixed(1)}" y1="${mainChart.y + mainChart.height}" x2="${(mainChart.x + (tickValue / totalDist) * mainChart.width).toFixed(1)}" y2="${mainChart.y + mainChart.height + 4}" stroke="${ROUTE_CHART_COLORS.gridStrong}" stroke-width="1"></line>
-            <text x="${(mainChart.x + (tickValue / totalDist) * mainChart.width).toFixed(1)}" y="${height - 14}" text-anchor="middle" fill="${ROUTE_CHART_COLORS.muted}" font-size="10.5">${formatNumber(tickValue / 1000, 1)} km</text>
+            <line x1="${(mainChart.x + (tickValue / totalDist) * mainChart.width).toFixed(1)}" y1="${mainChart.y + mainChart.height}" x2="${(mainChart.x + (tickValue / totalDist) * mainChart.width).toFixed(1)}" y2="${mainChart.y + mainChart.height + 4}" stroke="${colors.gridStrong}" stroke-width="1"></line>
+            <text x="${(mainChart.x + (tickValue / totalDist) * mainChart.width).toFixed(1)}" y="${height - 14}" text-anchor="middle" fill="${colors.muted}" font-size="10.5">${formatNumber(tickValue / 1000, 1)} km</text>
         `).join("")}
-        <text x="${mainChart.x + mainChart.width / 2}" y="${height - 2}" text-anchor="middle" fill="${ROUTE_CHART_COLORS.dim}" font-size="10.5">距离</text>
+        <text x="${mainChart.x + mainChart.width / 2}" y="${height - 2}" text-anchor="middle" fill="${colors.dim}" font-size="10.5">距离</text>
 
-        <rect x="${insetCard.x}" y="${insetCard.y}" width="${insetCard.width}" height="${insetCard.height}" rx="14" fill="#ffffff" stroke="rgba(148, 163, 184, 0.28)" stroke-width="1"></rect>
-        <text x="${insetCard.x + 10}" y="${insetCard.y + 14}" fill="${ROUTE_CHART_COLORS.currentText}" font-size="11" font-weight="700">${currentRecord ? "当前位置跟随" : "局部视图"}</text>
-        <text x="${insetCard.x + 10}" y="${insetCard.y + 25}" fill="${ROUTE_CHART_COLORS.muted}" font-size="9.5">${currentRecord ? `${formatNumber(detailWindowStart / 1000, 1)} - ${formatNumber(detailWindowEnd / 1000, 1)} km` : `${formatNumber(totalDist / 1000, 1)} km`}</text>
-        <line x1="${insetPlot.x}" y1="${mapValueToY(0, detailMinGrade, detailMaxGrade, insetPlot.y, insetPlot.height).toFixed(1)}" x2="${insetPlot.x + insetPlot.width}" y2="${mapValueToY(0, detailMinGrade, detailMaxGrade, insetPlot.y, insetPlot.height).toFixed(1)}" stroke="${ROUTE_CHART_COLORS.grid}" stroke-width="1" stroke-dasharray="3 4"></line>
-        <path d="${buildAreaPath(detailPoints, insetPlot.y + insetPlot.height)}" fill="${ROUTE_CHART_COLORS.detailArea}"></path>
-        <polyline points="${buildPolylineString(detailPoints)}" fill="none" stroke="rgba(203, 213, 225, 0.68)" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"></polyline>
+        <rect x="${insetCard.x}" y="${insetCard.y}" width="${insetCard.width}" height="${insetCard.height}" rx="14" fill="${colors.insetFill}" stroke="${colors.insetStroke}" stroke-width="1"></rect>
+        <text x="${insetCard.x + 10}" y="${insetCard.y + 14}" fill="${colors.currentText}" font-size="11" font-weight="700">${currentRecord ? "当前位置跟随" : "局部视图"}</text>
+        <text x="${insetCard.x + 10}" y="${insetCard.y + 25}" fill="${colors.muted}" font-size="9.5">${currentRecord ? `${formatNumber(detailWindowStart / 1000, 1)} - ${formatNumber(detailWindowEnd / 1000, 1)} km` : `${formatNumber(totalDist / 1000, 1)} km`}</text>
+        <line x1="${insetPlot.x}" y1="${mapValueToY(0, detailMinGrade, detailMaxGrade, insetPlot.y, insetPlot.height).toFixed(1)}" x2="${insetPlot.x + insetPlot.width}" y2="${mapValueToY(0, detailMinGrade, detailMaxGrade, insetPlot.y, insetPlot.height).toFixed(1)}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="3 4"></line>
+        <path d="${buildAreaPath(detailPoints, insetPlot.y + insetPlot.height)}" fill="${colors.detailArea}"></path>
+        <polyline points="${buildPolylineString(detailPoints)}" fill="none" stroke="${colors.routeShadow}" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"></polyline>
         ${buildColoredSegments(detailPoints)}
-        ${currentRecord ? `<line x1="${currentDetailX.toFixed(1)}" y1="${(insetPlot.y - 2).toFixed(1)}" x2="${currentDetailX.toFixed(1)}" y2="${(insetPlot.y + insetPlot.height + 2).toFixed(1)}" stroke="${ROUTE_CHART_COLORS.current}" stroke-width="1.4" stroke-dasharray="4 5"></line>` : ""}
-        ${currentRecord ? `<circle cx="${currentDetailX.toFixed(1)}" cy="${currentDetailY.toFixed(1)}" r="8" fill="${ROUTE_CHART_COLORS.currentSoft}"></circle>` : ""}
-        ${currentRecord ? `<circle cx="${currentDetailX.toFixed(1)}" cy="${currentDetailY.toFixed(1)}" r="5.4" fill="#ffffff" stroke="${ROUTE_CHART_COLORS.current}" stroke-width="2.2"></circle>` : ""}
+        ${currentRecord ? `<line x1="${currentDetailX.toFixed(1)}" y1="${(insetPlot.y - 2).toFixed(1)}" x2="${currentDetailX.toFixed(1)}" y2="${(insetPlot.y + insetPlot.height + 2).toFixed(1)}" stroke="${colors.current}" stroke-width="1.4" stroke-dasharray="4 5"></line>` : ""}
+        ${currentRecord ? `<circle cx="${currentDetailX.toFixed(1)}" cy="${currentDetailY.toFixed(1)}" r="8" fill="${colors.currentSoft}"></circle>` : ""}
+        ${currentRecord ? `<circle cx="${currentDetailX.toFixed(1)}" cy="${currentDetailY.toFixed(1)}" r="5.4" fill="#ffffff" stroke="${colors.current}" stroke-width="2.2"></circle>` : ""}
         ${currentRecord ? `<rect x="${currentPillX.toFixed(1)}" y="${(insetCard.y + insetCard.height - 24).toFixed(1)}" width="92" height="18" rx="9" fill="#0f172a" stroke="rgba(148, 163, 184, 0.32)" stroke-width="1"></rect>` : ""}
         ${currentRecord ? `<text x="${(currentPillX + 46).toFixed(1)}" y="${(insetCard.y + insetCard.height - 11).toFixed(1)}" text-anchor="middle" fill="#f8fafc" font-size="10" font-weight="700">${formatSignedNumber(currentPoint.gradePercent ?? 0)}%</text>` : ""}
     `;
@@ -178,13 +207,13 @@ function buildCenteredMessageSvg({ width, height, message }) {
     `;
 }
 
-function buildGradeGuideLines(detail, minGrade, maxGrade) {
+function buildGradeGuideLines(detail, minGrade, maxGrade, colors = ROUTE_CHART_COLORS) {
     return getDistinctValues([maxGrade, 0, minGrade]).map((value) => {
         const y = mapValueToY(value, minGrade, maxGrade, detail.y, detail.height);
         const isZero = Math.abs(value) < 0.05;
         return `
-            <line x1="${detail.x}" y1="${y.toFixed(1)}" x2="${detail.x + detail.width}" y2="${y.toFixed(1)}" stroke="${isZero ? ROUTE_CHART_COLORS.gridStrong : ROUTE_CHART_COLORS.grid}" stroke-width="1" stroke-dasharray="${isZero ? "5 5" : "3 6"}"></line>
-            <text x="${detail.x - 12}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="${ROUTE_CHART_COLORS.muted}" font-size="11">${formatSignedNumber(value)}%</text>
+            <line x1="${detail.x}" y1="${y.toFixed(1)}" x2="${detail.x + detail.width}" y2="${y.toFixed(1)}" stroke="${isZero ? colors.gridStrong : colors.grid}" stroke-width="1" stroke-dasharray="${isZero ? "5 5" : "3 6"}"></line>
+            <text x="${detail.x - 12}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="${colors.muted}" font-size="11">${formatSignedNumber(value)}%</text>
         `;
     }).join("");
 }

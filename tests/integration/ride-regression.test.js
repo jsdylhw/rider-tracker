@@ -205,7 +205,17 @@ export const suite = {
                     const service = createRideService({
                         store,
                         deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
-                        exportService: { archiveFitForSession() { archiveCount += 1; return null; } }
+                        exportService: {
+                            archiveSessionAsFitActivity(session) {
+                                archiveCount += 1;
+                                return {
+                                    id: "live-activity",
+                                    name: "Live Activity",
+                                    fitFilePath: "data/files/fit/live.fit",
+                                    rawSession: session
+                                };
+                            }
+                        }
                     });
                     service.startRide();
                     timerCallbacks[0]();
@@ -224,6 +234,71 @@ export const suite = {
                     assertEqual(Boolean(state.selectedActivity?.rawSession), true);
                 } finally {
                     globalThis.setTimeout = originalSetTimeout;
+                    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+                    else globalThis.localStorage = originalLocalStorage;
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
+            name: "手工路线 ERG 结束骑行会保存到数据库",
+            async run() {
+                const state = {
+                    ...createState(),
+                    workout: {
+                        ...createState().workout,
+                        mode: WORKOUT_MODES.FIXED_POWER,
+                        erg: { confirmationRequired: false }
+                    }
+                };
+                const store = createStore(state);
+                const timerCallbacks = [];
+                const originalWindow = globalThis.window;
+                const originalLocalStorage = globalThis.localStorage;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval(callback) {
+                        timerCallbacks.push(callback);
+                        return timerCallbacks.length;
+                    },
+                    clearInterval() {}
+                };
+                globalThis.localStorage = {
+                    setItem() {},
+                    getItem() { return null; },
+                    removeItem() {}
+                };
+                let savedSession = null;
+
+                try {
+                    const service = createRideService({
+                        store,
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: {
+                            archiveSessionAsFitActivity(session) {
+                                savedSession = session;
+                                return {
+                                    id: "manual-erg-activity",
+                                    name: "Manual ERG",
+                                    distanceKm: session.summary.metrics.ride.distanceKm,
+                                    fitFilePath: "data/files/fit/manual-erg.fit"
+                                };
+                            }
+                        }
+                    });
+
+                    service.startRide();
+                    timerCallbacks[0]();
+                    service.stopRide();
+                    await flushPromises(6);
+
+                    const nextState = store.getState();
+                    assertGreaterThan(savedSession?.summary?.metrics?.ride?.distanceKm ?? 0, 0);
+                    assertEqual(savedSession?.activityId, "manual-erg-activity");
+                    assertEqual(nextState.selectedActivity?.id, "manual-erg-activity");
+                    assertEqual(nextState.selectedActivity?.fitFilePath, "data/files/fit/manual-erg.fit");
+                } finally {
                     if (originalLocalStorage === undefined) delete globalThis.localStorage;
                     else globalThis.localStorage = originalLocalStorage;
                     if (originalWindow === undefined) delete globalThis.window;
@@ -355,3 +430,9 @@ export const suite = {
         }
     ]
 };
+
+async function flushPromises(count = 1) {
+    for (let index = 0; index < count; index += 1) {
+        await Promise.resolve();
+    }
+}
