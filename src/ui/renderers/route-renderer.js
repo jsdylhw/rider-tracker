@@ -103,7 +103,6 @@ export function createRouteRenderer({
         if (elements.addSegmentBtn) elements.addSegmentBtn.disabled = isGpx;
         if (elements.routeDistanceChip) elements.routeDistanceChip.textContent = `${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
         if (elements.routeElevationChip) elements.routeElevationChip.textContent = `${Math.round(route.totalElevationGainMeters)} m`;
-        if (elements.savedSessionChip) elements.savedSessionChip.textContent = state.session ? "已更新" : state.hasPersistedSession ? "已恢复" : "未保存";
         if (elements.routeSummary) {
             const sourceText = isGpx ? "GPX 导入" : "手工输入";
             const segmentsText = isGpx ? "" : `，共 ${route.segments.length} 段`;
@@ -156,7 +155,7 @@ export function createRouteRenderer({
             elements.elevationChart.innerHTML = gradeChartSvg;
         }
         if (elements.rideDashboardElevationChart) {
-            elements.rideDashboardElevationChart.innerHTML = gradeChartSvg;
+            elements.rideDashboardElevationChart.innerHTML = elevationProfileSvg;
         }
         if (elements.setupElevationChart) {
             elements.setupElevationChart.innerHTML = elevationProfileSvg;

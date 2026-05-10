@@ -7,11 +7,11 @@ export function createHomeView({ onSetUiMode, onEnterSimulationMode, onEnterLive
         homeProfileCard: document.getElementById("homeProfileCard"),
         homeHistoryCard: document.getElementById("homeHistoryCard"),
         historyContainer: document.getElementById("historyContainer"),
-        homeStatusText: document.getElementById("homeStatusText"),
+        homeTotalDistanceChip: document.getElementById("homeTotalDistanceChip"),
+        homeTotalAscentChip: document.getElementById("homeTotalAscentChip"),
         postRideReportCard: document.getElementById("postRideReportCard"),
         postRideHistoryContainer: document.getElementById("postRideHistoryContainer"),
-        personalSettingsForm: document.getElementById("personalSettingsForm"),
-        savedSessionChip: document.getElementById("savedSessionChip")
+        personalSettingsForm: document.getElementById("personalSettingsForm")
     };
 
     bind(elements.goToSimBtn, "click", onEnterSimulationMode);
@@ -28,6 +28,9 @@ export function createHomeView({ onSetUiMode, onEnterSimulationMode, onEnterLive
         elements,
         renderSettings(state) {
             renderSettingsForm(elements.personalSettingsForm, state.settings);
+        },
+        renderActivitySummary(summary) {
+            renderActivitySummary(elements, summary);
         }
     };
 }
@@ -58,4 +61,21 @@ export function renderSettingsForm(form, settings) {
 
 function bind(el, event, handler) {
     if (el) el.addEventListener(event, handler);
+}
+
+function renderActivitySummary(elements, summary = {}) {
+    const totalDistanceKm = Number(summary.totalDistanceKm ?? 0);
+    const totalAscentMeters = Number(summary.totalAscentMeters ?? 0);
+
+    if (elements.homeTotalDistanceChip) {
+        elements.homeTotalDistanceChip.textContent = `${formatNumber(totalDistanceKm, 2)} km`;
+    }
+    if (elements.homeTotalAscentChip) {
+        elements.homeTotalAscentChip.textContent = `${Math.round(totalAscentMeters)} m`;
+    }
+}
+
+function formatNumber(value, digits = 2) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(digits) : (0).toFixed(digits);
 }

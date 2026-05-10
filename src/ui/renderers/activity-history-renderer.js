@@ -1,4 +1,4 @@
-import { deleteActivity, getActivity, listActivities, renameActivity } from "../../adapters/storage/activity-history-client.js";
+import { deleteActivity, fetchActivityHistory, getActivity, renameActivity } from "../../adapters/storage/activity-history-client.js";
 import { formatDuration, formatNumber } from "../../shared/format.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
 
@@ -8,6 +8,7 @@ export function createActivityHistoryRenderer({
     containers = [],
     limit = DEFAULT_LIMIT,
     onStatus = () => {},
+    onSummary = () => {},
     onOpenActivityDetail = () => {}
 } = {}) {
     const mountedContainers = containers.filter(Boolean);
@@ -55,7 +56,9 @@ export function createActivityHistoryRenderer({
         render();
 
         try {
-            activities = await listActivities({ limit });
+            const history = await fetchActivityHistory({ limit });
+            activities = history.activities;
+            onSummary(history.summary);
             statusText = activities.length ? "" : "暂无历史记录。";
         } catch (error) {
             statusText = `历史记录读取失败：${extractErrorMessage(error)}`;

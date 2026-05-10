@@ -31,8 +31,16 @@ export async function listActivities({
     serverUrl = globalThis.location?.origin || "",
     limit = 50
 } = {}) {
+    const history = await fetchActivityHistory({ serverUrl, limit });
+    return history.activities;
+}
+
+export async function fetchActivityHistory({
+    serverUrl = globalThis.location?.origin || "",
+    limit = 50
+} = {}) {
     if (!serverUrl) {
-        return [];
+        return { activities: [], summary: {} };
     }
 
     const url = new URL(`${serverUrl}/api/activities`);
@@ -43,7 +51,10 @@ export async function listActivities({
         throw new Error(body?.error || "Activity history fetch failed.");
     }
 
-    return body.activities ?? [];
+    return {
+        activities: body.activities ?? [],
+        summary: body.summary ?? {}
+    };
 }
 
 export async function renameActivity(activityId, name, {

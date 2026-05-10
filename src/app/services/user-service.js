@@ -8,8 +8,7 @@ export function createUserService({ store }) {
             saveUserProfile(nextSettings);
             return {
                 ...state,
-                settings: nextSettings,
-                statusText: "设置已更新，并将写入根目录 user-profile.json。"
+                settings: nextSettings
             };
         });
     }
@@ -25,8 +24,7 @@ export function createUserService({ store }) {
             .then((profile) => {
                 store.setState((state) => ({
                     ...state,
-                    settings: sanitizeSettings({ ...state.settings, ...profile }),
-                    statusText: "已加载根目录 user-profile.json"
+                    settings: sanitizeSettings({ ...state.settings, ...profile })
                 }));
             })
             .catch((error) => {

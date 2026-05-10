@@ -12,7 +12,6 @@
         <div id="view-home" class="view-section">
             <section class="hero card">
                 <div class="hero-copy">
-                    <p class="eyebrow">Virtual Ride Prototype</p>
                     <h1>Rider Tracker 🚴‍♂️</h1>
                     <p class="hero-text">一个基于 GPX 路线、蓝牙功率计、心率带和 FTMS 骑行台的本地虚拟骑行工具。先配置个人数据，再进入台子模拟骑行。</p>
                     <div class="controls mode-controls">
@@ -22,16 +21,12 @@
                 </div>
                 <div class="hero-metrics">
                     <div class="metric-chip">
-                        <span>路线距离</span>
-                        <strong id="routeDistanceChip">0.00 km</strong>
+                        <span>累计距离</span>
+                        <strong id="homeTotalDistanceChip">0.00 km</strong>
                     </div>
                     <div class="metric-chip">
                         <span>累计爬升</span>
-                        <strong id="routeElevationChip">0 m</strong>
-                    </div>
-                    <div class="metric-chip">
-                        <span>最近模拟</span>
-                        <strong id="savedSessionChip">未保存</strong>
+                        <strong id="homeTotalAscentChip">0 m</strong>
                     </div>
                 </div>
             </section>
@@ -42,7 +37,6 @@
                         <div class="section-title-row">
                             <div>
                                 <h2>个人基础数据</h2>
-                                <p class="section-subtitle">物理模型与功率计算的基础参数。</p>
                             </div>
                         </div>
                         <form id="personalSettingsForm" class="form-grid">
@@ -60,7 +54,7 @@
                     <div id="homeHistoryCard" class="card">
                         <div class="section-title-row">
                             <div>
-                                <h2>历史骑行记录</h2>
+                                <h2>本地活动</h2>
                                 <p class="section-subtitle">最近保存到本地数据库的活动。</p>
                             </div>
                             <div class="inline-actions">
@@ -71,7 +65,6 @@
                         <div id="historyContainer" class="activity-history-panel">
                             暂无历史记录。
                         </div>
-                        <div id="homeStatusText" class="home-status-text" aria-live="polite"></div>
                     </div>
 
                 </div>
@@ -499,7 +492,7 @@
                 </div>
                 <div class="inline-actions">
                     <button id="customizeMetricsBtn" class="btn secondary">自定义面板</button>
-                    <input type="text" id="streetViewApiKey" placeholder="Google Maps API Key" class="streetview-key-input">
+                    <input type="password" id="streetViewApiKey" placeholder="Google Maps API Key" class="streetview-key-input">
                     <button id="loadStreetViewBtn" class="btn secondary">加载街景</button>
                     <button id="immersiveStreetViewBtn" class="btn secondary" hidden>进入沉浸街景</button>
                     <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
@@ -680,7 +673,6 @@
                     <div class="section-title-row">
                         <div>
                             <h2>实时位置与街景主视图</h2>
-                            <p class="section-subtitle">沉浸模式下将优先展示街景全屏，地图仅作为后备显示。</p>
                         </div>
                     </div>
                     <div class="chart-shell ride-map-large" style="position: relative;">
@@ -695,6 +687,7 @@
 
                         <div id="streetViewHud" class="streetview-hud">
                             <button id="immersiveBackBtn" class="btn ghost">返回页面</button>
+                            <button id="immersiveUiToggleBtn" class="btn ghost">隐藏 UI</button>
                             <div id="immersiveMetricsCard" class="streetview-hud-card">
                                 <h3>实时骑行数据</h3>
                                 <div id="immersiveMetricsGrid" class="data-grid"></div>
@@ -718,7 +711,6 @@
                     <div class="section-title-row">
                         <div>
                             <h2>实时骑行数据</h2>
-                            <p class="section-subtitle">展示功率、速度、踏频、心率等动态指标。</p>
                         </div>
                     </div>
                     <div id="dashboardMetricsGrid" class="data-grid"></div>
@@ -743,8 +735,8 @@
                             <p class="section-subtitle">距离-坡度图（含当前骑行位置）。</p>
                         </div>
                     </div>
-                    <div class="chart-shell" style="height: 180px; position: relative;">
-                        <svg id="rideDashboardElevationChart" viewBox="0 0 640 180" preserveAspectRatio="none" style="width: 100%; height: 100%;"></svg>
+                    <div class="chart-shell ride-elevation-chart-shell">
+                        <svg id="rideDashboardElevationChart" viewBox="0 0 640 180" preserveAspectRatio="xMidYMid meet"></svg>
                     </div>
                 </div>
             </div>

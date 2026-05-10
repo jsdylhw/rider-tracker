@@ -275,6 +275,7 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
             SELECT
                 COUNT(*) AS activityCount,
                 COALESCE(SUM(distance_km), 0) AS totalDistanceKm,
+                COALESCE(SUM(ascent_meters), 0) AS totalAscentMeters,
                 COALESCE(SUM(elapsed_seconds), 0) AS totalElapsedSeconds,
                 COALESCE(SUM(estimated_tss), 0) AS totalEstimatedTss
             FROM activities;
@@ -282,6 +283,7 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         return rows[0] ?? {
             activityCount: 0,
             totalDistanceKm: 0,
+            totalAscentMeters: 0,
             totalElapsedSeconds: 0,
             totalEstimatedTss: 0
         };

@@ -161,6 +161,9 @@ export function createMainView({
                 statusText
             }));
         },
+        onSummary: (summary) => {
+            homeView.renderActivitySummary(summary);
+        },
         onOpenActivityDetail: (activity) => {
             onOpenActivityDetail(activity);
         }
@@ -217,11 +220,6 @@ export function createMainView({
         if (elements.currentGradeValue) elements.currentGradeValue.textContent = `${formatNumber(metrics.grade.currentPercent ?? 0, 1)}%`;
         if (elements.recordCountValue) elements.recordCountValue.textContent = String(records.length);
         if (elements.statusText) elements.statusText.textContent = state.statusText;
-        if (elements.homeStatusText) {
-            elements.homeStatusText.textContent = state.statusText ?? "";
-            elements.homeStatusText.hidden = !state.statusText;
-        }
-
         if (elements.downloadSessionBtn) elements.downloadSessionBtn.disabled = !session || state.liveRide.isActive;
         if (elements.downloadFitBtn) elements.downloadFitBtn.disabled = !session || state.liveRide.isActive;
         if (elements.importFitBtn) elements.importFitBtn.disabled = state.liveRide.isActive;
