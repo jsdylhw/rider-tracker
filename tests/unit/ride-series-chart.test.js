@@ -1,9 +1,12 @@
 import {
+    buildRideSeriesChartGeometry,
     buildRideSeriesChartSvg,
     collectSeriesPoints,
+    findNearestRideSeriesPoint,
+    getRideSeriesValueAtChartX,
     getRideSeriesAxisFields
 } from "../../src/ui/renderers/svg/ride-series-chart.js";
-import { assert, assertEqual } from "../helpers/test-harness.js";
+import { assert, assertApprox, assertEqual } from "../helpers/test-harness.js";
 
 function createRecords() {
     return [
@@ -61,11 +64,16 @@ export const suite = {
                     currentRecord: { elapsedSeconds: 120, power: 240 }
                 });
 
-                assert(svg.includes("时间 - 功率"));
-                assert(svg.includes("x 轴: 时间 / y 轴: 功率"));
+                assert(!svg.includes(">功率<"));
+                assert(svg.includes("时间 (分:秒)"));
+                assert(svg.includes("功率 (W)"));
+                assert(!svg.includes("x 轴: 时间 / y 轴: 功率"));
                 assert(svg.includes("data-role=\"series-line\""));
                 assert(svg.includes("data-role=\"series-area\""));
-                assert(svg.includes("data-role=\"current-cursor\""));
+                assert(svg.includes("data-role=\"current-cursor-x\""));
+                assert(svg.includes("data-role=\"current-cursor-y\""));
+                assert(svg.includes("data-role=\"current-x-label\""));
+                assert(svg.includes("data-role=\"current-y-label\""));
                 assert(svg.includes(">240W<"));
                 assert(svg.includes(">03:00<"));
             }
@@ -80,11 +88,13 @@ export const suite = {
                     currentRecord: { distanceKm: 1.3, gradePercent: 7 }
                 });
 
-                assert(svg.includes("距离 - 坡度"));
-                assert(svg.includes("x 轴: 距离 / y 轴: 坡度"));
+                assert(!svg.includes(">坡度<"));
+                assert(svg.includes("距离 (km)"));
+                assert(svg.includes("坡度 (%)"));
+                assert(!svg.includes("x 轴: 距离 / y 轴: 坡度"));
                 assert(svg.includes("data-role=\"zero-line\""));
                 assert(svg.includes(">+7.0%<"));
-                assert(svg.includes(">2.10 km<"));
+                assert(svg.includes(">2.10<"));
             }
         },
         {
@@ -96,9 +106,9 @@ export const suite = {
                     yKey: "routeProgress"
                 });
 
-                assert(svg.includes("时间 - 路线进度"));
+                assert(!svg.includes(">路线进度<"));
                 assert(svg.includes(">70%<"));
-                assert(svg.includes(">100%<"));
+                assert(svg.includes(">100<"));
             }
         },
         {
@@ -117,6 +127,74 @@ export const suite = {
 
                 assert(notEnough.includes("暂无足够图表数据"));
                 assert(invalid.includes("不支持的图表字段"));
+            }
+        },
+        {
+            name: "未传入当前记录时不会默认显示游标轴标",
+            run() {
+                const svg = buildRideSeriesChartSvg({
+                    records: createRecords(),
+                    xKey: "elapsedSeconds",
+                    yKey: "power"
+                });
+
+                assert(!svg.includes("data-role=\"current-cursor-x\""));
+                assert(!svg.includes("data-role=\"current-x-label\""));
+            }
+        },
+        {
+            name: "暴露可复用图表几何用于交互吸附",
+            run() {
+                const geometry = buildRideSeriesChartGeometry({
+                    records: createRecords(),
+                    xKey: "elapsedSeconds",
+                    yKey: "power"
+                });
+
+                assert(geometry, "geometry should be built for valid series");
+                assertEqual(geometry.plot.x, 54);
+                assertEqual(geometry.plot.width, 562);
+                assertEqual(geometry.xDomain.min, 0);
+                assertEqual(geometry.yDomain.min, 0);
+                assertEqual(geometry.points.length, 4);
+                assertEqual(geometry.plottedPoints.length, 4);
+                assertApprox(geometry.xDomain.max, 180, 0.0001);
+                assertApprox(geometry.toX(180), 616, 0.01);
+            }
+        },
+        {
+            name: "可以把图表 x 坐标换算为数据 x 值并找最近记录",
+            run() {
+                const records = createRecords();
+                const geometry = buildRideSeriesChartGeometry({
+                    records,
+                    xKey: "elapsedSeconds",
+                    yKey: "power"
+                });
+                const xValue = getRideSeriesValueAtChartX(geometry.toX(91), geometry);
+                const nearest = findNearestRideSeriesPoint({
+                    records,
+                    xKey: "elapsedSeconds",
+                    yKey: "power",
+                    xValue
+                });
+
+                assertEqual(Math.round(xValue), 91);
+                assertEqual(nearest.record.elapsedSeconds, 120);
+                assertEqual(nearest.yValue, 240);
+            }
+        },
+        {
+            name: "图表 x 坐标换算会限制在绘图区范围内",
+            run() {
+                const geometry = buildRideSeriesChartGeometry({
+                    records: createRecords(),
+                    xKey: "elapsedSeconds",
+                    yKey: "power"
+                });
+
+                assertEqual(getRideSeriesValueAtChartX(-100, geometry), geometry.xDomain.min);
+                assertEqual(getRideSeriesValueAtChartX(10000, geometry), geometry.xDomain.max);
             }
         }
     ]

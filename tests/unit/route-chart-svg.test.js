@@ -1,5 +1,6 @@
 import { buildGradeChartSvg, buildElevationProfileSvg } from "../../src/ui/renderers/svg/route-charts.js";
 import { buildTrajectoryOverviewSvg } from "../../src/ui/renderers/svg/dashboard-charts.js";
+import { buildRouteMapSvg, collectRouteMapPoints } from "../../src/ui/renderers/svg/route-map-chart.js";
 import { assert } from "../helpers/test-harness.js";
 
 function createRoute() {
@@ -47,16 +48,78 @@ export const suite = {
             }
         },
         {
-            name: "路线总览图会渲染局部放大视图与当前位置",
+            name: "路线总览图复用北向二维平面图",
             run() {
                 const svg = buildTrajectoryOverviewSvg(createRoute(), {
                     distanceKm: 5,
                     positionLat: 31.115,
                     positionLong: 121.136
                 });
-                assert(svg.includes("当前位置局部放大"));
+                assert(svg.includes("路线平面图"));
+                assert(svg.includes('data-role="route-map-line"'));
+                assert(svg.includes('data-role="route-map-current"'));
+                assert(!svg.includes("当前位置局部放大"));
+                assert(!svg.includes("全程路线"));
                 assert(svg.includes(">5.0 km<"));
-                assert(svg.includes("全程路线"));
+            }
+        },
+        {
+            name: "基础路线平面图优先使用路线轨迹点并显示当前位置",
+            run() {
+                const svg = buildRouteMapSvg({
+                    route: createRoute(),
+                    currentRecord: {
+                        distanceKm: 5,
+                        positionLat: 31.115,
+                        positionLong: 121.136
+                    }
+                });
+
+                assert(svg.includes("路线平面图"));
+                assert(svg.includes('data-role="route-map-line"'));
+                assert(svg.includes('data-role="route-map-current"'));
+                assert(!svg.includes('data-role="route-map-shadow"'));
+                assert(svg.includes(">5.0 km<"));
+            }
+        },
+        {
+            name: "基础路线平面图可以从活动记录位置生成兜底轨迹",
+            run() {
+                const records = [
+                    { distanceKm: 0, positionLat: 31.1, positionLong: 121.1 },
+                    { distanceKm: 0.5, positionLat: 31.102, positionLong: 121.104 },
+                    { distanceKm: 1, positionLat: 31.104, positionLong: 121.11 }
+                ];
+                const points = collectRouteMapPoints({ records });
+                const svg = buildRouteMapSvg({ records });
+
+                assert(points.length === 3, "records should produce route map points");
+                assert(svg.includes('data-role="route-map-line"'));
+                assert(svg.includes(">1.0 km<"));
+            }
+        },
+        {
+            name: "基础路线平面图保持北向俯视方向",
+            run() {
+                const svg = buildRouteMapSvg({
+                    route: {
+                        totalDistanceMeters: 2000,
+                        points: [
+                            { distanceMeters: 0, latitude: 31, longitude: 121 },
+                            { distanceMeters: 1000, latitude: 31.01, longitude: 121 },
+                            { distanceMeters: 2000, latitude: 31.01, longitude: 121.01 }
+                        ]
+                    }
+                });
+                const polyline = svg.match(/data-role="route-map-line" points="([^"]+)"/)?.[1] ?? "";
+                const [south, north, east] = polyline.split(" ").map((pair) => {
+                    const [x, y] = pair.split(",").map(Number);
+                    return { x, y };
+                });
+
+                assert(north.y < south.y, "higher latitude should render farther up");
+                assert(east.x > north.x, "higher longitude should render farther right");
+                assert(Math.abs(east.y - north.y) < 0.2, "same latitude should stay horizontally aligned");
             }
         }
     ]

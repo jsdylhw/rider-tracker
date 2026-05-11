@@ -1,4 +1,6 @@
 import { formatDuration, formatNumber } from "../../shared/format.js";
+import { buildRideSeriesChartSvg } from "./svg/ride-series-chart.js";
+import { buildRouteMapSvg } from "./svg/route-map-chart.js";
 
 export const POWER_ZONES = [
     { key: "recovery", label: "恢复", min: 0, max: 0.55 },
@@ -73,20 +75,29 @@ export function buildActivityDetailHtml(activity, {
             ${actionsHtml}
             <div class="activity-detail-grid">
                 <div class="activity-detail-card">
-                    <div class="activity-detail-card-title">功率 / 时间</div>
-                    <svg class="activity-detail-chart" viewBox="0 0 640 220" preserveAspectRatio="none">${buildTimeSeriesChartSvg(records, {
-                        field: "power",
-                        color: "var(--primary)",
-                        label: "W"
-                    })}</svg>
+                    <div class="activity-detail-card-title">功率</div>
+                    ${buildActivitySeriesChartSvg(records, {
+                        yKey: "power",
+                        title: "功率"
+                    })}
                 </div>
                 <div class="activity-detail-card">
-                    <div class="activity-detail-card-title">心率 / 时间</div>
-                    <svg class="activity-detail-chart" viewBox="0 0 640 220" preserveAspectRatio="none">${buildTimeSeriesChartSvg(records, {
-                        field: "heartRate",
-                        color: "#ef4444",
-                        label: "bpm"
-                    })}</svg>
+                    <div class="activity-detail-card-title">心率</div>
+                    ${buildActivitySeriesChartSvg(records, {
+                        yKey: "heartRate",
+                        title: "心率"
+                    })}
+                </div>
+                <div class="activity-detail-card">
+                    <div class="activity-detail-card-title">速度</div>
+                    ${buildActivitySeriesChartSvg(records, {
+                        yKey: "speedKph",
+                        title: "速度"
+                    })}
+                </div>
+                <div class="activity-detail-card activity-detail-card-wide">
+                    <div class="activity-detail-card-title">路线平面图</div>
+                    ${buildActivityRouteMapSvg(session, records)}
                 </div>
                 <div class="activity-detail-card">
                     <div class="activity-detail-card-title">功率区间</div>
@@ -98,6 +109,32 @@ export function buildActivityDetailHtml(activity, {
                 </div>
             </div>
         </section>
+    `;
+}
+
+function buildActivityRouteMapSvg(session, records) {
+    return `
+        <svg class="activity-detail-chart activity-detail-route-map" viewBox="0 0 640 260" preserveAspectRatio="xMidYMid meet" data-activity-route-map>
+            ${buildRouteMapSvg({
+                route: session.route,
+                records,
+                currentRecord: records.at(-1) ?? null
+            })}
+        </svg>
+    `;
+}
+
+function buildActivitySeriesChartSvg(records, { yKey, title }) {
+    return `
+        <svg class="activity-detail-chart" viewBox="0 0 640 220" preserveAspectRatio="none" data-activity-series-chart data-x-key="elapsedSeconds" data-y-key="${escapeHtml(yKey)}" data-chart-title="${escapeHtml(title)}">
+            ${buildRideSeriesChartSvg({
+                records,
+                xKey: "elapsedSeconds",
+                yKey,
+                title,
+                theme: "light"
+            })}
+        </svg>
     `;
 }
 
