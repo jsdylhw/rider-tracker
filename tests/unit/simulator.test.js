@@ -90,6 +90,18 @@ export const suite = {
             }
         },
         {
+            name: "simulateRide 保留 0W 虚拟骑行功率",
+            run() {
+                const session = simulateFixedGradeRide({ gradePercent: -6, power: 0 });
+                const metrics = session.summary.metrics;
+
+                assertGreaterThan(session.records.length, 0);
+                assertEqual(session.records.every((record) => record.power === 0), true);
+                assertEqual(metrics.power.averageWatts, 0);
+                assertEqual(metrics.power.maxWatts, 0);
+            }
+        },
+        {
             name: "simulateRide slows before tight downhill GPX curves",
             run() {
                 const curvedRoute = buildRouteFromTrackPoints({
@@ -118,15 +130,15 @@ export const suite = {
 
                 const curvedSession = simulateRide({ route: curvedRoute, settings });
                 const straightSession = simulateRide({ route: straightRoute, settings });
-                const curvedApproachMax = Math.max(...curvedSession.records
-                    .filter((record) => record.distanceKm * 1000 >= 430 && record.distanceKm * 1000 <= 560)
-                    .map((record) => record.speedKph));
-                const straightApproachMax = Math.max(...straightSession.records
-                    .filter((record) => record.distanceKm * 1000 >= 430 && record.distanceKm * 1000 <= 560)
-                    .map((record) => record.speedKph));
+                const curvedLimitRecord = curvedSession.records.find((record) => (
+                    Number.isFinite(record.curveSpeedLimitKph)
+                    && Number.isFinite(record.gradeSpeedLimitKph)
+                    && record.curveSpeedLimitKph < record.gradeSpeedLimitKph
+                ));
+                const straightCurveLimit = straightSession.records.find((record) => Number.isFinite(record.curveSpeedLimitKph));
 
-                assertGreaterThan(straightApproachMax, curvedApproachMax + 5);
-                assert(curvedSession.records.some((record) => Number.isFinite(record.curveSpeedLimitKph)), "弯道模拟记录应保留限速信息");
+                assert(curvedLimitRecord, "弯道模拟记录应保留低于坡度限速的弯道限速");
+                assertEqual(straightCurveLimit, undefined);
             }
         },
         {

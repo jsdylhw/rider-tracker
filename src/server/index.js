@@ -104,7 +104,7 @@ server.on("error", (err) => {
 function sanitizeUserProfile(profile) {
     const next = {};
     const fields = {
-        power: [80, 600],
+        power: [0, 600],
         mass: [40, 150],
         ftp: [120, 450],
         restingHr: [40, 100],
