@@ -1,10 +1,10 @@
 import {
     buildRideSeriesChartGeometry,
-    buildRideSeriesChartSvg,
-    findNearestRideSeriesPoint,
+    buildRideSeriesInteractionLayerSvg,
+    findNearestRideSeriesPointInGeometry,
     getRideSeriesValueAtChartX
 } from "../renderers/svg/ride-series-chart.js";
-import { buildRouteMapSvg } from "../renderers/svg/route-map-chart.js";
+import { buildRouteMapGeometry, buildRouteMapMarkerSvg } from "../renderers/svg/route-map-chart.js";
 
 export function createActivityDetailView({
     onSetUiMode,
@@ -18,6 +18,8 @@ export function createActivityDetailView({
     };
     let currentActivity = null;
     let activeHoverIndex = null;
+    let pendingSeriesPointer = null;
+    let pendingSeriesFrame = null;
 
     bind(elements.activityDetailBackBtn, "click", () => onSetUiMode("home"));
     bind(elements.activityDetailContent, "click", (event) => {
@@ -33,16 +35,41 @@ export function createActivityDetailView({
             onUploadActivityFit();
         }
     });
+    bind(elements.activityDetailContent, "click", (event) => {
+        const button = event.target?.closest?.("[data-activity-map-toggle]");
+        if (!button || !elements.activityDetailContent?.contains(button)) {
+            return;
+        }
+
+        const layout = button.closest(".activity-detail-analysis-layout");
+        const isHidden = !layout?.classList.contains("is-map-hidden");
+        layout?.classList.toggle("is-map-hidden", isHidden);
+        button.textContent = isHidden ? "显示" : "隐藏";
+    });
     bind(elements.activityDetailContent, "pointermove", (event) => {
-        if (handleSeriesPointerMove({
-            root: elements.activityDetailContent,
-            activity: currentActivity,
-            event,
-            activeHoverIndex,
-            onHoverIndexChange(index) {
-                activeHoverIndex = index;
+        const chart = event.target?.closest?.("[data-activity-series-chart]");
+        if (chart && elements.activityDetailContent?.contains(chart)) {
+            pendingSeriesPointer = {
+                target: event.target,
+                clientX: event.clientX
+            };
+            if (!pendingSeriesFrame) {
+                pendingSeriesFrame = requestAnimationFrame(() => {
+                    pendingSeriesFrame = null;
+                    const pointer = pendingSeriesPointer;
+                    pendingSeriesPointer = null;
+                    handleSeriesPointerMove({
+                        root: elements.activityDetailContent,
+                        activity: currentActivity,
+                        event: pointer,
+                        activeHoverIndex,
+                        onHoverIndexChange(index) {
+                            activeHoverIndex = index;
+                        }
+                    });
+                });
             }
-        })) {
+            hideChartTooltip(elements.activityDetailContent);
             return;
         }
 
@@ -55,6 +82,11 @@ export function createActivityDetailView({
         showChartTooltip(elements.activityDetailContent, target.dataset.chartTooltip, event);
     });
     bind(elements.activityDetailContent, "pointerleave", () => {
+        if (pendingSeriesFrame) {
+            cancelAnimationFrame(pendingSeriesFrame);
+            pendingSeriesFrame = null;
+            pendingSeriesPointer = null;
+        }
         hideChartTooltip(elements.activityDetailContent);
         activeHoverIndex = null;
         renderHoverRecord(elements.activityDetailContent, currentActivity, null);
@@ -80,25 +112,14 @@ function handleSeriesPointerMove({ root, activity, event, activeHoverIndex, onHo
         return false;
     }
 
-    const xKey = chart.dataset.xKey || "elapsedSeconds";
-    const yKey = chart.dataset.yKey || "power";
-    const geometry = buildRideSeriesChartGeometry({
-        records,
-        xKey,
-        yKey
-    });
+    const geometry = getCachedSeriesGeometry(chart, records);
     if (!geometry) {
         return false;
     }
 
     const chartX = getSvgChartX(chart, event);
     const xValue = getRideSeriesValueAtChartX(chartX, geometry);
-    const nearest = findNearestRideSeriesPoint({
-        records,
-        xKey,
-        yKey,
-        xValue
-    });
+    const nearest = findNearestRideSeriesPointInGeometry(geometry, xValue);
     if (!nearest) {
         return false;
     }
@@ -120,23 +141,38 @@ function renderHoverRecord(root, activity, hoverRecord) {
 
     root.querySelectorAll("[data-activity-series-chart]").forEach((chart) => {
         const yKey = chart.dataset.yKey || "power";
-        const title = chart.dataset.chartTitle || null;
-        chart.innerHTML = buildRideSeriesChartSvg({
+        const overlay = chart.querySelector("[data-role='series-interaction-layer']");
+        if (!overlay) {
+            return;
+        }
+
+        overlay.innerHTML = buildRideSeriesInteractionLayerSvg({
             records,
             xKey: chart.dataset.xKey || "elapsedSeconds",
             yKey,
-            title,
             currentRecord: hoverRecord,
-            theme: "light"
+            theme: "light",
+            height: chart.viewBox?.baseVal?.height || 180,
+            padding: getSeriesChartPadding(chart),
+            showXAxis: chart.dataset.showXAxis !== "false",
+            xDomain: readChartXDomain(chart),
+            geometry: getCachedSeriesGeometry(chart, records)
         });
     });
 
     const routeMap = root.querySelector("[data-activity-route-map]");
     if (routeMap) {
-        routeMap.innerHTML = buildRouteMapSvg({
+        const markerLayer = routeMap.querySelector("[data-role='route-map-marker-layer']");
+        if (!markerLayer) {
+            return;
+        }
+        markerLayer.innerHTML = buildRouteMapMarkerSvg({
             route,
             records,
-            currentRecord: hoverRecord ?? records.at(-1) ?? null
+            currentRecord: hoverRecord ?? records.at(-1) ?? null,
+            width: routeMap.viewBox?.baseVal?.width || 640,
+            height: routeMap.viewBox?.baseVal?.height || 260,
+            geometry: getCachedRouteMapGeometry(routeMap, route, records)
         });
     }
 }
@@ -154,6 +190,85 @@ function getSvgChartX(svg, event) {
 function getActivityRecords(activity) {
     const records = activity?.rawSession?.records;
     return Array.isArray(records) ? records : [];
+}
+
+function readChartXDomain(chart) {
+    const min = Number(chart?.dataset?.xDomainMin);
+    const max = Number(chart?.dataset?.xDomainMax);
+    return Number.isFinite(min) && Number.isFinite(max) && max > min
+        ? { min, max }
+        : null;
+}
+
+function getSeriesChartPadding(chart) {
+    const showXAxis = chart?.dataset?.showXAxis !== "false";
+    return {
+        left: 54,
+        right: 16,
+        top: 24,
+        bottom: showXAxis ? 34 : 18
+    };
+}
+
+function getCachedSeriesGeometry(chart, records) {
+    const cache = chart?._rideSeriesGeometryCache;
+    const xKey = chart?.dataset?.xKey || "elapsedSeconds";
+    const yKey = chart?.dataset?.yKey || "power";
+    const height = chart?.viewBox?.baseVal?.height || 150;
+    const xDomain = readChartXDomain(chart);
+    if (
+        cache
+        && cache.records === records
+        && cache.xKey === xKey
+        && cache.yKey === yKey
+        && cache.height === height
+        && cache.xDomain?.min === xDomain?.min
+        && cache.xDomain?.max === xDomain?.max
+    ) {
+        return cache.geometry;
+    }
+
+    const geometry = buildRideSeriesChartGeometry({
+        records,
+        xKey,
+        yKey,
+        height,
+        padding: getSeriesChartPadding(chart),
+        xDomain
+    });
+    chart._rideSeriesGeometryCache = {
+        records,
+        xKey,
+        yKey,
+        height,
+        xDomain,
+        geometry
+    };
+    return geometry;
+}
+
+function getCachedRouteMapGeometry(routeMap, route, records) {
+    const width = routeMap?.viewBox?.baseVal?.width || 640;
+    const height = routeMap?.viewBox?.baseVal?.height || 260;
+    const cache = routeMap?._routeMapGeometryCache;
+    if (cache && cache.route === route && cache.records === records && cache.width === width && cache.height === height) {
+        return cache.geometry;
+    }
+
+    const geometry = buildRouteMapGeometry({
+        route,
+        records,
+        width,
+        height
+    });
+    routeMap._routeMapGeometryCache = {
+        route,
+        records,
+        width,
+        height,
+        geometry
+    };
+    return geometry;
 }
 
 function showChartTooltip(root, text, event) {

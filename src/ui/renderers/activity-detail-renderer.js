@@ -73,32 +73,38 @@ export function buildActivityDetailHtml(activity, {
                 ${escapeHtml(buildPlainSummary({ activity, records, ftp, averagePower, normalizedPower, intensityFactor }))}
             </div>
             ${actionsHtml}
+            <div class="activity-detail-analysis-layout">
+                <div class="activity-detail-card activity-series-panel">
+                    <div class="activity-detail-card-title">图表数据</div>
+                    <div class="activity-series-stack">
+                        ${buildActivitySeriesChartSvg(records, {
+                            yKey: "power",
+                            title: "功率",
+                            showXAxis: false
+                        })}
+                        ${buildActivitySeriesChartSvg(records, {
+                            yKey: "heartRate",
+                            title: "心率",
+                            showXAxis: false
+                        })}
+                        ${buildActivitySeriesChartSvg(records, {
+                            yKey: "speedKph",
+                            title: "速度",
+                            showXAxis: true
+                        })}
+                    </div>
+                </div>
+                <div class="activity-detail-card activity-map-panel">
+                    <div class="activity-detail-card-title activity-map-title-row">
+                        <span>路线平面图</span>
+                        <button class="btn ghost compact-btn activity-map-toggle" data-activity-map-toggle type="button">隐藏</button>
+                    </div>
+                    <div class="activity-map-body">
+                        ${buildActivityRouteMapSvg(session, records)}
+                    </div>
+                </div>
+            </div>
             <div class="activity-detail-grid">
-                <div class="activity-detail-card">
-                    <div class="activity-detail-card-title">功率</div>
-                    ${buildActivitySeriesChartSvg(records, {
-                        yKey: "power",
-                        title: "功率"
-                    })}
-                </div>
-                <div class="activity-detail-card">
-                    <div class="activity-detail-card-title">心率</div>
-                    ${buildActivitySeriesChartSvg(records, {
-                        yKey: "heartRate",
-                        title: "心率"
-                    })}
-                </div>
-                <div class="activity-detail-card">
-                    <div class="activity-detail-card-title">速度</div>
-                    ${buildActivitySeriesChartSvg(records, {
-                        yKey: "speedKph",
-                        title: "速度"
-                    })}
-                </div>
-                <div class="activity-detail-card activity-detail-card-wide">
-                    <div class="activity-detail-card-title">路线平面图</div>
-                    ${buildActivityRouteMapSvg(session, records)}
-                </div>
                 <div class="activity-detail-card">
                     <div class="activity-detail-card-title">功率区间</div>
                     ${buildPowerZoneHtml(records, ftp)}
@@ -124,18 +130,44 @@ function buildActivityRouteMapSvg(session, records) {
     `;
 }
 
-function buildActivitySeriesChartSvg(records, { yKey, title }) {
+function buildActivitySeriesChartSvg(records, { yKey, title, showXAxis = true }) {
+    const xDomain = buildActivitySeriesXDomain(records);
+    const height = 150;
+    const padding = {
+        left: 54,
+        right: 16,
+        top: 24,
+        bottom: showXAxis ? 34 : 18
+    };
     return `
-        <svg class="activity-detail-chart" viewBox="0 0 640 220" preserveAspectRatio="none" data-activity-series-chart data-x-key="elapsedSeconds" data-y-key="${escapeHtml(yKey)}" data-chart-title="${escapeHtml(title)}">
+        <svg class="activity-detail-chart activity-series-chart" viewBox="0 0 640 ${height}" preserveAspectRatio="none" data-activity-series-chart data-x-key="elapsedSeconds" data-y-key="${escapeHtml(yKey)}" data-chart-title="${escapeHtml(title)}" data-show-x-axis="${showXAxis ? "true" : "false"}" data-x-domain-min="${formatNumber(xDomain.min, 6)}" data-x-domain-max="${formatNumber(xDomain.max, 6)}">
             ${buildRideSeriesChartSvg({
                 records,
                 xKey: "elapsedSeconds",
                 yKey,
                 title,
-                theme: "light"
+                theme: "light",
+                height,
+                padding,
+                showXAxis,
+                xDomain,
+                showLatestValue: false,
+                lineStrokeWidth: 2,
+                maxPlotPoints: 700
             })}
         </svg>
     `;
+}
+
+function buildActivitySeriesXDomain(records) {
+    const values = (records ?? [])
+        .map((record) => numberOrNull(record.elapsedSeconds))
+        .filter((value) => value !== null);
+    const max = Math.max(...values, 1);
+    return {
+        min: 0,
+        max: max > 0 ? max : 1
+    };
 }
 
 export function buildActivityDetailPageHtml(activity) {

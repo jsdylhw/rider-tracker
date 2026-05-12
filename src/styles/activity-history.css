@@ -196,6 +196,25 @@
     gap: 12px;
 }
 
+.activity-detail-analysis-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
+    gap: 12px;
+    align-items: stretch;
+}
+
+.activity-detail-analysis-layout.is-map-hidden {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.activity-detail-analysis-layout.is-map-hidden .activity-map-body {
+    display: none;
+}
+
+.activity-detail-analysis-layout.is-map-hidden .activity-map-panel {
+    min-height: 0;
+}
+
 .activity-detail-card {
     display: grid;
     gap: 10px;
@@ -215,14 +234,42 @@
     color: var(--text);
 }
 
+.activity-map-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.activity-map-toggle {
+    padding: 5px 9px;
+}
+
+.activity-series-panel {
+    align-content: start;
+}
+
+.activity-series-stack {
+    display: grid;
+    gap: 0;
+}
+
 .activity-detail-chart {
     width: 100%;
     height: 220px;
     display: block;
 }
 
+.activity-series-chart {
+    height: 150px;
+}
+
 .activity-detail-route-map {
     height: 260px;
+}
+
+.activity-map-body {
+    min-width: 0;
 }
 
 .activity-chart-tooltip {
@@ -317,6 +364,7 @@
     }
 
     .activity-detail-grid,
+    .activity-detail-analysis-layout,
     .activity-detail-header {
         grid-template-columns: 1fr;
     }
