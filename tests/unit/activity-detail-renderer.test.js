@@ -20,8 +20,19 @@ export const suite = {
 
                 assert(html.includes("Activity Detail"), "detail header should render");
                 assert(html.includes("Power Test Ride"), "activity name should render");
-                assert(html.includes("功率 / 时间"), "power chart section should render");
-                assert(html.includes("心率 / 时间"), "heart-rate chart section should render");
+                assert(html.includes("功率"), "power chart section should render");
+                assert(html.includes("心率"), "heart-rate chart section should render");
+                assert(html.includes("速度"), "speed chart section should render");
+                assert(html.includes("data-activity-series-chart"), "series charts should expose interaction anchors");
+                assert(html.includes('data-y-key="speedKph"'), "speed chart should expose its y field");
+                assert(html.includes('data-role="series-line"'), "detail charts should use ride-series chart rendering");
+                assert(html.includes("时间 (分:秒)"), "series charts should label the x axis with units");
+                assert(html.includes("速度 (km/h)"), "speed chart should label the y axis with units");
+                assert(!html.includes("x 轴: 时间 / y 轴: 速度"), "series charts should not render redundant axis prose");
+                assert(html.includes("路线平面图"), "route map section should render");
+                assert(html.includes("data-activity-route-map"), "route map should expose an interaction anchor");
+                assert(html.includes('data-role="route-map-line"'), "route map should render a base route line");
+                assert(html.includes('fill="#f8fafc"'), "activity detail charts should use a light analysis plot background");
                 assert(html.includes("功率区间"), "power zone section should render");
                 assert(html.includes("心率区间"), "heart-rate zone section should render");
                 assert(html.includes("27 kcal"), "energy summary should render kcal");
@@ -162,11 +173,20 @@ function buildActivity() {
                     }
                 }
             },
+            route: {
+                totalDistanceMeters: 3000,
+                points: [
+                    { distanceMeters: 0, latitude: 31.1, longitude: 121.1 },
+                    { distanceMeters: 1000, latitude: 31.105, longitude: 121.11 },
+                    { distanceMeters: 2000, latitude: 31.108, longitude: 121.12 },
+                    { distanceMeters: 3000, latitude: 31.11, longitude: 121.13 }
+                ]
+            },
             records: [
-                { elapsedSeconds: 0, power: 100, heartRate: 120 },
-                { elapsedSeconds: 60, power: 130, heartRate: 135 },
-                { elapsedSeconds: 120, power: 160, heartRate: 145 },
-                { elapsedSeconds: 180, power: 190, heartRate: 155 }
+                { elapsedSeconds: 0, power: 100, heartRate: 120, speedKph: 0, distanceKm: 0, positionLat: 31.1, positionLong: 121.1 },
+                { elapsedSeconds: 60, power: 130, heartRate: 135, speedKph: 28, distanceKm: 1, positionLat: 31.105, positionLong: 121.11 },
+                { elapsedSeconds: 120, power: 160, heartRate: 145, speedKph: 32, distanceKm: 2, positionLat: 31.108, positionLong: 121.12 },
+                { elapsedSeconds: 180, power: 190, heartRate: 155, speedKph: 30, distanceKm: 3, positionLat: 31.11, positionLong: 121.13 }
             ]
         }
     };

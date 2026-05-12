@@ -1,6 +1,7 @@
 import {
     buildRoute,
     buildRouteFromTrackPoints,
+    getForwardRouteSpeedLimitAhead,
     getMinimumCurveSpeedLimitAhead,
     getRouteSampleAtDistance,
     getSegmentAtDistance,
@@ -102,6 +103,44 @@ export const suite = {
                 assert(Number.isFinite(route.points[1].curveSpeedLimitKph), "紧弯应生成限速");
                 assertGreaterThan(route.points[1].curveSpeedLimitKph, 20);
                 assert(limit < 40, "前方紧弯限速应低于高速下坡速度");
+            }
+        },
+        {
+            name: "GPX 起点采样使用前方坡度避免下坡起步卡死",
+            run() {
+                const route = buildRouteFromTrackPoints({
+                    name: "Downhill start",
+                    points: [
+                        { latitude: 31, longitude: 121, elevationMeters: 100, distanceMeters: 0, gradePercent: 0 },
+                        { latitude: 31.001, longitude: 121.001, elevationMeters: 94, distanceMeters: 100, gradePercent: -6 }
+                    ],
+                    segments: [
+                        { name: "Drop", distanceMeters: 100, gradePercent: -6, elevationDelta: -6, startDistanceMeters: 0, endDistanceMeters: 100 }
+                    ]
+                });
+
+                const sample = getRouteSampleAtDistance(route, 0);
+
+                assertEqual(sample.gradePercent, -6);
+            }
+        },
+        {
+            name: "前方路线限速会按下坡坡度限制速度",
+            run() {
+                const moderate = buildRoute([
+                    { name: "Moderate descent", distanceKm: 1, gradePercent: -4 }
+                ]);
+                const steep = buildRoute([
+                    { name: "Steep descent", distanceKm: 1, gradePercent: -10 }
+                ]);
+
+                const moderateLimit = getForwardRouteSpeedLimitAhead(moderate, 100, 50);
+                const steepLimit = getForwardRouteSpeedLimitAhead(steep, 100, 50);
+
+                assert(Number.isFinite(moderateLimit.gradeSpeedLimitKph), "缓下坡应生成坡度限速");
+                assert(Number.isFinite(steepLimit.gradeSpeedLimitKph), "陡下坡应生成坡度限速");
+                assertGreaterThan(moderateLimit.gradeSpeedLimitKph, steepLimit.gradeSpeedLimitKph);
+                assertEqual(steepLimit.speedLimitKph, steepLimit.gradeSpeedLimitKph);
             }
         },
         {

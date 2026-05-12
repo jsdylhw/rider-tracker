@@ -1,4 +1,4 @@
-import { getMinimumCurveSpeedLimitAhead, getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
+import { getForwardRouteSpeedLimitAhead, getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
 import { simulateStep } from "../physics/cycling-model.js";
 import { estimateHeartRate } from "../physiology/heart-rate-model.js";
 import { buildRideMetrics, createEmptyRideMetrics } from "../metrics/ride-metrics.js";
@@ -32,14 +32,14 @@ export function simulateRide({ route, settings }) {
     for (let elapsedSeconds = 1; elapsedSeconds <= maxSimulationSeconds; elapsedSeconds += 1) {
         const routeSample = getRouteSampleAtDistance(route, state.distanceMeters);
         const gradePercent = routeSample.gradePercent ?? 0;
-        const curveSpeedLimitKph = getMinimumCurveSpeedLimitAhead(route, state.distanceMeters, resolveCurveLookaheadMeters(state.speed));
+        const routeSpeedLimit = getForwardRouteSpeedLimitAhead(route, state.distanceMeters, resolveSpeedLookaheadMeters(state.speed));
 
         const previousState = state;
         state = simulateStep({
             ...state,
             power: settings.power,
             gradePercent,
-            speedLimitMps: Number.isFinite(curveSpeedLimitKph) ? curveSpeedLimitKph / 3.6 : null,
+            speedLimitMps: Number.isFinite(routeSpeedLimit.speedLimitKph) ? routeSpeedLimit.speedLimitKph / 3.6 : null,
             brakingDecelerationMps2: gradePercent < -2 ? 2.6 : 2.2,
             elapsedSeconds,
             settings,
@@ -75,7 +75,9 @@ export function simulateRide({ route, settings }) {
             distanceKm: state.distanceMeters / 1000,
             heartRate: Math.round(currentHeartRate),
             gradePercent,
-            curveSpeedLimitKph,
+            speedLimitKph: routeSpeedLimit.speedLimitKph,
+            curveSpeedLimitKph: routeSpeedLimit.curveSpeedLimitKph,
+            gradeSpeedLimitKph: routeSpeedLimit.gradeSpeedLimitKph,
             elevationMeters,
             ascentMeters: state.ascentMeters,
             segmentName: getSegmentAtDistance(route, state.distanceMeters)?.name ?? "终点后",
@@ -106,7 +108,7 @@ export function simulateRide({ route, settings }) {
     };
 }
 
-function resolveCurveLookaheadMeters(speedMps) {
+function resolveSpeedLookaheadMeters(speedMps) {
     const reactionBufferMeters = 25;
     const brakingDecelerationMps2 = 2.2;
     const brakingDistanceMeters = Number.isFinite(speedMps)

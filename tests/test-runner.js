@@ -4,6 +4,7 @@ import { suite as routeSuite } from "./unit/route-builder.test.js";
 import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
 import { suite as heartRateModelSuite } from "./unit/heart-rate-model.test.js";
+import { suite as initialStateSuite } from "./unit/initial-state.test.js";
 import { suite as sensorSamplingSuite } from "./unit/sensor-sampling.test.js";
 import { suite as simulatorSuite } from "./unit/simulator.test.js";
 import { suite as liveRideSuite } from "./unit/live-ride-session.test.js";
@@ -40,6 +41,7 @@ const suites = [
     gpxSuite,
     physicsSuite,
     heartRateModelSuite,
+    initialStateSuite,
     sensorSamplingSuite,
     simulatorSuite,
     liveRideSuite,

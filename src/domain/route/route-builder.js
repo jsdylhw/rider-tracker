@@ -2,9 +2,19 @@ const MIN_SEGMENT_DISTANCE_KM = 0.1;
 const EARTH_RADIUS_METERS = 6371000;
 const MIN_CURVE_RADIUS_METERS = 8;
 const MAX_CURVE_RADIUS_METERS = 500;
-const DEFAULT_CURVE_LATERAL_G = 0.3;
+const DEFAULT_CURVE_LATERAL_G = 0.22;
 const MIN_CURVE_SPEED_KPH = 12;
 const MAX_CURVE_SPEED_KPH = 90;
+const FORWARD_CURVE_WINDOW_METERS = 50;
+const FORWARD_CURVE_ANCHOR_METERS = 20;
+const FORWARD_CURVE_STEP_METERS = 10;
+const MIN_FORWARD_CURVE_TURN_RADIANS = Math.PI / 7.2;
+const FORWARD_GRADE_WINDOW_METERS = 50;
+const FORWARD_GRADE_STEP_METERS = 10;
+const DOWNHILL_SPEED_LIMIT_START_GRADE = -3;
+const MAX_DOWNHILL_GRADE_SPEED_KPH = 58;
+const MIN_DOWNHILL_GRADE_SPEED_KPH = 24;
+const DOWNHILL_GRADE_SPEED_DROP_PER_PERCENT = 3.2;
 
 export function sanitizeSegments(segments) {
     return segments.map((segment, index) => ({
@@ -128,11 +138,12 @@ export function getRouteSampleAtDistance(route, distanceMeters) {
     const previousPoint = route.points[Math.max(0, nextIndex - 1)] ?? nextPoint;
 
     if (!previousPoint || !nextPoint || previousPoint.distanceMeters === nextPoint.distanceMeters) {
+        const followingPoint = nextIndex === 0 ? route.points[1] : null;
         return {
             latitude: nextPoint?.latitude ?? null,
             longitude: nextPoint?.longitude ?? null,
             elevationMeters: nextPoint?.elevationMeters ?? 0,
-            gradePercent: isFinished ? 0 : (nextPoint?.gradePercent ?? getSegmentAtDistance(route, distanceMeters)?.gradePercent ?? 0)
+            gradePercent: isFinished ? 0 : (followingPoint?.gradePercent ?? nextPoint?.gradePercent ?? getSegmentAtDistance(route, distanceMeters)?.gradePercent ?? 0)
         };
     }
 
@@ -149,18 +160,91 @@ export function getRouteSampleAtDistance(route, distanceMeters) {
 }
 
 export function getMinimumCurveSpeedLimitAhead(route, distanceMeters, lookaheadMeters = 120) {
+    return getForwardCurveSpeedLimitAhead(route, distanceMeters, lookaheadMeters);
+}
+
+export function getForwardRouteSpeedLimitAhead(route, distanceMeters, lookaheadMeters = 120) {
+    const curveSpeedLimitKph = getForwardCurveSpeedLimitAhead(route, distanceMeters, lookaheadMeters);
+    const gradeSpeedLimitKph = getForwardGradeSpeedLimitAhead(route, distanceMeters);
+    const limits = [curveSpeedLimitKph, gradeSpeedLimitKph].filter(Number.isFinite);
+
+    return {
+        speedLimitKph: limits.length > 0 ? Math.min(...limits) : null,
+        curveSpeedLimitKph,
+        gradeSpeedLimitKph
+    };
+}
+
+function getForwardCurveSpeedLimitAhead(route, distanceMeters, lookaheadMeters = 120) {
     if (!route?.points?.length) {
         return null;
     }
 
     const startDistance = Math.max(0, distanceMeters);
     const endDistance = Math.min(route.totalDistanceMeters ?? startDistance, startDistance + Math.max(0, lookaheadMeters));
-    const limits = route.points
-        .filter((point) => point.distanceMeters >= startDistance && point.distanceMeters <= endDistance)
-        .map((point) => point.curveSpeedLimitKph)
-        .filter(Number.isFinite);
+    const limits = [];
+
+    for (let anchorDistance = startDistance; anchorDistance <= endDistance; anchorDistance += FORWARD_CURVE_STEP_METERS) {
+        const limit = getForwardCurveSpeedLimitAt(route, anchorDistance);
+        if (Number.isFinite(limit)) {
+            limits.push(limit);
+        }
+    }
 
     return limits.length > 0 ? Math.min(...limits) : null;
+}
+
+function getForwardCurveSpeedLimitAt(route, distanceMeters) {
+    const totalDistanceMeters = route.totalDistanceMeters ?? 0;
+    const startDistance = Math.max(0, Math.min(distanceMeters, totalDistanceMeters));
+    const anchorDistance = Math.min(startDistance + FORWARD_CURVE_ANCHOR_METERS, totalDistanceMeters);
+    const endDistance = Math.min(startDistance + FORWARD_CURVE_WINDOW_METERS, totalDistanceMeters);
+
+    if (endDistance - startDistance < FORWARD_CURVE_ANCHOR_METERS) {
+        return null;
+    }
+
+    const start = getRouteSampleAtDistance(route, startDistance);
+    const anchor = getRouteSampleAtDistance(route, anchorDistance);
+    const end = getRouteSampleAtDistance(route, endDistance);
+    if (![start, anchor, end].every(hasCoordinates)) {
+        return null;
+    }
+
+    const radius = calculateForwardCurveRadiusMeters(start, anchor, end);
+    const turnRadians = calculateTurnRadians(start, anchor, end);
+    const hasCurveLimit = Number.isFinite(radius)
+        && radius >= MIN_CURVE_RADIUS_METERS
+        && radius <= MAX_CURVE_RADIUS_METERS
+        && turnRadians >= MIN_FORWARD_CURVE_TURN_RADIANS;
+
+    return hasCurveLimit ? calculateCurveSpeedLimitKph(radius) : null;
+}
+
+function getForwardGradeSpeedLimitAhead(route, distanceMeters) {
+    if (!route) {
+        return null;
+    }
+
+    const startDistance = Math.max(0, distanceMeters);
+    const endDistance = Math.min(route.totalDistanceMeters ?? startDistance, startDistance + FORWARD_GRADE_WINDOW_METERS);
+    let steepestDownhillGrade = 0;
+
+    for (let sampleDistance = startDistance; sampleDistance <= endDistance; sampleDistance += FORWARD_GRADE_STEP_METERS) {
+        const gradePercent = getRouteSampleAtDistance(route, sampleDistance).gradePercent ?? 0;
+        steepestDownhillGrade = Math.min(steepestDownhillGrade, gradePercent);
+    }
+
+    if (steepestDownhillGrade >= DOWNHILL_SPEED_LIMIT_START_GRADE) {
+        return null;
+    }
+
+    return clampNumber(
+        MAX_DOWNHILL_GRADE_SPEED_KPH + (steepestDownhillGrade - DOWNHILL_SPEED_LIMIT_START_GRADE) * DOWNHILL_GRADE_SPEED_DROP_PER_PERCENT,
+        MIN_DOWNHILL_GRADE_SPEED_KPH,
+        MAX_DOWNHILL_GRADE_SPEED_KPH,
+        MAX_DOWNHILL_GRADE_SPEED_KPH
+    );
 }
 
 function createRouteObject({ source, name, segments, totalDistanceMeters, totalElevationGainMeters, totalDescentMeters, points, hasElevationData = true }) {
@@ -225,6 +309,39 @@ function calculateCurveRadiusMeters(previousPoint, point, nextPoint) {
     }
 
     return (sideA * sideB * sideC) / (2 * areaTwice);
+}
+
+function calculateForwardCurveRadiusMeters(startPoint, anchorPoint, endPoint) {
+    const radius = calculateCurveRadiusMeters(startPoint, anchorPoint, endPoint);
+    if (!Number.isFinite(radius)) {
+        return radius;
+    }
+
+    const turnRadians = calculateTurnRadians(startPoint, anchorPoint, endPoint);
+    return turnRadians > 0 ? FORWARD_CURVE_WINDOW_METERS / turnRadians : Infinity;
+}
+
+function calculateTurnRadians(startPoint, anchorPoint, endPoint) {
+    const start = projectToLocalMeters(startPoint, anchorPoint.latitude, anchorPoint.longitude);
+    const anchor = projectToLocalMeters(anchorPoint, anchorPoint.latitude, anchorPoint.longitude);
+    const end = projectToLocalMeters(endPoint, anchorPoint.latitude, anchorPoint.longitude);
+    const incoming = {
+        x: anchor.x - start.x,
+        y: anchor.y - start.y
+    };
+    const outgoing = {
+        x: end.x - anchor.x,
+        y: end.y - anchor.y
+    };
+    const incomingLength = Math.hypot(incoming.x, incoming.y);
+    const outgoingLength = Math.hypot(outgoing.x, outgoing.y);
+    if (incomingLength < 1 || outgoingLength < 1) {
+        return 0;
+    }
+
+    const dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
+    const cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+    return Math.abs(Math.atan2(cross, dot));
 }
 
 function calculateCurveSpeedLimitKph(radiusMeters) {

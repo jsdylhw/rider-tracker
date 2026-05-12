@@ -75,7 +75,7 @@ export function createInitialState(session, options = {}) {
 
 export function sanitizeSettings(settings) {
     return {
-        power: clamp(settings.power, 80, 600, defaultSettings.power),
+        power: clamp(settings.power, 0, 600, defaultSettings.power),
         mass: clamp(settings.mass, 40, 150, defaultSettings.mass),
         ftp: clamp(settings.ftp, 120, 450, defaultSettings.ftp),
         restingHr: clamp(settings.restingHr, 40, 100, defaultSettings.restingHr),

@@ -206,6 +206,10 @@
     min-width: 0;
 }
 
+.activity-detail-card-wide {
+    grid-column: 1 / -1;
+}
+
 .activity-detail-card-title {
     font-weight: 800;
     color: var(--text);
@@ -215,6 +219,10 @@
     width: 100%;
     height: 220px;
     display: block;
+}
+
+.activity-detail-route-map {
+    height: 260px;
 }
 
 .activity-chart-tooltip {

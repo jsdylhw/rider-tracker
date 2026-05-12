@@ -302,6 +302,7 @@ export function createMainView({
         }
         lastRenderedActivityDetailSignature = signature;
         elements.activityDetailContent.innerHTML = buildActivityDetailPageHtml(state.selectedActivity);
+        activityDetailView.setActivity(state.selectedActivity);
     }
 
     function renderPipControls(state) {

@@ -339,7 +339,7 @@ export function createDashboardRenderer({
         elements.streetViewTrajectorySvg.innerHTML = buildTrajectoryOverviewSvg(
             route,
             currentRecord,
-            { showDetail: false }
+            { title: "路线平面图" }
         );
     }
 

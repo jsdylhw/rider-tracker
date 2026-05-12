@@ -2,28 +2,58 @@ import { formatDuration, formatNumber } from "../../../shared/format.js";
 
 const DEFAULT_WIDTH = 640;
 const DEFAULT_HEIGHT = 220;
+const DEFAULT_PADDING = {
+    left: 54,
+    right: 24,
+    top: 34,
+    bottom: 40
+};
 
-const CHART_COLORS = {
-    background: "#0f172a",
-    surface: "rgba(15, 23, 42, 0.74)",
-    plot: "rgba(30, 41, 59, 0.52)",
-    axis: "rgba(148, 163, 184, 0.34)",
-    grid: "rgba(148, 163, 184, 0.16)",
-    gridStrong: "rgba(148, 163, 184, 0.28)",
-    text: "#f8fafc",
-    muted: "#94a3b8",
-    dim: "#64748b",
-    cursor: "#f59e0b",
-    cursorSoft: "rgba(245, 158, 11, 0.16)",
-    fill: "rgba(56, 189, 248, 0.12)"
+const CHART_THEMES = {
+    dark: {
+        background: "#0f172a",
+        surface: "rgba(15, 23, 42, 0.74)",
+        plot: "rgba(30, 41, 59, 0.52)",
+        axis: "rgba(148, 163, 184, 0.34)",
+        grid: "rgba(148, 163, 184, 0.16)",
+        gridStrong: "rgba(148, 163, 184, 0.28)",
+        text: "#f8fafc",
+        muted: "#94a3b8",
+        dim: "#64748b",
+        cursor: "#f59e0b",
+        cursorSoft: "rgba(245, 158, 11, 0.16)",
+        fill: "rgba(56, 189, 248, 0.12)",
+        markerFill: "#f8fafc",
+        labelBackground: "rgba(15, 23, 42, 0.9)",
+        labelStroke: "rgba(148, 163, 184, 0.36)"
+    },
+    light: {
+        background: "#ffffff",
+        surface: "#ffffff",
+        plot: "#f8fafc",
+        axis: "#cbd5e1",
+        grid: "rgba(100, 116, 139, 0.16)",
+        gridStrong: "rgba(100, 116, 139, 0.28)",
+        text: "#0f172a",
+        muted: "#64748b",
+        dim: "#64748b",
+        cursor: "#f59e0b",
+        cursorSoft: "rgba(245, 158, 11, 0.16)",
+        fill: "rgba(14, 165, 233, 0.08)",
+        markerFill: "#ffffff",
+        labelBackground: "#ffffff",
+        labelStroke: "rgba(148, 163, 184, 0.45)"
+    }
 };
 
 export const RIDE_SERIES_X_FIELDS = [
     {
         key: "elapsedSeconds",
         label: "时间",
-        unit: "",
+        unit: "分:秒",
         minBaseline: 0,
+        domainPadding: 0,
+        tickFormat: (value) => formatDuration(value),
         format: (value) => formatDuration(value)
     },
     {
@@ -31,6 +61,8 @@ export const RIDE_SERIES_X_FIELDS = [
         label: "距离",
         unit: "km",
         minBaseline: 0,
+        domainPadding: 0,
+        tickFormat: (value) => formatNumber(value, value >= 10 ? 1 : 2),
         format: (value) => `${formatNumber(value, value >= 10 ? 1 : 2)} km`
     }
 ];
@@ -42,6 +74,7 @@ export const RIDE_SERIES_Y_FIELDS = [
         unit: "W",
         minBaseline: 0,
         color: "#38bdf8",
+        tickFormat: (value) => formatNumber(value, 0),
         format: (value) => `${Math.round(value)}W`
     },
     {
@@ -49,6 +82,7 @@ export const RIDE_SERIES_Y_FIELDS = [
         label: "心率",
         unit: "bpm",
         color: "#fb7185",
+        tickFormat: (value) => formatNumber(value, 0),
         format: (value) => `${Math.round(value)} bpm`
     },
     {
@@ -57,6 +91,7 @@ export const RIDE_SERIES_Y_FIELDS = [
         unit: "rpm",
         minBaseline: 0,
         color: "#a78bfa",
+        tickFormat: (value) => formatNumber(value, 0),
         format: (value) => `${Math.round(value)} rpm`
     },
     {
@@ -65,6 +100,7 @@ export const RIDE_SERIES_Y_FIELDS = [
         unit: "km/h",
         minBaseline: 0,
         color: "#22c55e",
+        tickFormat: (value) => formatNumber(value, 1),
         format: (value) => `${formatNumber(value, 1)} km/h`
     },
     {
@@ -73,6 +109,7 @@ export const RIDE_SERIES_Y_FIELDS = [
         unit: "%",
         includeZeroLine: true,
         color: "#f59e0b",
+        tickFormat: (value) => formatSignedNumber(value, 1),
         format: (value) => `${formatSignedNumber(value, 1)}%`
     },
     {
@@ -81,6 +118,7 @@ export const RIDE_SERIES_Y_FIELDS = [
         unit: "m",
         minBaseline: 0,
         color: "#84cc16",
+        tickFormat: (value) => formatNumber(value, 0),
         format: (value) => `${Math.round(value)} m`
     },
     {
@@ -91,6 +129,7 @@ export const RIDE_SERIES_Y_FIELDS = [
         maxBaseline: 100,
         color: "#2dd4bf",
         value: (record) => normalizeRouteProgress(record?.routeProgress),
+        tickFormat: (value) => formatNumber(value, 0),
         format: (value) => `${Math.round(value)}%`
     }
 ];
@@ -101,33 +140,30 @@ export function getRideSeriesAxisFields(axis) {
     return [];
 }
 
-export function buildRideSeriesChartSvg({
+export function getRideSeriesField(axis, key) {
+    return getRideSeriesAxisFields(axis).find((field) => field.key === key) ?? null;
+}
+
+export function buildRideSeriesChartGeometry({
     records = [],
     xKey = "elapsedSeconds",
     yKey = "power",
-    currentRecord = null,
     width = DEFAULT_WIDTH,
     height = DEFAULT_HEIGHT,
-    title = null
+    padding = DEFAULT_PADDING
 } = {}) {
-    const xField = findField(RIDE_SERIES_X_FIELDS, xKey);
-    const yField = findField(RIDE_SERIES_Y_FIELDS, yKey);
+    const xField = getRideSeriesField("x", xKey);
+    const yField = getRideSeriesField("y", yKey);
 
     if (!xField || !yField) {
-        return buildCenteredMessageSvg({ width, height, message: "不支持的图表字段" });
+        return null;
     }
 
     const points = collectSeriesPoints(records, xField, yField);
     if (points.length < 2) {
-        return buildCenteredMessageSvg({ width, height, message: "暂无足够图表数据" });
+        return null;
     }
 
-    const padding = {
-        left: 54,
-        right: 24,
-        top: 34,
-        bottom: 40
-    };
     const plot = {
         x: padding.left,
         y: padding.top,
@@ -143,6 +179,90 @@ export function buildRideSeriesChartSvg({
         x: toX(point.xValue),
         y: toY(point.yValue)
     }));
+
+    return {
+        width,
+        height,
+        padding,
+        plot,
+        xField,
+        yField,
+        xDomain,
+        yDomain,
+        points,
+        plottedPoints,
+        toX,
+        toY
+    };
+}
+
+export function getRideSeriesValueAtChartX(chartX, geometry) {
+    if (!Number.isFinite(chartX) || !geometry?.plot || !geometry?.xDomain) {
+        return null;
+    }
+
+    const { plot, xDomain } = geometry;
+    const boundedX = clamp(chartX, plot.x, plot.x + plot.width);
+    const ratio = (boundedX - plot.x) / Math.max(plot.width, 1e-9);
+    return xDomain.min + ratio * (xDomain.max - xDomain.min);
+}
+
+export function findNearestRideSeriesPoint({
+    records = [],
+    xKey = "elapsedSeconds",
+    yKey = "power",
+    xValue = null
+} = {}) {
+    const xField = getRideSeriesField("x", xKey);
+    const yField = getRideSeriesField("y", yKey);
+    const targetX = Number(xValue);
+    if (!xField || !yField || !Number.isFinite(targetX)) {
+        return null;
+    }
+
+    const points = collectSeriesPoints(records, xField, yField);
+    if (points.length === 0) {
+        return null;
+    }
+
+    return points.reduce((nearest, point) => {
+        const nearestDistance = Math.abs(nearest.xValue - targetX);
+        const pointDistance = Math.abs(point.xValue - targetX);
+        return pointDistance < nearestDistance ? point : nearest;
+    }, points[0]);
+}
+
+export function buildRideSeriesChartSvg({
+    records = [],
+    xKey = "elapsedSeconds",
+    yKey = "power",
+    currentRecord = null,
+    width = DEFAULT_WIDTH,
+    height = DEFAULT_HEIGHT,
+    title = null,
+    theme = "dark"
+} = {}) {
+    const colors = CHART_THEMES[theme] ?? CHART_THEMES.dark;
+    const xField = getRideSeriesField("x", xKey);
+    const yField = getRideSeriesField("y", yKey);
+
+    if (!xField || !yField) {
+        return buildCenteredMessageSvg({ width, height, message: "不支持的图表字段", colors });
+    }
+
+    const geometry = buildRideSeriesChartGeometry({
+        records,
+        xKey,
+        yKey,
+        width,
+        height
+    });
+
+    if (!geometry) {
+        return buildCenteredMessageSvg({ width, height, message: "暂无足够图表数据", colors });
+    }
+
+    const { padding, plot, xDomain, yDomain, points, plottedPoints, toX, toY } = geometry;
     const xTicks = buildTicks(xDomain.min, xDomain.max, 4);
     const yTicks = buildTicks(yDomain.min, yDomain.max, 3);
     const currentPoint = resolveCurrentPoint({
@@ -155,29 +275,25 @@ export function buildRideSeriesChartSvg({
         toX,
         toY
     });
-    const chartTitle = title ?? `${xField.label} - ${yField.label}`;
     const zeroY = yField.includeZeroLine && yDomain.min < 0 && yDomain.max > 0 ? toY(0) : null;
     const lastPoint = points.at(-1);
     const latestLabel = yField.format(lastPoint.yValue);
-    const latestXLabel = xField.format(lastPoint.xValue);
 
     return `
-        <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="${CHART_COLORS.background}"></rect>
-        <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="${CHART_COLORS.surface}"></rect>
-        <text x="${padding.left}" y="18" fill="${CHART_COLORS.text}" font-size="13" font-weight="800">${escapeHtml(chartTitle)}</text>
-        <text x="${width - padding.right}" y="18" text-anchor="end" fill="${CHART_COLORS.muted}" font-size="11">x 轴: ${escapeHtml(xField.label)} / y 轴: ${escapeHtml(yField.label)}</text>
-        <rect x="${plot.x}" y="${plot.y}" width="${plot.width}" height="${plot.height}" rx="12" fill="${CHART_COLORS.plot}"></rect>
-        ${yTicks.map((tick) => buildYTick({ tick, plot, y: toY(tick), field: yField })).join("")}
-        ${xTicks.map((tick) => buildXTick({ tick, plot, x: toX(tick), height, field: xField })).join("")}
-        ${zeroY === null ? "" : `<line data-role="zero-line" x1="${plot.x}" y1="${zeroY.toFixed(1)}" x2="${plot.x + plot.width}" y2="${zeroY.toFixed(1)}" stroke="${CHART_COLORS.gridStrong}" stroke-width="1.2" stroke-dasharray="6 5"></line>`}
-        <line x1="${plot.x}" y1="${plot.y + plot.height}" x2="${plot.x + plot.width}" y2="${plot.y + plot.height}" stroke="${CHART_COLORS.axis}" stroke-width="1"></line>
-        <line x1="${plot.x}" y1="${plot.y}" x2="${plot.x}" y2="${plot.y + plot.height}" stroke="${CHART_COLORS.axis}" stroke-width="1"></line>
-        <path data-role="series-area" d="${buildAreaPath(plottedPoints, plot.y + plot.height)}" fill="${CHART_COLORS.fill}"></path>
+        <rect x="0" y="0" width="${width}" height="${height}" rx="12" fill="${colors.background}"></rect>
+        <rect x="0" y="0" width="${width}" height="${height}" rx="12" fill="${colors.surface}"></rect>
+        <text x="${padding.left}" y="18" fill="${yField.color}" font-size="11" font-weight="700">${escapeHtml(formatAxisLabel(yField))}</text>
+        <rect x="${plot.x}" y="${plot.y}" width="${plot.width}" height="${plot.height}" rx="8" fill="${colors.plot}"></rect>
+        ${yTicks.map((tick) => buildYTick({ tick, plot, y: toY(tick), field: yField, colors })).join("")}
+        ${xTicks.map((tick) => buildXTick({ tick, plot, x: toX(tick), height, field: xField, colors })).join("")}
+        ${zeroY === null ? "" : `<line data-role="zero-line" x1="${plot.x}" y1="${zeroY.toFixed(1)}" x2="${plot.x + plot.width}" y2="${zeroY.toFixed(1)}" stroke="${colors.gridStrong}" stroke-width="1.2" stroke-dasharray="6 5"></line>`}
+        <line x1="${plot.x}" y1="${plot.y + plot.height}" x2="${plot.x + plot.width}" y2="${plot.y + plot.height}" stroke="${colors.axis}" stroke-width="1"></line>
+        <line x1="${plot.x}" y1="${plot.y}" x2="${plot.x}" y2="${plot.y + plot.height}" stroke="${colors.axis}" stroke-width="1"></line>
+        <path data-role="series-area" d="${buildAreaPath(plottedPoints, plot.y + plot.height)}" fill="${colors.fill}"></path>
         <polyline data-role="series-line" points="${buildPolyline(plottedPoints)}" fill="none" stroke="${yField.color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>
-        ${currentPoint ? buildCurrentMarker(currentPoint, yField, plot) : ""}
-        <text x="${padding.left}" y="${height - 8}" fill="${CHART_COLORS.dim}" font-size="11">${escapeHtml(xField.label)}</text>
-        <text x="${width - padding.right}" y="${height - 8}" text-anchor="end" fill="${CHART_COLORS.dim}" font-size="11">${escapeHtml(latestXLabel)}</text>
-        <text x="${padding.left}" y="${padding.top - 9}" fill="${yField.color}" font-size="11" font-weight="700">${escapeHtml(yField.label)} ${escapeHtml(latestLabel)}</text>
+        ${currentPoint ? buildCurrentMarker(currentPoint, yField, plot, colors) : ""}
+        <text x="${padding.left}" y="${height - 8}" fill="${colors.dim}" font-size="11">${escapeHtml(formatAxisLabel(xField))}</text>
+        <text x="${width - padding.right}" y="${padding.top - 9}" text-anchor="end" fill="${yField.color}" font-size="11" font-weight="700">${escapeHtml(latestLabel)}</text>
     `;
 }
 
@@ -198,7 +314,7 @@ export function collectSeriesPoints(records, xField, yField) {
 }
 
 function resolveCurrentPoint({ currentRecord, xField, yField, points, xDomain, yDomain, toX, toY }) {
-    const source = currentRecord ?? points.at(-1)?.record;
+    const source = currentRecord;
     const xValue = readFieldValue(source, xField);
     const yValue = readFieldValue(source, yField);
     if (!Number.isFinite(xValue) || !Number.isFinite(yValue)) {
@@ -213,10 +329,6 @@ function resolveCurrentPoint({ currentRecord, xField, yField, points, xDomain, y
         xLabel: xField.format(xValue),
         yLabel: yField.format(yValue)
     };
-}
-
-function findField(fields, key) {
-    return fields.find((field) => field.key === key) ?? null;
 }
 
 function readFieldValue(record, field) {
@@ -242,7 +354,10 @@ function buildDomain(values, field) {
     }
 
     const range = max - min;
-    const padding = range > 0 ? range * 0.08 : Math.max(Math.abs(max || min) * 0.1, 1);
+    const paddingRatio = Number.isFinite(field.domainPadding) ? field.domainPadding : 0.08;
+    const padding = paddingRatio > 0
+        ? (range > 0 ? range * paddingRatio : Math.max(Math.abs(max || min) * 0.1, 1))
+        : 0;
     min -= padding;
     max += padding;
 
@@ -261,32 +376,37 @@ function buildTicks(min, max, segments) {
     return Array.from({ length: safeSegments + 1 }, (_, index) => min + ((max - min) / safeSegments) * index);
 }
 
-function buildYTick({ tick, plot, y, field }) {
+function buildYTick({ tick, plot, y, field, colors }) {
     return `
-        <line x1="${plot.x}" y1="${y.toFixed(1)}" x2="${plot.x + plot.width}" y2="${y.toFixed(1)}" stroke="${CHART_COLORS.grid}" stroke-width="1" stroke-dasharray="4 6"></line>
-        <text x="${plot.x - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="${CHART_COLORS.muted}" font-size="11">${escapeHtml(field.format(tick))}</text>
+        <line x1="${plot.x}" y1="${y.toFixed(1)}" x2="${plot.x + plot.width}" y2="${y.toFixed(1)}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="4 6"></line>
+        <text x="${plot.x - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="${colors.muted}" font-size="11">${escapeHtml(formatTickValue(field, tick))}</text>
     `;
 }
 
-function buildXTick({ tick, plot, x, height, field }) {
+function buildXTick({ tick, plot, x, height, field, colors }) {
     return `
-        <line x1="${x.toFixed(1)}" y1="${plot.y}" x2="${x.toFixed(1)}" y2="${plot.y + plot.height}" stroke="${CHART_COLORS.grid}" stroke-width="1" stroke-dasharray="3 8"></line>
-        <text x="${x.toFixed(1)}" y="${height - 22}" text-anchor="middle" fill="${CHART_COLORS.muted}" font-size="11">${escapeHtml(field.format(tick))}</text>
+        <line x1="${x.toFixed(1)}" y1="${plot.y}" x2="${x.toFixed(1)}" y2="${plot.y + plot.height}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="3 8"></line>
+        <text x="${x.toFixed(1)}" y="${height - 22}" text-anchor="middle" fill="${colors.muted}" font-size="11">${escapeHtml(formatTickValue(field, tick))}</text>
     `;
 }
 
-function buildCurrentMarker(point, yField, plot) {
-    const pillX = clamp(point.x - 54, plot.x + 4, plot.x + plot.width - 108);
-    const pillY = clamp(point.y - 34, plot.y + 2, plot.y + plot.height - 24);
-    const labelX = pillX + 54;
-    const labelY = pillY + 16;
+function buildCurrentMarker(point, yField, plot, colors) {
+    const xLabelWidth = 58;
+    const yLabelWidth = 46;
+    const xLabelX = clamp(point.x - xLabelWidth / 2, plot.x + 4, plot.x + plot.width - xLabelWidth - 4);
+    const xLabelY = plot.y + plot.height + 4;
+    const yLabelX = Math.max(4, plot.x - yLabelWidth - 8);
+    const yLabelY = clamp(point.y - 9, plot.y + 2, plot.y + plot.height - 20);
 
     return `
-        <line data-role="current-cursor" x1="${point.x.toFixed(1)}" y1="${plot.y}" x2="${point.x.toFixed(1)}" y2="${point.y.toFixed(1)}" stroke="${CHART_COLORS.cursor}" stroke-width="1.4" stroke-dasharray="5 5"></line>
-        <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="9" fill="${CHART_COLORS.cursorSoft}"></circle>
-        <circle data-role="current-point" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="5" fill="#f8fafc" stroke="${CHART_COLORS.cursor}" stroke-width="2"></circle>
-        <rect x="${pillX.toFixed(1)}" y="${pillY.toFixed(1)}" width="108" height="24" rx="12" fill="rgba(15, 23, 42, 0.9)" stroke="rgba(148, 163, 184, 0.36)" stroke-width="1"></rect>
-        <text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" fill="${yField.color}" font-size="11" font-weight="800">${escapeHtml(point.yLabel)}</text>
+        <line data-role="current-cursor-x" x1="${point.x.toFixed(1)}" y1="${plot.y}" x2="${point.x.toFixed(1)}" y2="${(plot.y + plot.height).toFixed(1)}" stroke="${colors.cursor}" stroke-width="1.3" stroke-dasharray="5 5"></line>
+        <line data-role="current-cursor-y" x1="${plot.x}" y1="${point.y.toFixed(1)}" x2="${(plot.x + plot.width).toFixed(1)}" y2="${point.y.toFixed(1)}" stroke="${colors.cursor}" stroke-width="1.3" stroke-dasharray="5 5"></line>
+        <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="7" fill="${colors.cursorSoft}"></circle>
+        <circle data-role="current-point" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="5" fill="${colors.markerFill}" stroke="${colors.cursor}" stroke-width="2"></circle>
+        <rect data-role="current-x-label" x="${xLabelX.toFixed(1)}" y="${xLabelY.toFixed(1)}" width="${xLabelWidth}" height="18" rx="5" fill="${colors.labelBackground}" stroke="${colors.labelStroke}" stroke-width="1"></rect>
+        <text x="${(xLabelX + xLabelWidth / 2).toFixed(1)}" y="${(xLabelY + 12.5).toFixed(1)}" text-anchor="middle" fill="${colors.text}" font-size="10.5" font-weight="800">${escapeHtml(point.xLabel)}</text>
+        <rect data-role="current-y-label" x="${yLabelX.toFixed(1)}" y="${yLabelY.toFixed(1)}" width="${yLabelWidth}" height="18" rx="5" fill="${colors.labelBackground}" stroke="${colors.labelStroke}" stroke-width="1"></rect>
+        <text x="${(yLabelX + yLabelWidth / 2).toFixed(1)}" y="${(yLabelY + 12.5).toFixed(1)}" text-anchor="middle" fill="${yField.color}" font-size="10.5" font-weight="800">${escapeHtml(point.yLabel)}</text>
     `;
 }
 
@@ -301,10 +421,10 @@ function buildAreaPath(points, baseY) {
     return `M ${first.x.toFixed(1)} ${baseY.toFixed(1)} L ${points.map((point) => `${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" L ")} L ${last.x.toFixed(1)} ${baseY.toFixed(1)} Z`;
 }
 
-function buildCenteredMessageSvg({ width, height, message }) {
+function buildCenteredMessageSvg({ width, height, message, colors = CHART_THEMES.dark }) {
     return `
-        <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="${CHART_COLORS.background}"></rect>
-        <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="${CHART_COLORS.muted}" font-size="14">
+        <rect x="0" y="0" width="${width}" height="${height}" rx="12" fill="${colors.background}"></rect>
+        <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="${colors.muted}" font-size="14">
             ${escapeHtml(message)}
         </text>
     `;
@@ -314,6 +434,17 @@ function normalizeRouteProgress(value) {
     if (!Number.isFinite(value)) return null;
     const percent = value <= 1 ? value * 100 : value;
     return clamp(percent, 0, 100);
+}
+
+function formatAxisLabel(field) {
+    return field.unit ? `${field.label} (${field.unit})` : field.label;
+}
+
+function formatTickValue(field, value) {
+    if (typeof field.tickFormat === "function") {
+        return field.tickFormat(value);
+    }
+    return formatNumber(value, 0);
 }
 
 function formatSignedNumber(value, digits = 1) {
