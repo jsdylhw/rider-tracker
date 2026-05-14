@@ -201,9 +201,10 @@ export function createRideService({ store, deviceService, exportService }) {
             return;
         }
 
-        // sendBeacon 有 ~64 KiB 队列限制，长距离骑行 FIT 文件本身就可能超过。
-        // 只对较短的会话尝试发送，长会话退回 localStorage 兜底。
-        if (fitBytes.length > 60 * 1024) {
+        // sendBeacon 有 ~64 KiB 队列限制。FIT 二进制还要加上 compact session
+        // JSON 和 multipart 边界开销，预留 ~16 KiB margin。
+        const MAX_BEACON_FIT_BYTES = 48 * 1024;
+        if (fitBytes.length > MAX_BEACON_FIT_BYTES) {
             return;
         }
 
