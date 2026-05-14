@@ -19,6 +19,8 @@ import { saveLastSession } from "../../adapters/storage/session-storage.js";
 import { saveRiderSessionActivity } from "../../adapters/storage/activity-history-client.js";
 import { formatNumber } from "../../shared/format.js";
 import { sanitizeSessionExportMetadata } from "../store/initial-state.js";
+import { encodeFitSync } from "../../adapters/export/fit-exporter.js";
+import { sendFitBeacon } from "../../adapters/upload/fit-beacon-client.js";
 
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
@@ -174,9 +176,31 @@ export function createRideService({ store, deviceService, exportService }) {
 
         if (completedSession) {
             saveLastSession(completedSession);
+            trySendFitBeacon(completedSession);
         }
 
         return completedSession;
+    }
+
+    function trySendFitBeacon(session) {
+        const state = store.getState();
+        const fitBytes = encodeFitSync(session, {
+            ...state.exportMetadata,
+            ...(session.exportMetadata ?? {})
+        }, {
+            markVirtualActivity: state.exportMetadata?.markVirtualActivity
+        });
+
+        if (fitBytes) {
+            const filename = `virtual-ride-${new Date().toISOString().replace(/[:.]/g, "-")}.fit`;
+            sendFitBeacon({
+                fitBytes,
+                filename,
+                session,
+                name: state.exportMetadata?.activityName,
+                sportType: "VirtualRide"
+            });
+        }
     }
 
     function tickLiveRide() {

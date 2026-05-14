@@ -159,6 +159,49 @@ export function createActivityRoutes({ activityStore, upload, fitFileDir, projec
         }
     });
 
+    router.post("/api/activities/fit-beacon", upload.single("file"), (req, res) => {
+        try {
+            const uploadedFile = req.file;
+            const session = parseSessionField(req.body?.session);
+
+            if (!uploadedFile) {
+                return res.status(400).json({
+                    ok: false,
+                    error: "Missing FIT file. Send multipart field named file."
+                });
+            }
+            if (!session) {
+                return res.status(400).json({
+                    ok: false,
+                    error: "Missing compact session metadata."
+                });
+            }
+
+            const activity = activityStore.saveRiderSession(session, {
+                name: req.body?.name,
+                sportType: req.body?.sportType || "VirtualRide",
+                source: session.source || "beacon"
+            });
+            const savedActivity = saveFitFileForActivity({
+                activity,
+                uploadedFile,
+                activityStore,
+                fitFileDir,
+                projectRoot
+            });
+
+            return res.json({
+                ok: true,
+                activity: savedActivity
+            });
+        } catch (err) {
+            return res.status(400).json({
+                ok: false,
+                error: err.message
+            });
+        }
+    });
+
     router.patch("/api/activities/:activityId", (req, res) => {
         try {
             const activity = activityStore.updateActivityName(req.params.activityId, req.body?.name);

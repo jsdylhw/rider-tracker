@@ -6,13 +6,21 @@ const FIT_SDK_URLS = [
 ];
 
 let fitSdkPromise;
+let loadedFitSdk = null;
 
 export async function loadFitSdk() {
     if (!fitSdkPromise) {
-        fitSdkPromise = loadFirstAvailableFitSdk();
+        fitSdkPromise = loadFirstAvailableFitSdk().then((sdk) => {
+            loadedFitSdk = sdk;
+            return sdk;
+        });
     }
 
     return fitSdkPromise;
+}
+
+export function getLoadedFitSdk() {
+    return loadedFitSdk;
 }
 
 async function loadFirstAvailableFitSdk() {
