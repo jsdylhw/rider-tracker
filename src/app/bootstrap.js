@@ -87,7 +87,15 @@ createMainView({
     onUpdatePipLayout: uiService.updatePipLayout
 });
 
-// 4. 启动初始化流程
+// 4. 注册页面关闭时的清理逻辑
+window.addEventListener("beforeunload", () => {
+    const state = store.getState();
+    if (state.liveRide.isActive) {
+        rideService.stopRide();
+    }
+});
+
+// 5. 启动初始化流程
 if (persistedSession) {
     store.setState((state) => ({
         ...state,
