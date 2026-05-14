@@ -1,5 +1,6 @@
 import {
     buildRideSeriesChartGeometry,
+    buildRideSeriesInteractionLayerSvg,
     buildRideSeriesChartSvg,
     collectSeriesPoints,
     findNearestRideSeriesPoint,
@@ -140,6 +141,29 @@ export const suite = {
 
                 assert(!svg.includes("data-role=\"current-cursor-x\""));
                 assert(!svg.includes("data-role=\"current-x-label\""));
+            }
+        },
+        {
+            name: "交互游标可以作为独立图层渲染",
+            run() {
+                const layer = buildRideSeriesInteractionLayerSvg({
+                    records: createRecords(),
+                    xKey: "elapsedSeconds",
+                    yKey: "power",
+                    currentRecord: { elapsedSeconds: 120, power: 240 },
+                    theme: "light"
+                });
+                const base = buildRideSeriesChartSvg({
+                    records: createRecords(),
+                    xKey: "elapsedSeconds",
+                    yKey: "power",
+                    showXAxis: false
+                });
+
+                assert(layer.includes("data-role=\"current-cursor-x\""));
+                assert(layer.includes(">240W<"));
+                assert(base.includes("data-role=\"series-interaction-layer\""));
+                assert(!base.includes("data-role=\"current-x-label\""));
             }
         },
         {

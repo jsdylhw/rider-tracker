@@ -1,6 +1,6 @@
 import { buildGradeChartSvg, buildElevationProfileSvg } from "../../src/ui/renderers/svg/route-charts.js";
 import { buildTrajectoryOverviewSvg } from "../../src/ui/renderers/svg/dashboard-charts.js";
-import { buildRouteMapSvg, collectRouteMapPoints } from "../../src/ui/renderers/svg/route-map-chart.js";
+import { buildRouteMapMarkerSvg, buildRouteMapSvg, collectRouteMapPoints } from "../../src/ui/renderers/svg/route-map-chart.js";
 import { assert } from "../helpers/test-harness.js";
 
 function createRoute() {
@@ -57,6 +57,7 @@ export const suite = {
                 });
                 assert(svg.includes("路线平面图"));
                 assert(svg.includes('data-role="route-map-line"'));
+                assert(svg.includes('data-role="route-map-marker-layer"'));
                 assert(svg.includes('data-role="route-map-current"'));
                 assert(!svg.includes("当前位置局部放大"));
                 assert(!svg.includes("全程路线"));
@@ -120,6 +121,23 @@ export const suite = {
                 assert(north.y < south.y, "higher latitude should render farther up");
                 assert(east.x > north.x, "higher longitude should render farther right");
                 assert(Math.abs(east.y - north.y) < 0.2, "same latitude should stay horizontally aligned");
+            }
+        },
+        {
+            name: "路线平面图当前位置标记可以独立渲染",
+            run() {
+                const marker = buildRouteMapMarkerSvg({
+                    route: createRoute(),
+                    currentRecord: {
+                        distanceKm: 5,
+                        positionLat: 31.115,
+                        positionLong: 121.136
+                    }
+                });
+
+                assert(marker.includes('data-role="route-map-current"'));
+                assert(marker.includes(">5.0 km<"));
+                assert(!marker.includes('data-role="route-map-line"'));
             }
         }
     ]

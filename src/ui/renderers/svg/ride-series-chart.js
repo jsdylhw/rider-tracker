@@ -150,7 +150,8 @@ export function buildRideSeriesChartGeometry({
     yKey = "power",
     width = DEFAULT_WIDTH,
     height = DEFAULT_HEIGHT,
-    padding = DEFAULT_PADDING
+    padding = DEFAULT_PADDING,
+    xDomain: providedXDomain = null
 } = {}) {
     const xField = getRideSeriesField("x", xKey);
     const yField = getRideSeriesField("y", yKey);
@@ -170,7 +171,7 @@ export function buildRideSeriesChartGeometry({
         width: width - padding.left - padding.right,
         height: height - padding.top - padding.bottom
     };
-    const xDomain = buildDomain(points.map((point) => point.xValue), xField);
+    const xDomain = normalizeDomain(providedXDomain) ?? buildDomain(points.map((point) => point.xValue), xField);
     const yDomain = buildDomain(points.map((point) => point.yValue), yField);
     const toX = (value) => plot.x + ((value - xDomain.min) / Math.max(xDomain.max - xDomain.min, 1e-9)) * plot.width;
     const toY = (value) => plot.y + (1 - ((value - yDomain.min) / Math.max(yDomain.max - yDomain.min, 1e-9))) * plot.height;
@@ -225,11 +226,32 @@ export function findNearestRideSeriesPoint({
         return null;
     }
 
-    return points.reduce((nearest, point) => {
-        const nearestDistance = Math.abs(nearest.xValue - targetX);
-        const pointDistance = Math.abs(point.xValue - targetX);
-        return pointDistance < nearestDistance ? point : nearest;
-    }, points[0]);
+    return findNearestRideSeriesPointInGeometry({ points }, targetX);
+}
+
+export function findNearestRideSeriesPointInGeometry(geometry, xValue = null) {
+    const points = geometry?.points ?? [];
+    const targetX = Number(xValue);
+    if (points.length === 0 || !Number.isFinite(targetX)) {
+        return null;
+    }
+
+    let low = 0;
+    let high = points.length - 1;
+    while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        if (points[mid].xValue < targetX) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+
+    const next = points[low];
+    const previous = points[Math.max(0, low - 1)];
+    return Math.abs((previous?.xValue ?? targetX) - targetX) <= Math.abs((next?.xValue ?? targetX) - targetX)
+        ? previous
+        : next;
 }
 
 export function buildRideSeriesChartSvg({
@@ -239,8 +261,14 @@ export function buildRideSeriesChartSvg({
     currentRecord = null,
     width = DEFAULT_WIDTH,
     height = DEFAULT_HEIGHT,
+    padding = DEFAULT_PADDING,
     title = null,
-    theme = "dark"
+    theme = "dark",
+    showXAxis = true,
+    xDomain = null,
+    showLatestValue = true,
+    lineStrokeWidth = 3,
+    maxPlotPoints = 900
 } = {}) {
     const colors = CHART_THEMES[theme] ?? CHART_THEMES.dark;
     const xField = getRideSeriesField("x", xKey);
@@ -255,46 +283,92 @@ export function buildRideSeriesChartSvg({
         xKey,
         yKey,
         width,
-        height
+        height,
+        padding,
+        xDomain
     });
 
     if (!geometry) {
         return buildCenteredMessageSvg({ width, height, message: "暂无足够图表数据", colors });
     }
 
-    const { padding, plot, xDomain, yDomain, points, plottedPoints, toX, toY } = geometry;
-    const xTicks = buildTicks(xDomain.min, xDomain.max, 4);
+    const { padding: resolvedPadding, plot, xDomain: resolvedXDomain, yDomain, points, plottedPoints, toX, toY } = geometry;
+    const xTicks = buildTicks(resolvedXDomain.min, resolvedXDomain.max, 4);
     const yTicks = buildTicks(yDomain.min, yDomain.max, 3);
     const currentPoint = resolveCurrentPoint({
         currentRecord,
         xField,
         yField,
         points,
-        xDomain,
+        xDomain: resolvedXDomain,
         yDomain,
         toX,
         toY
     });
     const zeroY = yField.includeZeroLine && yDomain.min < 0 && yDomain.max > 0 ? toY(0) : null;
-    const lastPoint = points.at(-1);
-    const latestLabel = yField.format(lastPoint.yValue);
+    const latestLabel = showLatestValue ? yField.format(points.at(-1).yValue) : null;
+    const visiblePlottedPoints = downsamplePlottedPoints(plottedPoints, maxPlotPoints);
 
     return `
         <rect x="0" y="0" width="${width}" height="${height}" rx="12" fill="${colors.background}"></rect>
         <rect x="0" y="0" width="${width}" height="${height}" rx="12" fill="${colors.surface}"></rect>
-        <text x="${padding.left}" y="18" fill="${yField.color}" font-size="11" font-weight="700">${escapeHtml(formatAxisLabel(yField))}</text>
+        <text x="${resolvedPadding.left}" y="18" fill="${yField.color}" font-size="11" font-weight="700">${escapeHtml(formatAxisLabel(yField))}</text>
         <rect x="${plot.x}" y="${plot.y}" width="${plot.width}" height="${plot.height}" rx="8" fill="${colors.plot}"></rect>
         ${yTicks.map((tick) => buildYTick({ tick, plot, y: toY(tick), field: yField, colors })).join("")}
-        ${xTicks.map((tick) => buildXTick({ tick, plot, x: toX(tick), height, field: xField, colors })).join("")}
+        ${showXAxis ? xTicks.map((tick) => buildXTick({ tick, plot, x: toX(tick), height, field: xField, colors })).join("") : ""}
         ${zeroY === null ? "" : `<line data-role="zero-line" x1="${plot.x}" y1="${zeroY.toFixed(1)}" x2="${plot.x + plot.width}" y2="${zeroY.toFixed(1)}" stroke="${colors.gridStrong}" stroke-width="1.2" stroke-dasharray="6 5"></line>`}
         <line x1="${plot.x}" y1="${plot.y + plot.height}" x2="${plot.x + plot.width}" y2="${plot.y + plot.height}" stroke="${colors.axis}" stroke-width="1"></line>
         <line x1="${plot.x}" y1="${plot.y}" x2="${plot.x}" y2="${plot.y + plot.height}" stroke="${colors.axis}" stroke-width="1"></line>
-        <path data-role="series-area" d="${buildAreaPath(plottedPoints, plot.y + plot.height)}" fill="${colors.fill}"></path>
-        <polyline data-role="series-line" points="${buildPolyline(plottedPoints)}" fill="none" stroke="${yField.color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>
-        ${currentPoint ? buildCurrentMarker(currentPoint, yField, plot, colors) : ""}
-        <text x="${padding.left}" y="${height - 8}" fill="${colors.dim}" font-size="11">${escapeHtml(formatAxisLabel(xField))}</text>
-        <text x="${width - padding.right}" y="${padding.top - 9}" text-anchor="end" fill="${yField.color}" font-size="11" font-weight="700">${escapeHtml(latestLabel)}</text>
+        <path data-role="series-area" d="${buildAreaPath(visiblePlottedPoints, plot.y + plot.height)}" fill="${colors.fill}"></path>
+        <polyline data-role="series-line" points="${buildPolyline(visiblePlottedPoints)}" fill="none" stroke="${yField.color}" stroke-width="${lineStrokeWidth}" stroke-linejoin="round" stroke-linecap="round"></polyline>
+        <g data-role="series-interaction-layer">
+            ${currentPoint ? buildCurrentMarker(currentPoint, yField, plot, colors, { showXLabel: showXAxis }) : ""}
+        </g>
+        ${showXAxis ? `<text x="${resolvedPadding.left}" y="${height - 8}" fill="${colors.dim}" font-size="11">${escapeHtml(formatAxisLabel(xField))}</text>` : ""}
+        ${latestLabel ? `<text x="${width - resolvedPadding.right}" y="${resolvedPadding.top - 9}" text-anchor="end" fill="${yField.color}" font-size="11" font-weight="700">${escapeHtml(latestLabel)}</text>` : ""}
     `;
+}
+
+export function buildRideSeriesInteractionLayerSvg({
+    records = [],
+    xKey = "elapsedSeconds",
+    yKey = "power",
+    currentRecord = null,
+    width = DEFAULT_WIDTH,
+    height = DEFAULT_HEIGHT,
+    padding = DEFAULT_PADDING,
+    theme = "dark",
+    showXAxis = true,
+    xDomain = null,
+    geometry = null
+} = {}) {
+    const colors = CHART_THEMES[theme] ?? CHART_THEMES.dark;
+    const resolvedGeometry = geometry ?? buildRideSeriesChartGeometry({
+        records,
+        xKey,
+        yKey,
+        width,
+        height,
+        padding,
+        xDomain
+    });
+    if (!resolvedGeometry) {
+        return "";
+    }
+
+    const { xField, yField, points, xDomain: resolvedXDomain, yDomain, toX, toY, plot } = resolvedGeometry;
+    const currentPoint = resolveCurrentPoint({
+        currentRecord,
+        xField,
+        yField,
+        points,
+        xDomain: resolvedXDomain,
+        yDomain,
+        toX,
+        toY
+    });
+
+    return currentPoint ? buildCurrentMarker(currentPoint, yField, plot, colors, { showXLabel: showXAxis }) : "";
 }
 
 export function collectSeriesPoints(records, xField, yField) {
@@ -371,6 +445,15 @@ function buildDomain(values, field) {
     return { min, max };
 }
 
+function normalizeDomain(domain) {
+    const min = Number(domain?.min);
+    const max = Number(domain?.max);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+        return null;
+    }
+    return { min, max };
+}
+
 function buildTicks(min, max, segments) {
     const safeSegments = Math.max(1, segments);
     return Array.from({ length: safeSegments + 1 }, (_, index) => min + ((max - min) / safeSegments) * index);
@@ -390,7 +473,7 @@ function buildXTick({ tick, plot, x, height, field, colors }) {
     `;
 }
 
-function buildCurrentMarker(point, yField, plot, colors) {
+function buildCurrentMarker(point, yField, plot, colors, { showXLabel = true } = {}) {
     const xLabelWidth = 58;
     const yLabelWidth = 46;
     const xLabelX = clamp(point.x - xLabelWidth / 2, plot.x + 4, plot.x + plot.width - xLabelWidth - 4);
@@ -403,8 +486,8 @@ function buildCurrentMarker(point, yField, plot, colors) {
         <line data-role="current-cursor-y" x1="${plot.x}" y1="${point.y.toFixed(1)}" x2="${(plot.x + plot.width).toFixed(1)}" y2="${point.y.toFixed(1)}" stroke="${colors.cursor}" stroke-width="1.3" stroke-dasharray="5 5"></line>
         <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="7" fill="${colors.cursorSoft}"></circle>
         <circle data-role="current-point" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="5" fill="${colors.markerFill}" stroke="${colors.cursor}" stroke-width="2"></circle>
-        <rect data-role="current-x-label" x="${xLabelX.toFixed(1)}" y="${xLabelY.toFixed(1)}" width="${xLabelWidth}" height="18" rx="5" fill="${colors.labelBackground}" stroke="${colors.labelStroke}" stroke-width="1"></rect>
-        <text x="${(xLabelX + xLabelWidth / 2).toFixed(1)}" y="${(xLabelY + 12.5).toFixed(1)}" text-anchor="middle" fill="${colors.text}" font-size="10.5" font-weight="800">${escapeHtml(point.xLabel)}</text>
+        ${showXLabel ? `<rect data-role="current-x-label" x="${xLabelX.toFixed(1)}" y="${xLabelY.toFixed(1)}" width="${xLabelWidth}" height="18" rx="5" fill="${colors.labelBackground}" stroke="${colors.labelStroke}" stroke-width="1"></rect>` : ""}
+        ${showXLabel ? `<text x="${(xLabelX + xLabelWidth / 2).toFixed(1)}" y="${(xLabelY + 12.5).toFixed(1)}" text-anchor="middle" fill="${colors.text}" font-size="10.5" font-weight="800">${escapeHtml(point.xLabel)}</text>` : ""}
         <rect data-role="current-y-label" x="${yLabelX.toFixed(1)}" y="${yLabelY.toFixed(1)}" width="${yLabelWidth}" height="18" rx="5" fill="${colors.labelBackground}" stroke="${colors.labelStroke}" stroke-width="1"></rect>
         <text x="${(yLabelX + yLabelWidth / 2).toFixed(1)}" y="${(yLabelY + 12.5).toFixed(1)}" text-anchor="middle" fill="${yField.color}" font-size="10.5" font-weight="800">${escapeHtml(point.yLabel)}</text>
     `;
@@ -412,6 +495,27 @@ function buildCurrentMarker(point, yField, plot, colors) {
 
 function buildPolyline(points) {
     return points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+}
+
+function downsamplePlottedPoints(points, maxPoints) {
+    if (!Number.isFinite(maxPoints) || maxPoints <= 0 || points.length <= maxPoints) {
+        return points;
+    }
+
+    const result = [];
+    const lastIndex = points.length - 1;
+    const step = lastIndex / (maxPoints - 1);
+    let previousIndex = -1;
+
+    for (let index = 0; index < maxPoints; index += 1) {
+        const sourceIndex = index === maxPoints - 1 ? lastIndex : Math.round(index * step);
+        if (sourceIndex !== previousIndex) {
+            result.push(points[sourceIndex]);
+            previousIndex = sourceIndex;
+        }
+    }
+
+    return result;
 }
 
 function buildAreaPath(points, baseY) {

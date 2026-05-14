@@ -23,8 +23,14 @@ export const suite = {
                 assert(html.includes("功率"), "power chart section should render");
                 assert(html.includes("心率"), "heart-rate chart section should render");
                 assert(html.includes("速度"), "speed chart section should render");
+                assert(html.includes("activity-detail-analysis-layout"), "detail should render side-by-side chart/map layout");
+                assert(html.includes("activity-series-stack"), "series charts should be grouped in one left-side stack");
+                assert(html.includes("data-activity-map-toggle"), "route map should be hideable");
                 assert(html.includes("data-activity-series-chart"), "series charts should expose interaction anchors");
                 assert(html.includes('data-y-key="speedKph"'), "speed chart should expose its y field");
+                assert(html.includes('data-role="series-interaction-layer"'), "series charts should expose a replaceable interaction layer");
+                assert(html.includes('data-show-x-axis="false"'), "upper series charts should be able to hide their x axis");
+                assert(html.includes('data-show-x-axis="true"'), "bottom series chart should keep the shared x axis visible");
                 assert(html.includes('data-role="series-line"'), "detail charts should use ride-series chart rendering");
                 assert(html.includes("时间 (分:秒)"), "series charts should label the x axis with units");
                 assert(html.includes("速度 (km/h)"), "speed chart should label the y axis with units");
