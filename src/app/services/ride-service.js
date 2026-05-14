@@ -19,6 +19,9 @@ import { saveLastSession } from "../../adapters/storage/session-storage.js";
 import { saveRiderSessionActivity } from "../../adapters/storage/activity-history-client.js";
 import { formatNumber } from "../../shared/format.js";
 import { sanitizeSessionExportMetadata } from "../store/initial-state.js";
+import { encodeFitSync } from "../../adapters/export/fit-exporter.js";
+import { sendFitBeacon } from "../../adapters/upload/fit-beacon-client.js";
+import { loadFitSdk } from "../../adapters/fit/fit-sdk-loader.js";
 
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
@@ -72,6 +75,9 @@ export function createRideService({ store, deviceService, exportService }) {
         }));
 
         restartLiveRideLoop(resolveAdaptivePhysicsTickMs(sampledSensors));
+
+        // 非阻塞预热 FIT SDK，提升页面关闭时 beacon 发送成功率
+        loadFitSdk().catch(() => {});
     }
 
     function stopRide() {
@@ -109,7 +115,7 @@ export function createRideService({ store, deviceService, exportService }) {
         }
     }
 
-    function finalizeRideSync() {
+    function finalizeRideSync(options = {}) {
         const state = store.getState();
         if (!state.liveRide.isActive) {
             return null;
@@ -174,9 +180,63 @@ export function createRideService({ store, deviceService, exportService }) {
 
         if (completedSession) {
             saveLastSession(completedSession);
+            if (options.sendBeacon === true) {
+                trySendFitBeacon(completedSession);
+            }
         }
 
         return completedSession;
+    }
+
+    function trySendFitBeacon(session) {
+        const state = store.getState();
+        const fitBytes = encodeFitSync(session, {
+            ...state.exportMetadata,
+            ...(session.exportMetadata ?? {})
+        }, {
+            markVirtualActivity: state.exportMetadata?.markVirtualActivity
+        });
+
+        if (!fitBytes) {
+            return;
+        }
+
+        // sendBeacon 有 ~64 KiB 队列限制。FIT 二进制还要加上 compact session
+        // JSON 和 multipart 边界开销，预留 ~16 KiB margin。
+        const MAX_BEACON_FIT_BYTES = 48 * 1024;
+        if (fitBytes.length > MAX_BEACON_FIT_BYTES) {
+            return;
+        }
+
+        // 用紧凑 session（去掉 records，数据已在 FIT 中）减小 payload
+        const compactSession = buildCompactBeaconSession(session);
+        const filename = `virtual-ride-${new Date().toISOString().replace(/[:.]/g, "-")}.fit`;
+        const sent = sendFitBeacon({
+            fitBytes,
+            filename,
+            session: compactSession,
+            name: state.exportMetadata?.activityName,
+            sportType: "VirtualRide"
+        });
+
+        if (!sent) {
+            console.warn("[RideService] sendBeacon 入队失败（payload 可能过大或浏览器不支持）");
+        }
+    }
+
+    function buildCompactBeaconSession(session) {
+        return {
+            id: session.id,
+            activityId: session.activityId,
+            source: session.source ?? "rider-tracker",
+            createdAt: session.createdAt,
+            startedAt: session.startedAt,
+            finishedAt: session.finishedAt,
+            settings: session.settings,
+            summary: session.summary,
+            exportMetadata: session.exportMetadata,
+            records: []
+        };
     }
 
     function tickLiveRide() {

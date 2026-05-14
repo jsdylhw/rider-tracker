@@ -33,6 +33,7 @@ import { suite as pipPreferencesSuite } from "./unit/pip-preferences.test.js";
 import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js";
 import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
 import { suite as activityDetailRendererSuite } from "./unit/activity-detail-renderer.test.js";
+import { suite as fitBeaconClientSuite } from "./unit/fit-beacon-client.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
@@ -69,7 +70,8 @@ const suites = [
     pipPreferencesSuite,
     rideSeriesChartSuite,
     activityStoreSuite,
-    activityDetailRendererSuite
+    activityDetailRendererSuite,
+    fitBeaconClientSuite
 ];
 
 runSuites(suites).then((results) => {

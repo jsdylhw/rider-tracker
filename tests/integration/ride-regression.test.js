@@ -367,15 +367,139 @@ export const suite = {
                     const result = service.finalizeRideSync();
                     const nextState = store.getState();
 
-                    // 同步收尾：timer 已停、store 已更新、localStorage 已写
                     assertEqual(nextState.liveRide.isActive, false);
                     assertEqual(Boolean(result), true);
                     assertEqual(Boolean(result.summary), true);
                     assertEqual(localStorageSaved?.key, "rider-tracker:last-session");
-
-                    // 关键断言：异步 FIT 归档路径未触发
                     assertEqual(archiveCalled, false);
                 } finally {
+                    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+                    else globalThis.localStorage = originalLocalStorage;
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
+            name: "finalizeRideSync sendBeacon 模式也不触发异步归档路径",
+            run() {
+                const store = createStore({
+                    ...createState(),
+                    liveRide: {
+                        ...createState().liveRide,
+                        canStart: true
+                    }
+                });
+                const timerCallbacks = [];
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval(callback) {
+                        timerCallbacks.push(callback);
+                        return timerCallbacks.length;
+                    },
+                    clearInterval() {}
+                };
+                const originalLocalStorage = globalThis.localStorage;
+                globalThis.localStorage = {
+                    setItem() {},
+                    getItem() { return null; },
+                    removeItem() {}
+                };
+                const originalNavigator = globalThis.navigator;
+                Object.defineProperty(globalThis, "navigator", {
+                    value: { sendBeacon() { return true; } },
+                    configurable: true,
+                    writable: true
+                });
+                let archiveCalled = false;
+
+                try {
+                    const service = createRideService({
+                        store,
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: {
+                            archiveSessionAsFitActivity() {
+                                archiveCalled = true;
+                                return Promise.resolve({ id: "should-not-appear" });
+                            }
+                        }
+                    });
+
+                    service.startRide();
+                    timerCallbacks[0]();
+                    service.finalizeRideSync({ sendBeacon: true });
+
+                    // 异步归档始终不被触发（beacon 是独立路径）
+                    assertEqual(archiveCalled, false);
+                } finally {
+                    if (originalNavigator === undefined) delete globalThis.navigator;
+                    else Object.defineProperty(globalThis, "navigator", { value: originalNavigator, configurable: true, writable: true });
+                    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+                    else globalThis.localStorage = originalLocalStorage;
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
+            name: "stopRide 不触发 sendBeacon，只走正常异步归档",
+            async run() {
+                const store = createStore({
+                    ...createState(),
+                    liveRide: {
+                        ...createState().liveRide,
+                        canStart: true
+                    }
+                });
+                const timerCallbacks = [];
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval(callback) {
+                        timerCallbacks.push(callback);
+                        return timerCallbacks.length;
+                    },
+                    clearInterval() {}
+                };
+                const originalLocalStorage = globalThis.localStorage;
+                globalThis.localStorage = {
+                    setItem() {},
+                    getItem() { return null; },
+                    removeItem() {}
+                };
+                const originalNavigator = globalThis.navigator;
+                let sendBeaconCalled = false;
+                Object.defineProperty(globalThis, "navigator", {
+                    value: { sendBeacon() { sendBeaconCalled = true; return true; } },
+                    configurable: true,
+                    writable: true
+                });
+                let archiveCalled = false;
+
+                try {
+                    const service = createRideService({
+                        store,
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: {
+                            archiveSessionAsFitActivity() {
+                                archiveCalled = true;
+                                return Promise.resolve({ id: "normal-archive" });
+                            }
+                        }
+                    });
+
+                    service.startRide();
+                    timerCallbacks[0]();
+                    service.stopRide();
+                    await flushPromises(3);
+
+                    // 正常结束骑行：走异步 FIT 归档，但不触发 sendBeacon
+                    assertEqual(archiveCalled, true);
+                    assertEqual(sendBeaconCalled, false);
+                } finally {
+                    if (originalNavigator === undefined) delete globalThis.navigator;
+                    else globalThis.navigator = originalNavigator;
                     if (originalLocalStorage === undefined) delete globalThis.localStorage;
                     else globalThis.localStorage = originalLocalStorage;
                     if (originalWindow === undefined) delete globalThis.window;

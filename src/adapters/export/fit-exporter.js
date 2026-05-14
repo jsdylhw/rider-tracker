@@ -1,5 +1,5 @@
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
-import { loadFitSdk } from "../fit/fit-sdk-loader.js";
+import { getLoadedFitSdk, loadFitSdk } from "../fit/fit-sdk-loader.js";
 
 const APP_PRODUCT_ID = 5101;
 const APP_SOFTWARE_VERSION = 1;
@@ -7,12 +7,28 @@ const APP_SERIAL_NUMBER = 51010001;
 const FIT_EPOCH_MS = 631065600000;
 
 export async function exportSessionAsFit(session, exportMetadata, options = {}) {
-    const { Encoder, Profile } = await loadFitSdk();
-
     if (!session?.summary) {
         throw new Error("缺少 session.summary，无法导出 FIT。");
     }
 
+    const { Encoder, Profile } = await loadFitSdk();
+    return encodeFitWithSdk({ Encoder, Profile }, session, exportMetadata, options);
+}
+
+export function encodeFitSync(session, exportMetadata, options = {}) {
+    if (!session?.summary) {
+        return null;
+    }
+
+    const sdk = getLoadedFitSdk();
+    if (!sdk) {
+        return null;
+    }
+
+    return encodeFitWithSdk(sdk, session, exportMetadata, options);
+}
+
+function encodeFitWithSdk({ Encoder, Profile }, session, exportMetadata, options = {}) {
     const markVirtualActivity = options?.markVirtualActivity !== false;
     const summary = session.summary;
     const records = session.records ?? [];
