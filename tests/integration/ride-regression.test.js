@@ -322,6 +322,68 @@ export const suite = {
             }
         },
         {
+            name: "finalizeRideSync 只做同步收尾，不触发异步 FIT 归档",
+            run() {
+                const store = createStore({
+                    ...createState(),
+                    liveRide: {
+                        ...createState().liveRide,
+                        canStart: true
+                    }
+                });
+                const timerCallbacks = [];
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval(callback) {
+                        timerCallbacks.push(callback);
+                        return timerCallbacks.length;
+                    },
+                    clearInterval() {}
+                };
+                let localStorageSaved = null;
+                const originalLocalStorage = globalThis.localStorage;
+                globalThis.localStorage = {
+                    setItem(key, value) { localStorageSaved = { key, value }; },
+                    getItem() { return null; },
+                    removeItem() {}
+                };
+                let archiveCalled = false;
+
+                try {
+                    const service = createRideService({
+                        store,
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: {
+                            archiveSessionAsFitActivity() {
+                                archiveCalled = true;
+                                return Promise.resolve({ id: "should-not-appear" });
+                            }
+                        }
+                    });
+
+                    service.startRide();
+                    timerCallbacks[0]();
+                    const result = service.finalizeRideSync();
+                    const nextState = store.getState();
+
+                    // 同步收尾：timer 已停、store 已更新、localStorage 已写
+                    assertEqual(nextState.liveRide.isActive, false);
+                    assertEqual(Boolean(result), true);
+                    assertEqual(Boolean(result.summary), true);
+                    assertEqual(localStorageSaved?.key, "rider-tracker:last-session");
+
+                    // 关键断言：异步 FIT 归档路径未触发
+                    assertEqual(archiveCalled, false);
+                } finally {
+                    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+                    else globalThis.localStorage = originalLocalStorage;
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
             name: "runSimulation 会通过 FIT 活动归档保存历史",
             async run() {
                 const store = createStore(createState());
