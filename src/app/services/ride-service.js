@@ -111,7 +111,7 @@ export function createRideService({ store, deviceService, exportService }) {
         }
     }
 
-    function finalizeRideSync() {
+    function finalizeRideSync(options = {}) {
         const state = store.getState();
         if (!state.liveRide.isActive) {
             return null;
@@ -176,7 +176,9 @@ export function createRideService({ store, deviceService, exportService }) {
 
         if (completedSession) {
             saveLastSession(completedSession);
-            trySendFitBeacon(completedSession);
+            if (options.sendBeacon === true) {
+                trySendFitBeacon(completedSession);
+            }
         }
 
         return completedSession;
