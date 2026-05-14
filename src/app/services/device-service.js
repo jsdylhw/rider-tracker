@@ -412,7 +412,7 @@ function computeCanStart(state, overrides = {}) {
     const externalPowerConnected = overrides.externalPowerConnected ?? state.ble.powerMeter.externalConnected;
     const activePowerSource = overrides.activePowerSource ?? state.ble.powerMeter.sourceType;
 
-    return Boolean(state.liveRide.isActive || trainerConnected || externalPowerConnected || activePowerSource !== "none");
+    return Boolean(state.liveRide.isActive || trainerConnected || activePowerSource !== "none");
 }
 
 function mapPowerSourceStatusLabel(sourceType) {

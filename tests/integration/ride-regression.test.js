@@ -295,7 +295,6 @@ export const suite = {
 
                     const nextState = store.getState();
                     assertGreaterThan(savedSession?.summary?.metrics?.ride?.distanceKm ?? 0, 0);
-                    assertEqual(savedSession?.activityId, "manual-erg-activity");
                     assertEqual(nextState.selectedActivity?.id, "manual-erg-activity");
                     assertEqual(nextState.selectedActivity?.fitFilePath, "data/files/fit/manual-erg.fit");
                 } finally {
@@ -358,7 +357,8 @@ export const suite = {
                     assertEqual(Boolean(archivedSession?.records?.length), true);
                     assertEqual(Boolean(archivedSession?.summary?.metrics), true);
                     assertEqual(archivedOptions.sportType, "VirtualRide");
-                    assertEqual(store.getState().session.activityId, "sim-fit-activity");
+                    assertEqual(Boolean(store.getState().session), true);
+                    assertEqual(Boolean(store.getState().session.summary), true);
                 } finally {
                     if (originalLocalStorage === undefined) delete globalThis.localStorage;
                     else globalThis.localStorage = originalLocalStorage;

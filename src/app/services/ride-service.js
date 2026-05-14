@@ -46,8 +46,6 @@ export function createRideService({ store, deviceService, exportService }) {
 
         baseSession.exportMetadata = sanitizeSessionExportMetadata(state.exportMetadata);
 
-        restartLiveRideLoop(resolveAdaptivePhysicsTickMs(sampledSensors));
-
         const initialStatusMeta = `正在根据实时功率和路线坡度更新速度，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`;
         const initialRideState = buildInitialRideSessionState({
             session: baseSession,
@@ -72,6 +70,8 @@ export function createRideService({ store, deviceService, exportService }) {
             },
             statusText: `已开始骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。`
         }));
+
+        restartLiveRideLoop(resolveAdaptivePhysicsTickMs(sampledSensors));
     }
 
     function stopRide() {
@@ -95,10 +95,6 @@ export function createRideService({ store, deviceService, exportService }) {
         const activitySavePromise = completedSession
             ? archiveCompletedRideSession(completedSession, exportService)
             : Promise.resolve(null);
-
-        if (completedSession) {
-            saveLastSession(completedSession);
-        }
 
         const trainerControlMode = resolveTrainerControlModeForWorkoutMode(state.workout.mode);
         const stoppedRuntime = buildRuntimeByControlMode({
@@ -143,6 +139,10 @@ export function createRideService({ store, deviceService, exportService }) {
             },
             statusText: stoppedStatusMeta
         }));
+
+        if (completedSession) {
+            saveLastSession(completedSession);
+        }
 
         if (completedSession) {
             void activitySavePromise
@@ -352,9 +352,6 @@ export function createRideService({ store, deviceService, exportService }) {
 function saveSessionToActivityHistory(session) {
     return saveRiderSessionActivity(session)
         .then((activity) => {
-            if (activity?.id) {
-                session.activityId = activity.id;
-            }
             if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent !== "undefined") {
                 window.dispatchEvent(new CustomEvent("rider-tracker:activity-saved", {
                     detail: { activity }
@@ -379,7 +376,6 @@ function archiveCompletedRideSession(session, exportService) {
     return Promise.resolve(savePromise)
         .then((activity) => {
             if (activity?.id) {
-                session.activityId = activity.id;
                 return activity;
             }
             return saveSessionToActivityHistory(session);
@@ -399,12 +395,7 @@ function archiveSimulationSession(session, exportService) {
         : saveSessionToActivityHistory(session);
 
     return Promise.resolve(savePromise)
-        .then((activity) => {
-            if (activity?.id) {
-                session.activityId = activity.id;
-            }
-            return activity;
-        })
+        .then((activity) => activity)
         .catch((error) => {
             console.warn("[RideService] 保存模拟活动 FIT 失败:", error);
             return null;
