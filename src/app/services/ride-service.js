@@ -80,6 +80,41 @@ export function createRideService({ store, deviceService, exportService }) {
             return;
         }
 
+        const completedSession = finalizeRideSync();
+
+        if (completedSession) {
+            const activitySavePromise = archiveCompletedRideSession(completedSession, exportService);
+
+            void activitySavePromise
+                .then(async (activity) => {
+                    const nextActivity = {
+                        ...(activity ?? {}),
+                        rawSession: completedSession
+                    };
+                    store.setState((currentState) => ({
+                        ...currentState,
+                        uiMode: "activity-detail",
+                        selectedActivity: nextActivity,
+                        session: completedSession,
+                        liveRide: {
+                            ...currentState.liveRide,
+                            dashboardOpen: false
+                        },
+                        statusText: "骑行已结束，已打开骑后报告。"
+                    }));
+                })
+                .catch((error) => {
+                    console.warn("[RideService] 打开骑后报告失败:", error);
+                });
+        }
+    }
+
+    function finalizeRideSync() {
+        const state = store.getState();
+        if (!state.liveRide.isActive) {
+            return null;
+        }
+
         stopLiveRideLoop();
 
         const completedSession = state.liveRide.session
@@ -92,9 +127,6 @@ export function createRideService({ store, deviceService, exportService }) {
                 finishedAt: new Date().toISOString()
             }
             : null;
-        const activitySavePromise = completedSession
-            ? archiveCompletedRideSession(completedSession, exportService)
-            : Promise.resolve(null);
 
         const trainerControlMode = resolveTrainerControlModeForWorkoutMode(state.workout.mode);
         const stoppedRuntime = buildRuntimeByControlMode({
@@ -144,29 +176,7 @@ export function createRideService({ store, deviceService, exportService }) {
             saveLastSession(completedSession);
         }
 
-        if (completedSession) {
-            void activitySavePromise
-                .then(async (activity) => {
-                    const nextActivity = {
-                        ...(activity ?? {}),
-                        rawSession: completedSession
-                    };
-                    store.setState((currentState) => ({
-                        ...currentState,
-                        uiMode: "activity-detail",
-                        selectedActivity: nextActivity,
-                        session: completedSession,
-                        liveRide: {
-                            ...currentState.liveRide,
-                            dashboardOpen: false
-                        },
-                        statusText: "骑行已结束，已打开骑后报告。"
-                    }));
-                })
-                .catch((error) => {
-                    console.warn("[RideService] 打开骑后报告失败:", error);
-                });
-        }
+        return completedSession;
     }
 
     function tickLiveRide() {
@@ -326,6 +336,7 @@ export function createRideService({ store, deviceService, exportService }) {
     return {
         startRide,
         stopRide,
+        finalizeRideSync,
         runSimulation,
         openRideDashboard,
         closeRideDashboard

@@ -87,11 +87,10 @@ createMainView({
     onUpdatePipLayout: uiService.updatePipLayout
 });
 
-// 4. 注册页面关闭时的清理逻辑
+// 4. 注册页面关闭时的清理逻辑（仅做同步收尾：停 timer、写 localStorage、更新 store）
 window.addEventListener("beforeunload", () => {
-    const state = store.getState();
-    if (state.liveRide.isActive) {
-        rideService.stopRide();
+    if (store.getState().liveRide.isActive) {
+        rideService.finalizeRideSync();
     }
 });
 

@@ -127,7 +127,6 @@ export function createDeviceService({ store }) {
                         ...state.liveRide,
                         canStart: computeCanStart(state, {
                             trainerConnected: powerState.trainerConnected,
-                            externalPowerConnected: powerState.externalPowerConnected,
                             activePowerSource: powerState.activeSource
                         })
                     }
@@ -409,7 +408,6 @@ function resolveErgDispatchStatus(powerWatts, result) {
 
 function computeCanStart(state, overrides = {}) {
     const trainerConnected = overrides.trainerConnected ?? state.ble.trainer.isConnected;
-    const externalPowerConnected = overrides.externalPowerConnected ?? state.ble.powerMeter.externalConnected;
     const activePowerSource = overrides.activePowerSource ?? state.ble.powerMeter.sourceType;
 
     return Boolean(state.liveRide.isActive || trainerConnected || activePowerSource !== "none");
