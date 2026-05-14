@@ -10,7 +10,8 @@ export function sendFitBeacon({
         return false;
     }
 
-    if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") {
+    const nav = globalThis.navigator;
+    if (!nav || typeof nav.sendBeacon !== "function") {
         return false;
     }
 
@@ -22,5 +23,5 @@ export function sendFitBeacon({
     if (name) formData.append("name", name);
     if (sportType) formData.append("sportType", sportType);
 
-    return navigator.sendBeacon(`${serverUrl}/api/activities/fit-beacon`, formData);
+    return nav.sendBeacon(`${serverUrl}/api/activities/fit-beacon`, formData);
 }

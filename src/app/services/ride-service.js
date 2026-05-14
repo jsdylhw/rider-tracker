@@ -21,6 +21,7 @@ import { formatNumber } from "../../shared/format.js";
 import { sanitizeSessionExportMetadata } from "../store/initial-state.js";
 import { encodeFitSync } from "../../adapters/export/fit-exporter.js";
 import { sendFitBeacon } from "../../adapters/upload/fit-beacon-client.js";
+import { loadFitSdk } from "../../adapters/fit/fit-sdk-loader.js";
 
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
@@ -74,6 +75,9 @@ export function createRideService({ store, deviceService, exportService }) {
         }));
 
         restartLiveRideLoop(resolveAdaptivePhysicsTickMs(sampledSensors));
+
+        // 非阻塞预热 FIT SDK，提升页面关闭时 beacon 发送成功率
+        loadFitSdk().catch(() => {});
     }
 
     function stopRide() {
@@ -193,16 +197,45 @@ export function createRideService({ store, deviceService, exportService }) {
             markVirtualActivity: state.exportMetadata?.markVirtualActivity
         });
 
-        if (fitBytes) {
-            const filename = `virtual-ride-${new Date().toISOString().replace(/[:.]/g, "-")}.fit`;
-            sendFitBeacon({
-                fitBytes,
-                filename,
-                session,
-                name: state.exportMetadata?.activityName,
-                sportType: "VirtualRide"
-            });
+        if (!fitBytes) {
+            return;
         }
+
+        // sendBeacon 有 ~64 KiB 队列限制，长距离骑行 FIT 文件本身就可能超过。
+        // 只对较短的会话尝试发送，长会话退回 localStorage 兜底。
+        if (fitBytes.length > 60 * 1024) {
+            return;
+        }
+
+        // 用紧凑 session（去掉 records，数据已在 FIT 中）减小 payload
+        const compactSession = buildCompactBeaconSession(session);
+        const filename = `virtual-ride-${new Date().toISOString().replace(/[:.]/g, "-")}.fit`;
+        const sent = sendFitBeacon({
+            fitBytes,
+            filename,
+            session: compactSession,
+            name: state.exportMetadata?.activityName,
+            sportType: "VirtualRide"
+        });
+
+        if (!sent) {
+            console.warn("[RideService] sendBeacon 入队失败（payload 可能过大或浏览器不支持）");
+        }
+    }
+
+    function buildCompactBeaconSession(session) {
+        return {
+            id: session.id,
+            activityId: session.activityId,
+            source: session.source ?? "rider-tracker",
+            createdAt: session.createdAt,
+            startedAt: session.startedAt,
+            finishedAt: session.finishedAt,
+            settings: session.settings,
+            summary: session.summary,
+            exportMetadata: session.exportMetadata,
+            records: []
+        };
     }
 
     function tickLiveRide() {
