@@ -65,7 +65,9 @@ function encodeFitWithSdk({ Encoder, Profile }, session, exportMetadata, options
         eventType: "start"
     });
 
-    records.forEach((record) => {
+    const exportedRecords = downsampleTo1Hz(records);
+
+    exportedRecords.forEach((record) => {
         const timestamp = new Date(startedAt.getTime() + (Number(record.elapsedSeconds) || 0) * 1000);
         const message = { timestamp };
 
@@ -153,6 +155,8 @@ export function exportSessionAsVirtualFit(session, exportMetadata) {
 export function exportSessionAsPlainFit(session, exportMetadata) {
     return exportSessionAsFit(session, exportMetadata, { markVirtualActivity: false });
 }
+
+export { downsampleTo1Hz };
 
 export function resolveFitExportSummary({ summary = {}, records = [] } = {}) {
     const metrics = resolveRideMetrics({ summary, records });
@@ -353,4 +357,89 @@ function buildProfileName(description, repositoryUrl) {
 
 function toSemicircles(degrees) {
     return Math.round((degrees * 2147483648) / 180);
+}
+
+function downsampleTo1Hz(records) {
+    if (!records || records.length <= 1) {
+        return records ?? [];
+    }
+
+    const firstElapsed = Number(records[0]?.elapsedSeconds) || 0;
+    const lastElapsed = Number(records.at(-1)?.elapsedSeconds) || 0;
+    const totalSeconds = lastElapsed - firstElapsed;
+
+    if (totalSeconds <= 0) {
+        return records;
+    }
+
+    // 如果记录密度 ≤ 1 条/秒，无需降采样
+    if (records.length <= totalSeconds + 1) {
+        return records;
+    }
+
+    // 按绝对秒边界分桶：(prevBoundary, boundary]，整秒点归当前桶
+    // 如果首条是整秒（如 t=0），保留为独立 record；否则归入第一个 bucket
+    const firstRecord = records[0];
+    const lastRawRecord = records.at(-1);
+    const startBucket = Math.max(1, Math.ceil(firstElapsed));
+    const endBucket = Math.floor(lastElapsed);
+    const result = [];
+    let arrayCursor = 0;
+    if (Number.isInteger(firstElapsed) && firstElapsed < startBucket) {
+        result.push(firstRecord);
+        arrayCursor = 1;
+    }
+
+    // 不足 1 秒但有多个 sub-second record 时聚合到 ceil(lastElapsed) 整秒
+    const effectiveEndBucket = endBucket >= startBucket ? endBucket : Math.max(1, Math.ceil(lastElapsed));
+
+    for (let sec = startBucket; sec <= effectiveEndBucket; sec += 1) {
+        const bucketRecords = [];
+
+        while (arrayCursor < records.length) {
+            const elapsed = Number(records[arrayCursor]?.elapsedSeconds) || 0;
+            if (elapsed <= sec) {
+                bucketRecords.push(records[arrayCursor]);
+                arrayCursor += 1;
+            } else {
+                break;
+            }
+        }
+
+        if (bucketRecords.length > 0) {
+            const representative = { ...bucketRecords.at(-1) };
+            representative.elapsedSeconds = sec;
+            representative.power = avgOf(bucketRecords, "power");
+            representative.heartRate = avgOf(bucketRecords, "heartRate");
+            representative.cadence = avgOf(bucketRecords, "cadence");
+            representative.speedKph = avgOf(bucketRecords, "speedKph");
+            representative.gradePercent = avgOf(bucketRecords, "gradePercent");
+            result.push(representative);
+        }
+    }
+
+    // 把原始末尾的累计字段合并到最后一条 bucket record
+    if (result.length > 1 && lastRawRecord.elapsedSeconds >= effectiveEndBucket) {
+        const lastBucket = result.at(-1);
+        lastBucket.distanceKm = lastRawRecord.distanceKm;
+        lastBucket.elevationMeters = lastRawRecord.elevationMeters;
+        if (typeof lastRawRecord.positionLat === "number") lastBucket.positionLat = lastRawRecord.positionLat;
+        if (typeof lastRawRecord.positionLong === "number") lastBucket.positionLong = lastRawRecord.positionLong;
+        if (typeof lastRawRecord.ascentMeters === "number") lastBucket.ascentMeters = lastRawRecord.ascentMeters;
+    }
+
+    return result;
+}
+
+function avgOf(records, field) {
+    let total = 0;
+    let count = 0;
+    for (const record of records) {
+        const value = Number(record[field]);
+        if (Number.isFinite(value)) {
+            total += value;
+            count += 1;
+        }
+    }
+    return count > 0 ? total / count : records.at(-1)?.[field];
 }
