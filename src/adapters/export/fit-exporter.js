@@ -65,7 +65,9 @@ function encodeFitWithSdk({ Encoder, Profile }, session, exportMetadata, options
         eventType: "start"
     });
 
-    records.forEach((record) => {
+    const exportedRecords = downsampleTo1Hz(records);
+
+    exportedRecords.forEach((record) => {
         const timestamp = new Date(startedAt.getTime() + (Number(record.elapsedSeconds) || 0) * 1000);
         const message = { timestamp };
 
@@ -153,6 +155,8 @@ export function exportSessionAsVirtualFit(session, exportMetadata) {
 export function exportSessionAsPlainFit(session, exportMetadata) {
     return exportSessionAsFit(session, exportMetadata, { markVirtualActivity: false });
 }
+
+export { downsampleTo1Hz };
 
 export function resolveFitExportSummary({ summary = {}, records = [] } = {}) {
     const metrics = resolveRideMetrics({ summary, records });
@@ -353,4 +357,75 @@ function buildProfileName(description, repositoryUrl) {
 
 function toSemicircles(degrees) {
     return Math.round((degrees * 2147483648) / 180);
+}
+
+function downsampleTo1Hz(records) {
+    if (!records || records.length <= 1) {
+        return records ?? [];
+    }
+
+    const firstElapsed = Number(records[0]?.elapsedSeconds) || 0;
+    const lastElapsed = Number(records.at(-1)?.elapsedSeconds) || 0;
+    const totalSeconds = lastElapsed - firstElapsed;
+
+    if (totalSeconds <= 0) {
+        return records;
+    }
+
+    // 如果记录密度 ≤ 1 条/秒，无需降采样
+    if (records.length <= totalSeconds + 1) {
+        return records;
+    }
+
+    // 按 1 秒 bucket 聚合：每秒钟输出 1 条 record
+    // timeCursor 是时间边界（秒），arrayCursor 是数组下标，两者独立推进
+    const result = [];
+    let arrayCursor = 0;
+    const numBuckets = Math.ceil(totalSeconds);
+    const lastRawRecord = records.at(-1);
+
+    for (let bucketIndex = 0; bucketIndex < numBuckets; bucketIndex += 1) {
+        const bucketEnd = firstElapsed + bucketIndex + 1;
+        const bucketRecords = [];
+
+        while (arrayCursor < records.length) {
+            const elapsed = Number(records[arrayCursor]?.elapsedSeconds) || 0;
+            if (elapsed < bucketEnd) {
+                bucketRecords.push(records[arrayCursor]);
+                arrayCursor += 1;
+            } else {
+                break;
+            }
+        }
+
+        if (bucketRecords.length > 0) {
+            const representative = { ...bucketRecords.at(-1) };
+            representative.power = avgOf(bucketRecords, "power");
+            representative.heartRate = avgOf(bucketRecords, "heartRate");
+            representative.cadence = avgOf(bucketRecords, "cadence");
+            representative.speedKph = avgOf(bucketRecords, "speedKph");
+            representative.gradePercent = avgOf(bucketRecords, "gradePercent");
+            result.push(representative);
+        }
+    }
+
+    // 确保最后一条原始记录被包含（且不重复）
+    if (result.length === 0 || result.at(-1).elapsedSeconds !== lastRawRecord?.elapsedSeconds) {
+        result.push(lastRawRecord);
+    }
+
+    return result;
+}
+
+function avgOf(records, field) {
+    let total = 0;
+    let count = 0;
+    for (const record of records) {
+        const value = Number(record[field]);
+        if (Number.isFinite(value)) {
+            total += value;
+            count += 1;
+        }
+    }
+    return count > 0 ? total / count : records.at(-1)?.[field];
 }

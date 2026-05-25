@@ -1,4 +1,4 @@
-import { resolveFitExportSummary } from "../../src/adapters/export/fit-exporter.js";
+import { resolveFitExportSummary, downsampleTo1Hz } from "../../src/adapters/export/fit-exporter.js";
 import { assertApprox, assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
@@ -71,6 +71,98 @@ export const suite = {
                 assertEqual(exportSummary.grade.averageNegativePercent, -1.5);
                 assertEqual(exportSummary.grade.maxPositivePercent, 6);
                 assertEqual(exportSummary.grade.maxNegativePercent, -4);
+            }
+        },
+        {
+            name: "downsampleTo1Hz 空/单条记录时原样返回",
+            run() {
+                assertEqual(downsampleTo1Hz(null).length, 0);
+                assertEqual(downsampleTo1Hz([]).length, 0);
+                const single = [{ elapsedSeconds: 1, power: 100 }];
+                assertEqual(downsampleTo1Hz(single).length, 1);
+                assertEqual(downsampleTo1Hz(single)[0].power, 100);
+            }
+        },
+        {
+            name: "downsampleTo1Hz 密度 ≤1Hz 时不做降采样",
+            run() {
+                const records = [
+                    { elapsedSeconds: 0, power: 100 },
+                    { elapsedSeconds: 1, power: 110 },
+                    { elapsedSeconds: 2, power: 120 }
+                ];
+                const result = downsampleTo1Hz(records);
+                assertEqual(result.length, 3);
+            }
+        },
+        {
+            name: "downsampleTo1Hz 60s 10Hz → 约61条，每桶平均且无重复",
+            run() {
+                const records = [];
+                const N = 600; // 60 seconds at 100ms = 601 records (0..60s)
+                for (let i = 0; i <= N; i += 1) {
+                    records.push({
+                        elapsedSeconds: i * 0.1,
+                        power: 100 + i * 2,
+                        heartRate: 120 + i,
+                        cadence: 80 + (i % 5),
+                        speedKph: 30 + (i % 3) * 0.5,
+                        gradePercent: 2,
+                        distanceKm: i * 0.003,
+                        elevationMeters: 100 + i * 0.2
+                    });
+                }
+                const result = downsampleTo1Hz(records);
+
+                // 60 秒 → 61 条左右（每整秒一条 + 最后一条）
+                assertEqual(result.length >= 60, true);
+                assertEqual(result.length <= 62, true);
+
+                // 最后一条是原始末尾，且不重复
+                assertEqual(result.at(-1).elapsedSeconds, 60);
+                if (result.length >= 2) {
+                    const secondToLast = result[result.length - 2].elapsedSeconds;
+                    assertEqual(secondToLast < 60, true);
+                }
+
+                // timestamp 严格递增
+                for (let i = 1; i < result.length; i += 1) {
+                    assertEqual(result[i].elapsedSeconds > result[i - 1].elapsedSeconds, true);
+                }
+            }
+        },
+        {
+            name: "downsampleTo1Hz 峰值功率由 SESSION/LAP 全量数据保留",
+            run() {
+                const records = [];
+                const N = 600;
+                for (let i = 0; i <= N; i += 1) {
+                    const power = (i === 120) ? 999 : 200;
+                    records.push({
+                        elapsedSeconds: i * 0.1,
+                        power,
+                        heartRate: 140,
+                        cadence: 85,
+                        speedKph: 35,
+                        gradePercent: 1,
+                        distanceKm: i * 0.003,
+                        elevationMeters: 100 + i * 0.2
+                    });
+                }
+
+                const result = downsampleTo1Hz(records);
+                assertEqual(result.length >= 60, true);
+
+                // 降采样后的 record 里尖峰被平均掉了
+                const has999 = result.some(r => r.power === 999);
+                assertEqual(has999, false);
+
+                // 但 SESSION/LAP 的 maxPower 来自全量 records
+                const exportSummary = resolveFitExportSummary({
+                    summary: {},
+                    records
+                });
+                assertEqual(exportSummary.maxPower, 999);
             }
         },
         {
