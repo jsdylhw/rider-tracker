@@ -64,6 +64,8 @@ export function createStreetViewController({ container1, container2 }) {
     const googleEvent = window.google.maps.event;
     const listeners = [];
     const cleanupFns = [];
+    const pendingPanoramaCleanups = [];
+    let requestInFlightTimeoutId = null;
 
     const commonOptions = {
         zoom: 1,
@@ -85,6 +87,7 @@ export function createStreetViewController({ container1, container2 }) {
     let lastDistance = -1;
     let pauseAutoUntil = 0;
     let applyingProgrammaticPov = false;
+    let panoramaRequestInFlight = false;
 
     const USER_INTERACTION_PAUSE_MS = 3000;
     const UPDATE_INTERVAL_MS = STREET_VIEW_UPDATE_INTERVAL_MS;
@@ -141,10 +144,17 @@ export function createStreetViewController({ container1, container2 }) {
         if (distanceMeters <= 0) return { lat: points[0].latitude, lng: points[0].longitude, grade: points[0].gradePercent };
         if (distanceMeters >= route.totalDistanceMeters) return { lat: points[points.length - 1].latitude, lng: points[points.length - 1].longitude, grade: points[points.length - 1].gradePercent };
 
-        let idx = 0;
-        while (idx < points.length - 1 && points[idx + 1].distanceMeters < distanceMeters) {
-            idx++;
+        let low = 0;
+        let high = points.length - 1;
+        while (low < high) {
+            const mid = Math.floor((low + high) / 2);
+            if (points[mid].distanceMeters < distanceMeters) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
         }
+        const idx = Math.max(0, low - 1);
         const p1 = points[idx];
         const p2 = points[idx + 1];
         if (!p2) return { lat: p1.latitude, lng: p1.longitude, grade: p1.gradePercent };
@@ -160,7 +170,7 @@ export function createStreetViewController({ container1, container2 }) {
     }
 
     function update(route, currentRecord) {
-        if (!route || !currentRecord || isAutoUpdatePaused()) return;
+        if (!route || !currentRecord || isAutoUpdatePaused() || panoramaRequestInFlight) return;
 
         const now = Date.now();
         const currentDistanceMeters = currentRecord.distanceKm * 1000;
@@ -190,7 +200,21 @@ export function createStreetViewController({ container1, container2 }) {
         const activeEl = container1.parentElement?.querySelector(`#svPano${activeIndex}`);
         const nextEl = container1.parentElement?.querySelector(`#svPano${activeIndex === 1 ? 2 : 1}`);
 
+        if (requestInFlightTimeoutId !== null) {
+            window.clearTimeout(requestInFlightTimeoutId);
+        }
+        panoramaRequestInFlight = true;
+        requestInFlightTimeoutId = window.setTimeout(() => {
+            panoramaRequestInFlight = false;
+            requestInFlightTimeoutId = null;
+        }, 10000);
+
         svService.getPanorama({ location: new window.google.maps.LatLng(state.lat, state.lng), radius: 50 }, (data, status) => {
+            panoramaRequestInFlight = false;
+            if (requestInFlightTimeoutId !== null) {
+                window.clearTimeout(requestInFlightTimeoutId);
+                requestInFlightTimeoutId = null;
+            }
             if (status !== window.google.maps.StreetViewStatus.OK || !data.location?.pano) return;
 
             const targetPanoId = data.location.pano;
@@ -204,10 +228,25 @@ export function createStreetViewController({ container1, container2 }) {
             nextPanorama.setPano(targetPanoId);
             setProgrammaticPov(nextPanorama, { heading, pitch });
 
-            const statusListener = googleEvent.addListener(nextPanorama, "status_changed", () => {
+            let statusListener = null;
+            let statusTimeoutId = null;
+            const cleanupStatusListener = () => {
+                const idx = pendingPanoramaCleanups.indexOf(cleanupStatusListener);
+                if (idx !== -1) pendingPanoramaCleanups.splice(idx, 1);
+                if (statusListener) {
+                    googleEvent.removeListener(statusListener);
+                    statusListener = null;
+                }
+                if (statusTimeoutId !== null) {
+                    window.clearTimeout(statusTimeoutId);
+                    statusTimeoutId = null;
+                }
+            };
+            pendingPanoramaCleanups.push(cleanupStatusListener);
+            statusListener = googleEvent.addListener(nextPanorama, "status_changed", () => {
                 if (nextPanorama.getStatus() !== "OK") return;
 
-                googleEvent.removeListener(statusListener);
+                cleanupStatusListener();
                 if (nextEl && activeEl) {
                     nextEl.style.opacity = "1";
                     nextEl.style.zIndex = "2";
@@ -216,7 +255,7 @@ export function createStreetViewController({ container1, container2 }) {
                 }
                 activeIndex = activeIndex === 1 ? 2 : 1;
             });
-            listeners.push(statusListener);
+            statusTimeoutId = window.setTimeout(cleanupStatusListener, UPDATE_INTERVAL_MS);
 
             // Preload next update window
             const speedMps = (currentRecord.speedKph || 25) / 3.6;
@@ -228,6 +267,14 @@ export function createStreetViewController({ container1, container2 }) {
     }
 
     function destroy() {
+        if (requestInFlightTimeoutId !== null) {
+            window.clearTimeout(requestInFlightTimeoutId);
+            requestInFlightTimeoutId = null;
+        }
+        panoramaRequestInFlight = false;
+        while (pendingPanoramaCleanups.length) {
+            pendingPanoramaCleanups.pop()();
+        }
         listeners.forEach((listener) => {
             try {
                 googleEvent.removeListener(listener);

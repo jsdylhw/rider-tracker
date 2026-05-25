@@ -1,5 +1,3 @@
-import { createStreetViewController, loadGoogleMapsForStreetView } from "./street-view-controller.js";
-
 const MAP_PROVIDERS = {
     osm: {
         url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -84,26 +82,12 @@ export function createMapController({ previewElement, dashboardElement, initialP
 
     function syncRide(route, currentRecord) {
         renderRoute(dashboardMap, dashboardLayers, route, currentRecord);
-        if (streetViewController) {
-            streetViewController.update(route, currentRecord);
-        }
-    }
-
-    let streetViewController = null;
-
-    async function enableStreetView({ apiKey, container1, container2 }) {
-        await loadGoogleMapsForStreetView(apiKey);
-        if (streetViewController) {
-            streetViewController.destroy();
-        }
-        streetViewController = createStreetViewController({ container1, container2 });
     }
 
     return {
         syncRoute,
         syncRide,
         setMapProvider,
-        enableStreetView,
         isReady: Boolean(window.L)
     };
 }
