@@ -377,22 +377,28 @@ function downsampleTo1Hz(records) {
         return records;
     }
 
-    // 按 1 秒 bucket 聚合，输出点落在整秒边界，避免 FIT 秒级 timestamp 重复
-    // 首条 t=0，bucket 输出 t=1, 2, 3...
-    // 非整秒结束时，把末尾 record 的累计字段合并到最后 bucket，不追加新 record
+    // 按绝对秒边界分桶：(prevBoundary, boundary]，整秒点归当前桶
+    // 如果首条是整秒（如 t=0），保留为独立 record；否则归入第一个 bucket
     const firstRecord = records[0];
     const lastRawRecord = records.at(-1);
-    const result = [firstRecord];
-    let arrayCursor = 1;
-    const numWholeSeconds = Math.floor(totalSeconds);
+    const startBucket = Math.max(1, Math.ceil(firstElapsed));
+    const endBucket = Math.floor(lastElapsed);
+    const result = [];
+    let arrayCursor = 0;
+    if (Number.isInteger(firstElapsed) && firstElapsed < startBucket) {
+        result.push(firstRecord);
+        arrayCursor = 1;
+    }
 
-    for (let sec = 1; sec <= numWholeSeconds; sec += 1) {
-        const bucketEnd = firstElapsed + sec;
+    // 不足 1 秒但有多个 sub-second record 时聚合到 ceil(lastElapsed) 整秒
+    const effectiveEndBucket = endBucket >= startBucket ? endBucket : Math.max(1, Math.ceil(lastElapsed));
+
+    for (let sec = startBucket; sec <= effectiveEndBucket; sec += 1) {
         const bucketRecords = [];
 
         while (arrayCursor < records.length) {
             const elapsed = Number(records[arrayCursor]?.elapsedSeconds) || 0;
-            if (elapsed < bucketEnd) {
+            if (elapsed <= sec) {
                 bucketRecords.push(records[arrayCursor]);
                 arrayCursor += 1;
             } else {
@@ -402,7 +408,7 @@ function downsampleTo1Hz(records) {
 
         if (bucketRecords.length > 0) {
             const representative = { ...bucketRecords.at(-1) };
-            representative.elapsedSeconds = bucketEnd;
+            representative.elapsedSeconds = sec;
             representative.power = avgOf(bucketRecords, "power");
             representative.heartRate = avgOf(bucketRecords, "heartRate");
             representative.cadence = avgOf(bucketRecords, "cadence");
@@ -413,8 +419,7 @@ function downsampleTo1Hz(records) {
     }
 
     // 把原始末尾的累计字段合并到最后一条 bucket record
-    // elapsedSeconds 保持整秒边界，避免 FIT 秒级 timestamp 重复（整秒/非整秒均适用）
-    if (result.length > 1 && lastRawRecord.elapsedSeconds >= firstElapsed + numWholeSeconds) {
+    if (result.length > 1 && lastRawRecord.elapsedSeconds >= effectiveEndBucket) {
         const lastBucket = result.at(-1);
         lastBucket.distanceKm = lastRawRecord.distanceKm;
         lastBucket.elevationMeters = lastRawRecord.elevationMeters;

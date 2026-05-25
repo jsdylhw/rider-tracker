@@ -181,6 +181,77 @@ export const suite = {
             }
         },
         {
+            name: "downsampleTo1Hz live ride 记录从 dt 开始也能正确分桶",
+            run() {
+                // live ride 首条记录是 dt（如 0.25s），不是 0
+                const tickRates = [0.2, 0.25, 0.5];
+                const durationSec = 30;
+                for (const dt of tickRates) {
+                    const records = [];
+                    const steps = Math.floor(durationSec / dt);
+                    for (let i = 1; i <= steps; i += 1) {
+                        const t = Number((i * dt).toFixed(5));
+                        records.push({
+                            elapsedSeconds: t,
+                            power: 150 + i,
+                            heartRate: 130 + i,
+                            cadence: 85,
+                            speedKph: 32,
+                            gradePercent: 1.5,
+                            distanceKm: t * (32 / 3600),
+                            elevationMeters: 100 + t * 0.3
+                        });
+                    }
+                    const result = downsampleTo1Hz(records);
+
+                    // 亚秒首条归入第一桶，result 全由整秒 bucket 组成
+                    for (let i = 0; i < result.length; i += 1) {
+                        assertEqual(Number.isInteger(result[i].elapsedSeconds), true);
+                    }
+                    // 除首条外，bucket 输出在整秒边界
+                    for (let i = 1; i < result.length; i += 1) {
+                        assertEqual(Number.isInteger(result[i].elapsedSeconds), true);
+                    }
+                    // FIT 秒级无重复
+                    const stamps = result.map(r => Math.round(r.elapsedSeconds));
+                    assertEqual(new Set(stamps).size, stamps.length);
+                    // 末尾合并
+                    assertEqual(result.at(-1).distanceKm, records.at(-1).distanceKm);
+                }
+            }
+        },
+        {
+            name: "downsampleTo1Hz 不到1秒多条 sub-second record 不会变空数组",
+            run() {
+                // [0.25, 0.5] endBucket < startBucket → 聚合到 t=1
+                const records = [
+                    { elapsedSeconds: 0.25, power: 150, heartRate: 140, cadence: 85, speedKph: 30, gradePercent: 1, distanceKm: 0.002, elevationMeters: 100 },
+                    { elapsedSeconds: 0.50, power: 155, heartRate: 141, cadence: 85, speedKph: 30, gradePercent: 1, distanceKm: 0.004, elevationMeters: 101 }
+                ];
+                const result = downsampleTo1Hz(records);
+                assertEqual(result.length >= 1, true);
+                assertEqual(result[0].elapsedSeconds, 1);
+                assertEqual(result[0].distanceKm, 0.004);
+            }
+        },
+        {
+            name: "downsampleTo1Hz 1秒短骑行 sub-second 首条归入 bucket",
+            run() {
+                // 4 条 [0.25, 0.5, 0.75, 1.0]，首条不是整秒，归入 t=1 bucket
+                const records = [
+                    { elapsedSeconds: 0.25, power: 150, heartRate: 140, cadence: 85, speedKph: 30, gradePercent: 1, distanceKm: 0.002, elevationMeters: 100 },
+                    { elapsedSeconds: 0.50, power: 155, heartRate: 141, cadence: 85, speedKph: 30, gradePercent: 1, distanceKm: 0.004, elevationMeters: 101 },
+                    { elapsedSeconds: 0.75, power: 160, heartRate: 142, cadence: 85, speedKph: 30, gradePercent: 1, distanceKm: 0.006, elevationMeters: 102 },
+                    { elapsedSeconds: 1.00, power: 165, heartRate: 143, cadence: 85, speedKph: 30, gradePercent: 1, distanceKm: 0.008, elevationMeters: 103 }
+                ];
+                const result = downsampleTo1Hz(records);
+                assertEqual(result.length, 1);
+                assertEqual(result[0].elapsedSeconds, 1);
+                assertEqual(result[0].distanceKm, 0.008);
+                assertEqual(result[0].power > 150 && result[0].power < 165, true);
+            }
+        },
+        {
             name: "downsampleTo1Hz 峰值功率由 SESSION/LAP 全量数据保留",
             run() {
                 const records = [];
