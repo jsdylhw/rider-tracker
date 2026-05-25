@@ -12,10 +12,18 @@ import {
     normalizeMetricSelection
 } from "../../shared/live-metrics.js";
 
+const LIVE_VISUAL_UPDATE_INTERVAL_MS = 1000;
+const STREET_VIEW_SYNC_INTERVAL_MS = 500;
+
 export function createDashboardRenderer({
     elements,
-    mapController
+    mapController,
+    streetViewControllerRef,
+    onEnableStreetView
 }) {
+    function isStreetViewLoaded() {
+        return streetViewControllerRef?.current != null;
+    }
     const dashboardMetricsRenderer = createDashboardMetricsRenderer({ elements });
     const workoutRuntimeRenderer = createWorkoutRuntimeRenderer({ elements });
     const customMetricsState = normalizeMetricSelection(DEFAULT_METRIC_SELECTION);
@@ -24,9 +32,24 @@ export function createDashboardRenderer({
         halfway: false,
         last3k: false
     };
-    let streetViewLoaded = false;
     let immersiveStreetViewMode = false;
     let immersiveUiHidden = false;
+    let previousImmersiveStreetViewMode = false;
+    let previousDashboardOpen = false;
+    const visualRenderState = {
+        map: createVisualRenderSlot(),
+        streetView: createVisualRenderSlot(),
+        trajectory: createVisualRenderSlot(),
+        gradeChart: createVisualRenderSlot(),
+        workoutRuntime: createVisualRenderSlot()
+    };
+
+    function resetVisualRenderState() {
+        Object.values(visualRenderState).forEach((slot) => {
+            slot.lastRenderedAt = 0;
+            slot.lastSignature = "";
+        });
+    }
 
     function setImmersiveUiHidden(hidden) {
         immersiveUiHidden = hidden;
@@ -88,19 +111,16 @@ export function createDashboardRenderer({
                 if (elements.loadStreetViewBtn.disabled) return;
                 elements.loadStreetViewBtn.disabled = true;
                 elements.loadStreetViewBtn.textContent = "加载中...";
-                streetViewLoaded = false;
                 try {
-                    await mapController.enableStreetView({
+                    await onEnableStreetView({
                         apiKey,
                         container1: elements.svPano1,
                         container2: elements.svPano2
                     });
                     elements.loadStreetViewBtn.textContent = "街景已开启";
                     elements.streetViewContainer.style.display = "block";
-                    streetViewLoaded = true;
                 } catch (error) {
                     alert(error?.message ?? "街景加载失败，请检查网络连接或 API Key。");
-                    streetViewLoaded = false;
                     elements.loadStreetViewBtn.disabled = false;
                     elements.loadStreetViewBtn.textContent = "加载街景";
                     if (elements.immersiveStreetViewBtn) {
@@ -113,11 +133,12 @@ export function createDashboardRenderer({
 
         if (elements.immersiveStreetViewBtn) {
             elements.immersiveStreetViewBtn.addEventListener("click", () => {
-                if (!streetViewLoaded) {
+                if (!isStreetViewLoaded()) {
                     alert("请先输入 API Key 并点击“加载街景”。");
                     return;
                 }
                 immersiveStreetViewMode = !immersiveStreetViewMode;
+                resetVisualRenderState();
                 if (immersiveStreetViewMode && elements.metricsCustomizer) {
                     elements.metricsCustomizer.hidden = true;
                 }
@@ -224,15 +245,26 @@ export function createDashboardRenderer({
 
     function render(state) {
         if (!elements.rideDashboard) return;
+        const now = Date.now();
         const viewModel = buildDashboardViewModel({
             state,
             customMetricsState,
             immersiveStreetViewMode,
-            streetViewLoaded
+            streetViewLoaded: isStreetViewLoaded()
         });
         const { ride, training, metricsData, enabledMetricKeys } = viewModel;
         const { session, currentRecord, route, records, distanceKm } = ride;
         const isGradeSimulation = training.mode === WORKOUT_MODES.GRADE_SIM;
+        const modeChanged = previousImmersiveStreetViewMode !== immersiveStreetViewMode;
+        const dashboardOpenChanged = previousDashboardOpen !== ride.dashboardOpen;
+        if (modeChanged) {
+            resetVisualRenderState();
+            previousImmersiveStreetViewMode = immersiveStreetViewMode;
+        }
+        if (dashboardOpenChanged) {
+            resetVisualRenderState();
+            previousDashboardOpen = ride.dashboardOpen;
+        }
 
         elements.rideDashboard.hidden = !ride.dashboardOpen;
         if (ride.dashboardOpen) {
@@ -267,6 +299,10 @@ export function createDashboardRenderer({
             }
         }
 
+        if (!ride.dashboardOpen) {
+            return;
+        }
+
         if (!session) {
             alertStates.halfway = false;
             alertStates.last3k = false;
@@ -284,9 +320,16 @@ export function createDashboardRenderer({
                 hasSession: false
             });
 
-            renderTrajectoryOverview(route, null, isGradeSimulation);
-            workoutRuntimeRenderer.render({ liveSession: session, training, records });
-            syncRideMap(route, null);
+            renderHeavyVisuals({
+                session,
+                route,
+                currentRecord: null,
+                records,
+                training,
+                isGradeSimulation,
+                now,
+                force: modeChanged || dashboardOpenChanged
+            });
             return;
         }
 
@@ -321,10 +364,59 @@ export function createDashboardRenderer({
             hasSession: true
         });
 
-        renderTrajectoryOverview(route, currentRecord, isGradeSimulation);
-        renderImmersiveGradeChart(route, currentRecord, isGradeSimulation);
-        workoutRuntimeRenderer.render({ liveSession: session, training, records });
-        syncRideMap(route, currentRecord);
+        renderHeavyVisuals({
+            session,
+            route,
+            currentRecord,
+            records,
+            training,
+            isGradeSimulation,
+            now,
+            force: modeChanged || dashboardOpenChanged
+        });
+    }
+
+    function renderHeavyVisuals({
+        session,
+        route,
+        currentRecord,
+        records,
+        training,
+        isGradeSimulation,
+        now,
+        force = false
+    }) {
+        const distanceMeters = Math.round((currentRecord?.distanceKm ?? 0) * 1000);
+        const routeSignature = buildRouteSignature(route);
+        const positionSignature = `${routeSignature}:${distanceMeters}`;
+        const workoutSignature = [
+            records?.length ?? 0,
+            training?.mode ?? "",
+            training?.runtime?.customWorkoutTargetStepIndex ?? "",
+            training?.runtime?.customWorkoutTargetPowerWatts ?? "",
+            training?.runtime?.targetErgPowerWatts ?? "",
+            Math.round((training?.runtime?.customWorkoutTargetProgress ?? 0) * 100)
+        ].join(":");
+
+        if (shouldRenderVisual(visualRenderState.trajectory, positionSignature, now, LIVE_VISUAL_UPDATE_INTERVAL_MS, force)) {
+            renderTrajectoryOverview(route, currentRecord, isGradeSimulation);
+        }
+
+        if (shouldRenderVisual(visualRenderState.gradeChart, positionSignature, now, LIVE_VISUAL_UPDATE_INTERVAL_MS, force)) {
+            renderImmersiveGradeChart(route, currentRecord, isGradeSimulation);
+        }
+
+        if (shouldRenderVisual(visualRenderState.workoutRuntime, workoutSignature, now, LIVE_VISUAL_UPDATE_INTERVAL_MS, force)) {
+            workoutRuntimeRenderer.render({ liveSession: session, training, records });
+        }
+
+        syncRideVisuals({
+            route,
+            currentRecord,
+            positionSignature,
+            now,
+            force
+        });
     }
 
     function renderTrajectoryOverview(route, currentRecord, isGradeSimulation) {
@@ -371,15 +463,63 @@ export function createDashboardRenderer({
         );
     }
 
-    function syncRideMap(route, currentRecord) {
-        mapController.syncRide(
-            route,
-            currentRecord
-        );
+    function syncRideVisuals({ route, currentRecord, positionSignature, now, force }) {
+        const shouldSyncMap = !immersiveStreetViewMode
+            && shouldRenderVisual(visualRenderState.map, positionSignature, now, LIVE_VISUAL_UPDATE_INTERVAL_MS, force);
+        const shouldSyncStreetView = isStreetViewLoaded()
+            && shouldRenderVisual(visualRenderState.streetView, positionSignature, now, STREET_VIEW_SYNC_INTERVAL_MS, force);
+
+        if (shouldSyncMap) {
+            mapController.syncRide(route, currentRecord);
+        }
+
+        if (shouldSyncStreetView) {
+            streetViewControllerRef.current.update(route, currentRecord);
+        }
     }
 
     return {
         bindEvents,
         render
     };
+}
+
+function createVisualRenderSlot() {
+    return {
+        lastRenderedAt: 0,
+        lastSignature: ""
+    };
+}
+
+function shouldRenderVisual(slot, signature, now, intervalMs, force = false) {
+    if (force || slot.lastRenderedAt === 0) {
+        slot.lastRenderedAt = now;
+        slot.lastSignature = signature;
+        return true;
+    }
+
+    if (signature === slot.lastSignature) {
+        return false;
+    }
+
+    if (now - slot.lastRenderedAt < intervalMs) {
+        return false;
+    }
+
+    slot.lastRenderedAt = now;
+    slot.lastSignature = signature;
+    return true;
+}
+
+function buildRouteSignature(route) {
+    if (!route) {
+        return "no-route";
+    }
+
+    return [
+        route.source ?? "unknown",
+        route.name ?? "route",
+        route.totalDistanceMeters ?? 0,
+        route.points?.length ?? 0
+    ].join(":");
 }

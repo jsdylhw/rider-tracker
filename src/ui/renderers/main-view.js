@@ -1,6 +1,7 @@
 import { formatDuration, formatNumber } from "../../shared/format.js";
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
 import { createMapController } from "../map/map-controller.js";
+import { createStreetViewController, loadGoogleMapsForStreetView } from "../map/street-view-controller.js";
 import { createRouteRenderer } from "./route-renderer.js";
 import { createDashboardRenderer } from "./dashboard-renderer.js";
 import { createExportRenderer } from "./export-renderer.js";
@@ -116,7 +117,22 @@ export function createMainView({
         onUpdateRouteSegment,
         onRemoveRouteSegment
     });
-    const dashboardRenderer = createDashboardRenderer({ elements, mapController });
+    const streetViewControllerRef = { current: null };
+
+    async function enableStreetView({ apiKey, container1, container2 }) {
+        await loadGoogleMapsForStreetView(apiKey);
+        if (streetViewControllerRef.current) {
+            streetViewControllerRef.current.destroy();
+        }
+        streetViewControllerRef.current = createStreetViewController({ container1, container2 });
+    }
+
+    const dashboardRenderer = createDashboardRenderer({
+        elements,
+        mapController,
+        streetViewControllerRef,
+        onEnableStreetView: enableStreetView
+    });
     dashboardRenderer.bindEvents(store);
     bindPipMetricControls();
 

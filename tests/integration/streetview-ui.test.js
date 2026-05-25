@@ -85,10 +85,9 @@ export const suite = {
 
                 const renderer = createDashboardRenderer({
                     elements,
-                    mapController: {
-                        async enableStreetView() {},
-                        syncRide() {}
-                    }
+                    mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {}
                 });
 
                 renderer.bindEvents(store);
@@ -105,10 +104,9 @@ export const suite = {
                 const store = createStore(createBaseState());
                 const renderer = createDashboardRenderer({
                     elements,
-                    mapController: {
-                        async enableStreetView() {},
-                        syncRide() {}
-                    }
+                    mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {}
                 });
                 renderer.render(store.getState());
                 assertEqual(elements.immersiveStreetViewBtn.hidden, true);
@@ -124,10 +122,9 @@ export const suite = {
 
                 const renderer = createDashboardRenderer({
                     elements,
-                    mapController: {
-                        async enableStreetView() {},
-                        syncRide() {}
-                    }
+                    mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {}
                 });
                 renderer.bindEvents(store);
                 elements.immersiveBackBtn.dispatch("click");
@@ -142,11 +139,13 @@ export const suite = {
                 state.liveRide.isActive = true;
                 const store = createStore(state);
 
+                const streetViewRef = { current: null };
                 const renderer = createDashboardRenderer({
                     elements,
-                    mapController: {
-                        async enableStreetView() {},
-                        syncRide() {}
+                    mapController: { syncRide() {} },
+                    streetViewControllerRef: streetViewRef,
+                    onEnableStreetView: async () => {
+                        streetViewRef.current = { update() {}, destroy() {} };
                     }
                 });
 
