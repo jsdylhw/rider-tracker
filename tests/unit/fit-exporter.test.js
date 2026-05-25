@@ -96,38 +96,87 @@ export const suite = {
             }
         },
         {
-            name: "downsampleTo1Hz 60s 10Hz → 约61条，每桶平均且无重复",
+            name: "downsampleTo1Hz 动态 tick 200/250/500/1000ms 无重复秒级 timestamp",
             run() {
-                const records = [];
-                const N = 600; // 60 seconds at 100ms = 601 records (0..60s)
-                for (let i = 0; i <= N; i += 1) {
-                    records.push({
-                        elapsedSeconds: i * 0.1,
-                        power: 100 + i * 2,
-                        heartRate: 120 + i,
-                        cadence: 80 + (i % 5),
-                        speedKph: 30 + (i % 3) * 0.5,
-                        gradePercent: 2,
-                        distanceKm: i * 0.003,
-                        elevationMeters: 100 + i * 0.2
-                    });
+                const tickRates = [0.2, 0.25, 0.5, 1.0];
+                const durationSec = 30;
+                for (const dt of tickRates) {
+                    const records = [];
+                    const steps = Math.floor(durationSec / dt);
+                    for (let i = 0; i <= steps; i += 1) {
+                        const t = i * dt;
+                        records.push({
+                            elapsedSeconds: t,
+                            power: 150 + i,
+                            heartRate: 130 + i,
+                            cadence: 85,
+                            speedKph: 32,
+                            gradePercent: 1.5,
+                            distanceKm: t * (32 / 3600),
+                            elevationMeters: 100 + t * 0.3
+                        });
+                    }
+                    const result = downsampleTo1Hz(records);
+
+                    // 首条 t=0
+                    assertEqual(result[0].elapsedSeconds, 0);
+                    assertEqual(result[0].distanceKm, 0);
+
+                    // 除首条外，所有 bucket 输出在整秒边界
+                    for (let i = 1; i < result.length; i += 1) {
+                        assertEqual(Number.isInteger(result[i].elapsedSeconds), true);
+                    }
+
+                    // FIT 秒级 timestamp 无重复
+                    const fitTimestamps = result.map(r => Math.round(r.elapsedSeconds));
+                    const unique = new Set(fitTimestamps);
+                    assertEqual(unique.size, fitTimestamps.length);
+
+                    // 严格递增
+                    for (let i = 1; i < result.length; i += 1) {
+                        assertEqual(result[i].elapsedSeconds > result[i - 1].elapsedSeconds, true);
+                    }
+
+                    // 末尾累计值匹配原始最后一条（覆盖整秒结束 200/250/500ms）
+                    assertEqual(result.at(-1).distanceKm, records.at(-1).distanceKm);
                 }
-                const result = downsampleTo1Hz(records);
+            }
+        },
+        {
+            name: "downsampleTo1Hz 非整秒结束无重复秒级 timestamp 且末尾累计值正确",
+            run() {
+                // dt=0.2, endTime=60.2/60.4/60.6 都落在非整秒
+                const endings = [60.2, 60.4, 60.6];
+                const dt = 0.2;
+                for (const endTime of endings) {
+                    const records = [];
+                    const steps = Math.floor(endTime / dt);
+                    for (let i = 0; i <= steps; i += 1) {
+                        const t = i * dt;
+                        records.push({
+                            elapsedSeconds: t,
+                            power: 150 + i,
+                            heartRate: 130 + i,
+                            cadence: 85,
+                            speedKph: 32,
+                            gradePercent: 1.5,
+                            distanceKm: t * (32 / 3600),
+                            elevationMeters: 100 + t * 0.3
+                        });
+                    }
+                    const result = downsampleTo1Hz(records);
 
-                // 60 秒 → 61 条左右（每整秒一条 + 最后一条）
-                assertEqual(result.length >= 60, true);
-                assertEqual(result.length <= 62, true);
+                    // FIT 秒级 timestamp 全部唯一
+                    const fitTimestamps = result.map(r => Math.round(r.elapsedSeconds));
+                    const dups = fitTimestamps.filter((t, i) => fitTimestamps.indexOf(t) !== i);
+                    assertEqual(dups.length, 0);
 
-                // 最后一条是原始末尾，且不重复
-                assertEqual(result.at(-1).elapsedSeconds, 60);
-                if (result.length >= 2) {
-                    const secondToLast = result[result.length - 2].elapsedSeconds;
-                    assertEqual(secondToLast < 60, true);
-                }
+                    // 最后一条 elapsed 在整秒边界
+                    assertEqual(Number.isInteger(result.at(-1).elapsedSeconds), true);
 
-                // timestamp 严格递增
-                for (let i = 1; i < result.length; i += 1) {
-                    assertEqual(result[i].elapsedSeconds > result[i - 1].elapsedSeconds, true);
+                    // 末尾累计值来自原始最后一条 record
+                    const expectedDist = records.at(-1).distanceKm;
+                    assertEqual(result.at(-1).distanceKm, expectedDist);
                 }
             }
         },

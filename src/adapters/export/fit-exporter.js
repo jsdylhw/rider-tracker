@@ -377,15 +377,17 @@ function downsampleTo1Hz(records) {
         return records;
     }
 
-    // 按 1 秒 bucket 聚合：每秒钟输出 1 条 record
-    // timeCursor 是时间边界（秒），arrayCursor 是数组下标，两者独立推进
-    const result = [];
-    let arrayCursor = 0;
-    const numBuckets = Math.ceil(totalSeconds);
+    // 按 1 秒 bucket 聚合，输出点落在整秒边界，避免 FIT 秒级 timestamp 重复
+    // 首条 t=0，bucket 输出 t=1, 2, 3...
+    // 非整秒结束时，把末尾 record 的累计字段合并到最后 bucket，不追加新 record
+    const firstRecord = records[0];
     const lastRawRecord = records.at(-1);
+    const result = [firstRecord];
+    let arrayCursor = 1;
+    const numWholeSeconds = Math.floor(totalSeconds);
 
-    for (let bucketIndex = 0; bucketIndex < numBuckets; bucketIndex += 1) {
-        const bucketEnd = firstElapsed + bucketIndex + 1;
+    for (let sec = 1; sec <= numWholeSeconds; sec += 1) {
+        const bucketEnd = firstElapsed + sec;
         const bucketRecords = [];
 
         while (arrayCursor < records.length) {
@@ -400,6 +402,7 @@ function downsampleTo1Hz(records) {
 
         if (bucketRecords.length > 0) {
             const representative = { ...bucketRecords.at(-1) };
+            representative.elapsedSeconds = bucketEnd;
             representative.power = avgOf(bucketRecords, "power");
             representative.heartRate = avgOf(bucketRecords, "heartRate");
             representative.cadence = avgOf(bucketRecords, "cadence");
@@ -409,9 +412,15 @@ function downsampleTo1Hz(records) {
         }
     }
 
-    // 确保最后一条原始记录被包含（且不重复）
-    if (result.length === 0 || result.at(-1).elapsedSeconds !== lastRawRecord?.elapsedSeconds) {
-        result.push(lastRawRecord);
+    // 把原始末尾的累计字段合并到最后一条 bucket record
+    // elapsedSeconds 保持整秒边界，避免 FIT 秒级 timestamp 重复（整秒/非整秒均适用）
+    if (result.length > 1 && lastRawRecord.elapsedSeconds >= firstElapsed + numWholeSeconds) {
+        const lastBucket = result.at(-1);
+        lastBucket.distanceKm = lastRawRecord.distanceKm;
+        lastBucket.elevationMeters = lastRawRecord.elevationMeters;
+        if (typeof lastRawRecord.positionLat === "number") lastBucket.positionLat = lastRawRecord.positionLat;
+        if (typeof lastRawRecord.positionLong === "number") lastBucket.positionLong = lastRawRecord.positionLong;
+        if (typeof lastRawRecord.ascentMeters === "number") lastBucket.ascentMeters = lastRawRecord.ascentMeters;
     }
 
     return result;
