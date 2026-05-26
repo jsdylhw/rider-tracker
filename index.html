@@ -467,6 +467,39 @@
         </div>
     </template>
 
+    <template id="upload-confirm-template">
+        <div class="modal-overlay" id="uploadConfirmOverlay">
+            <div class="modal-card">
+                <h3>上传到 Strava</h3>
+                <label class="field">
+                    <span>活动名称</span>
+                    <input name="confirmActivityName" type="text" maxlength="48">
+                </label>
+                <label class="field">
+                    <span>骑行类型</span>
+                    <label class="export-toggle">
+                        <input name="confirmMarkVirtual" type="checkbox" checked>
+                        <span class="export-toggle-track" aria-hidden="true"></span>
+                        <span class="export-toggle-label">
+                            <span class="export-toggle-title">
+                                <span class="when-checked">模拟骑行</span>
+                                <span class="when-unchecked">普通骑行</span>
+                            </span>
+                        </span>
+                    </label>
+                </label>
+                <label class="field field-wide">
+                    <span>说明信息</span>
+                    <textarea name="confirmFitDescription" rows="2" maxlength="180"></textarea>
+                </label>
+                <div class="modal-actions">
+                    <button id="confirmUploadBtn" class="btn power-btn">确认上传</button>
+                    <button id="cancelUploadBtn" class="btn secondary">取消</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
     <section id="rideDashboard" class="ride-dashboard" hidden>
         <div class="ride-dashboard-inner">
             <div class="ride-dashboard-header">

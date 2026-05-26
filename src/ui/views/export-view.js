@@ -1,4 +1,4 @@
-export function createExportView({ onDownloadSession, onDownloadFit, onImportFit, onConnectStrava, onUploadFit }) {
+export function createExportView({ onDownloadSession, onDownloadFit, onImportFit, onConnectStrava, onUploadFit, onUpdateExportMetadata, getExportMetadata }) {
     const exportCardContainer = document.getElementById("exportCardContainer");
     const exportCardTemplate = document.getElementById("export-card-template");
     mountSharedExportCard({ exportCardContainer, exportCardTemplate });
@@ -24,7 +24,9 @@ export function createExportView({ onDownloadSession, onDownloadFit, onImportFit
     bindFitImport(elements.importFitBtn, elements.importFitInput, onImportFit);
     bindFitImport(elements.homeImportFitBtn, elements.homeImportFitInput, onImportFit);
     bind(elements.connectStravaBtn, "click", onConnectStrava);
-    bind(elements.uploadFitBtn, "click", onUploadFit);
+
+    // Upload → show confirmation modal
+    setupUploadModal({ onUploadFit, onUpdateExportMetadata, getExportMetadata });
 
     return { elements };
 }
@@ -51,3 +53,63 @@ function mountSharedExportCard({ exportCardContainer, exportCardTemplate }) {
         exportCardContainer.appendChild(exportCardTemplate.content.cloneNode(true));
     }
 }
+
+let _modalElements = null;
+let _pendingUpload = null;
+
+function setupUploadModal({ onUploadFit, onUpdateExportMetadata, getExportMetadata }) {
+    const template = document.getElementById("upload-confirm-template");
+    if (!template) return;
+
+    const clone = template.content.cloneNode(true);
+    document.body.appendChild(clone);
+
+    const overlay = document.getElementById("uploadConfirmOverlay");
+    const confirmBtn = document.getElementById("confirmUploadBtn");
+    const cancelBtn = document.getElementById("cancelUploadBtn");
+    const nameInput = overlay?.querySelector("[name=\"confirmActivityName\"]");
+    const virtualCheckbox = overlay?.querySelector("[name=\"confirmMarkVirtual\"]");
+    const descTextarea = overlay?.querySelector("[name=\"confirmFitDescription\"]");
+
+    _modalElements = { overlay, nameInput, virtualCheckbox, descTextarea };
+
+    const uploadBtn = document.getElementById("uploadFitBtn");
+    bind(uploadBtn, "click", () => {
+        openUploadModal({ onUpload: onUploadFit, onUpdateExportMetadata, getExportMetadata });
+    });
+
+    bind(cancelBtn, "click", () => overlay?.classList.remove("open"));
+
+    bind(overlay, "click", (e) => {
+        if (e.target === overlay) overlay.classList.remove("open");
+    });
+
+    bind(confirmBtn, "click", () => {
+        if (!_pendingUpload) return;
+        const { onUpload, onUpdateExportMetadata: onUpdate } = _pendingUpload;
+        const name = nameInput?.value?.trim() || "Rider Tracker Virtual Ride";
+        const desc = descTextarea?.value?.trim() || "";
+        const markVirtual = virtualCheckbox?.checked !== false;
+
+        onUpdate?.({ activityName: name, fitDescription: desc, markVirtualActivity: markVirtual });
+        overlay?.classList.remove("open");
+        onUpload?.();
+    });
+}
+
+function openUploadModal({ onUpload, onUpdateExportMetadata, getExportMetadata, initialValues }) {
+    if (!_modalElements) return;
+    const { overlay, nameInput, virtualCheckbox, descTextarea } = _modalElements;
+
+    const meta = getExportMetadata?.() || {};
+    const init = initialValues || {};
+    if (nameInput) nameInput.value = init.activityName ?? meta.activityName ?? "";
+    if (virtualCheckbox) virtualCheckbox.checked = init.markVirtualActivity ?? (meta.markVirtualActivity !== false);
+    if (descTextarea) descTextarea.value = init.fitDescription ?? meta.fitDescription ?? "";
+
+    _pendingUpload = { onUpload, onUpdateExportMetadata };
+
+    overlay?.classList.add("open");
+}
+
+export { openUploadModal };
