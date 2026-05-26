@@ -82,12 +82,16 @@ export function createMainView({
         onDownloadFit,
         onImportFit,
         onConnectStrava,
-        onUploadFit
+        onUploadFit,
+        onUpdateExportMetadata,
+        getExportMetadata: () => store.getState().exportMetadata
     });
     const activityDetailView = createActivityDetailView({
         onSetUiMode,
         onConnectStrava,
-        onUploadActivityFit
+        onUploadActivityFit,
+        onUpdateExportMetadata,
+        getExportMetadata: () => store.getState().exportMetadata
     });
 
     const elements = {

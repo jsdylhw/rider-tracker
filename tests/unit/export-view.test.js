@@ -13,6 +13,9 @@ function createButton() {
             for (const handler of listeners.get(type) ?? []) {
                 handler();
             }
+        },
+        cloneNode() {
+            return createButton();
         }
     };
 }
@@ -80,15 +83,54 @@ function createTemplateBackedDocument() {
         }
     };
     const liveExportSlot = {};
+    const modalButtons = {
+        confirmUploadBtn: createButton(),
+        cancelUploadBtn: createButton()
+    };
+    modalButtons.confirmUploadBtn.parentNode = { replaceChild() {} };
+    const modalInputs = {
+        confirmActivityName: { value: "" },
+        confirmMarkVirtual: { checked: true },
+        confirmFitDescription: { value: "" }
+    };
+    const uploadConfirmOverlay = {
+        classList: { add() {}, remove() {} },
+        addEventListener() {},
+        querySelector(selector) {
+            const name = selector.replace(/^\[name="|"\]$/g, "");
+            return modalInputs[name] ?? null;
+        }
+    };
+    const uploadConfirmTemplate = {
+        content: {
+            cloneNode() {
+                return {
+                    type: "upload-confirm",
+                    querySelector(sel) {
+                        if (sel === "#uploadConfirmOverlay") return uploadConfirmOverlay;
+                        if (sel === "#confirmUploadBtn") return modalButtons.confirmUploadBtn;
+                        if (sel === "#cancelUploadBtn") return modalButtons.cancelUploadBtn;
+                        return null;
+                    }
+                };
+            }
+        }
+    };
 
     const document = {
+        body: { appendChild() {} },
         getElementById(id) {
             return {
                 exportCardContainer,
                 "export-card-template": exportCardTemplate,
                 liveExportSlot,
                 homeImportFitInput,
-                homeImportFitBtn
+                homeImportFitBtn,
+                "upload-confirm-template": uploadConfirmTemplate,
+                uploadConfirmOverlay,
+                confirmUploadBtn: modalButtons.confirmUploadBtn,
+                cancelUploadBtn: modalButtons.cancelUploadBtn,
+                uploadFitBtn: buttons.uploadFitBtn
             }[id] ?? null;
         }
     };
@@ -101,7 +143,8 @@ function createTemplateBackedDocument() {
         homeImportFile,
         homeImportFitInput,
         homeImportFitBtn,
-        buttons
+        buttons,
+        modalButtons
     };
 }
 
@@ -126,7 +169,9 @@ export const suite = {
                         onDownloadFit: () => { downloadFitClicks += 1; },
                         onImportFit: (file) => { importedFiles.push(file); },
                         onConnectStrava: () => { connectStravaClicks += 1; },
-                        onUploadFit: () => { uploadFitClicks += 1; }
+                        onUploadFit: () => { uploadFitClicks += 1; },
+                        onUpdateExportMetadata: () => {},
+                        getExportMetadata: () => ({})
                     });
 
                     assertEqual(fake.exportCardContainer.childElementCount, 1);
@@ -146,7 +191,9 @@ export const suite = {
                     fake.homeImportFitBtn.dispatch("click");
                     fake.homeImportFitInput.dispatch("change");
                     fake.buttons.connectStravaBtn.dispatch("click");
+                    // uploadFitBtn 打开弹窗，确认按钮触发上传
                     fake.buttons.uploadFitBtn.dispatch("click");
+                    fake.modalButtons.confirmUploadBtn.dispatch("click");
 
                     assertEqual(downloadSessionClicks, 1);
                     assertEqual(downloadFitClicks, 1);

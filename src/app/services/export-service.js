@@ -23,10 +23,10 @@ export function createExportService({ store }) {
     function updateExportMetadata(exportMetadata) {
         store.setState((state) => ({
             ...state,
-            exportMetadata: {
+            exportMetadata: sanitizeExportMetadata({
                 ...state.exportMetadata,
-                ...sanitizeExportMetadata(exportMetadata)
-            },
+                ...exportMetadata
+            }),
             statusText: "FIT export settings updated."
         }));
     }
@@ -240,7 +240,7 @@ export function createExportService({ store }) {
             exportMetadata: {
                 ...exportMetadata,
                 ...(activitySession?.exportMetadata ?? {}),
-                activityName: selectedActivity?.name ?? activitySession?.exportMetadata?.activityName ?? exportMetadata.activityName
+                activityName: exportMetadata.activityName ?? selectedActivity?.name ?? activitySession?.exportMetadata?.activityName
             }
         });
     }

@@ -5,11 +5,14 @@ import {
     getRideSeriesValueAtChartX
 } from "../renderers/svg/ride-series-chart.js";
 import { buildRouteMapGeometry, buildRouteMapMarkerSvg } from "../renderers/svg/route-map-chart.js";
+import { openUploadModal } from "./export-view.js";
 
 export function createActivityDetailView({
     onSetUiMode,
     onConnectStrava,
-    onUploadActivityFit
+    onUploadActivityFit,
+    onUpdateExportMetadata,
+    getExportMetadata
 }) {
     const elements = {
         viewActivityDetail: document.getElementById("view-activity-detail"),
@@ -23,7 +26,12 @@ export function createActivityDetailView({
 
     bind(elements.activityDetailBackBtn, "click", () => onSetUiMode("home"));
     bind(elements.activityDetailContent, "click", (event) => {
-        const action = event.target?.dataset?.activityPageAction;
+        const actionButton = event.target?.closest?.("[data-activity-page-action]");
+        if (!actionButton || !elements.activityDetailContent?.contains(actionButton)) {
+            return;
+        }
+
+        const action = actionButton.dataset.activityPageAction;
         if (!action) {
             return;
         }
@@ -32,7 +40,13 @@ export function createActivityDetailView({
             onConnectStrava();
         }
         if (action === "upload-strava") {
-            onUploadActivityFit();
+            const initialName = currentActivity?.name || currentActivity?.rawSession?.exportMetadata?.activityName;
+            openUploadModal({
+                onUpload: onUploadActivityFit,
+                onUpdateExportMetadata,
+                getExportMetadata,
+                initialValues: { activityName: initialName }
+            });
         }
     });
     bind(elements.activityDetailContent, "click", (event) => {
