@@ -1,4 +1,4 @@
-import { resolveFitExportSummary, downsampleTo1Hz } from "../../src/adapters/export/fit-exporter.js";
+import { resolveFitExportSummary, downsampleTo1Hz, exportSessionAsFit } from "../../src/adapters/export/fit-exporter.js";
 import { assertApprox, assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
@@ -71,6 +71,42 @@ export const suite = {
                 assertEqual(exportSummary.grade.averageNegativePercent, -1.5);
                 assertEqual(exportSummary.grade.maxPositivePercent, 6);
                 assertEqual(exportSummary.grade.maxNegativePercent, -4);
+            }
+        },
+        {
+            name: "resolveFitExportSummary carries NP/IF/TSS/FTP into export",
+            run() {
+                const exportSummary = resolveFitExportSummary({
+                    summary: {
+                        settings: { ftp: 250 },
+                        metrics: {
+                            ride: { elapsedSeconds: 3600, distanceKm: 40, ascentMeters: 500 },
+                            speed: { averageKph: 40, maxKph: 55 },
+                            heartRate: { averageBpm: 150, maxBpm: 175 },
+                            power: {
+                                averageWatts: 200,
+                                maxWatts: 400,
+                                normalizedPowerWatts: 230,
+                                intensityFactor: 0.92
+                            },
+                            grade: {
+                                averagePercent: 1.2,
+                                averagePositivePercent: 2.5,
+                                averageNegativePercent: -1.0,
+                                maxPositivePercent: 8,
+                                maxNegativePercent: -5
+                            },
+                            load: { estimatedTss: 85 }
+                        }
+                    },
+                    records: [{ elapsedSeconds: 3600, distanceKm: 40, speedKph: 55, heartRate: 175, power: 400, ascentMeters: 500 }],
+                    ftp: 250
+                });
+
+                assertEqual(exportSummary.normalizedPowerWatts, 230);
+                assertEqual(exportSummary.intensityFactor, 0.92);
+                assertEqual(exportSummary.trainingStressScore, 85);
+                assertEqual(exportSummary.thresholdPowerWatts, 250);
             }
         },
         {
@@ -336,6 +372,193 @@ export const suite = {
                 assertEqual(exportSummary.grade.averageNegativePercent, 0);
                 assertEqual(exportSummary.grade.maxPositivePercent, 0);
                 assertEqual(exportSummary.grade.maxNegativePercent, 0);
+            }
+        },
+        {
+            name: "exportSessionAsFit round-trip: profile + zones + NP/IF/TSS/FTP/cadence",
+            async run() {
+                const session = {
+                    startedAt: new Date("2026-01-01T00:00:00Z").toISOString(),
+                    finishedAt: new Date("2026-01-01T01:00:00Z").toISOString(),
+                    settings: { ftp: 250, mass: 70.5, restingHr: 58, maxHr: 190 },
+                    summary: {
+                        elapsedSeconds: 3600,
+                        distanceKm: 40,
+                        averageSpeedKph: 40,
+                        maxSpeedKph: 55,
+                        averageHeartRate: 150,
+                        maxHeartRate: 175,
+                        averagePower: 200,
+                        maxPower: 400,
+                        averageGradePercent: 1.2,
+                        averagePositiveGradePercent: 2.5,
+                        averageNegativeGradePercent: -1.0,
+                        maxPositiveGradePercent: 8,
+                        maxNegativeGradePercent: -5,
+                        metrics: {
+                            ride: {
+                                elapsedSeconds: 3600,
+                                distanceKm: 40,
+                                ascentMeters: 500
+                            },
+                            speed: { averageKph: 40, maxKph: 55 },
+                            heartRate: { averageBpm: 150, maxBpm: 175 },
+                            power: {
+                                averageWatts: 200,
+                                maxWatts: 400,
+                                normalizedPowerWatts: 230,
+                                intensityFactor: 0.92
+                            },
+                            cadence: { averageRpm: 85, maxRpm: 105 },
+                            grade: {
+                                averagePercent: 1.2,
+                                averagePositivePercent: 2.5,
+                                averageNegativePercent: -1.0,
+                                maxPositivePercent: 8,
+                                maxNegativePercent: -5
+                            },
+                            load: { estimatedTss: 85 }
+                        }
+                    },
+                    records: [
+                        { elapsedSeconds: 0, heartRate: 140, cadence: 80, speedKph: 35, power: 180, distanceKm: 0, elevationMeters: 100, gradePercent: 1 },
+                        { elapsedSeconds: 1800, heartRate: 155, cadence: 90, speedKph: 42, power: 220, distanceKm: 20, elevationMeters: 300, gradePercent: 2.5 },
+                        { elapsedSeconds: 3600, heartRate: 160, cadence: 105, speedKph: 55, power: 400, distanceKm: 40, elevationMeters: 500, gradePercent: 0 }
+                    ]
+                };
+
+                const fitBytes = await exportSessionAsFit(session, {}, { markVirtualActivity: false });
+                const { Decoder, Stream } = await import("@garmin/fitsdk");
+                const decoder = new Decoder(Stream.fromBuffer(fitBytes));
+                const { messages } = decoder.read();
+
+                // userProfile: weight 传原始 kg，SDK 自动 ×10
+                const up = messages.userProfileMesgs?.[0];
+                assertEqual(up != null, true);
+                assertApprox(up.weight, 70.5, 0.1);
+                assertEqual(up.restingHeartRate, 58);
+                assertEqual(up.defaultMaxBikingHeartRate, 190);
+
+                // bikeProfile: 无车重，仅有 name/sport
+                const bp = messages.bikeProfileMesgs?.[0];
+                assertEqual(bp != null, true);
+                assertEqual(bp.name, "Rider Tracker Virtual Bike");
+                assertEqual(bp.sport, "cycling");
+
+                // hrZone ×5
+                assertEqual(messages.hrZoneMesgs?.length, 5);
+                assertEqual(messages.hrZoneMesgs[4].highBpm, 190);
+
+                // zonesTarget: FTP + maxHR
+                const zt = messages.zonesTargetMesgs?.[0];
+                assertEqual(zt != null, true);
+                assertEqual(zt.functionalThresholdPower, 250);
+                assertEqual(zt.maxHeartRate, 190);
+
+                // powerZone ×7
+                assertEqual(messages.powerZoneMesgs?.length, 7);
+                assertEqual(messages.powerZoneMesgs[3].highValue, 263);
+                assertEqual(messages.powerZoneMesgs[3].name, "Z4 Threshold");
+
+                // SESSION NP/IF/TSS/FTP/cadence
+                const sessionMsg = messages.sessionMesgs?.[0];
+                assertEqual(sessionMsg != null, true);
+                assertApprox(sessionMsg.normalizedPower, 230, 1);
+                assertApprox(sessionMsg.intensityFactor, 0.92, 0.01);
+                assertApprox(sessionMsg.trainingStressScore, 85, 1);
+                assertApprox(sessionMsg.thresholdPower, 250, 1);
+                assertEqual(sessionMsg.avgCadence, 85);
+                assertEqual(sessionMsg.maxCadence, 105);
+
+                // 分区时间：t=1800 的 220W→Z3, t=3600 的 400W→Z7
+                assertEqual(sessionMsg.timeInPowerZone[2], 1800);
+                assertEqual(sessionMsg.timeInPowerZone[6], 1800);
+                // HR: t=1800 的 155bpm→Z3, t=3600 的 160bpm→Z3，各 1800s，Z3 合计 3600s
+                assertEqual(sessionMsg.timeInHrZone[2], 3600);
+                assertApprox(sessionMsg.timeInHrZone.reduce((a, b) => a + b, 0), 3600, 1);
+            }
+        },
+        {
+            name: "exportSessionAsFit zone times preserve sub-second precision",
+            async run() {
+                const session = {
+                    startedAt: new Date().toISOString(),
+                    finishedAt: new Date().toISOString(),
+                    settings: { ftp: 250, mass: 70, restingHr: 58, maxHr: 190 },
+                    summary: {
+                        metrics: {
+                            ride: { elapsedSeconds: 1, distanceKm: 0.01, ascentMeters: 0 },
+                            speed: { averageKph: 36, maxKph: 36 },
+                            heartRate: { averageBpm: 150, maxBpm: 150 },
+                            power: { averageWatts: 180, maxWatts: 180, normalizedPowerWatts: 180, intensityFactor: 0.72 },
+                            cadence: { averageRpm: 85, maxRpm: 85 },
+                            load: { estimatedTss: 1 }
+                        }
+                    },
+                    records: [
+                        { elapsedSeconds: 0, power: 180, heartRate: 140, cadence: 85, speedKph: 30, distanceKm: 0, elevationMeters: 100, gradePercent: 1 },
+                        { elapsedSeconds: 0.2, power: 180, heartRate: 140, cadence: 85, speedKph: 30, distanceKm: 0.002, elevationMeters: 100, gradePercent: 1 },
+                        { elapsedSeconds: 0.4, power: 180, heartRate: 140, cadence: 85, speedKph: 30, distanceKm: 0.004, elevationMeters: 100, gradePercent: 1 },
+                        { elapsedSeconds: 0.6, power: 180, heartRate: 140, cadence: 85, speedKph: 30, distanceKm: 0.006, elevationMeters: 100, gradePercent: 1 },
+                        { elapsedSeconds: 0.8, power: 180, heartRate: 140, cadence: 85, speedKph: 30, distanceKm: 0.008, elevationMeters: 100, gradePercent: 1 },
+                        { elapsedSeconds: 1.0, power: 180, heartRate: 140, cadence: 85, speedKph: 30, distanceKm: 0.010, elevationMeters: 100, gradePercent: 1 }
+                    ]
+                };
+
+                const fitBytes = await exportSessionAsFit(session, {}, { markVirtualActivity: false });
+                const { Decoder, Stream } = await import("@garmin/fitsdk");
+                const decoder = new Decoder(Stream.fromBuffer(fitBytes));
+                const { messages } = decoder.read();
+
+                const pz = messages.sessionMesgs?.[0]?.timeInPowerZone;
+                const hz = messages.sessionMesgs?.[0]?.timeInHrZone;
+
+                // 180W / 250 FTP = 0.72 → Z2 (0.55-0.75)，1 秒合计
+                assertApprox(pz[1], 1, 0.1);
+                // HR 140, maxHr=190, restHr=58, hrr=132 → (140-58)/132=0.621 → Z2 (0.60-0.70)
+                assertApprox(hz[1], 1, 0.1);
+            }
+        },
+        {
+            name: "exportSessionAsFit omits undefined optional fields instead of exporting 0",
+            async run() {
+                const session = {
+                    startedAt: new Date().toISOString(),
+                    finishedAt: new Date().toISOString(),
+                    settings: {},
+                    summary: {
+                        metrics: {
+                            ride: { elapsedSeconds: 1, distanceKm: 0.01 },
+                            speed: { averageKph: 36, maxKph: 36 },
+                            heartRate: { averageBpm: 0, maxBpm: 0 },
+                            power: { averageWatts: 0, maxWatts: 0, normalizedPowerWatts: 0, intensityFactor: null },
+                            cadence: { averageRpm: null, maxRpm: null },
+                            load: { estimatedTss: null }
+                        }
+                    },
+                    records: [
+                        { elapsedSeconds: 0, speedKph: 36, distanceKm: 0 },
+                        { elapsedSeconds: 1, speedKph: 36, distanceKm: 0.01 }
+                    ]
+                };
+
+                const fitBytes = await exportSessionAsFit(session, {}, { markVirtualActivity: false });
+                const { Decoder, Stream } = await import("@garmin/fitsdk");
+                const decoder = new Decoder(Stream.fromBuffer(fitBytes));
+                const { messages } = decoder.read();
+
+                const msg = messages.sessionMesgs?.[0];
+                // 缺失字段不应出现 0
+                assertEqual(msg.normalizedPower, undefined);
+                assertEqual(msg.intensityFactor, undefined);
+                assertEqual(msg.trainingStressScore, undefined);
+                assertEqual(msg.thresholdPower, undefined);
+                assertEqual(msg.avgCadence, undefined);
+                assertEqual(msg.maxCadence, undefined);
+                assertEqual(msg.timeInPowerZone, undefined);
+                assertEqual(msg.timeInHrZone, undefined);
+                // 必选字段仍正常
+                assertEqual(msg.totalElapsedTime, 1);
             }
         }
     ]

@@ -35,7 +35,11 @@ function encodeFitWithSdk({ Encoder, Profile }, session, exportMetadata, options
     const encoder = new Encoder();
     const metadata = buildExportMetadata(exportMetadata ?? session.exportMetadata);
     const { startedAt, finishedAt } = resolveSessionTimestamps({ session, summary });
-    const exportSummary = resolveFitExportSummary({ summary, records });
+    const exportSummary = resolveFitExportSummary({
+        summary: { ...summary, settings: session?.settings ?? summary?.settings },
+        records,
+        ftp: session?.settings?.ftp ?? options?.ftp ?? null
+    });
 
     encoder.onMesg(Profile.MesgNum.FILE_ID, {
         type: "activity",
@@ -58,6 +62,48 @@ function encodeFitWithSdk({ Encoder, Profile }, session, exportMetadata, options
         softwareVersion: APP_SOFTWARE_VERSION,
         hardwareVersion: 1
     });
+
+    const settings = session?.settings ?? summary?.settings ?? {};
+    if (Number.isFinite(settings.mass) || Number.isFinite(settings.restingHr) || Number.isFinite(settings.maxHr)) {
+        const upMsg = {};
+        if (Number.isFinite(settings.mass)) upMsg.weight = settings.mass;
+        if (Number.isFinite(settings.restingHr)) upMsg.restingHeartRate = Math.round(settings.restingHr);
+        if (Number.isFinite(settings.maxHr)) {
+            upMsg.defaultMaxBikingHeartRate = Math.round(settings.maxHr);
+            upMsg.defaultMaxHeartRate = Math.round(settings.maxHr);
+        }
+        encoder.onMesg(Profile.MesgNum.USER_PROFILE, upMsg);
+    }
+
+    encoder.onMesg(Profile.MesgNum.BIKE_PROFILE, {
+        name: "Rider Tracker Virtual Bike",
+        sport: "cycling"
+    });
+
+    if (Number.isFinite(settings.maxHr) && Number.isFinite(settings.restingHr)) {
+        exportSummary.hrZones.forEach((zone) => {
+            encoder.onMesg(Profile.MesgNum.HR_ZONE, {
+                highBpm: zone.highBpm,
+                name: zone.name
+            });
+        });
+    }
+
+    if (Number.isFinite(settings.ftp) || Number.isFinite(settings.maxHr)) {
+        const ztMsg = {};
+        if (Number.isFinite(settings.ftp)) ztMsg.functionalThresholdPower = Math.round(settings.ftp);
+        if (Number.isFinite(settings.maxHr)) ztMsg.maxHeartRate = Math.round(settings.maxHr);
+        encoder.onMesg(Profile.MesgNum.ZONES_TARGET, ztMsg);
+    }
+
+    if (Number.isFinite(settings.ftp)) {
+        exportSummary.powerZones.forEach((zone) => {
+            encoder.onMesg(Profile.MesgNum.POWER_ZONE, {
+                highValue: zone.highValue,
+                name: zone.name
+            });
+        });
+    }
 
     encoder.onMesg(Profile.MesgNum.EVENT, {
         timestamp: startedAt,
@@ -100,6 +146,21 @@ function encodeFitWithSdk({ Encoder, Profile }, session, exportMetadata, options
         maxHeartRate: exportSummary.maxHeartRate,
         avgPower: exportSummary.averagePower,
         maxPower: exportSummary.maxPower,
+        ...(Number.isFinite(exportSummary.normalizedPowerWatts) && exportSummary.normalizedPowerWatts > 0
+            ? { normalizedPower: Math.round(exportSummary.normalizedPowerWatts) }
+            : {}),
+        ...(Number.isFinite(exportSummary.averageCadenceRpm)
+            ? { avgCadence: Math.round(exportSummary.averageCadenceRpm) }
+            : {}),
+        ...(Number.isFinite(exportSummary.maxCadenceRpm)
+            ? { maxCadence: Math.round(exportSummary.maxCadenceRpm) }
+            : {}),
+        ...(exportSummary.timeInPowerZone
+            ? { timeInPowerZone: exportSummary.timeInPowerZone }
+            : {}),
+        ...(exportSummary.timeInHrZone
+            ? { timeInHrZone: exportSummary.timeInHrZone }
+            : {}),
         avgGrade: exportSummary.grade.averagePercent,
         maxPosGrade: exportSummary.grade.maxPositivePercent,
         maxNegGrade: exportSummary.grade.maxNegativePercent
@@ -118,6 +179,30 @@ function encodeFitWithSdk({ Encoder, Profile }, session, exportMetadata, options
         maxHeartRate: exportSummary.maxHeartRate,
         avgPower: exportSummary.averagePower,
         maxPower: exportSummary.maxPower,
+        ...(Number.isFinite(exportSummary.normalizedPowerWatts) && exportSummary.normalizedPowerWatts > 0
+            ? { normalizedPower: Math.round(exportSummary.normalizedPowerWatts) }
+            : {}),
+        ...(Number.isFinite(exportSummary.intensityFactor)
+            ? { intensityFactor: exportSummary.intensityFactor }
+            : {}),
+        ...(Number.isFinite(exportSummary.trainingStressScore)
+            ? { trainingStressScore: Math.round(exportSummary.trainingStressScore) }
+            : {}),
+        ...(Number.isFinite(exportSummary.thresholdPowerWatts)
+            ? { thresholdPower: Math.round(exportSummary.thresholdPowerWatts) }
+            : {}),
+        ...(Number.isFinite(exportSummary.averageCadenceRpm)
+            ? { avgCadence: Math.round(exportSummary.averageCadenceRpm) }
+            : {}),
+        ...(Number.isFinite(exportSummary.maxCadenceRpm)
+            ? { maxCadence: Math.round(exportSummary.maxCadenceRpm) }
+            : {}),
+        ...(exportSummary.timeInPowerZone
+            ? { timeInPowerZone: exportSummary.timeInPowerZone }
+            : {}),
+        ...(exportSummary.timeInHrZone
+            ? { timeInHrZone: exportSummary.timeInHrZone }
+            : {}),
         totalDescent: Math.round(session.route?.totalDescentMeters ?? 0),
         avgGrade: exportSummary.grade.averagePercent,
         avgPosGrade: exportSummary.grade.averagePositivePercent,
@@ -158,8 +243,17 @@ export function exportSessionAsPlainFit(session, exportMetadata) {
 
 export { downsampleTo1Hz };
 
-export function resolveFitExportSummary({ summary = {}, records = [] } = {}) {
-    const metrics = resolveRideMetrics({ summary, records });
+export function resolveFitExportSummary({ summary = {}, records = [], ftp = null } = {}) {
+    const metrics = resolveRideMetrics({ summary, records, ftp });
+
+    const effectiveFtp = selectOptionalFiniteValue(
+        ftp,
+        summary?.settings?.ftp,
+        summary?.exportMetadata?.ftp
+    );
+
+    const maxHr = selectOptionalFiniteValue(summary?.settings?.maxHr);
+    const restingHr = selectOptionalFiniteValue(summary?.settings?.restingHr);
 
     return {
         elapsedSeconds: selectFiniteValue(
@@ -207,6 +301,34 @@ export function resolveFitExportSummary({ summary = {}, records = [] } = {}) {
             maxOf(records, (record) => record?.power),
             0
         ),
+        normalizedPowerWatts: selectOptionalFiniteValue(
+            metrics?.power?.normalizedPowerWatts
+        ),
+        intensityFactor: selectOptionalFiniteValue(
+            metrics?.power?.intensityFactor
+        ),
+        trainingStressScore: selectOptionalFiniteValue(
+            metrics?.load?.estimatedTss
+        ),
+        thresholdPowerWatts: selectOptionalFiniteValue(effectiveFtp),
+        averageCadenceRpm: selectOptionalFiniteValue(
+            metrics?.cadence?.averageRpm
+        ),
+        maxCadenceRpm: selectOptionalFiniteValue(
+            metrics?.cadence?.maxRpm
+        ),
+        timeInPowerZone: Number.isFinite(effectiveFtp) && effectiveFtp > 0
+            ? computePowerZoneTimes(records, effectiveFtp)
+            : null,
+        timeInHrZone: Number.isFinite(maxHr) && Number.isFinite(restingHr) && maxHr > restingHr
+            ? computeHrZoneTimes(records, maxHr, restingHr)
+            : null,
+        hrZones: Number.isFinite(maxHr) && Number.isFinite(restingHr) && maxHr > restingHr
+            ? buildHrZones(maxHr, restingHr)
+            : [],
+        powerZones: Number.isFinite(effectiveFtp) && effectiveFtp > 0
+            ? buildPowerZones(effectiveFtp)
+            : [],
         grade: {
             averagePercent: selectFiniteValue(
                 metrics?.grade?.averagePercent,
@@ -279,6 +401,16 @@ function selectFiniteValue(...values) {
     }
 
     return 0;
+}
+
+function selectOptionalFiniteValue(...values) {
+    for (const value of values) {
+        if (Number.isFinite(value)) {
+            return value;
+        }
+    }
+
+    return null;
 }
 
 function maxOf(values, selector) {
@@ -357,6 +489,57 @@ function buildProfileName(description, repositoryUrl) {
 
 function toSemicircles(degrees) {
     return Math.round((degrees * 2147483648) / 180);
+}
+
+const POWER_ZONE_BOUNDARIES = [0.55, 0.75, 0.90, 1.05, 1.20, 1.50, Infinity];
+
+function computePowerZoneTimes(records, ftp) {
+    const zones = new Array(POWER_ZONE_BOUNDARIES.length).fill(0);
+    for (let i = 1; i < records.length; i += 1) {
+        const power = Number(records[i]?.power);
+        if (!Number.isFinite(power)) continue;
+        const dt = Math.max(0, (Number(records[i]?.elapsedSeconds) || 0) - (Number(records[i - 1]?.elapsedSeconds) || 0));
+        const pct = power / ftp;
+        let z = 0;
+        while (z < POWER_ZONE_BOUNDARIES.length - 1 && pct > POWER_ZONE_BOUNDARIES[z]) z += 1;
+        zones[z] += dt;
+    }
+    return zones.map((t) => Math.round(t * 1000) / 1000);
+}
+
+function computeHrZoneTimes(records, maxHr, restingHr) {
+    const hrr = maxHr - restingHr;
+    const ceilings = [0.60, 0.70, 0.80, 0.90, Infinity];
+    const zones = new Array(ceilings.length).fill(0);
+    for (let i = 1; i < records.length; i += 1) {
+        const hr = Number(records[i]?.heartRate);
+        if (!Number.isFinite(hr)) continue;
+        const dt = Math.max(0, (Number(records[i]?.elapsedSeconds) || 0) - (Number(records[i - 1]?.elapsedSeconds) || 0));
+        const hrPct = (hr - restingHr) / hrr;
+        let z = 0;
+        while (z < ceilings.length - 1 && hrPct > ceilings[z]) z += 1;
+        zones[z] += dt;
+    }
+    return zones.map((t) => Math.round(t * 1000) / 1000);
+}
+
+function buildHrZones(maxHr, restingHr) {
+    const hrr = maxHr - restingHr;
+    const boundaries = [0.60, 0.70, 0.80, 0.90, Infinity];
+    const names = ["Z1 Endurance", "Z2 Moderate", "Z3 Tempo", "Z4 Threshold", "Z5 Maximum"];
+    return boundaries.map((pct, i) => ({
+        highBpm: pct === Infinity ? maxHr : Math.round(restingHr + pct * hrr),
+        name: names[i]
+    }));
+}
+
+function buildPowerZones(ftp) {
+    const names = ["Z1 ActiveRecovery", "Z2 Endurance", "Z3 Tempo", "Z4 Threshold", "Z5 VO2Max", "Z6 Anaerobic", "Z7 Neuromuscular"];
+    // highValue = ceiling wattage; last zone has value 0 to indicate unbounded
+    return POWER_ZONE_BOUNDARIES.map((pct, i) => ({
+        highValue: pct === Infinity ? 0 : Math.round(ftp * pct),
+        name: names[i]
+    }));
 }
 
 function downsampleTo1Hz(records) {
