@@ -135,3 +135,63 @@ function roundAverage(values) {
 
     return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
+
+/* ---- Incremental power metrics (O(1) per record) ---- */
+
+export function createIncrementalPowerState() {
+    return {
+        np: { ringBuf: [], ringSum: 0, f4total: 0, sampleCount: 0 },
+        rolling3s: { ringBuf: [], ringSum: 0 },
+        rolling10s: { ringBuf: [], ringSum: 0 }
+    };
+}
+
+export function advanceIncrementalPowerState(powerState, record) {
+    const elapsed = normalizeFiniteNumber(record?.elapsedSeconds);
+    const power = normalizeFiniteNumber(record?.power) ?? 0;
+    if (elapsed === null) return powerState;
+
+    const nextRing = advanceRingWindow(powerState.np, elapsed, power, 30);
+    const rolling30sAvg = ringAverage(nextRing);
+    const nextNp = {
+        ...nextRing,
+        f4total: powerState.np.f4total + (rolling30sAvg > 0 ? rolling30sAvg ** 4 : 0),
+        sampleCount: powerState.np.sampleCount + 1
+    };
+
+    const next3s = advanceRingWindow(powerState.rolling3s, elapsed, power, 3);
+    const next10s = advanceRingWindow(powerState.rolling10s, elapsed, power, 10);
+
+    return { np: nextNp, rolling3s: next3s, rolling10s: next10s };
+}
+
+export function readIncrementalPowerMetrics(powerState) {
+    const { np, rolling3s, rolling10s } = powerState;
+
+    const rolling3sWatts = Math.round(ringAverage(rolling3s));
+    const rolling10sWatts = Math.round(ringAverage(rolling10s));
+    const normalizedPowerWatts = np.sampleCount > 0
+        ? Math.round((np.f4total / np.sampleCount) ** 0.25)
+        : 0;
+
+    return { rolling3sWatts, rolling10sWatts, normalizedPowerWatts };
+}
+
+function advanceRingWindow(state, elapsed, power, windowSeconds) {
+    const entry = { elapsed, power };
+    const nextBuf = [...state.ringBuf, entry];
+    let nextSum = state.ringSum + power;
+
+    let trimIdx = 0;
+    while (trimIdx < nextBuf.length && nextBuf[trimIdx].elapsed <= elapsed - windowSeconds) {
+        nextSum -= nextBuf[trimIdx].power;
+        trimIdx += 1;
+    }
+    const trimmedBuf = trimIdx > 0 ? nextBuf.slice(trimIdx) : nextBuf;
+
+    return { ringBuf: trimmedBuf, ringSum: nextSum };
+}
+
+function ringAverage(state) {
+    return state.ringBuf.length > 0 ? state.ringSum / state.ringBuf.length : 0;
+}
