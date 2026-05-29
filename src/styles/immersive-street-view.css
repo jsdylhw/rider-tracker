@@ -233,6 +233,17 @@
     border: 1px solid rgba(148, 163, 184, 0.45);
 }
 
+.ride-dashboard.immersive-street-view #immersiveScreenshotBtn {
+    position: fixed;
+    top: 16px;
+    right: 100px;
+    z-index: 70;
+    pointer-events: auto;
+    background: rgba(31, 41, 55, 0.82);
+    color: #e5e7eb;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+}
+
 .ride-dashboard.immersive-street-view #immersiveUiToggleBtn {
     position: fixed;
     left: 16px;
@@ -304,5 +315,135 @@ body.immersive-street-view-active {
     min-height: 0;
     max-width: 100%;
     aspect-ratio: 640 / 180;
+}
+
+/* Screenshot Picker Swiper */
+
+.screenshot-picker-section {
+    margin: 14px 0 8px;
+}
+
+.screenshot-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.screenshot-picker-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #cbd5e1;
+}
+
+.screenshot-picker-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.screenshot-picker-actions .compact-btn {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+
+.screenshot-swiper {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px;
+}
+
+.screenshot-swiper::-webkit-scrollbar {
+    height: 4px;
+}
+
+.screenshot-swiper::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.4);
+    border-radius: 2px;
+}
+
+.swiper-track {
+    display: flex;
+    gap: 10px;
+    padding: 0 4px;
+}
+
+.swiper-slide {
+    flex: 0 0 72%;
+    max-width: 280px;
+    scroll-snap-align: center;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 3px solid transparent;
+    background: rgba(15, 23, 42, 0.6);
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.3);
+    cursor: pointer;
+    transition: border-color 0.2s ease, transform 0.15s ease;
+    position: relative;
+}
+
+.swiper-slide:hover {
+    transform: translateY(-2px);
+}
+
+.swiper-slide.selected {
+    border-color: #3b82f6;
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.35);
+}
+
+.swiper-slide img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+}
+
+.swiper-slide-check {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.66);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.18s ease;
+    pointer-events: none;
+}
+
+.swiper-slide.selected .swiper-slide-check {
+    background: #3b82f6;
+    border-color: #3b82f6;
+}
+
+.swiper-slide-check::after {
+    content: "";
+    display: none;
+    width: 6px;
+    height: 11px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translateY(-1px);
+}
+
+.swiper-slide.selected .swiper-slide-check::after {
+    display: block;
+}
+
+.swiper-hint {
+    text-align: center;
+    font-size: 11px;
+    color: #94a3b8;
+    padding: 6px 0 2px;
+}
+
+/* Modal card taller when screenshots present */
+#uploadConfirmCard .screenshot-picker-section:not([hidden]) + .modal-actions {
+    margin-top: 4px;
 }
 

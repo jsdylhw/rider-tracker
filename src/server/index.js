@@ -10,6 +10,7 @@ import { createTokenStore } from "./token-store.js";
 import { createActivityStore } from "./activity-store.js";
 import { createActivityRoutes } from "./routes/activity-routes.js";
 import { createStravaRoutes } from "./routes/strava-routes.js";
+import { createScreenshotRoutes } from "./routes/screenshot-routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,6 +32,7 @@ const FRONTEND_REDIRECT_URL = process.env.FRONTEND_REDIRECT_URL || "";
 const CONFIG_STORE_PATH = process.env.STRAVA_CONFIG_PATH;
 const TOKEN_STORE_PATH = process.env.TOKEN_STORE_PATH;
 const FIT_FILE_DIR = process.env.FIT_FILE_DIR || path.join(PROJECT_ROOT, "data", "files", "fit");
+const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR || path.join(PROJECT_ROOT, "data", "files", "screenshots");
 const USER_PROFILE_PATH = path.join(PROJECT_ROOT, "user-profile.json");
 
 const configStore = createConfigStore(CONFIG_STORE_PATH);
@@ -54,11 +56,16 @@ app.use(createStravaRoutes({
     activityStore,
     upload,
     projectRoot: PROJECT_ROOT,
+    screenshotDir: SCREENSHOT_DIR,
     clientId: CLIENT_ID,
     clientSecret: CLIENT_SECRET,
     scopes: SCOPES,
     redirectUri: REDIRECT_URI,
     frontendRedirectUrl: FRONTEND_REDIRECT_URL
+}));
+app.use(createScreenshotRoutes({
+    upload,
+    screenshotDir: SCREENSHOT_DIR
 }));
 
 app.get("/", (_req, res) => {

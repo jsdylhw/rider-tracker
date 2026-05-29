@@ -1,4 +1,4 @@
-export function createExportView({ onDownloadSession, onDownloadFit, onImportFit, onConnectStrava, onUploadFit, onUpdateExportMetadata, getExportMetadata }) {
+export function createExportView({ onDownloadSession, onDownloadFit, onImportFit, onConnectStrava, onUploadFit, onUploadActivityFit, onUpdateExportMetadata, getExportMetadata, getScreenshotSessionId }) {
     const exportCardContainer = document.getElementById("exportCardContainer");
     const exportCardTemplate = document.getElementById("export-card-template");
     mountSharedExportCard({ exportCardContainer, exportCardTemplate });
@@ -26,7 +26,7 @@ export function createExportView({ onDownloadSession, onDownloadFit, onImportFit
     bind(elements.connectStravaBtn, "click", onConnectStrava);
 
     // Upload → show confirmation modal
-    setupUploadModal({ onUploadFit, onUpdateExportMetadata, getExportMetadata });
+    setupUploadModal({ onUploadFit, onUploadActivityFit, onUpdateExportMetadata, getExportMetadata, getScreenshotSessionId });
 
     return { elements };
 }
@@ -56,8 +56,9 @@ function mountSharedExportCard({ exportCardContainer, exportCardTemplate }) {
 
 let _modalElements = null;
 let _pendingUpload = null;
+let _selectedScreenshotIds = [];
 
-function setupUploadModal({ onUploadFit, onUpdateExportMetadata, getExportMetadata }) {
+function setupUploadModal({ onUploadFit, onUploadActivityFit, onUpdateExportMetadata, getExportMetadata, getScreenshotSessionId }) {
     const template = document.getElementById("upload-confirm-template");
     if (!template) return;
 
@@ -70,18 +71,22 @@ function setupUploadModal({ onUploadFit, onUpdateExportMetadata, getExportMetada
     const nameInput = overlay?.querySelector("[name=\"confirmActivityName\"]");
     const virtualCheckbox = overlay?.querySelector("[name=\"confirmMarkVirtual\"]");
     const descTextarea = overlay?.querySelector("[name=\"confirmFitDescription\"]");
+    const pickerSection = document.getElementById("screenshotPickerSection");
+    const swiperTrack = document.getElementById("swiperTrack");
+    const countLabel = document.getElementById("screenshotCountLabel");
+    const selectAllBtn = document.getElementById("selectAllScreenshotsBtn");
+    const deselectAllBtn = document.getElementById("deselectAllScreenshotsBtn");
 
-    _modalElements = { overlay, nameInput, virtualCheckbox, descTextarea };
+    _modalElements = { overlay, nameInput, virtualCheckbox, descTextarea, pickerSection, swiperTrack, countLabel };
 
     const uploadBtn = document.getElementById("uploadFitBtn");
     bind(uploadBtn, "click", () => {
-        openUploadModal({ onUpload: onUploadFit, onUpdateExportMetadata, getExportMetadata });
+        openUploadModal({ onUpload: onUploadFit, onUpdateExportMetadata, getExportMetadata, screenshotSessionId: getScreenshotSessionId?.() });
     });
 
-    bind(cancelBtn, "click", () => overlay?.classList.remove("open"));
-
+    bind(cancelBtn, "click", closeUploadModal);
     bind(overlay, "click", (e) => {
-        if (e.target === overlay) overlay.classList.remove("open");
+        if (e.target === overlay) closeUploadModal();
     });
 
     bind(confirmBtn, "click", () => {
@@ -92,14 +97,21 @@ function setupUploadModal({ onUploadFit, onUpdateExportMetadata, getExportMetada
         const markVirtual = virtualCheckbox?.checked !== false;
 
         onUpdate?.({ activityName: name, fitDescription: desc, markVirtualActivity: markVirtual });
-        overlay?.classList.remove("open");
-        onUpload?.();
+        closeUploadModal();
+        onUpload?.(_selectedScreenshotIds.length > 0 ? _selectedScreenshotIds : undefined);
     });
+
+    bind(selectAllBtn, "click", () => selectAllScreenshots());
+    bind(deselectAllBtn, "click", () => deselectAllScreenshots());
 }
 
-function openUploadModal({ onUpload, onUpdateExportMetadata, getExportMetadata, initialValues }) {
+function closeUploadModal() {
+    _modalElements?.overlay?.classList.remove("open");
+}
+
+async function openUploadModal({ onUpload, onUpdateExportMetadata, getExportMetadata, initialValues, screenshotSessionId }) {
     if (!_modalElements) return;
-    const { overlay, nameInput, virtualCheckbox, descTextarea } = _modalElements;
+    const { overlay, nameInput, virtualCheckbox, descTextarea, pickerSection, swiperTrack, countLabel } = _modalElements;
 
     const meta = getExportMetadata?.() || {};
     const init = initialValues || {};
@@ -108,8 +120,97 @@ function openUploadModal({ onUpload, onUpdateExportMetadata, getExportMetadata, 
     if (descTextarea) descTextarea.value = init.fitDescription ?? meta.fitDescription ?? "";
 
     _pendingUpload = { onUpload, onUpdateExportMetadata };
+    _selectedScreenshotIds = [];
+
+    if (screenshotSessionId) {
+        await loadScreenshotsIntoPicker({ pickerSection, swiperTrack, countLabel, screenshotSessionId });
+    } else if (pickerSection) {
+        pickerSection.hidden = true;
+    }
 
     overlay?.classList.add("open");
+}
+
+async function loadScreenshotsIntoPicker({ pickerSection, swiperTrack, countLabel, screenshotSessionId }) {
+    if (!pickerSection || !swiperTrack) return;
+
+    try {
+        const url = new URL("/api/screenshots", window.location.origin);
+        url.searchParams.set("sessionId", screenshotSessionId);
+        const resp = await fetch(url.toString());
+        const data = await resp.json();
+        if (!data?.ok || !data.screenshots?.length) {
+            pickerSection.hidden = true;
+            return;
+        }
+
+        const screenshots = data.screenshots;
+        pickerSection.hidden = false;
+        swiperTrack.innerHTML = screenshots.map((s, i) => `
+            <div class="swiper-slide selected" data-index="${i}" data-id="${escapeHtmlAttr(s.screenshotId)}">
+                <img src="/api/screenshots/file/${escapeHtmlAttr(screenshotSessionId)}/${escapeHtmlAttr(s.screenshotId)}" alt="截图 ${i + 1}" loading="lazy">
+                <div class="swiper-slide-check"></div>
+            </div>
+        `).join("");
+
+        // All selected by default
+        _selectedScreenshotIds = screenshots.map((s) => s.screenshotId);
+        if (countLabel) countLabel.textContent = `(已选 ${_selectedScreenshotIds.length}/${screenshots.length})`;
+
+        // Click-to-toggle
+        swiperTrack.querySelectorAll(".swiper-slide").forEach((slide) => {
+            slide.addEventListener("click", () => toggleScreenshot(slide, countLabel, screenshots.length));
+        });
+    } catch {
+        if (pickerSection) pickerSection.hidden = true;
+    }
+}
+
+function toggleScreenshot(slide, countLabel, totalCount) {
+    const id = slide.dataset.id;
+    if (!id) return;
+
+    const idx = _selectedScreenshotIds.indexOf(id);
+    if (idx === -1) {
+        _selectedScreenshotIds.push(id);
+        slide.classList.add("selected");
+    } else {
+        _selectedScreenshotIds.splice(idx, 1);
+        slide.classList.remove("selected");
+    }
+
+    if (countLabel) countLabel.textContent = `(已选 ${_selectedScreenshotIds.length}/${totalCount})`;
+}
+
+function selectAllScreenshots() {
+    const { swiperTrack, countLabel } = _modalElements || {};
+    if (!swiperTrack) return;
+
+    const slides = swiperTrack.querySelectorAll(".swiper-slide");
+    _selectedScreenshotIds = [];
+    slides.forEach((slide) => {
+        slide.classList.add("selected");
+        _selectedScreenshotIds.push(slide.dataset.id);
+    });
+
+    if (countLabel) countLabel.textContent = `(已选 ${_selectedScreenshotIds.length}/${slides.length})`;
+}
+
+function deselectAllScreenshots() {
+    const { swiperTrack, countLabel } = _modalElements || {};
+    if (!swiperTrack) return;
+
+    const slides = swiperTrack.querySelectorAll(".swiper-slide");
+    _selectedScreenshotIds = [];
+    slides.forEach((slide) => {
+        slide.classList.remove("selected");
+    });
+
+    if (countLabel) countLabel.textContent = `(已选 0/${slides.length})`;
+}
+
+function escapeHtmlAttr(value) {
+    return String(value ?? "").replace(/"/g, "&quot;").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 export { openUploadModal };

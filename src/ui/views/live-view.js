@@ -89,6 +89,7 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
         loadStreetViewBtn: document.getElementById("loadStreetViewBtn"),
         streetViewApiKey: document.getElementById("streetViewApiKey"),
         immersiveStreetViewBtn: document.getElementById("immersiveStreetViewBtn"),
+        immersiveScreenshotBtn: document.getElementById("immersiveScreenshotBtn"),
         streetViewContainer: document.getElementById("streetViewContainer"),
         svPano1: document.getElementById("svPano1"),
         svPano2: document.getElementById("svPano2"),
