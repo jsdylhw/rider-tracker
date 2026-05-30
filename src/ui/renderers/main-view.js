@@ -93,7 +93,8 @@ export function createMainView({
         onConnectStrava,
         onUploadActivityFit,
         onUpdateExportMetadata,
-        getExportMetadata: () => store.getState().exportMetadata
+        getExportMetadata: () => store.getState().exportMetadata,
+        getScreenshotSessionId: () => store.getState().screenshotSessionId
     });
 
     const elements = {
