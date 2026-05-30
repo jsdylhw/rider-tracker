@@ -105,6 +105,7 @@ export function createMainView({
 
     let lastRenderedSettingsSignature = "";
     let lastRenderedActivityDetailSignature = "";
+    let lastSessionHeavyRender = 0;
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
     const mapController = createMapController({
@@ -191,12 +192,19 @@ export function createMainView({
     void activityHistoryRenderer.refresh();
 
     store.subscribe((state) => {
+        const inActiveRide = state.liveRide.isActive;
+
         layoutCoordinator.render(state);
         renderSettings(state);
-        routeRenderer.render(state);
-        exportRenderer.render(state);
-        workoutRenderer.render(state);
-        customWorkoutTargetRenderer.render(state);
+
+        // 骑行中路线、导出配置、训练模式不变，跳过这些渲染器
+        if (!inActiveRide) {
+            routeRenderer.render(state);
+            exportRenderer.render(state);
+            workoutRenderer.render(state);
+            customWorkoutTargetRenderer.render(state);
+        }
+
         deviceRenderer.render(state);
         renderSession(state);
         dashboardRenderer.render(state);
@@ -257,16 +265,20 @@ export function createMainView({
             elements.liveElevationCard.hidden = !isGradeSimulation || (!session?.route && !state.route);
         }
 
-        renderRecords(records, metrics);
-        renderChart(records);
+        const now = Date.now();
+        if (now - lastSessionHeavyRender >= 1000) {
+            renderRecords(records, metrics);
+            renderChart(records);
 
-        const previewRoute = state.liveRide.isActive
-            ? (state.liveRide.session?.route ?? state.route)
-            : state.route;
-        const currentRecord = state.liveRide.isActive
-            ? (state.liveRide.session?.currentRecord ?? state.liveRide.records?.at(-1) ?? null)
-            : null;
-        routeRenderer.renderElevationChart(previewRoute, currentRecord);
+            const previewRoute = state.liveRide.isActive
+                ? (state.liveRide.session?.route ?? state.route)
+                : state.route;
+            const currentRecord = state.liveRide.isActive
+                ? (state.liveRide.session?.currentRecord ?? state.liveRide.records?.at(-1) ?? null)
+                : null;
+            routeRenderer.renderElevationChart(previewRoute, currentRecord);
+            lastSessionHeavyRender = now;
+        }
     }
 
     function renderRecords(records, metrics) {

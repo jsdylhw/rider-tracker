@@ -23,6 +23,7 @@ import { suite as gpxFixturesSuite } from "./integration/gpx-fixtures.test.js";
 import { suite as rideRegressionSuite } from "./integration/ride-regression.test.js";
 import { suite as streetviewUiSuite } from "./integration/streetview-ui.test.js";
 import { suite as routeRendererImportSuite } from "./unit/route-renderer-import.test.js";
+import { suite as routeRendererImmersiveSuite } from "./unit/route-renderer-immersive.test.js";
 import { suite as routeChartSvgSuite } from "./unit/route-chart-svg.test.js";
 import { suite as exportViewSuite } from "./unit/export-view.test.js";
 import { suite as liveRideViewModelSuite } from "./unit/live-ride-view-model.test.js";
@@ -61,6 +62,7 @@ const suites = [
     rideRegressionSuite,
     streetviewUiSuite,
     routeRendererImportSuite,
+    routeRendererImmersiveSuite,
     routeChartSvgSuite,
     exportViewSuite,
     liveRideViewModelSuite,
