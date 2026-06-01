@@ -1,4 +1,5 @@
 import { createStravaClient } from "../../src/server/strava-client.js";
+import { uploadScreenshotsToStravaActivity } from "../../src/adapters/upload/strava-server-client.js";
 import { assert, assertEqual } from "../helpers/test-harness.js";
 
 function createClient() {
@@ -133,6 +134,56 @@ export const suite = {
                         assert(err.message.includes("ECONNREFUSED"), `unexpected message: ${err.message}`);
                     }
                     assert(threw, "should have thrown on network error");
+                } finally {
+                    restore();
+                }
+            }
+        },
+        {
+            name: "uploadScreenshots sends [] when empty array is passed",
+            async run() {
+                const { calls, restore } = mockFetch(() => ({
+                    ok: true,
+                    status: 200,
+                    text: async () => JSON.stringify({ ok: true, uploaded: 0, photos: [] })
+                }));
+
+                try {
+                    await uploadScreenshotsToStravaActivity({
+                        serverUrl: "http://localhost:8787",
+                        userId: "u1",
+                        stravaActivityId: "12345",
+                        screenshotSessionId: "sess1",
+                        screenshotIds: []
+                    });
+
+                    const body = JSON.parse(calls[0].init.body);
+                    assert(Array.isArray(body.screenshotIds), "screenshotIds should be an array");
+                    assertEqual(body.screenshotIds.length, 0, "empty array should be sent, not null");
+                } finally {
+                    restore();
+                }
+            }
+        },
+        {
+            name: "uploadScreenshots sends null when no screenshotIds passed",
+            async run() {
+                const { calls, restore } = mockFetch(() => ({
+                    ok: true,
+                    status: 200,
+                    text: async () => JSON.stringify({ ok: true, uploaded: 0, photos: [] })
+                }));
+
+                try {
+                    await uploadScreenshotsToStravaActivity({
+                        serverUrl: "http://localhost:8787",
+                        userId: "u1",
+                        stravaActivityId: "12345",
+                        screenshotSessionId: "sess1"
+                    });
+
+                    const body = JSON.parse(calls[0].init.body);
+                    assertEqual(body.screenshotIds, null, "missing screenshotIds should send null");
                 } finally {
                     restore();
                 }

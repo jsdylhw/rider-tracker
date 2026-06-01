@@ -162,14 +162,14 @@ export function createExportService({ store }) {
         }
     }
 
-    async function uploadFit(selectedScreenshotIds) {
+    async function uploadFit(selectedScreenshotIds, hadPicker = false) {
         const { session, exportMetadata } = store.getState();
 
         if (!session) {
             return;
         }
 
-        await uploadSessionFit({ session, exportMetadata, selectedScreenshotIds });
+        await uploadSessionFit({ session, exportMetadata, selectedScreenshotIds, hadPicker });
     }
 
     async function importFit(file) {
@@ -322,7 +322,7 @@ export function createExportService({ store }) {
         }
     }
 
-    async function uploadSessionFit({ session, exportMetadata, selectedActivity = null, selectedScreenshotIds = null }) {
+    async function uploadSessionFit({ session, exportMetadata, selectedActivity = null, selectedScreenshotIds = null, hadPicker = false }) {
         if (!exportMetadata.stravaServerUrl) {
             store.setState((state) => ({
                 ...state,
@@ -393,14 +393,14 @@ export function createExportService({ store }) {
             }));
 
             const screenshotSessionId = store.getState()?.screenshotSessionId;
-            if (screenshotSessionId && upload.activity_id) {
+            if (screenshotSessionId && upload.activity_id && hadPicker) {
                 try {
                     const photoResult = await uploadScreenshotsToStravaActivity({
                         serverUrl: exportMetadata.stravaServerUrl,
                         userId: exportMetadata.stravaUserId,
                         stravaActivityId: upload.activity_id,
                         screenshotSessionId,
-                        screenshotIds: selectedScreenshotIds
+                        screenshotIds: selectedScreenshotIds ?? []
                     });
                     store.setState((state) => ({
                         ...state,
@@ -409,6 +409,11 @@ export function createExportService({ store }) {
                     }));
                 } catch (err) {
                     console.error("Screenshot upload failed:", err);
+                    store.setState((state) => ({
+                        ...state,
+                        screenshotSessionId: null,
+                        statusText: `Strava upload complete. Activity ID: ${upload.activity_id}. Photo upload failed: ${err.message}`
+                    }));
                 }
             }
         } catch (error) {
@@ -505,6 +510,11 @@ export function createExportService({ store }) {
                     }));
                 } catch (err) {
                     console.error("Screenshot upload failed:", err);
+                    store.setState((state) => ({
+                        ...state,
+                        screenshotSessionId: null,
+                        statusText: `Strava upload complete. Activity ID: ${upload.activity_id}. Photo upload failed.`
+                    }));
                 }
             }
         } catch (error) {

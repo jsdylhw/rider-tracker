@@ -57,6 +57,7 @@ function mountSharedExportCard({ exportCardContainer, exportCardTemplate }) {
 let _modalElements = null;
 let _pendingUpload = null;
 let _selectedScreenshotIds = [];
+let _pickerWasShown = false;
 
 function setupUploadModal({ onUploadFit, onUploadActivityFit, onUpdateExportMetadata, getExportMetadata, getScreenshotSessionId }) {
     const template = document.getElementById("upload-confirm-template");
@@ -98,7 +99,8 @@ function setupUploadModal({ onUploadFit, onUploadActivityFit, onUpdateExportMeta
 
         onUpdate?.({ activityName: name, fitDescription: desc, markVirtualActivity: markVirtual });
         closeUploadModal();
-        onUpload?.(_selectedScreenshotIds.length > 0 ? _selectedScreenshotIds : undefined);
+        const hadPicker = _pickerWasShown;
+        onUpload?.(_selectedScreenshotIds, hadPicker);
     });
 
     bind(selectAllBtn, "click", () => selectAllScreenshots());
@@ -121,6 +123,7 @@ async function openUploadModal({ onUpload, onUpdateExportMetadata, getExportMeta
 
     _pendingUpload = { onUpload, onUpdateExportMetadata };
     _selectedScreenshotIds = [];
+    _pickerWasShown = false;
 
     if (screenshotSessionId) {
         await loadScreenshotsIntoPicker({ pickerSection, swiperTrack, countLabel, screenshotSessionId });
@@ -146,6 +149,7 @@ async function loadScreenshotsIntoPicker({ pickerSection, swiperTrack, countLabe
 
         const screenshots = data.screenshots;
         pickerSection.hidden = false;
+        _pickerWasShown = true;
         swiperTrack.innerHTML = screenshots.map((s, i) => `
             <div class="swiper-slide selected" data-index="${i}" data-id="${escapeHtmlAttr(s.screenshotId)}">
                 <img src="/api/screenshots/file/${escapeHtmlAttr(screenshotSessionId)}/${escapeHtmlAttr(s.screenshotId)}" alt="截图 ${i + 1}" loading="lazy">

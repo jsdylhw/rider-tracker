@@ -406,7 +406,7 @@ export function createStravaRoutes({
             const accessToken = await ensureValidAccessToken(userId);
 
             let files;
-            if (screenshotIds && screenshotIds.length > 0) {
+            if (screenshotIds !== null) {
                 files = screenshotIds
                     .map((id) => path.basename(String(id)).replace(/[^a-zA-Z0-9._-]/g, ""))
                     .filter(Boolean);
