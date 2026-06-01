@@ -88,6 +88,7 @@ export function createStreetViewController({ container1, container2 }) {
     let pauseAutoUntil = 0;
     let applyingProgrammaticPov = false;
     let panoramaRequestInFlight = false;
+    let lastStreetViewState = null;
 
     const USER_INTERACTION_PAUSE_MS = 3000;
     const UPDATE_INTERVAL_MS = STREET_VIEW_UPDATE_INTERVAL_MS;
@@ -195,6 +196,8 @@ export function createStreetViewController({ container1, container2 }) {
         }
         const pitch = Math.atan(state.grade / 100) * (180 / Math.PI);
 
+        lastStreetViewState = { lat: state.lat, lng: state.lng, heading, pitch };
+
         const activePanorama = activeIndex === 1 ? pano1 : pano2;
         const nextPanorama = activeIndex === 1 ? pano2 : pano1;
         const activeEl = container1.parentElement?.querySelector(`#svPano${activeIndex}`);
@@ -285,5 +288,9 @@ export function createStreetViewController({ container1, container2 }) {
         cleanupFns.forEach((fn) => fn());
     }
 
-    return { update, destroy };
+    function getLastState() {
+        return lastStreetViewState;
+    }
+
+    return { update, destroy, getLastState };
 }

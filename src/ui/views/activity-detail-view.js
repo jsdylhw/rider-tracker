@@ -12,7 +12,8 @@ export function createActivityDetailView({
     onConnectStrava,
     onUploadActivityFit,
     onUpdateExportMetadata,
-    getExportMetadata
+    getExportMetadata,
+    getScreenshotSessionId
 }) {
     const elements = {
         viewActivityDetail: document.getElementById("view-activity-detail"),
@@ -45,6 +46,7 @@ export function createActivityDetailView({
                 onUpload: onUploadActivityFit,
                 onUpdateExportMetadata,
                 getExportMetadata,
+                screenshotSessionId: getScreenshotSessionId?.(),
                 initialValues: { activityName: initialName }
             });
         }

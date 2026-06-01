@@ -219,6 +219,31 @@ async function safeReadJson(response) {
     }
 }
 
+export async function uploadScreenshotsToStravaActivity({
+    serverUrl,
+    userId,
+    stravaActivityId,
+    screenshotSessionId,
+    screenshotIds
+}) {
+    const baseUrl = normalizeServerUrl(serverUrl);
+    const response = await fetch(`${baseUrl}/api/strava/upload-screenshots`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            userId: userId || "default",
+            stravaActivityId,
+            screenshotSessionId,
+            screenshotIds: screenshotIds || null
+        })
+    });
+    const body = await safeReadJson(response);
+    if (!response.ok || body?.ok === false) {
+        throw new Error(buildServerErrorMessage(response, body, "Strava photo upload"));
+    }
+    return body;
+}
+
 function delay(ms) {
     return new Promise((resolve) => {
         window.setTimeout(resolve, ms);

@@ -91,7 +91,64 @@ export function createDashboardRenderer({
         }, 5000);
     }
 
+    let _store = null;
+
+    async function captureStreetView() {
+        const state = streetViewControllerRef.current?.getLastState();
+        if (!state) {
+            showRideAlert("暂无街景位置信息，请等待街景加载。");
+            return;
+        }
+
+        const apiKey = elements.streetViewApiKey?.value?.trim();
+        if (!apiKey) {
+            showRideAlert("请先输入 Google Maps API Key。");
+            return;
+        }
+
+        const btn = elements.immersiveScreenshotBtn;
+        if (btn) btn.disabled = true;
+        const originalText = btn?.textContent;
+
+        try {
+            const url = `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${state.lat},${state.lng}&heading=${state.heading}&pitch=${state.pitch}&fov=90&key=${apiKey}`;
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Street View Image API 返回 ${response.status}`);
+            }
+
+            const blob = await response.blob();
+
+            let screenshotSessionId = _store?.getState()?.screenshotSessionId;
+            if (!screenshotSessionId) {
+                screenshotSessionId = crypto.randomUUID();
+                _store?.setState((s) => ({ ...s, screenshotSessionId }));
+            }
+
+            const formData = new FormData();
+            formData.append("file", blob, `screenshot-${Date.now()}.jpg`);
+            formData.append("screenshotSessionId", screenshotSessionId);
+
+            const uploadResp = await fetch("/api/screenshots", { method: "POST", body: formData });
+            const result = await uploadResp.json();
+            if (!result.ok) throw new Error(result.error || "Upload failed");
+
+            showRideAlert("截图已保存！");
+        } catch (error) {
+            console.error("Screenshot failed:", error);
+            showRideAlert(`截图失败: ${error.message}`);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                if (originalText) btn.textContent = originalText;
+            }
+        }
+    }
+
     function bindEvents(store) {
+        _store = store;
+
         if (elements.customizeMetricsBtn) {
             elements.customizeMetricsBtn.addEventListener("click", () => {
                 if (elements.metricsCustomizer) {
@@ -161,6 +218,12 @@ export function createDashboardRenderer({
         if (elements.immersiveBackBtn) {
             elements.immersiveBackBtn.addEventListener("click", () => {
                 exitImmersiveStreetView();
+            });
+        }
+
+        if (elements.immersiveScreenshotBtn) {
+            elements.immersiveScreenshotBtn.addEventListener("click", () => {
+                captureStreetView();
             });
         }
 
@@ -297,6 +360,10 @@ export function createDashboardRenderer({
             if (!immersiveStreetViewMode) {
                 elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
             }
+        }
+
+        if (elements.immersiveScreenshotBtn) {
+            elements.immersiveScreenshotBtn.hidden = !immersiveStreetViewMode;
         }
 
         if (!ride.dashboardOpen) {

@@ -87,12 +87,28 @@ export function createStravaClient({ clientId, clientSecret, redirectUri, scopes
         return parseJsonResponse(response, "Strava token");
     }
 
+    async function uploadActivityPhoto({ accessToken, activityId, fileBuffer, filename }) {
+        const body = new FormData();
+        body.append("file", new Blob([fileBuffer]), filename);
+
+        const response = await fetch(`${STRAVA_API_BASE_URL}/activities/${encodeURIComponent(activityId)}/photos`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            },
+            body
+        });
+
+        return parseJsonResponse(response, "Strava photo upload");
+    }
+
     return {
         buildAuthorizeUrl,
         exchangeCode,
         refreshToken,
         createUpload,
-        getUploadStatus
+        getUploadStatus,
+        uploadActivityPhoto
     };
 }
 

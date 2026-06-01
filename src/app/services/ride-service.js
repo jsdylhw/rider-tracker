@@ -61,6 +61,7 @@ export function createRideService({ store, deviceService, exportService }) {
 
         store.setState((currentState) => ({
             ...currentState,
+            screenshotSessionId: null,
             liveRide: {
                 ...currentState.liveRide,
                 isActive: true,

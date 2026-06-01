@@ -34,6 +34,8 @@ import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js"
 import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
 import { suite as activityDetailRendererSuite } from "./unit/activity-detail-renderer.test.js";
 import { suite as fitBeaconClientSuite } from "./unit/fit-beacon-client.test.js";
+import { suite as screenshotRoutesSuite } from "./unit/screenshot-routes.test.js";
+import { suite as stravaPhotoUploadSuite } from "./unit/strava-photo-upload.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
@@ -71,7 +73,9 @@ const suites = [
     rideSeriesChartSuite,
     activityStoreSuite,
     activityDetailRendererSuite,
-    fitBeaconClientSuite
+    fitBeaconClientSuite,
+    screenshotRoutesSuite,
+    stravaPhotoUploadSuite
 ];
 
 runSuites(suites).then((results) => {

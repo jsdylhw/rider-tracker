@@ -54,6 +54,7 @@ function createElements() {
         svPano1: createFakeElement(),
         svPano2: createFakeElement(),
         immersiveStreetViewBtn: createFakeElement({ hidden: true }),
+        immersiveScreenshotBtn: createFakeElement({ hidden: true }),
         immersiveBackBtn: createFakeElement(),
         immersiveUiToggleBtn: createFakeElement(),
         stopRideDashboardBtn: createFakeElement(),
@@ -163,6 +164,50 @@ export const suite = {
                 elements.immersiveUiToggleBtn.dispatch("click");
                 assertEqual(elements.rideDashboard.classList.contains("immersive-ui-hidden"), false);
                 assertEqual(elements.immersiveUiToggleBtn.textContent, "隐藏 UI");
+            }
+        },
+        {
+            name: "截图按钮在非沉浸模式下隐藏",
+            run() {
+                const elements = createElements();
+                const store = createStore(createBaseState());
+                const renderer = createDashboardRenderer({
+                    elements,
+                    mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {}
+                });
+                renderer.render(store.getState());
+                assertEqual(elements.immersiveScreenshotBtn.hidden, true);
+            }
+        },
+        {
+            name: "截图按钮在沉浸模式下可见",
+            async run() {
+                const elements = createElements();
+                elements.streetViewApiKey.value = "test-key";
+                const state = createBaseState();
+                state.liveRide.isActive = true;
+                const store = createStore(state);
+
+                const streetViewRef = { current: null };
+                const renderer = createDashboardRenderer({
+                    elements,
+                    mapController: { syncRide() {} },
+                    streetViewControllerRef: streetViewRef,
+                    onEnableStreetView: async () => {
+                        streetViewRef.current = { update() {}, destroy() {} };
+                    }
+                });
+
+                renderer.bindEvents(store);
+                elements.loadStreetViewBtn.dispatch("click");
+                await Promise.resolve();
+                renderer.render(store.getState());
+                elements.immersiveStreetViewBtn.dispatch("click");
+                renderer.render(store.getState());
+
+                assertEqual(elements.immersiveScreenshotBtn.hidden, false);
             }
         }
     ]

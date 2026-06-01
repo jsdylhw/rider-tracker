@@ -469,7 +469,7 @@
 
     <template id="upload-confirm-template">
         <div class="modal-overlay" id="uploadConfirmOverlay">
-            <div class="modal-card">
+            <div class="modal-card" id="uploadConfirmCard">
                 <h3>上传到 Strava</h3>
                 <label class="field">
                     <span>活动名称</span>
@@ -492,6 +492,18 @@
                     <span>说明信息</span>
                     <textarea name="confirmFitDescription" rows="2" maxlength="180"></textarea>
                 </label>
+                <div id="screenshotPickerSection" class="screenshot-picker-section" hidden>
+                    <div class="screenshot-picker-header">
+                        <span class="screenshot-picker-title">街景截图 <span id="screenshotCountLabel"></span></span>
+                        <div class="screenshot-picker-actions">
+                            <button id="selectAllScreenshotsBtn" class="btn ghost compact-btn">全选</button>
+                            <button id="deselectAllScreenshotsBtn" class="btn ghost compact-btn">取消全选</button>
+                        </div>
+                    </div>
+                    <div id="screenshotSwiper" class="screenshot-swiper">
+                        <div id="swiperTrack" class="swiper-track"></div>
+                    </div>
+                </div>
                 <div class="modal-actions">
                     <button id="confirmUploadBtn" class="btn power-btn">确认上传</button>
                     <button id="cancelUploadBtn" class="btn secondary">取消</button>
@@ -702,6 +714,7 @@
 
                         <div id="streetViewHud" class="streetview-hud">
                             <button id="immersiveBackBtn" class="btn ghost">返回页面</button>
+                            <button id="immersiveScreenshotBtn" class="btn ghost">截图</button>
                             <button id="immersiveUiToggleBtn" class="btn ghost">隐藏 UI</button>
                             <div id="immersiveMetricsCard" class="streetview-hud-card">
                                 <h3>实时骑行数据</h3>

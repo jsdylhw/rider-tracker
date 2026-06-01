@@ -15,6 +15,7 @@ export function createStravaRoutes({
     activityStore,
     upload,
     projectRoot,
+    screenshotDir,
     clientId,
     clientSecret,
     scopes,
@@ -377,6 +378,71 @@ export function createStravaRoutes({
                 ok: false,
                 error: err.message
             });
+        }
+    });
+
+    router.post("/api/strava/upload-screenshots", async (req, res) => {
+        const config = await getStravaConfig();
+        if (!ensureStravaConfig(res, config)) return;
+
+        const userId = normalizeUserId(req.body.userId);
+        const stravaActivityId = String(req.body.stravaActivityId || "");
+        const screenshotSessionId = (req.body.screenshotSessionId || "default").replace(/[^a-zA-Z0-9_-]/g, "");
+        const screenshotIds = Array.isArray(req.body.screenshotIds) ? req.body.screenshotIds : null;
+
+        if (!stravaActivityId) {
+            return res.status(400).json({ ok: false, error: "Missing stravaActivityId." });
+        }
+
+        const dir = path.join(screenshotDir, screenshotSessionId);
+
+        try {
+            await fs.access(dir);
+        } catch {
+            return res.json({ ok: true, uploaded: 0, photos: [] });
+        }
+
+        try {
+            const accessToken = await ensureValidAccessToken(userId);
+
+            let files;
+            if (screenshotIds !== null) {
+                files = screenshotIds
+                    .map((id) => path.basename(String(id)).replace(/[^a-zA-Z0-9._-]/g, ""))
+                    .filter(Boolean);
+            } else {
+                const entries = await fs.readdir(dir);
+                files = entries
+                    .filter((f) => /\.(jpg|jpeg|png|gif)$/i.test(f))
+                    .sort();
+            }
+
+            const results = [];
+            for (const filename of files) {
+                const filePath = path.join(dir, filename);
+                if (!filePath.startsWith(dir)) continue;
+                try {
+                    const buffer = await fs.readFile(filePath);
+                    const photo = await createClient(config).uploadActivityPhoto({
+                        accessToken,
+                        activityId: stravaActivityId,
+                        fileBuffer: buffer,
+                        filename
+                    });
+                    results.push({ filename, ok: true, photo });
+                } catch (err) {
+                    results.push({ filename, ok: false, error: err.message });
+                }
+            }
+
+            res.json({
+                ok: true,
+                uploaded: results.filter((r) => r.ok).length,
+                failed: results.filter((r) => !r.ok).length,
+                photos: results
+            });
+        } catch (err) {
+            res.status(500).json({ ok: false, error: err.message });
         }
     });
 
