@@ -136,13 +136,13 @@ function roundAverage(values) {
     return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
-/* ---- Incremental power metrics (O(1) per record) ---- */
+/* ---- Incremental power metrics ---- */
 
 export function createIncrementalPowerState() {
     return {
-        np: { ringBuf: [], ringSum: 0, f4total: 0, sampleCount: 0 },
-        rolling3s: { ringBuf: [], ringSum: 0 },
-        rolling10s: { ringBuf: [], ringSum: 0 }
+        np: { samples: [], head: 0, ringSum: 0, f4total: 0, sampleCount: 0 },
+        rolling3s: { samples: [], head: 0, ringSum: 0 },
+        rolling10s: { samples: [], head: 0, ringSum: 0 }
     };
 }
 
@@ -151,16 +151,17 @@ export function advanceIncrementalPowerState(powerState, record) {
     const power = normalizeFiniteNumber(record?.power) ?? 0;
     if (elapsed === null) return powerState;
 
-    const nextRing = advanceRingWindow(powerState.np, elapsed, power, 30);
-    const rolling30sAvg = ringAverage(nextRing);
+    const nextWindow30s = advanceSampleWindow(powerState.np, elapsed, power, 30);
+    const rolling30sAvg = windowAverage(nextWindow30s);
+    const hasPower = rolling30sAvg > 0;
     const nextNp = {
-        ...nextRing,
-        f4total: powerState.np.f4total + (rolling30sAvg > 0 ? rolling30sAvg ** 4 : 0),
-        sampleCount: powerState.np.sampleCount + 1
+        ...nextWindow30s,
+        f4total: powerState.np.f4total + (hasPower ? rolling30sAvg ** 4 : 0),
+        sampleCount: powerState.np.sampleCount + (hasPower ? 1 : 0)
     };
 
-    const next3s = advanceRingWindow(powerState.rolling3s, elapsed, power, 3);
-    const next10s = advanceRingWindow(powerState.rolling10s, elapsed, power, 10);
+    const next3s = advanceSampleWindow(powerState.rolling3s, elapsed, power, 3);
+    const next10s = advanceSampleWindow(powerState.rolling10s, elapsed, power, 10);
 
     return { np: nextNp, rolling3s: next3s, rolling10s: next10s };
 }
@@ -168,30 +169,42 @@ export function advanceIncrementalPowerState(powerState, record) {
 export function readIncrementalPowerMetrics(powerState) {
     const { np, rolling3s, rolling10s } = powerState;
 
-    const rolling3sWatts = Math.round(ringAverage(rolling3s));
-    const rolling10sWatts = Math.round(ringAverage(rolling10s));
+    const rolling3sWatts = Math.round(windowAverage(rolling3s));
+    const rolling10sWatts = Math.round(windowAverage(rolling10s));
     const normalizedPowerWatts = np.sampleCount > 0
         ? Math.round((np.f4total / np.sampleCount) ** 0.25)
         : 0;
 
-    return { rolling3sWatts, rolling10sWatts, normalizedPowerWatts };
+    return {
+        rolling3sWatts,
+        rolling10sWatts,
+        windows: { "3s": rolling3sWatts, "10s": rolling10sWatts },
+        normalizedPowerWatts
+    };
 }
 
-function advanceRingWindow(state, elapsed, power, windowSeconds) {
+function advanceSampleWindow(state, elapsed, power, windowSeconds) {
     const entry = { elapsed, power };
-    const nextBuf = [...state.ringBuf, entry];
+    const samples = state.samples ?? [];
+    samples.push(entry);
+
+    let head = state.head ?? 0;
     let nextSum = state.ringSum + power;
 
-    let trimIdx = 0;
-    while (trimIdx < nextBuf.length && nextBuf[trimIdx].elapsed <= elapsed - windowSeconds) {
-        nextSum -= nextBuf[trimIdx].power;
-        trimIdx += 1;
+    while (head < samples.length && samples[head].elapsed <= elapsed - windowSeconds) {
+        nextSum -= samples[head].power;
+        head += 1;
     }
-    const trimmedBuf = trimIdx > 0 ? nextBuf.slice(trimIdx) : nextBuf;
 
-    return { ringBuf: trimmedBuf, ringSum: nextSum };
+    if (head > 1024 && head > samples.length / 2) {
+        samples.splice(0, head);
+        head = 0;
+    }
+
+    return { samples, head, ringSum: nextSum };
 }
 
-function ringAverage(state) {
-    return state.ringBuf.length > 0 ? state.ringSum / state.ringBuf.length : 0;
+function windowAverage(state) {
+    const count = Math.max(0, (state.samples?.length ?? 0) - (state.head ?? 0));
+    return count > 0 ? state.ringSum / count : 0;
 }

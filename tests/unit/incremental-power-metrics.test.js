@@ -133,6 +133,26 @@ export const suite = {
             }
         },
         {
+            name: "incremental NP handles zero leading power correctly",
+            run() {
+                // [0W, 0W, 100W] — full NP should be 33W per findings repro
+                const records = [
+                    makeRecord(1, 0),
+                    makeRecord(2, 0),
+                    makeRecord(3, 100)
+                ];
+                let state = createIncrementalPowerState();
+                for (const r of records) {
+                    state = advanceIncrementalPowerState(state, r);
+                }
+                const incMetrics = readIncrementalPowerMetrics(state);
+                const fullMetrics = summarizePowerMetrics({ records });
+
+                assertEqual(incMetrics.normalizedPowerWatts, fullMetrics.normalizedPowerWatts,
+                    `zero-leading NP mismatch: inc ${incMetrics.normalizedPowerWatts} vs full ${fullMetrics.normalizedPowerWatts}`);
+            }
+        },
+        {
             name: "consumePowerRecords convenience function",
             run() {
                 // Helper: utility for consuming multiple records at once
