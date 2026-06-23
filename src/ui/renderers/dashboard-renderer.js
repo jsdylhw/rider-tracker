@@ -1,5 +1,5 @@
 import { formatNumber } from "../../shared/format.js";
-import { buildDashboardViewModel } from "../../app/view-models/live-ride-view-model.js";
+import { buildDashboardViewModel, isStreetViewDebugEnabled } from "../../app/view-models/live-ride-view-model.js";
 import { buildTrajectoryOverviewSvg } from "./svg/dashboard-charts.js";
 import { buildGradeChartSvg } from "./svg/route-charts.js";
 import { createDashboardMetricsRenderer } from "./dashboard-metrics-renderer.js";
@@ -19,7 +19,8 @@ export function createDashboardRenderer({
     elements,
     mapController,
     streetViewControllerRef,
-    onEnableStreetView
+    onEnableStreetView,
+    streetViewDebugEnabled = isStreetViewDebugEnabled()
 }) {
     function isStreetViewLoaded() {
         return streetViewControllerRef?.current != null;
@@ -137,6 +138,11 @@ export function createDashboardRenderer({
                     alert("请先输入 API Key 并点击“加载街景”。");
                     return;
                 }
+                const liveRide = store?.getState?.().liveRide ?? {};
+                if (!liveRide.isActive && !streetViewDebugEnabled) {
+                    alert("请先开始骑行，或使用 ?debugStreetView=1 打开街景调试模式。");
+                    return;
+                }
                 immersiveStreetViewMode = !immersiveStreetViewMode;
                 resetVisualRenderState();
                 if (immersiveStreetViewMode && elements.metricsCustomizer) {
@@ -250,7 +256,8 @@ export function createDashboardRenderer({
             state,
             customMetricsState,
             immersiveStreetViewMode,
-            streetViewLoaded: isStreetViewLoaded()
+            streetViewLoaded: isStreetViewLoaded(),
+            streetViewDebugEnabled
         });
         const { ride, training, metricsData, enabledMetricKeys } = viewModel;
         const { session, currentRecord, route, records, distanceKm } = ride;
@@ -307,7 +314,11 @@ export function createDashboardRenderer({
             alertStates.halfway = false;
             alertStates.last3k = false;
             if (elements.rideDashboardTitle) elements.rideDashboardTitle.textContent = "实时骑行界面";
-            if (elements.rideDashboardSubtitle) elements.rideDashboardSubtitle.textContent = "";
+            if (elements.rideDashboardSubtitle) {
+                elements.rideDashboardSubtitle.textContent = streetViewDebugEnabled && isStreetViewLoaded()
+                    ? "街景调试模式：未开始骑行时也可以进入沉浸街景预览。"
+                    : "";
+            }
             if (elements.rideProgressHeadline) elements.rideProgressHeadline.textContent = "0%";
             if (elements.rideProgressBar) elements.rideProgressBar.style.width = "0%";
             if (elements.rideProgressDistance) elements.rideProgressDistance.textContent = "0.00 / 0.00 km";
@@ -320,11 +331,14 @@ export function createDashboardRenderer({
                 hasSession: false
             });
 
+            const debugCurrentRecord = streetViewDebugEnabled
+                ? buildDebugStreetViewRecord(route)
+                : null;
             renderHeavyVisuals({
                 session,
                 route,
-                currentRecord: null,
-                records,
+                currentRecord: debugCurrentRecord,
+                records: debugCurrentRecord ? [debugCurrentRecord] : records,
                 training,
                 isGradeSimulation,
                 now,
@@ -522,4 +536,27 @@ function buildRouteSignature(route) {
         route.totalDistanceMeters ?? 0,
         route.points?.length ?? 0
     ].join(":");
+}
+
+function buildDebugStreetViewRecord(route) {
+    const firstPoint = route?.points?.[0];
+    if (!firstPoint) {
+        return null;
+    }
+
+    const distanceMeters = Number.isFinite(firstPoint.distanceMeters) ? firstPoint.distanceMeters : 0;
+    return {
+        elapsedSeconds: 0,
+        distanceKm: distanceMeters / 1000,
+        routeProgress: route?.totalDistanceMeters > 0 ? distanceMeters / route.totalDistanceMeters : 0,
+        latitude: firstPoint.latitude,
+        longitude: firstPoint.longitude,
+        elevationMeters: firstPoint.elevationMeters ?? 0,
+        gradePercent: firstPoint.gradePercent ?? 0,
+        speedKph: 0,
+        power: 0,
+        cadence: 0,
+        heartRate: 0,
+        segmentName: "街景调试起点"
+    };
 }

@@ -192,19 +192,12 @@ export function createMainView({
     void activityHistoryRenderer.refresh();
 
     store.subscribe((state) => {
-        const inActiveRide = state.liveRide.isActive;
-
         layoutCoordinator.render(state);
         renderSettings(state);
-
-        // 骑行中路线、导出配置、训练模式不变，跳过这些渲染器
-        if (!inActiveRide) {
-            routeRenderer.render(state);
-            exportRenderer.render(state);
-            workoutRenderer.render(state);
-            customWorkoutTargetRenderer.render(state);
-        }
-
+        routeRenderer.render(state);
+        exportRenderer.render(state);
+        workoutRenderer.render(state);
+        customWorkoutTargetRenderer.render(state);
         deviceRenderer.render(state);
         renderSession(state);
         dashboardRenderer.render(state);
