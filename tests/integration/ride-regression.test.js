@@ -175,6 +175,51 @@ export const suite = {
             }
         },
         {
+            name: "街景调试模式允许无功率源启动骑行预览",
+            run() {
+                const state = createState();
+                state.liveRide.canStart = false;
+                state.ble.sampling = {
+                    heartRate: { value: null, timestamp: null },
+                    power: { value: null, timestamp: null, sourceType: "none" },
+                    cadence: { value: null, timestamp: null, sourceType: "none" },
+                    lastUpdated: null
+                };
+                state.ble.powerMeter = { power: null, cadence: null, sourceType: "none" };
+                const store = createStore(state);
+                const timerCallbacks = [];
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    location: { search: "?debugStreetView=1" },
+                    localStorage: { getItem() { return null; } },
+                    setInterval(callback) {
+                        timerCallbacks.push(callback);
+                        return timerCallbacks.length;
+                    },
+                    clearInterval() {}
+                };
+
+                try {
+                    const service = createRideService({
+                        store,
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: { downloadFit() {} }
+                    });
+
+                    service.startRide();
+                    const startedState = store.getState();
+                    assertEqual(startedState.liveRide.isActive, true);
+                    assertEqual(startedState.liveRide.session.sampledSensors.powerSourceType, "street-view-debug");
+                    assertEqual(startedState.liveRide.session.sampledSensors.power, 220);
+                    assertGreaterThan(timerCallbacks.length, 0);
+                } finally {
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
             name: "stopRide 会关闭骑行并打开骑后详情",
             async run() {
                 const store = createStore(createState());

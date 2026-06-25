@@ -141,6 +141,127 @@ export function buildGradeChartSvg(route, currentRecord, { transparent = false, 
     `;
 }
 
+export function buildImmersiveElevationGradeSvg(route, currentRecord, { transparent = true } = {}) {
+    const width = DEFAULT_ROUTE_CHART_WIDTH;
+    const height = DEFAULT_ROUTE_CHART_HEIGHT;
+    const colors = transparent
+        ? {
+            ...ROUTE_CHART_COLORS,
+            text: "#f8fafc",
+            muted: "#cbd5e1",
+            dim: "#94a3b8",
+            grid: "rgba(226, 232, 240, 0.18)",
+            gridStrong: "rgba(226, 232, 240, 0.34)",
+            routeArea: "rgba(34, 197, 94, 0.18)",
+            detailArea: "rgba(34, 197, 94, 0.24)",
+            currentText: "#f8fafc",
+            insetFill: "rgba(15, 23, 42, 0.46)",
+            insetStroke: "rgba(226, 232, 240, 0.18)",
+            routeShadow: "rgba(15, 23, 42, 0.42)",
+            elevationArea: "rgba(14, 165, 233, 0.18)",
+            elevationLine: "#38bdf8"
+        }
+        : {
+            ...ROUTE_CHART_COLORS,
+            insetFill: "#ffffff",
+            insetStroke: "rgba(148, 163, 184, 0.28)",
+            routeShadow: "rgba(203, 213, 225, 0.68)",
+            elevationArea: "rgba(14, 165, 233, 0.14)",
+            elevationLine: "#0284c7"
+        };
+    const totalDist = Math.max(route.totalDistanceMeters, 1);
+    const currentDistanceMeters = clamp(
+        typeof currentRecord?.distanceKm === "number" ? currentRecord.distanceKm * 1000 : 0,
+        0,
+        totalDist
+    );
+    const elevationChart = { x: 34, y: 28, width: 422, height: 108 };
+    const gradeCard = { x: 474, y: 18, width: 142, height: 128 };
+    const gradePlot = { x: gradeCard.x + 12, y: gradeCard.y + 34, width: gradeCard.width - 24, height: gradeCard.height - 54 };
+    const elevations = route.points.map((point) => point.elevationMeters ?? 0);
+    const minElevation = Math.min(...elevations);
+    const maxElevation = Math.max(...elevations);
+    const elevationRange = Math.max(maxElevation - minElevation, 10);
+    const toElevationX = (distanceMeters) => elevationChart.x + (distanceMeters / totalDist) * elevationChart.width;
+    const toElevationY = (elevationMeters) => elevationChart.y + (1 - ((elevationMeters - minElevation) / elevationRange)) * elevationChart.height;
+    const elevationBaseY = elevationChart.y + elevationChart.height;
+    const elevationPoints = route.points.map((point) => ({
+        ...point,
+        x: toElevationX(point.distanceMeters),
+        y: toElevationY(point.elevationMeters ?? 0)
+    }));
+    const currentPoint = getPointAtDistance(route.points, currentDistanceMeters);
+    const currentElevationX = toElevationX(currentDistanceMeters);
+    const currentElevationY = toElevationY(currentPoint.elevationMeters ?? 0);
+    const detailWindowSpan = currentRecord
+        ? Math.min(totalDist, Math.max(1200, Math.min(totalDist * 0.16, 6000)))
+        : totalDist;
+    const detailWindowStart = currentRecord
+        ? clamp(currentDistanceMeters - detailWindowSpan / 2, 0, Math.max(totalDist - detailWindowSpan, 0))
+        : 0;
+    const detailWindowEnd = currentRecord ? Math.min(detailWindowStart + detailWindowSpan, totalDist) : totalDist;
+    const detailSourcePoints = currentRecord
+        ? getPointsWithinDistanceRange(route.points, detailWindowStart, detailWindowEnd)
+        : route.points;
+    const detailGrades = detailSourcePoints.map((point) => point.gradePercent ?? 0);
+    const detailMinGrade = Math.min(...detailGrades, -5);
+    const detailMaxGrade = Math.max(...detailGrades, 5);
+    const gradePoints = detailSourcePoints.map((point) => ({
+        ...point,
+        x: gradePlot.x + ((point.distanceMeters - detailWindowStart) / Math.max(detailWindowEnd - detailWindowStart, 1)) * gradePlot.width,
+        y: mapValueToY(point.gradePercent ?? 0, detailMinGrade, detailMaxGrade, gradePlot.y, gradePlot.height)
+    }));
+    const currentGradeX = currentRecord
+        ? gradePlot.x + ((currentDistanceMeters - detailWindowStart) / Math.max(detailWindowEnd - detailWindowStart, 1)) * gradePlot.width
+        : null;
+    const currentGradeY = currentRecord
+        ? mapValueToY(currentPoint.gradePercent ?? 0, detailMinGrade, detailMaxGrade, gradePlot.y, gradePlot.height)
+        : null;
+    const elevationTicks = getDistinctValues([maxElevation, (maxElevation + minElevation) / 2, minElevation]);
+    const distanceTicks = getDistanceTickValues(totalDist, 3);
+    const currentPillX = currentRecord
+        ? clamp(currentElevationX - 42, elevationChart.x + 8, elevationChart.x + elevationChart.width - 86)
+        : null;
+
+    return `
+        ${transparent ? "" : `
+            <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="${colors.background}"></rect>
+            <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="${colors.surface}"></rect>
+        `}
+        <text x="${elevationChart.x}" y="${elevationChart.y - 12}" fill="${colors.text}" font-size="12" font-weight="700">距离 - 海拔</text>
+        <text x="${elevationChart.x + elevationChart.width}" y="${elevationChart.y - 12}" text-anchor="end" fill="${colors.dim}" font-size="10.5">${formatNumber(totalDist / 1000, 1)} km</text>
+        ${elevationTicks.map((value) => `
+            <line x1="${elevationChart.x}" y1="${toElevationY(value).toFixed(1)}" x2="${elevationChart.x + elevationChart.width}" y2="${toElevationY(value).toFixed(1)}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="4 6"></line>
+            <text x="${elevationChart.x - 8}" y="${(toElevationY(value) + 4).toFixed(1)}" text-anchor="end" fill="${colors.muted}" font-size="10.5">${Math.round(value)}m</text>
+        `).join("")}
+        ${distanceTicks.map((tickValue) => `
+            <line x1="${toElevationX(tickValue).toFixed(1)}" y1="${elevationBaseY}" x2="${toElevationX(tickValue).toFixed(1)}" y2="${elevationBaseY + 4}" stroke="${colors.gridStrong}" stroke-width="1"></line>
+            <text x="${toElevationX(tickValue).toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="${colors.muted}" font-size="10.5">${formatNumber(tickValue / 1000, 1)} km</text>
+        `).join("")}
+        <line x1="${elevationChart.x}" y1="${elevationBaseY}" x2="${elevationChart.x + elevationChart.width}" y2="${elevationBaseY}" stroke="${colors.gridStrong}" stroke-width="1"></line>
+        <path d="${buildAreaPath(elevationPoints, elevationBaseY)}" fill="${colors.elevationArea}"></path>
+        <polyline points="${buildPolylineString(elevationPoints)}" fill="none" stroke="${colors.elevationLine}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+        ${currentRecord ? `<line x1="${currentElevationX.toFixed(1)}" y1="${elevationChart.y}" x2="${currentElevationX.toFixed(1)}" y2="${elevationBaseY}" stroke="${colors.current}" stroke-width="1.4" stroke-dasharray="4 5"></line>` : ""}
+        ${currentRecord ? `<circle cx="${currentElevationX.toFixed(1)}" cy="${currentElevationY.toFixed(1)}" r="7.5" fill="${colors.currentSoft}"></circle>` : ""}
+        ${currentRecord ? `<circle cx="${currentElevationX.toFixed(1)}" cy="${currentElevationY.toFixed(1)}" r="4.8" fill="#ffffff" stroke="${colors.current}" stroke-width="2"></circle>` : ""}
+        ${currentRecord ? `<rect x="${currentPillX.toFixed(1)}" y="${(elevationChart.y + 6).toFixed(1)}" width="84" height="20" rx="10" fill="#0f172a" stroke="rgba(148, 163, 184, 0.32)" stroke-width="1"></rect>` : ""}
+        ${currentRecord ? `<text x="${(currentPillX + 42).toFixed(1)}" y="${(elevationChart.y + 20).toFixed(1)}" text-anchor="middle" fill="#f8fafc" font-size="10.5" font-weight="700">${Math.round(currentPoint.elevationMeters ?? 0)} m</text>` : ""}
+
+        <rect x="${gradeCard.x}" y="${gradeCard.y}" width="${gradeCard.width}" height="${gradeCard.height}" rx="14" fill="${colors.insetFill}" stroke="${colors.insetStroke}" stroke-width="1"></rect>
+        <text x="${gradeCard.x + 12}" y="${gradeCard.y + 16}" fill="${colors.currentText}" font-size="11" font-weight="700">当前位置附近坡度</text>
+        <text x="${gradeCard.x + 12}" y="${gradeCard.y + 29}" fill="${colors.muted}" font-size="9.5">${currentRecord ? `${formatNumber(detailWindowStart / 1000, 1)} - ${formatNumber(detailWindowEnd / 1000, 1)} km` : `${formatNumber(totalDist / 1000, 1)} km`}</text>
+        <line x1="${gradePlot.x}" y1="${mapValueToY(0, detailMinGrade, detailMaxGrade, gradePlot.y, gradePlot.height).toFixed(1)}" x2="${gradePlot.x + gradePlot.width}" y2="${mapValueToY(0, detailMinGrade, detailMaxGrade, gradePlot.y, gradePlot.height).toFixed(1)}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="3 4"></line>
+        <path d="${buildAreaPath(gradePoints, gradePlot.y + gradePlot.height)}" fill="${colors.detailArea}"></path>
+        <polyline points="${buildPolylineString(gradePoints)}" fill="none" stroke="${colors.routeShadow}" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"></polyline>
+        ${buildColoredSegments(gradePoints)}
+        ${currentRecord ? `<line x1="${currentGradeX.toFixed(1)}" y1="${(gradePlot.y - 2).toFixed(1)}" x2="${currentGradeX.toFixed(1)}" y2="${(gradePlot.y + gradePlot.height + 2).toFixed(1)}" stroke="${colors.current}" stroke-width="1.4" stroke-dasharray="4 5"></line>` : ""}
+        ${currentRecord ? `<circle cx="${currentGradeX.toFixed(1)}" cy="${currentGradeY.toFixed(1)}" r="7.5" fill="${colors.currentSoft}"></circle>` : ""}
+        ${currentRecord ? `<circle cx="${currentGradeX.toFixed(1)}" cy="${currentGradeY.toFixed(1)}" r="5" fill="#ffffff" stroke="${colors.current}" stroke-width="2.1"></circle>` : ""}
+        ${currentRecord ? `<rect x="${gradeCard.x + 26}" y="${gradeCard.y + gradeCard.height - 25}" width="90" height="18" rx="9" fill="#0f172a" stroke="rgba(148, 163, 184, 0.32)" stroke-width="1"></rect>` : ""}
+        ${currentRecord ? `<text x="${gradeCard.x + 71}" y="${gradeCard.y + gradeCard.height - 12}" text-anchor="middle" fill="#f8fafc" font-size="10" font-weight="700">${formatSignedNumber(currentPoint.gradePercent ?? 0)}%</text>` : ""}
+    `;
+}
+
 export function buildElevationProfileSvg(route, currentRecord) {
     const width = DEFAULT_ROUTE_CHART_WIDTH;
     const height = DEFAULT_ROUTE_CHART_HEIGHT;

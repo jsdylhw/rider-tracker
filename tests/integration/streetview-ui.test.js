@@ -148,6 +148,66 @@ export const suite = {
             }
         },
         {
+            name: "街景调试模式允许未开始骑行时进入沉浸预览",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                const store = createStore(state);
+                let syncedRecord = null;
+                const streetViewRef = {
+                    current: {
+                        update(route, currentRecord) {
+                            syncedRecord = currentRecord;
+                        }
+                    }
+                };
+
+                const renderer = createDashboardRenderer({
+                    elements,
+                    mapController: { syncRide() {} },
+                    streetViewControllerRef: streetViewRef,
+                    onEnableStreetView: async () => {},
+                    streetViewDebugEnabled: true
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                assertEqual(elements.immersiveStreetViewBtn.hidden, false);
+
+                elements.immersiveStreetViewBtn.dispatch("click");
+
+                assertEqual(elements.rideDashboard.classList.contains("immersive-street-view"), true);
+                assertEqual(syncedRecord?.segmentName, "街景调试起点");
+                assertEqual(syncedRecord?.latitude, 31.1);
+            }
+        },
+        {
+            name: "街景调试模式加载街景后立即显示沉浸入口",
+            async run() {
+                const elements = createElements();
+                const state = createBaseState();
+                const store = createStore(state);
+                const streetViewRef = { current: null };
+                const renderer = createDashboardRenderer({
+                    elements,
+                    mapController: { syncRide() {} },
+                    streetViewControllerRef: streetViewRef,
+                    onEnableStreetView: async () => {
+                        streetViewRef.current = { update() {}, destroy() {} };
+                    },
+                    streetViewDebugEnabled: true
+                });
+
+                elements.streetViewApiKey.value = "test-key";
+                renderer.bindEvents(store);
+                elements.loadStreetViewBtn.dispatch("click");
+                await Promise.resolve();
+
+                assertEqual(elements.immersiveStreetViewBtn.hidden, false);
+                assertEqual(elements.immersiveStreetViewBtn.textContent, "进入沉浸街景");
+            }
+        },
+        {
             name: "点击沉浸返回按钮会退出沉浸模式",
             run() {
                 const elements = createElements();

@@ -1,7 +1,8 @@
 import { formatNumber } from "../../shared/format.js";
+import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { buildDashboardViewModel } from "../../app/view-models/live-ride-view-model.js";
 import { buildTrajectoryOverviewSvg } from "./svg/dashboard-charts.js";
-import { buildGradeChartSvg } from "./svg/route-charts.js";
+import { buildImmersiveElevationGradeSvg } from "./svg/route-charts.js";
 import { createDashboardMetricsRenderer } from "./dashboard-metrics-renderer.js";
 import { createWorkoutRuntimeRenderer } from "./workout-runtime-renderer.js";
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
@@ -20,6 +21,7 @@ export function createDashboardRenderer({
     mapController,
     streetViewControllerRef,
     onEnableStreetView,
+    streetViewDebugEnabled = isStreetViewDebugEnabled(),
     onUpdateWorkoutMode,
     onUpdateErgTargetPower,
     onUpdateResistanceLevel,
@@ -123,6 +125,7 @@ export function createDashboardRenderer({
                     });
                     elements.loadStreetViewBtn.textContent = "街景已开启";
                     elements.streetViewContainer.style.display = "block";
+                    syncImmersiveStreetViewButton(store);
                 } catch (error) {
                     alert(error?.message ?? "街景加载失败，请检查网络连接或 API Key。");
                     elements.loadStreetViewBtn.disabled = false;
@@ -141,6 +144,11 @@ export function createDashboardRenderer({
                     alert("请先输入 API Key 并点击“加载街景”。");
                     return;
                 }
+                const liveRide = store?.getState?.().liveRide ?? {};
+                if (!liveRide.isActive && !streetViewDebugEnabled) {
+                    alert("请先开始骑行，或使用 ?debugStreetView=1 打开街景调试模式。");
+                    return;
+                }
                 immersiveStreetViewMode = !immersiveStreetViewMode;
                 resetVisualRenderState();
                 if (immersiveStreetViewMode && elements.metricsCustomizer) {
@@ -151,6 +159,7 @@ export function createDashboardRenderer({
                 }
                 elements.rideDashboard?.classList.toggle("immersive-street-view", immersiveStreetViewMode);
                 elements.immersiveStreetViewBtn.textContent = immersiveStreetViewMode ? "退出沉浸模式" : "进入沉浸街景";
+                render(store.getState());
             });
         }
 
@@ -313,7 +322,8 @@ export function createDashboardRenderer({
             state,
             customMetricsState,
             immersiveStreetViewMode,
-            streetViewLoaded: isStreetViewLoaded()
+            streetViewLoaded: isStreetViewLoaded(),
+            streetViewDebugEnabled
         });
         const { ride, training, metricsData, enabledMetricKeys } = viewModel;
         const { session, currentRecord, route, records, distanceKm } = ride;
@@ -354,7 +364,7 @@ export function createDashboardRenderer({
         document.body.classList.toggle("immersive-street-view-active", immersiveStreetViewMode && ride.dashboardOpen);
         if (elements.immersiveStreetViewBtn) {
             const canShow = viewModel.canShowImmersiveStreetView;
-            elements.immersiveStreetViewBtn.hidden = !canShow;
+            syncImmersiveStreetViewButton(null, canShow);
             if (!canShow && immersiveStreetViewMode) {
                 exitImmersiveStreetView();
             }
@@ -371,7 +381,11 @@ export function createDashboardRenderer({
             alertStates.halfway = false;
             alertStates.last3k = false;
             if (elements.rideDashboardTitle) elements.rideDashboardTitle.textContent = "实时骑行界面";
-            if (elements.rideDashboardSubtitle) elements.rideDashboardSubtitle.textContent = "";
+            if (elements.rideDashboardSubtitle) {
+                elements.rideDashboardSubtitle.textContent = streetViewDebugEnabled && isStreetViewLoaded()
+                    ? "街景调试模式：未开始骑行时也可以进入沉浸街景预览。"
+                    : "";
+            }
             if (elements.rideProgressHeadline) elements.rideProgressHeadline.textContent = "0%";
             if (elements.rideProgressBar) elements.rideProgressBar.style.width = "0%";
             if (elements.rideProgressDistance) elements.rideProgressDistance.textContent = "0.00 / 0.00 km";
@@ -384,11 +398,14 @@ export function createDashboardRenderer({
                 hasSession: false
             });
 
+            const debugCurrentRecord = streetViewDebugEnabled
+                ? buildDebugStreetViewRecord(route)
+                : null;
             renderHeavyVisuals({
                 session,
                 route,
-                currentRecord: null,
-                records,
+                currentRecord: debugCurrentRecord,
+                records: debugCurrentRecord ? [debugCurrentRecord] : records,
                 training,
                 isGradeSimulation,
                 now,
@@ -438,6 +455,16 @@ export function createDashboardRenderer({
             now,
             force: modeChanged || dashboardOpenChanged
         });
+    }
+
+    function syncImmersiveStreetViewButton(store, canShowOverride = null) {
+        if (!elements.immersiveStreetViewBtn) return;
+        const liveRide = store?.getState?.().liveRide ?? {};
+        const canShow = canShowOverride ?? (isStreetViewLoaded() && (liveRide.isActive || streetViewDebugEnabled));
+        elements.immersiveStreetViewBtn.hidden = !canShow;
+        if (canShow && !immersiveStreetViewMode) {
+            elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
+        }
     }
 
     function renderHeavyVisuals({
@@ -505,7 +532,7 @@ export function createDashboardRenderer({
         }
 
         elements.rideDashboardElevationChart.setAttribute("preserveAspectRatio", "xMidYMid meet");
-        elements.rideDashboardElevationChart.innerHTML = buildGradeChartSvg(
+        elements.rideDashboardElevationChart.innerHTML = buildImmersiveElevationGradeSvg(
             route,
             currentRecord,
             { transparent: true }
@@ -514,11 +541,11 @@ export function createDashboardRenderer({
 
     function syncElevationChartCopy() {
         if (elements.rideElevationChartTitle) {
-            elements.rideElevationChartTitle.textContent = immersiveStreetViewMode ? "路线坡度图" : "路线海拔剖面";
+            elements.rideElevationChartTitle.textContent = immersiveStreetViewMode ? "海拔与附近坡度" : "路线海拔剖面";
         }
         if (elements.rideElevationChartSubtitle) {
             elements.rideElevationChartSubtitle.textContent = immersiveStreetViewMode
-                ? "全程坡度图，右侧显示当前位置附近的短距离坡度。"
+                ? "左侧显示距离-海拔，右侧显示当前位置附近坡度。"
                 : "距离-海拔图（含当前骑行位置）。";
         }
         elements.rideDashboardElevationChart?.setAttribute(
@@ -640,4 +667,27 @@ function buildRouteSignature(route) {
         route.totalDistanceMeters ?? 0,
         route.points?.length ?? 0
     ].join(":");
+}
+
+function buildDebugStreetViewRecord(route) {
+    const firstPoint = route?.points?.[0];
+    if (!firstPoint) {
+        return null;
+    }
+
+    const distanceMeters = Number.isFinite(firstPoint.distanceMeters) ? firstPoint.distanceMeters : 0;
+    return {
+        elapsedSeconds: 0,
+        distanceKm: distanceMeters / 1000,
+        routeProgress: route?.totalDistanceMeters > 0 ? distanceMeters / route.totalDistanceMeters : 0,
+        latitude: firstPoint.latitude,
+        longitude: firstPoint.longitude,
+        elevationMeters: firstPoint.elevationMeters ?? 0,
+        gradePercent: firstPoint.gradePercent ?? 0,
+        speedKph: 0,
+        power: 0,
+        cadence: 0,
+        heartRate: 0,
+        segmentName: "街景调试起点"
+    };
 }

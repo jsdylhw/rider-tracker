@@ -100,6 +100,49 @@ export const suite = {
             }
         },
         {
+            name: "街景调试模式允许未连接功率源时开始骑行",
+            run() {
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    location: { search: "?debugStreetView=1" },
+                    localStorage: { getItem() { return null; } }
+                };
+                try {
+                    const viewModel = buildDashboardViewModel({
+                        state: {
+                            route: null,
+                            settings: { power: 220, mass: 75, ftp: 250 },
+                            ble: {
+                                heartRate: { value: null },
+                                powerMeter: { power: null, cadence: null, sourceType: "none" },
+                                sampling: {
+                                    heartRate: { value: null, timestamp: null },
+                                    power: { value: null, timestamp: null, sourceType: "none" },
+                                    cadence: { value: null, timestamp: null, sourceType: "none" }
+                                }
+                            },
+                            liveRide: {
+                                dashboardOpen: true,
+                                isActive: false,
+                                canStart: false,
+                                session: null,
+                                records: []
+                            },
+                            workout: { mode: "grade-sim", runtime: {} }
+                        },
+                        customMetricsState: DEFAULT_METRIC_SELECTION
+                    });
+
+                    assertEqual(viewModel.ride.canStart, true);
+                    assertEqual(viewModel.streetViewDebugEnabled, true);
+                } finally {
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
             name: "PiP 图表记录只保留最近窗口并限制点数",
             run() {
                 const records = Array.from({ length: 1200 }, (_, index) => ({

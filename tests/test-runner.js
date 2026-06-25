@@ -18,11 +18,13 @@ import { suite as trainerCommandSuite } from "./unit/trainer-command.test.js";
 import { suite as workoutServiceSuite } from "./unit/workout-service.test.js";
 import { suite as customWorkoutTargetSuite } from "./unit/custom-workout-target.test.js";
 import { suite as customWorkoutTargetRendererSuite } from "./unit/custom-workout-target-renderer.test.js";
+import { suite as deviceRendererSuite } from "./unit/device-renderer.test.js";
 import { suite as ergLiveFlowSuite } from "./integration/erg-live-flow.test.js";
 import { suite as gpxFixturesSuite } from "./integration/gpx-fixtures.test.js";
 import { suite as rideRegressionSuite } from "./integration/ride-regression.test.js";
 import { suite as streetviewUiSuite } from "./integration/streetview-ui.test.js";
 import { suite as routeRendererImportSuite } from "./unit/route-renderer-import.test.js";
+import { suite as routeRendererImmersiveSuite } from "./unit/route-renderer-immersive.test.js";
 import { suite as routeChartSvgSuite } from "./unit/route-chart-svg.test.js";
 import { suite as exportViewSuite } from "./unit/export-view.test.js";
 import { suite as liveRideViewModelSuite } from "./unit/live-ride-view-model.test.js";
@@ -35,6 +37,7 @@ import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
 import { suite as activityDetailRendererSuite } from "./unit/activity-detail-renderer.test.js";
 import { suite as fitBeaconClientSuite } from "./unit/fit-beacon-client.test.js";
 import { suite as rideEngineSuite } from "./unit/ride-engine.test.js";
+import { suite as incrementalPowerMetricsSuite } from "./unit/incremental-power-metrics.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
@@ -57,11 +60,13 @@ const suites = [
     workoutServiceSuite,
     customWorkoutTargetSuite,
     customWorkoutTargetRendererSuite,
+    deviceRendererSuite,
     ergLiveFlowSuite,
     gpxFixturesSuite,
     rideRegressionSuite,
     streetviewUiSuite,
     routeRendererImportSuite,
+    routeRendererImmersiveSuite,
     routeChartSvgSuite,
     exportViewSuite,
     liveRideViewModelSuite,
@@ -73,7 +78,8 @@ const suites = [
     activityStoreSuite,
     activityDetailRendererSuite,
     fitBeaconClientSuite,
-    rideEngineSuite
+    rideEngineSuite,
+    incrementalPowerMetricsSuite
 ];
 
 runSuites(suites).then((results) => {

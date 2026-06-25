@@ -5,7 +5,7 @@ import {
     createInitialLiveHeartRateState
 } from "../physiology/heart-rate-model.js";
 import { buildRideMetrics, createEmptyRideMetrics } from "../metrics/ride-metrics.js";
-import { DEFAULT_POWER_WINDOW_SECONDS, summarizePowerMetrics } from "../metrics/power-metrics.js";
+import { createIncrementalPowerState, advanceIncrementalPowerState, readIncrementalPowerMetrics } from "../metrics/power-metrics.js";
 
 export function createLiveRideSession({ route, settings, startedAt, initialHeartRate = null }) {
     return {
@@ -24,7 +24,8 @@ export function createLiveRideSession({ route, settings, startedAt, initialHeart
         heartRateState: createInitialLiveHeartRateState({
             initialHeartRate,
             restingHr: settings.restingHr
-        })
+        }),
+        npState: createIncrementalPowerState()
     };
 }
 
@@ -86,20 +87,22 @@ export function advanceLiveRideSession({
     };
 
     const previousRecord = records.at(-1) ?? null;
-    const nextRecords = [...records, record];
+    records.push(record);
+    const nextNpState = advanceIncrementalPowerState(session.npState, record);
     const nextSummary = buildIncrementalSummary({
         previousSummary: summary,
         previousRecord,
         record,
-        records: nextRecords,
+        npState: nextNpState,
         settings: session.settings
     });
 
     return {
         ...session,
-        records: nextRecords,
+        records,
         physicsState: nextState,
         heartRateState: nextHeartRateState,
+        npState: nextNpState,
         summary: nextSummary
     };
 }
@@ -135,18 +138,15 @@ function buildIncrementalSummary({
     previousSummary,
     previousRecord,
     record,
-    records,
+    npState,
     settings = {}
 }) {
     const stats = updateSummaryStats(
-        previousSummary?.stats ?? buildSummaryStatsFromRecords(records.slice(0, -1)),
+        previousSummary?.stats ?? createEmptySummaryStats(),
         record,
         previousRecord
     );
-    const powerMetrics = summarizePowerMetrics({
-        records,
-        powerWindowSeconds: DEFAULT_POWER_WINDOW_SECONDS
-    });
+    const powerMetrics = readIncrementalPowerMetrics(npState);
     const intensityFactor = calculateIntensityFactor(powerMetrics.normalizedPowerWatts, settings.ftp);
     const variabilityIndex = calculateVariabilityIndex(powerMetrics.normalizedPowerWatts, stats.power.averageWatts);
     const elapsedSeconds = normalizeFiniteNumber(record?.elapsedSeconds) ?? 0;

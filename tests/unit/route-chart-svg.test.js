@@ -1,4 +1,4 @@
-import { buildGradeChartSvg, buildElevationProfileSvg } from "../../src/ui/renderers/svg/route-charts.js";
+import { buildGradeChartSvg, buildElevationProfileSvg, buildImmersiveElevationGradeSvg } from "../../src/ui/renderers/svg/route-charts.js";
 import { buildTrajectoryOverviewSvg } from "../../src/ui/renderers/svg/dashboard-charts.js";
 import { buildRouteMapMarkerSvg, buildRouteMapSvg, collectRouteMapPoints } from "../../src/ui/renderers/svg/route-map-chart.js";
 import { assert } from "../helpers/test-harness.js";
@@ -48,6 +48,16 @@ export const suite = {
             }
         },
         {
+            name: "沉浸街景底部图左侧显示海拔右侧显示附近坡度",
+            run() {
+                const svg = buildImmersiveElevationGradeSvg(createRoute(), { distanceKm: 5 });
+                assert(svg.includes("距离 - 海拔"));
+                assert(svg.includes("当前位置附近坡度"));
+                assert(svg.includes(">135 m<"));
+                assert(svg.includes(">+2.5%<"));
+            }
+        },
+        {
             name: "路线总览图复用北向二维平面图",
             run() {
                 const svg = buildTrajectoryOverviewSvg(createRoute(), {
@@ -61,6 +71,8 @@ export const suite = {
                 assert(svg.includes('data-role="route-map-current"'));
                 assert(!svg.includes("当前位置局部放大"));
                 assert(!svg.includes("全程路线"));
+                assert(!svg.includes(">起点<"));
+                assert(!svg.includes(">终点<"));
                 assert(svg.includes(">5.0 km<"));
             }
         },

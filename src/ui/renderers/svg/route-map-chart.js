@@ -49,8 +49,6 @@ export function buildRouteMapSvg({
         <circle data-role="route-map-start" cx="${start.x.toFixed(1)}" cy="${start.y.toFixed(1)}" r="4.4" fill="${COLORS.start}"></circle>
         <circle data-role="route-map-end" cx="${end.x.toFixed(1)}" cy="${end.y.toFixed(1)}" r="4.4" fill="${COLORS.end}"></circle>
         <g data-role="route-map-marker-layer">${markerSvg}</g>
-        <text x="${padding.left}" y="${height - 12}" fill="${COLORS.muted}" font-size="10.5">起点</text>
-        <text x="${width - padding.right}" y="${height - 12}" text-anchor="end" fill="${COLORS.muted}" font-size="10.5">终点</text>
     `;
 }
 
@@ -98,7 +96,7 @@ export function buildRouteMapGeometry({
         return null;
     }
 
-    const padding = { left: 28, right: 28, top: 36, bottom: 30 };
+    const padding = { left: 14, right: 14, top: 30, bottom: 16 };
     const plot = {
         x: padding.left,
         y: padding.top,
