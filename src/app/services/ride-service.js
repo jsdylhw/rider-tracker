@@ -18,6 +18,7 @@ import {
 import { saveLastSession } from "../../adapters/storage/session-storage.js";
 import { saveRiderSessionActivity } from "../../adapters/storage/activity-history-client.js";
 import { formatNumber } from "../../shared/format.js";
+import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { sanitizeSessionExportMetadata } from "../store/initial-state.js";
 import { encodeFitSync } from "../../adapters/export/fit-exporter.js";
 import { sendFitBeacon } from "../../adapters/upload/fit-beacon-client.js";
@@ -26,6 +27,9 @@ import { loadFitSdk } from "../../adapters/fit/fit-sdk-loader.js";
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
 const TRAINER_COMMAND_MIN_INTERVAL_MS = 500;
+const STREET_VIEW_DEBUG_POWER_WATTS = 180;
+const STREET_VIEW_DEBUG_CADENCE_RPM = 85;
+const STREET_VIEW_DEBUG_HEART_RATE_BPM = 130;
 
 export function createRideService({ store, deviceService, exportService }) {
     let liveRideTimerId = null;
@@ -33,13 +37,18 @@ export function createRideService({ store, deviceService, exportService }) {
 
     function startRide() {
         const state = store.getState();
-        if (!state.liveRide.canStart || state.liveRide.isActive) {
+        const streetViewDebugEnabled = isStreetViewDebugEnabled();
+        if ((!state.liveRide.canStart && !streetViewDebugEnabled) || state.liveRide.isActive) {
             return;
         }
 
         const startedAt = new Date().toISOString();
         const trainerControlMode = resolveTrainerControlModeForWorkoutMode(state.workout.mode);
-        const sampledSensors = buildEffectiveSensorSnapshot(state.ble.sampling);
+        const sampledSensors = resolveStartRideSensorSnapshot({
+            sampling: state.ble.sampling,
+            settings: state.settings,
+            streetViewDebugEnabled
+        });
         const baseSession = createLiveRideSession({
             route: state.route,
             settings: state.settings,
@@ -49,7 +58,9 @@ export function createRideService({ store, deviceService, exportService }) {
 
         baseSession.exportMetadata = sanitizeSessionExportMetadata(state.exportMetadata);
 
-        const initialStatusMeta = `正在根据实时功率和路线坡度更新速度，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`;
+        const initialStatusMeta = streetViewDebugEnabled && sampledSensors.powerSourceType === "street-view-debug"
+            ? `街景调试骑行：使用 ${sampledSensors.power} W 模拟功率预览路线与 UI，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`
+            : `正在根据实时功率和路线坡度更新速度，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`;
         const initialRideState = buildInitialRideSessionState({
             session: baseSession,
             sampledSensors,
@@ -71,7 +82,9 @@ export function createRideService({ store, deviceService, exportService }) {
                 commandDispatch: createInitialCommandDispatchState(),
                 statusMeta: initialStatusMeta
             },
-            statusText: `已开始骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。`
+            statusText: streetViewDebugEnabled && sampledSensors.powerSourceType === "street-view-debug"
+                ? `已开始街景调试骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。`
+                : `已开始骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。`
         }));
 
         restartLiveRideLoop(resolveAdaptivePhysicsTickMs(sampledSensors));
@@ -247,7 +260,11 @@ export function createRideService({ store, deviceService, exportService }) {
         }
 
         const currentTickIntervalMs = liveRideTickIntervalMs;
-        const sampledSensors = buildEffectiveSensorSnapshot(state.ble.sampling);
+        const sampledSensors = resolveStartRideSensorSnapshot({
+            sampling: state.ble.sampling,
+            settings: state.settings,
+            streetViewDebugEnabled: isStreetViewDebugEnabled()
+        });
         const nextTickIntervalMs = resolveAdaptivePhysicsTickMs(sampledSensors);
         const rideState = buildNextRideSessionState({
             state,
@@ -455,6 +472,39 @@ function archiveCompletedRideSession(session, exportService) {
             console.warn("[RideService] FIT 活动归档失败，降级保存活动历史:", error);
             return saveSessionToActivityHistory(session);
         });
+}
+
+function resolveStartRideSensorSnapshot({ sampling, settings, streetViewDebugEnabled }) {
+    const sampledSensors = buildEffectiveSensorSnapshot(sampling);
+    if (!streetViewDebugEnabled || sampledSensors.power !== null) {
+        return sampledSensors;
+    }
+
+    const now = Date.now();
+    const power = Math.round(Number(settings?.power) || STREET_VIEW_DEBUG_POWER_WATTS);
+    return {
+        ...sampledSensors,
+        power,
+        cadence: sampledSensors.cadence ?? STREET_VIEW_DEBUG_CADENCE_RPM,
+        heartRate: sampledSensors.heartRate ?? STREET_VIEW_DEBUG_HEART_RATE_BPM,
+        powerSourceType: "street-view-debug",
+        powerTimestamp: now,
+        heartRateTimestamp: sampledSensors.heartRateTimestamp ?? now,
+        powerSignal: {
+            observedIntervalMs: DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS,
+            estimatedIntervalMs: DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS,
+            estimatedHz: 1000 / DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS,
+            jitterMs: 0,
+            isStable: true,
+            intervalSampleCount: 1
+        },
+        freshness: {
+            ...(sampledSensors.freshness ?? {}),
+            power: true,
+            cadence: true,
+            heartRate: sampledSensors.heartRate !== null
+        }
+    };
 }
 
 function archiveSimulationSession(session, exportService) {

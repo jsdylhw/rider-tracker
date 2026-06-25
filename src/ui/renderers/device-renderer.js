@@ -1,4 +1,5 @@
 import { formatNumber } from "../../shared/format.js";
+import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
 
 export function createDeviceRenderer({
@@ -64,7 +65,8 @@ export function createDeviceRenderer({
             });
             elements.connectTrainerBtn.title = trainer.isConnected ? "点击断开骑行台" : "";
         }
-        if (elements.startRideBtn) elements.startRideBtn.disabled = !liveRide.canStart || liveRide.isActive;
+        const canStartRide = liveRide.canStart || isStreetViewDebugEnabled();
+        if (elements.startRideBtn) elements.startRideBtn.disabled = !canStartRide || liveRide.isActive;
         if (elements.stopRideBtn) elements.stopRideBtn.disabled = !liveRide.isActive;
         if (elements.openRideDashboardBtn) elements.openRideDashboardBtn.disabled = false;
 

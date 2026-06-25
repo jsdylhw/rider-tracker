@@ -18,6 +18,7 @@ import { suite as trainerCommandSuite } from "./unit/trainer-command.test.js";
 import { suite as workoutServiceSuite } from "./unit/workout-service.test.js";
 import { suite as customWorkoutTargetSuite } from "./unit/custom-workout-target.test.js";
 import { suite as customWorkoutTargetRendererSuite } from "./unit/custom-workout-target-renderer.test.js";
+import { suite as deviceRendererSuite } from "./unit/device-renderer.test.js";
 import { suite as ergLiveFlowSuite } from "./integration/erg-live-flow.test.js";
 import { suite as gpxFixturesSuite } from "./integration/gpx-fixtures.test.js";
 import { suite as rideRegressionSuite } from "./integration/ride-regression.test.js";
@@ -57,6 +58,7 @@ const suites = [
     workoutServiceSuite,
     customWorkoutTargetSuite,
     customWorkoutTargetRendererSuite,
+    deviceRendererSuite,
     ergLiveFlowSuite,
     gpxFixturesSuite,
     rideRegressionSuite,

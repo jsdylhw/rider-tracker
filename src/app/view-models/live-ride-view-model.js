@@ -2,6 +2,7 @@ import { getWorkoutModeLabel } from "../../domain/workout/workout-mode.js";
 import { TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { buildEffectiveSensorSnapshot } from "../realtime/sensor-sampling.js";
 import { formatDuration, formatNumber } from "../../shared/format.js";
+import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
 import {
     DEFAULT_PIP_CHART_SELECTION,
@@ -32,6 +33,7 @@ export function buildSensorSnapshot(state) {
 
 export function buildRideSnapshot(state) {
     const liveRide = state.liveRide ?? {};
+    const streetViewDebugEnabled = isStreetViewDebugEnabled();
     const session = liveRide.session ?? null;
     const route = session?.route ?? state.route ?? null;
     const records = liveRide.records ?? session?.records ?? [];
@@ -50,7 +52,7 @@ export function buildRideSnapshot(state) {
     return {
         dashboardOpen: Boolean(liveRide.dashboardOpen),
         isActive: Boolean(liveRide.isActive),
-        canStart: Boolean(liveRide.canStart),
+        canStart: Boolean(liveRide.canStart || streetViewDebugEnabled),
         session,
         route,
         summary,
@@ -111,20 +113,6 @@ export function buildDashboardViewModel({
         canShowImmersiveStreetView: streetViewLoaded && (ride.isActive || streetViewDebugEnabled),
         enabledMetricKeys: getEnabledMetricKeys(customMetricsState)
     };
-}
-
-export function isStreetViewDebugEnabled() {
-    if (typeof window === "undefined") return false;
-
-    try {
-        const params = new URLSearchParams(window.location?.search ?? "");
-        if (params.get("debugStreetView") === "1" || params.get("streetViewDebug") === "1") {
-            return true;
-        }
-        return window.localStorage?.getItem("riderTrackerDebugStreetView") === "1";
-    } catch {
-        return false;
-    }
 }
 
 export function buildPipViewModel(state) {

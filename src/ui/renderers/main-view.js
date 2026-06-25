@@ -259,7 +259,8 @@ export function createMainView({
         }
 
         const now = Date.now();
-        if (now - lastSessionHeavyRender >= 1000) {
+        const shouldThrottleHeavyRender = state.liveRide.isActive;
+        if (!shouldThrottleHeavyRender || now - lastSessionHeavyRender >= 1000) {
             renderRecords(records, metrics);
             renderChart(records);
 
