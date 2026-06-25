@@ -1,6 +1,6 @@
 import { createDashboardRenderer } from "../../src/ui/renderers/dashboard-renderer.js";
 import { createStore } from "../../src/app/store/app-store.js";
-import { assertEqual } from "../helpers/test-harness.js";
+import { assert, assertEqual } from "../helpers/test-harness.js";
 import { createFakeElement, createFakeClassList } from "../helpers/fake-dom.js";
 
 const originalDocument = globalThis.document;
@@ -44,6 +44,23 @@ function createBaseState() {
 }
 
 function createElements() {
+    const trainingErgValue = createFakeElement();
+    trainingErgValue.textContent = "220";
+    const trainingResistanceValue = createFakeElement();
+    trainingResistanceValue.textContent = "35";
+    const trainingDifficultyValue = createFakeElement();
+    trainingDifficultyValue.textContent = "100";
+
+    const modeBtns = [
+        createFakeElement({ dataset: { mode: "grade-sim" }, classList: createFakeClassList() }),
+        createFakeElement({ dataset: { mode: "fixed-power" }, classList: createFakeClassList() }),
+        createFakeElement({ dataset: { mode: "free-ride" }, classList: createFakeClassList() })
+    ];
+    const querySelectorAll = (sel) => {
+        if (sel === ".training-mode-btn") return modeBtns;
+        return [];
+    };
+
     return {
         rideDashboard: { classList: createFakeClassList(), hidden: false },
         customizeMetricsBtn: createFakeElement(),
@@ -66,7 +83,17 @@ function createElements() {
         rideProgressBar: createFakeElement({ style: {} }),
         rideProgressDistance: createFakeElement(),
         rideProgressSegment: createFakeElement(),
-        streetViewTrajectorySvg: createFakeElement()
+        streetViewTrajectorySvg: createFakeElement(),
+        toggleTrainingBtn: createFakeElement({ hidden: true }),
+        trainingControlCard: (() => { const cl = createFakeClassList(); cl.add("collapsed"); return createFakeElement({ classList: cl, querySelectorAll, hidden: true }); })(),
+        trainingControlToggle: createFakeElement(),
+        trainingControlBody: createFakeElement(),
+        trainingErgPowerSlider: createFakeElement(),
+        trainingErgValue,
+        trainingResistanceSlider: createFakeElement(),
+        trainingResistanceValue,
+        trainingDifficultySlider: createFakeElement(),
+        trainingDifficultyValue
     };
 }
 
@@ -87,7 +114,11 @@ export const suite = {
                     elements,
                     mapController: { syncRide() {} },
                     streetViewControllerRef: { current: null },
-                    onEnableStreetView: async () => {}
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {},
+                    onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {},
+                    onUpdateGradeDifficulty() {}
                 });
 
                 renderer.bindEvents(store);
@@ -106,7 +137,11 @@ export const suite = {
                     elements,
                     mapController: { syncRide() {} },
                     streetViewControllerRef: { current: null },
-                    onEnableStreetView: async () => {}
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {},
+                    onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {},
+                    onUpdateGradeDifficulty() {}
                 });
                 renderer.render(store.getState());
                 assertEqual(elements.immersiveStreetViewBtn.hidden, true);
@@ -124,7 +159,11 @@ export const suite = {
                     elements,
                     mapController: { syncRide() {} },
                     streetViewControllerRef: { current: null },
-                    onEnableStreetView: async () => {}
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {},
+                    onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {},
+                    onUpdateGradeDifficulty() {}
                 });
                 renderer.bindEvents(store);
                 elements.immersiveBackBtn.dispatch("click");
@@ -163,6 +202,92 @@ export const suite = {
                 elements.immersiveUiToggleBtn.dispatch("click");
                 assertEqual(elements.rideDashboard.classList.contains("immersive-ui-hidden"), false);
                 assertEqual(elements.immersiveUiToggleBtn.textContent, "隐藏 UI");
+            }
+        },
+        {
+            name: "训练控制卡片在非活跃骑行中隐藏",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                const store = createStore(state);
+                const renderer = createDashboardRenderer({
+                    elements, mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {}, onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {}, onUpdateGradeDifficulty() {}
+                });
+                renderer.render(store.getState());
+                assertEqual(elements.trainingControlCard.hidden, true);
+            }
+        },
+        {
+            name: "训练控制卡片默认隐藏，按钮点击后显示",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.liveRide.isActive = true;
+                state.workout = { mode: "grade-sim", resistance: { level: 35 }, gradeSimulation: { difficultyPercent: 100 } };
+                const store = createStore(state);
+                const renderer = createDashboardRenderer({
+                    elements, mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {}, onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {}, onUpdateGradeDifficulty() {}
+                });
+                renderer.render(store.getState());
+                // Card hidden by default even during active ride
+                assert(elements.trainingControlCard.hidden, "card should be hidden until toggled");
+                assert(!elements.toggleTrainingBtn.hidden, "toggle button should be visible during ride");
+            }
+        },
+        {
+            name: "模式按钮点击触发 onUpdateWorkoutMode 回调",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.liveRide.isActive = true;
+                const store = createStore(state);
+                let calledMode = null;
+                const renderer = createDashboardRenderer({
+                    elements, mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode(mode) { calledMode = mode; },
+                    onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {},
+                    onUpdateGradeDifficulty() {}
+                });
+                renderer.bindEvents(store);
+                const ergBtn = elements.trainingControlCard.querySelectorAll(".training-mode-btn")[1];
+                ergBtn.dispatch("click");
+                assertEqual(calledMode, "fixed-power");
+            }
+        },
+        {
+            name: "训练控制卡片默认折叠，点击切换展开/折叠",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                const store = createStore(state);
+                const renderer = createDashboardRenderer({
+                    elements, mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {}, onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {}, onUpdateGradeDifficulty() {}
+                });
+                renderer.bindEvents(store);
+                // Show card via toggle button first
+                elements.toggleTrainingBtn.dispatch("click");
+                assert(!elements.trainingControlCard.hidden, "should show card after toggle button click");
+
+                assert(elements.trainingControlCard.classList.contains("collapsed") === true, "should start collapsed");
+                elements.trainingControlToggle.dispatch("click");
+                assert(elements.trainingControlCard.classList.contains("collapsed") === false, "should expand on click");
+                elements.trainingControlToggle.dispatch("click");
+                assert(elements.trainingControlCard.classList.contains("collapsed") === true, "should collapse again");
             }
         }
     ]

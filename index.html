@@ -512,6 +512,7 @@
                     <input type="password" id="streetViewApiKey" placeholder="Google Maps API Key" class="streetview-key-input">
                     <button id="loadStreetViewBtn" class="btn secondary">加载街景</button>
                     <button id="immersiveStreetViewBtn" class="btn secondary" hidden>进入沉浸街景</button>
+                    <button id="toggleTrainingBtn" class="btn secondary" hidden>训练控制</button>
                     <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
                     <details class="pip-config-popover">
                         <summary class="btn secondary">PiP 显示</summary>
@@ -703,6 +704,7 @@
                         <div id="streetViewHud" class="streetview-hud">
                             <button id="immersiveBackBtn" class="btn ghost">返回页面</button>
                             <button id="immersiveUiToggleBtn" class="btn ghost">隐藏 UI</button>
+                            <button id="immersiveTrainingBtn" class="btn ghost" hidden>训练控制</button>
                             <div id="immersiveMetricsCard" class="streetview-hud-card">
                                 <h3>实时骑行数据</h3>
                                 <div id="immersiveMetricsGrid" class="data-grid"></div>
@@ -728,6 +730,32 @@
                         </div>
                     </div>
                     <div id="dashboardMetricsGrid" class="data-grid"></div>
+                </div>
+
+                <div class="card training-control-card collapsed" id="trainingControlCard" style="grid-column: 1 / -1;" hidden>
+                    <div class="training-control-header" id="trainingControlToggle">
+                        <h3>训练控制</h3>
+                        <span class="training-control-chevron">▲</span>
+                    </div>
+                    <div class="training-control-body" id="trainingControlBody">
+                        <div class="training-mode-row">
+                            <button class="training-mode-btn" data-mode="grade-sim">坡度模拟</button>
+                            <button class="training-mode-btn" data-mode="fixed-power">ERG</button>
+                            <button class="training-mode-btn" data-mode="free-ride">自由骑行</button>
+                        </div>
+                        <div class="training-param" id="trainingParamErg">
+                            <label>目标功率 <span id="trainingErgValue">220</span> W</label>
+                            <input type="range" id="trainingErgPowerSlider" min="80" max="600" value="220" step="5">
+                        </div>
+                        <div class="training-param" id="trainingParamResistance">
+                            <label>阻力级别 <span id="trainingResistanceValue">35</span>%</label>
+                            <input type="range" id="trainingResistanceSlider" min="5" max="100" value="35" step="5">
+                        </div>
+                        <div class="training-param" id="trainingParamGrade">
+                            <label>坡度难度 <span id="trainingDifficultyValue">100</span>%</label>
+                            <input type="range" id="trainingDifficultySlider" min="30" max="150" value="100" step="5">
+                        </div>
+                    </div>
                 </div>
 
                 <div class="card" id="liveWorkoutTargetCard" style="grid-column: 1 / -1;">

@@ -18,14 +18,17 @@ export function buildNextRideSessionState({
     const currentSession = state.liveRide.session;
     const currentRecords = state.liveRide.records ?? currentSession?.records ?? [];
     const currentSummary = state.liveRide.summary ?? currentSession?.summary;
-    const trainerControlMode = currentSession?.trainerControlMode
-        ?? resolveTrainerControlModeForWorkoutMode(state.workout.mode);
+    const trainerControlMode = resolveTrainerControlModeForWorkoutMode(state.workout.mode);
+    const modeChanged = currentSession && trainerControlMode !== currentSession.trainerControlMode;
+    const baseCustomWorkoutTarget = trainerControlMode === TRAINER_CONTROL_MODES.ERG || modeChanged
+        ? state.workout.customWorkoutTarget
+        : (currentSession?.customWorkoutTargetPlan ?? state.workout.customWorkoutTarget);
     const customWorkoutTargetPlan = resolveWorkoutTargetPlanForControlMode(
         trainerControlMode,
-        currentSession?.customWorkoutTargetPlan ?? state.workout.customWorkoutTarget
+        baseCustomWorkoutTarget
     );
     const nextCommandSequence = (currentSession?.commandSequence ?? 0) + 1;
-    const rideId = currentSession.startedAt;
+    const rideId = currentSession?.startedAt;
     const nextElapsedSeconds = (currentSummary?.metrics?.ride?.elapsedSeconds ?? 0) + dt;
     const resolvedWorkoutTarget = resolveWorkoutTargetAtElapsed({
         target: customWorkoutTargetPlan,
@@ -54,9 +57,9 @@ export function buildNextRideSessionState({
         ? enrichRuntimeWithWorkoutTarget(buildGradeSimulationState({
             route: nextSession.route,
             distanceMeters: nextSession.physicsState.distanceMeters,
-            previousTargetGradePercent: state.liveRide.commandDispatch?.lastSentGradePercent
+            previousTargetGradePercent: modeChanged ? null : (state.liveRide.commandDispatch?.lastSentGradePercent
                 ?? state.workout.runtime.targetTrainerGradePercent
-                ?? 0,
+                ?? 0),
             config: state.workout.gradeSimulation,
             active: true,
             rideId,
@@ -70,7 +73,8 @@ export function buildNextRideSessionState({
             rideId,
             commandSequence: nextCommandSequence,
             customWorkoutTargetPlan,
-            elapsedSeconds: nextSession.summary.metrics.ride.elapsedSeconds
+            elapsedSeconds: nextSession.summary.metrics.ride.elapsedSeconds,
+            modeChanged
         });
 
     return buildRideSessionState({
@@ -110,7 +114,8 @@ export function buildRuntimeByControlMode({
     rideId = null,
     commandSequence = 0,
     customWorkoutTargetPlan = null,
-    elapsedSeconds = 0
+    elapsedSeconds = 0,
+    modeChanged = false
 }) {
     const workoutTargetRuntime = buildWorkoutTargetRuntime({
         target: resolveWorkoutTargetPlanForControlMode(
@@ -124,7 +129,7 @@ export function buildRuntimeByControlMode({
     if (trainerControlMode === TRAINER_CONTROL_MODES.ERG) {
         return enrichRuntimeWithWorkoutTarget(buildErgControlState({
             targetPowerWatts: workoutTargetRuntime.customWorkoutTargetPowerWatts ?? state.settings.power,
-            previousTargetPowerWatts: state.liveRide.commandDispatch?.lastSentPowerWatts ?? null,
+            previousTargetPowerWatts: modeChanged ? null : (state.liveRide.commandDispatch?.lastSentPowerWatts ?? null),
             confirmationRequired: state.workout.erg?.confirmationRequired === true,
             active,
             rideId,
@@ -135,7 +140,7 @@ export function buildRuntimeByControlMode({
     if (trainerControlMode === TRAINER_CONTROL_MODES.RESISTANCE) {
         return enrichRuntimeWithWorkoutTarget(buildResistanceControlState({
             resistanceLevel: state.workout.resistance?.level,
-            previousResistanceLevel: state.liveRide.commandDispatch?.lastSentResistanceLevel ?? null,
+            previousResistanceLevel: modeChanged ? null : (state.liveRide.commandDispatch?.lastSentResistanceLevel ?? null),
             active,
             rideId,
             commandSequence

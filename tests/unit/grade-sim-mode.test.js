@@ -78,7 +78,7 @@ export const suite = {
                 
                 assertEqual(result.targetTrainerGradePercent, expectedGrade);
                 assertEqual(result.pendingTrainerCommand.protocolVersion, 1);
-                assertEqual(result.pendingTrainerCommand.decisionPolicy, "pre-ride-locked");
+                assertEqual(result.pendingTrainerCommand.decisionPolicy, "live-workout-mode");
                 assertEqual(result.pendingTrainerCommand.controlMode, TRAINER_CONTROL_MODES.SIM);
                 assertEqual(result.pendingTrainerCommand.type, TRAINER_COMMAND_TYPES.SET_SIM_GRADE);
                 assertEqual(result.pendingTrainerCommand.rideId, "ride-test");

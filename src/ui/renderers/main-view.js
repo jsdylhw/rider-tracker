@@ -135,7 +135,17 @@ export function createMainView({
         elements,
         mapController,
         streetViewControllerRef,
-        onEnableStreetView: enableStreetView
+        onEnableStreetView: enableStreetView,
+        onUpdateWorkoutMode,
+        onUpdateErgTargetPower,
+        onUpdateResistanceLevel,
+        onUpdateGradeDifficulty: (difficultyPercent) => {
+            const s = store.getState();
+            onUpdateGradeSimulationConfig({
+                ...s.workout.gradeSimulation,
+                difficultyPercent
+            });
+        }
     });
     dashboardRenderer.bindEvents(store);
     bindPipMetricControls();

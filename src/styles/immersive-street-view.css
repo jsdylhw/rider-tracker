@@ -233,6 +233,17 @@
     border: 1px solid rgba(148, 163, 184, 0.45);
 }
 
+.ride-dashboard.immersive-street-view #immersiveTrainingBtn {
+    position: fixed;
+    left: 100px;
+    bottom: 16px;
+    z-index: 80;
+    pointer-events: auto;
+    background: rgba(31, 41, 55, 0.82);
+    color: #e5e7eb;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+}
+
 .ride-dashboard.immersive-street-view #immersiveUiToggleBtn {
     position: fixed;
     left: 16px;
@@ -247,7 +258,8 @@
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #immersiveMetricsCard,
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #workoutTargetHudCard,
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #trajectoryCard,
-.ride-dashboard.immersive-street-view.immersive-ui-hidden #liveElevationCard {
+.ride-dashboard.immersive-street-view.immersive-ui-hidden #liveElevationCard,
+.ride-dashboard.immersive-street-view.immersive-ui-hidden #immersiveTrainingBtn {
     display: none !important;
 }
 
@@ -304,5 +316,163 @@ body.immersive-street-view-active {
     min-height: 0;
     max-width: 100%;
     aspect-ratio: 640 / 180;
+}
+
+/* Training Controls Card — in dashboard grid */
+
+.training-control-card {
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.training-control-card.collapsed {
+    max-height: 52px;
+}
+
+.training-control-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 12px 16px;
+    user-select: none;
+}
+
+.training-control-header h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.training-control-chevron {
+    font-size: 10px;
+    transition: transform 0.25s ease;
+}
+
+.training-control-card.collapsed .training-control-chevron {
+    transform: rotate(180deg);
+}
+
+.training-control-body {
+    padding: 0 16px 14px;
+}
+
+.training-mode-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.training-mode-btn {
+    flex: 1;
+    padding: 7px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 8px;
+    background: rgba(241, 245, 249, 0.6);
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.training-mode-btn:hover {
+    background: rgba(59, 130, 246, 0.12);
+    color: #3b82f6;
+}
+
+.training-mode-btn.active {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.5);
+    color: #2563eb;
+}
+
+.training-param {
+    margin-bottom: 10px;
+}
+
+.training-param label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #475569;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.training-param input[type="range"] {
+    width: 100%;
+    height: 5px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #e2e8f0;
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+}
+
+.training-param input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #3b82f6;
+    border: 2px solid #fff;
+    cursor: pointer;
+}
+
+/* Immersive: hide training card when UI hidden */
+.ride-dashboard.immersive-street-view.immersive-ui-hidden .training-control-card {
+    display: none !important;
+}
+
+/* Immersive: reposition training card as floating overlay */
+.ride-dashboard.immersive-street-view .training-control-card {
+    position: fixed;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 240px;
+    max-height: 60vh;
+    overflow-y: auto;
+    z-index: 100;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.88);
+    color: #e2e8f0;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(10px);
+    padding: 0;
+}
+
+.ride-dashboard.immersive-street-view .training-control-card.collapsed {
+    max-height: 52px;
+    overflow-y: hidden;
+}
+
+/* Immersive: dark mode for mode buttons and sliders */
+.ride-dashboard.immersive-street-view .training-mode-btn {
+    background: rgba(31, 41, 55, 0.6);
+    color: #94a3b8;
+    border-color: rgba(148, 163, 184, 0.35);
+}
+
+.ride-dashboard.immersive-street-view .training-mode-btn:hover {
+    background: rgba(59, 130, 246, 0.18);
+    color: #93c5fd;
+}
+
+.ride-dashboard.immersive-street-view .training-mode-btn.active {
+    background: rgba(59, 130, 246, 0.28);
+    border-color: rgba(59, 130, 246, 0.6);
+    color: #bfdbfe;
+}
+
+.ride-dashboard.immersive-street-view .training-param label {
+    color: #94a3b8;
+}
+
+.ride-dashboard.immersive-street-view .training-param input[type="range"] {
+    background: rgba(148, 163, 184, 0.3);
 }
 
