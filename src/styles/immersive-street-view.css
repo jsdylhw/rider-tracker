@@ -148,11 +148,11 @@
     position: absolute;
     right: 8px;
     bottom: 6px;
-    width: 280px;
+    width: 272px;
     background: linear-gradient(180deg, rgba(15, 23, 42, 0.76), rgba(15, 23, 42, 0.56));
     border: 1px solid rgba(148, 163, 184, 0.28);
-    border-radius: 16px;
-    padding: 10px;
+    border-radius: 12px;
+    padding: 6px;
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
     backdrop-filter: blur(8px);
 }
@@ -166,6 +166,7 @@
     height: 150px !important;
     background: transparent;
     border: 0;
+    padding: 0;
 }
 
 .ride-dashboard.immersive-street-view #workoutTargetHudCard.erg-power-hud {
@@ -256,12 +257,12 @@
     left: 50%;
     transform: translateX(-50%);
     bottom: 12px;
-    width: min(72vw, 680px);
+    width: min(70vw, 660px);
     z-index: 50;
     background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.7));
     border: 1px solid rgba(148, 163, 184, 0.28);
     border-radius: 12px;
-    padding: 6px 8px;
+    padding: 4px 6px;
     box-shadow: 0 16px 32px rgba(15, 23, 42, 0.26);
     backdrop-filter: blur(8px);
 }
@@ -300,9 +301,9 @@ body.immersive-street-view-active {
 
 .ride-dashboard.immersive-street-view #liveElevationCard .ride-elevation-chart-shell {
     width: 640px;
-    height: 180px;
+    height: 168px;
     min-height: 0;
     max-width: 100%;
     aspect-ratio: 640 / 180;
+    padding: 0;
 }
-

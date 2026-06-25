@@ -105,6 +105,7 @@ export function createMainView({
 
     let lastRenderedSettingsSignature = "";
     let lastRenderedActivityDetailSignature = "";
+    let lastSessionHeavyRender = 0;
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
     const mapController = createMapController({
@@ -257,16 +258,21 @@ export function createMainView({
             elements.liveElevationCard.hidden = !isGradeSimulation || (!session?.route && !state.route);
         }
 
-        renderRecords(records, metrics);
-        renderChart(records);
+        const now = Date.now();
+        const shouldThrottleHeavyRender = state.liveRide.isActive;
+        if (!shouldThrottleHeavyRender || now - lastSessionHeavyRender >= 1000) {
+            renderRecords(records, metrics);
+            renderChart(records);
 
-        const previewRoute = state.liveRide.isActive
-            ? (state.liveRide.session?.route ?? state.route)
-            : state.route;
-        const currentRecord = state.liveRide.isActive
-            ? (state.liveRide.session?.currentRecord ?? state.liveRide.records?.at(-1) ?? null)
-            : null;
-        routeRenderer.renderElevationChart(previewRoute, currentRecord);
+            const previewRoute = state.liveRide.isActive
+                ? (state.liveRide.session?.route ?? state.route)
+                : state.route;
+            const currentRecord = state.liveRide.isActive
+                ? (state.liveRide.session?.currentRecord ?? state.liveRide.records?.at(-1) ?? null)
+                : null;
+            routeRenderer.renderElevationChart(previewRoute, currentRecord);
+            lastSessionHeavyRender = now;
+        }
     }
 
     function renderRecords(records, metrics) {
