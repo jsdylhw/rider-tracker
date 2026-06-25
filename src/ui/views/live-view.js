@@ -68,7 +68,6 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
         closeRideDashboardBtn: document.getElementById("closeRideDashboardBtn"),
         immersiveBackBtn: document.getElementById("immersiveBackBtn"),
         immersiveUiToggleBtn: document.getElementById("immersiveUiToggleBtn"),
-        immersiveTrainingBtn: document.getElementById("immersiveTrainingBtn"),
         stopRideDashboardBtn: document.getElementById("stopRideDashboardBtn"),
         dashboardMetricsGrid: document.getElementById("dashboardMetricsGrid"),
         immersiveMetricsGrid: document.getElementById("immersiveMetricsGrid"),
@@ -90,7 +89,7 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
         loadStreetViewBtn: document.getElementById("loadStreetViewBtn"),
         streetViewApiKey: document.getElementById("streetViewApiKey"),
         immersiveStreetViewBtn: document.getElementById("immersiveStreetViewBtn"),
-        toggleTrainingBtn: document.getElementById("toggleTrainingBtn"),
+        trainingConfigPopover: document.getElementById("trainingConfigPopover"),
         streetViewContainer: document.getElementById("streetViewContainer"),
         svPano1: document.getElementById("svPano1"),
         svPano2: document.getElementById("svPano2"),
@@ -100,15 +99,13 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
         workoutTargetHudGrid: document.getElementById("workoutTargetHudGrid"),
         workoutTargetChart: document.getElementById("workoutTargetChart"),
         liveWorkoutTargetCard: document.getElementById("liveWorkoutTargetCard"),
-        trainingControlCard: document.getElementById("trainingControlCard"),
-        trainingControlToggle: document.getElementById("trainingControlToggle"),
-        trainingControlBody: document.getElementById("trainingControlBody"),
         trainingErgPowerSlider: document.getElementById("trainingErgPowerSlider"),
         trainingErgValue: document.getElementById("trainingErgValue"),
         trainingResistanceSlider: document.getElementById("trainingResistanceSlider"),
         trainingResistanceValue: document.getElementById("trainingResistanceValue"),
         trainingDifficultySlider: document.getElementById("trainingDifficultySlider"),
-        trainingDifficultyValue: document.getElementById("trainingDifficultyValue")
+        trainingDifficultyValue: document.getElementById("trainingDifficultyValue"),
+        trainingModeButtons: document.querySelectorAll(".training-mode-btn")
     };
 
     bind(elements.closeRideDashboardBtn, "click", onCloseRideDashboard);

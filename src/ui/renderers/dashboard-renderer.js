@@ -177,34 +177,14 @@ export function createDashboardRenderer({
             });
         }
 
-        function toggleTrainingCard() {
-            const card = elements.trainingControlCard;
-            if (!card) return;
-            card.hidden = !card.hidden;
-        }
-
-        if (elements.toggleTrainingBtn) {
-            elements.toggleTrainingBtn.addEventListener("click", toggleTrainingCard);
-        }
-        if (elements.immersiveTrainingBtn) {
-            elements.immersiveTrainingBtn.addEventListener("click", toggleTrainingCard);
-        }
-
         bindCustomMetricControls(store);
-        bindTrainingControls(store);
+        bindTrainingControls();
     }
 
-    function bindTrainingControls(store) {
-        const card = elements.trainingControlCard;
-        const toggle = elements.trainingControlToggle;
-        if (!card || !toggle) return;
-
-        toggle.addEventListener("click", () => {
-            card.classList.toggle("collapsed");
-        });
-
-        // Mode buttons
-        card.querySelectorAll(".training-mode-btn").forEach((btn) => {
+    function bindTrainingControls() {
+        const modeBtns = elements.trainingModeButtons;
+        if (!modeBtns || modeBtns.length === 0) return;
+        modeBtns.forEach((btn) => {
             btn.addEventListener("click", () => {
                 const mode = btn.dataset.mode;
                 if (mode && onUpdateWorkoutMode) onUpdateWorkoutMode(mode);
@@ -570,24 +550,19 @@ export function createDashboardRenderer({
     }
 
     function renderTrainingControls(state) {
-        const card = elements.trainingControlCard;
-        if (!card) return;
+        const popover = elements.trainingConfigPopover;
+        if (!popover) return;
 
         const isActive = state.liveRide?.isActive === true;
-        if (elements.toggleTrainingBtn) {
-            elements.toggleTrainingBtn.hidden = !isActive;
-        }
-        if (elements.immersiveTrainingBtn) {
-            elements.immersiveTrainingBtn.hidden = !isActive;
-        }
+        popover.hidden = !isActive;
         if (!isActive) {
-            card.hidden = true;
+            popover.open = false;
             return;
         }
 
         // Highlight active mode button
         const mode = state.workout?.mode ?? WORKOUT_MODES.GRADE_SIM;
-        card.querySelectorAll(".training-mode-btn").forEach((btn) => {
+        (elements.trainingModeButtons || []).forEach((btn) => {
             btn.classList.toggle("active", btn.dataset.mode === mode);
         });
 
@@ -595,11 +570,11 @@ export function createDashboardRenderer({
         const isErg = mode === WORKOUT_MODES.FIXED_POWER;
         const isResistance = mode === WORKOUT_MODES.FREE_RIDE;
         const isGradeSim = mode === WORKOUT_MODES.GRADE_SIM;
+        const customTargetActive = state.workout?.runtime?.customWorkoutTargetEnabled === true;
 
         const paramErg = document.getElementById("trainingParamErg");
         const paramResistance = document.getElementById("trainingParamResistance");
         const paramGrade = document.getElementById("trainingParamGrade");
-        const customTargetActive = state.workout?.runtime?.customWorkoutTargetEnabled === true;
         if (paramErg) paramErg.hidden = !isErg || customTargetActive;
         if (paramResistance) paramResistance.hidden = !isResistance;
         if (paramGrade) paramGrade.hidden = !isGradeSim;
