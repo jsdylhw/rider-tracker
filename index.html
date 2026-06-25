@@ -512,6 +512,28 @@
                     <input type="password" id="streetViewApiKey" placeholder="Google Maps API Key" class="streetview-key-input">
                     <button id="loadStreetViewBtn" class="btn secondary">加载街景</button>
                     <button id="immersiveStreetViewBtn" class="btn secondary" hidden>进入沉浸街景</button>
+                    <details class="training-config-popover" id="trainingConfigPopover" hidden>
+                        <summary class="btn secondary">训练控制</summary>
+                        <div class="training-config-panel">
+                            <div class="training-mode-row">
+                                <button class="training-mode-btn" data-mode="grade-sim">坡度模拟</button>
+                                <button class="training-mode-btn" data-mode="fixed-power">ERG</button>
+                                <button class="training-mode-btn" data-mode="free-ride">自由骑行</button>
+                            </div>
+                            <div class="training-param" id="trainingParamErg">
+                                <label>目标功率 <span id="trainingErgValue">220</span> W</label>
+                                <input type="range" id="trainingErgPowerSlider" min="80" max="600" value="220" step="5">
+                            </div>
+                            <div class="training-param" id="trainingParamResistance">
+                                <label>阻力级别 <span id="trainingResistanceValue">35</span>%</label>
+                                <input type="range" id="trainingResistanceSlider" min="5" max="100" value="35" step="5">
+                            </div>
+                            <div class="training-param" id="trainingParamGrade">
+                                <label>坡度难度 <span id="trainingDifficultyValue">100</span>%</label>
+                                <input type="range" id="trainingDifficultySlider" min="30" max="150" value="100" step="5">
+                            </div>
+                        </div>
+                    </details>
                     <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
                     <details class="pip-config-popover">
                         <summary class="btn secondary">PiP 显示</summary>

@@ -1,21 +1,24 @@
 import { createDashboardRenderer } from "../../src/ui/renderers/dashboard-renderer.js";
 import { createStore } from "../../src/app/store/app-store.js";
-import { assertEqual } from "../helpers/test-harness.js";
+import { assert, assertEqual } from "../helpers/test-harness.js";
 import { createFakeElement, createFakeClassList } from "../helpers/fake-dom.js";
 
 const originalDocument = globalThis.document;
 if (!globalThis.document) {
+    const _docQueryAll = () => [];
     globalThis.document = {
         body: {
             appendChild() {},
-            classList: createFakeClassList()
+            classList: createFakeClassList(),
+            querySelector() { return null; }
         },
-        createElement() {
-            return createFakeElement({ style: {} });
+        createElement(tag) {
+            return createFakeElement({ style: {}, tagName: (tag || "").toUpperCase() });
         },
         getElementById() {
             return null;
-        }
+        },
+        querySelectorAll: _docQueryAll
     };
 }
 
@@ -44,6 +47,19 @@ function createBaseState() {
 }
 
 function createElements() {
+    const trainingErgValue = createFakeElement();
+    trainingErgValue.textContent = "220";
+    const trainingResistanceValue = createFakeElement();
+    trainingResistanceValue.textContent = "35";
+    const trainingDifficultyValue = createFakeElement();
+    trainingDifficultyValue.textContent = "100";
+
+    const modeBtns = [
+        createFakeElement({ dataset: { mode: "grade-sim" }, classList: createFakeClassList() }),
+        createFakeElement({ dataset: { mode: "fixed-power" }, classList: createFakeClassList() }),
+        createFakeElement({ dataset: { mode: "free-ride" }, classList: createFakeClassList() })
+    ];
+
     return {
         rideDashboard: { classList: createFakeClassList(), hidden: false },
         customizeMetricsBtn: createFakeElement(),
@@ -66,7 +82,16 @@ function createElements() {
         rideProgressBar: createFakeElement({ style: {} }),
         rideProgressDistance: createFakeElement(),
         rideProgressSegment: createFakeElement(),
-        streetViewTrajectorySvg: createFakeElement()
+        streetViewTrajectorySvg: createFakeElement(),
+        trainingConfigPopover: createFakeElement({ hidden: true }),
+        trainingErgPowerSlider: createFakeElement(),
+        trainingErgValue,
+        trainingResistanceSlider: createFakeElement(),
+        trainingResistanceValue,
+        trainingDifficultySlider: createFakeElement(),
+        trainingDifficultyValue,
+        trainingModeButtons: modeBtns,
+        modeBtns
     };
 }
 
@@ -87,7 +112,11 @@ export const suite = {
                     elements,
                     mapController: { syncRide() {} },
                     streetViewControllerRef: { current: null },
-                    onEnableStreetView: async () => {}
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {},
+                    onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {},
+                    onUpdateGradeDifficulty() {}
                 });
 
                 renderer.bindEvents(store);
@@ -106,7 +135,11 @@ export const suite = {
                     elements,
                     mapController: { syncRide() {} },
                     streetViewControllerRef: { current: null },
-                    onEnableStreetView: async () => {}
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {},
+                    onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {},
+                    onUpdateGradeDifficulty() {}
                 });
                 renderer.render(store.getState());
                 assertEqual(elements.immersiveStreetViewBtn.hidden, true);
@@ -184,7 +217,11 @@ export const suite = {
                     elements,
                     mapController: { syncRide() {} },
                     streetViewControllerRef: { current: null },
-                    onEnableStreetView: async () => {}
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {},
+                    onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {},
+                    onUpdateGradeDifficulty() {}
                 });
                 renderer.bindEvents(store);
                 elements.immersiveBackBtn.dispatch("click");
@@ -223,6 +260,65 @@ export const suite = {
                 elements.immersiveUiToggleBtn.dispatch("click");
                 assertEqual(elements.rideDashboard.classList.contains("immersive-ui-hidden"), false);
                 assertEqual(elements.immersiveUiToggleBtn.textContent, "隐藏 UI");
+            }
+        },
+        {
+            name: "训练控制卡片在非活跃骑行中隐藏",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                const store = createStore(state);
+                const renderer = createDashboardRenderer({
+                    elements, mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {}, onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {}, onUpdateGradeDifficulty() {}
+                });
+                renderer.render(store.getState());
+                assertEqual(elements.trainingConfigPopover.hidden, true);
+            }
+        },
+        {
+            name: "训练控制弹窗在骑行中显示",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.liveRide.isActive = true;
+                state.workout = { mode: "grade-sim", resistance: { level: 35 }, gradeSimulation: { difficultyPercent: 100 } };
+                const store = createStore(state);
+                const renderer = createDashboardRenderer({
+                    elements, mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode() {}, onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {}, onUpdateGradeDifficulty() {}
+                });
+                renderer.render(store.getState());
+                assert(!elements.trainingConfigPopover.hidden, "popover should be visible during ride");
+            }
+        },
+        {
+            name: "模式按钮点击触发 onUpdateWorkoutMode 回调",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.liveRide.isActive = true;
+                const store = createStore(state);
+                let calledMode = null;
+                const renderer = createDashboardRenderer({
+                    elements, mapController: { syncRide() {} },
+                    streetViewControllerRef: { current: null },
+                    onEnableStreetView: async () => {},
+                    onUpdateWorkoutMode(mode) { calledMode = mode; },
+                    onUpdateErgTargetPower() {},
+                    onUpdateResistanceLevel() {},
+                    onUpdateGradeDifficulty() {}
+                });
+                renderer.bindEvents(store);
+                const ergBtn = elements.trainingModeButtons[1];
+                ergBtn.dispatch("click");
+                assertEqual(calledMode, "fixed-power");
             }
         }
     ]

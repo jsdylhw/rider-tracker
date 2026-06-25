@@ -37,7 +37,7 @@ export function createTrainerCommand({
 }) {
     return {
         protocolVersion: TRAINER_COMMAND_PROTOCOL_VERSION,
-        decisionPolicy: "pre-ride-locked",
+        decisionPolicy: "live-workout-mode",
         controlMode,
         type,
         payload,

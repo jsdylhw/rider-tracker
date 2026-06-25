@@ -89,6 +89,7 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
         loadStreetViewBtn: document.getElementById("loadStreetViewBtn"),
         streetViewApiKey: document.getElementById("streetViewApiKey"),
         immersiveStreetViewBtn: document.getElementById("immersiveStreetViewBtn"),
+        trainingConfigPopover: document.getElementById("trainingConfigPopover"),
         streetViewContainer: document.getElementById("streetViewContainer"),
         svPano1: document.getElementById("svPano1"),
         svPano2: document.getElementById("svPano2"),
@@ -97,7 +98,14 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
         workoutTargetHudCard: document.getElementById("workoutTargetHudCard"),
         workoutTargetHudGrid: document.getElementById("workoutTargetHudGrid"),
         workoutTargetChart: document.getElementById("workoutTargetChart"),
-        liveWorkoutTargetCard: document.getElementById("liveWorkoutTargetCard")
+        liveWorkoutTargetCard: document.getElementById("liveWorkoutTargetCard"),
+        trainingErgPowerSlider: document.getElementById("trainingErgPowerSlider"),
+        trainingErgValue: document.getElementById("trainingErgValue"),
+        trainingResistanceSlider: document.getElementById("trainingResistanceSlider"),
+        trainingResistanceValue: document.getElementById("trainingResistanceValue"),
+        trainingDifficultySlider: document.getElementById("trainingDifficultySlider"),
+        trainingDifficultyValue: document.getElementById("trainingDifficultyValue"),
+        trainingModeButtons: document.querySelectorAll(".training-mode-btn")
     };
 
     bind(elements.closeRideDashboardBtn, "click", onCloseRideDashboard);

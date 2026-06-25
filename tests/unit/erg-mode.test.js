@@ -6,7 +6,7 @@ export const suite = {
     name: "erg-mode",
     tests: [
         {
-            name: "buildErgControlState emits pre-ride-locked ERG command when active",
+            name: "buildErgControlState emits live-workout-mode ERG command when active",
             run() {
                 const runtime = buildErgControlState({
                     targetPowerWatts: 223.8,

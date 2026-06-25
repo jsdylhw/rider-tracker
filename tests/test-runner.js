@@ -36,6 +36,7 @@ import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js"
 import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
 import { suite as activityDetailRendererSuite } from "./unit/activity-detail-renderer.test.js";
 import { suite as fitBeaconClientSuite } from "./unit/fit-beacon-client.test.js";
+import { suite as rideEngineSuite } from "./unit/ride-engine.test.js";
 import { suite as incrementalPowerMetricsSuite } from "./unit/incremental-power-metrics.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
@@ -77,6 +78,7 @@ const suites = [
     activityStoreSuite,
     activityDetailRendererSuite,
     fitBeaconClientSuite,
+    rideEngineSuite,
     incrementalPowerMetricsSuite
 ];
 

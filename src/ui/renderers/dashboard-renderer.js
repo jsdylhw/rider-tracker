@@ -21,7 +21,11 @@ export function createDashboardRenderer({
     mapController,
     streetViewControllerRef,
     onEnableStreetView,
-    streetViewDebugEnabled = isStreetViewDebugEnabled()
+    streetViewDebugEnabled = isStreetViewDebugEnabled(),
+    onUpdateWorkoutMode,
+    onUpdateErgTargetPower,
+    onUpdateResistanceLevel,
+    onUpdateGradeDifficulty
 }) {
     function isStreetViewLoaded() {
         return streetViewControllerRef?.current != null;
@@ -174,6 +178,45 @@ export function createDashboardRenderer({
         }
 
         bindCustomMetricControls(store);
+        bindTrainingControls();
+    }
+
+    function bindTrainingControls() {
+        const modeBtns = elements.trainingModeButtons;
+        if (!modeBtns || modeBtns.length === 0) return;
+        modeBtns.forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const mode = btn.dataset.mode;
+                if (mode && onUpdateWorkoutMode) onUpdateWorkoutMode(mode);
+            });
+        });
+
+        // ERG power slider
+        if (elements.trainingErgPowerSlider) {
+            elements.trainingErgPowerSlider.addEventListener("input", () => {
+                const watts = Number(elements.trainingErgPowerSlider.value);
+                if (elements.trainingErgValue) elements.trainingErgValue.textContent = String(watts);
+                if (onUpdateErgTargetPower) onUpdateErgTargetPower(watts);
+            });
+        }
+
+        // Resistance slider
+        if (elements.trainingResistanceSlider) {
+            elements.trainingResistanceSlider.addEventListener("input", () => {
+                const level = Number(elements.trainingResistanceSlider.value);
+                if (elements.trainingResistanceValue) elements.trainingResistanceValue.textContent = String(level);
+                if (onUpdateResistanceLevel) onUpdateResistanceLevel(level);
+            });
+        }
+
+        // Grade difficulty slider
+        if (elements.trainingDifficultySlider) {
+            elements.trainingDifficultySlider.addEventListener("input", () => {
+                const diff = Number(elements.trainingDifficultySlider.value);
+                if (elements.trainingDifficultyValue) elements.trainingDifficultyValue.textContent = String(diff);
+                if (onUpdateGradeDifficulty) onUpdateGradeDifficulty(diff);
+            });
+        }
     }
 
     function bindCustomMetricControls(store) {
@@ -297,6 +340,7 @@ export function createDashboardRenderer({
             elements.rideDashboard.classList.toggle("immersive-ui-hidden", immersiveUiHidden);
         }
         syncElevationChartCopy();
+        renderTrainingControls(state);
         document.body.classList.toggle("immersive-street-view-active", immersiveStreetViewMode && ride.dashboardOpen);
         if (elements.immersiveStreetViewBtn) {
             const canShow = viewModel.canShowImmersiveStreetView;
@@ -502,6 +546,55 @@ export function createDashboardRenderer({
 
         if (shouldSyncStreetView) {
             streetViewControllerRef.current.update(route, currentRecord);
+        }
+    }
+
+    function renderTrainingControls(state) {
+        const popover = elements.trainingConfigPopover;
+        if (!popover) return;
+
+        const isActive = state.liveRide?.isActive === true;
+        popover.hidden = !isActive;
+        if (!isActive) {
+            popover.open = false;
+            return;
+        }
+
+        // Highlight active mode button
+        const mode = state.workout?.mode ?? WORKOUT_MODES.GRADE_SIM;
+        (elements.trainingModeButtons || []).forEach((btn) => {
+            btn.classList.toggle("active", btn.dataset.mode === mode);
+        });
+
+        // Show/hide params based on mode
+        const isErg = mode === WORKOUT_MODES.FIXED_POWER;
+        const isResistance = mode === WORKOUT_MODES.FREE_RIDE;
+        const isGradeSim = mode === WORKOUT_MODES.GRADE_SIM;
+        const customTargetActive = state.workout?.runtime?.customWorkoutTargetEnabled === true;
+
+        const paramErg = document.getElementById("trainingParamErg");
+        const paramResistance = document.getElementById("trainingParamResistance");
+        const paramGrade = document.getElementById("trainingParamGrade");
+        if (paramErg) paramErg.hidden = !isErg || customTargetActive;
+        if (paramResistance) paramResistance.hidden = !isResistance;
+        if (paramGrade) paramGrade.hidden = !isGradeSim;
+
+        // Sync slider values from state
+        const settings = state.settings ?? {};
+        const resistance = state.workout?.resistance ?? {};
+        const gradeSim = state.workout?.gradeSimulation ?? {};
+
+        if (elements.trainingErgPowerSlider) {
+            elements.trainingErgPowerSlider.value = settings.power ?? 220;
+            if (elements.trainingErgValue) elements.trainingErgValue.textContent = String(settings.power ?? 220);
+        }
+        if (elements.trainingResistanceSlider) {
+            elements.trainingResistanceSlider.value = resistance.level ?? 35;
+            if (elements.trainingResistanceValue) elements.trainingResistanceValue.textContent = String(resistance.level ?? 35);
+        }
+        if (elements.trainingDifficultySlider) {
+            elements.trainingDifficultySlider.value = gradeSim.difficultyPercent ?? 100;
+            if (elements.trainingDifficultyValue) elements.trainingDifficultyValue.textContent = String(gradeSim.difficultyPercent ?? 100);
         }
     }
 
