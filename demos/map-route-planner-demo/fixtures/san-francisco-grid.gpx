@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="rider-tracker-map-route-planner-demo" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>San Francisco Grid Turn Test</name>
+    <desc>Short flat GPX fixture near SoMa / Financial District for testing dynamic turn planning on a grid-like street network.</desc>
+  </metadata>
+  <trk>
+    <name>San Francisco Grid Turn Test</name>
+    <trkseg>
+      <trkpt lat="37.780000" lon="-122.406700"><ele>0</ele></trkpt>
+      <trkpt lat="37.780230" lon="-122.406270"><ele>0</ele></trkpt>
+      <trkpt lat="37.780460" lon="-122.405840"><ele>0</ele></trkpt>
+      <trkpt lat="37.780690" lon="-122.405410"><ele>0</ele></trkpt>
+      <trkpt lat="37.780920" lon="-122.404980"><ele>0</ele></trkpt>
+      <trkpt lat="37.781150" lon="-122.404550"><ele>0</ele></trkpt>
+      <trkpt lat="37.781380" lon="-122.404120"><ele>0</ele></trkpt>
+      <trkpt lat="37.781610" lon="-122.403690"><ele>0</ele></trkpt>
+      <trkpt lat="37.781840" lon="-122.403260"><ele>0</ele></trkpt>
+      <trkpt lat="37.782070" lon="-122.402830"><ele>0</ele></trkpt>
+      <trkpt lat="37.782300" lon="-122.402400"><ele>0</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
