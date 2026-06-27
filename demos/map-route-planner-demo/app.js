@@ -5,8 +5,13 @@ const MAX_ELEVATION_SAMPLES = 256;
 const DEFAULT_CENTER = { lat: 31.2304, lng: 121.4737 };
 const SIM_TICK_MS = 250;
 const TURN_DESTINATION_METERS = 500;
-const TURN_SIDE_METERS = 20;
-const TURN_CANDIDATE_METERS = [10, 20, 30, 40, 50];
+const TURN_SEARCH_METERS = 50;
+const TURN_CONTROL_MESSAGE_METERS = 20;
+const TURN_APPLY_METERS = 5;
+const TURN_SEARCH_INTERVAL_MS = 900;
+const TURN_FORWARD_GRID_METERS = [5, 10, 15, 20, 30, 40, 50];
+const TURN_SIDE_GRID_METERS = [5, 10, 15, 20];
+const MAX_ROAD_SNAP_DISTANCE_METERS = 12;
 const STRAIGHT_VIA_METERS = 240;
 const STRAIGHT_DESTINATION_METERS = 800;
 const SF_PRESET_GPX_URL = "./fixtures/san-francisco-grid.gpx";
@@ -57,7 +62,10 @@ const state = {
         timer: null,
         lastTickMs: 0,
         distanceMeters: 0,
-        turnPlanning: false
+        turnPlanning: false,
+        pendingIntent: null,
+        plannedTurn: null,
+        lastTurnSearchMs: 0
     }
 };
 
@@ -74,9 +82,9 @@ function bindEvents() {
     el.startSimBtn.addEventListener("click", startSimulation);
     el.pauseSimBtn.addEventListener("click", pauseSimulation);
     el.resetSimBtn.addEventListener("click", resetSimulation);
-    el.turnLeftBtn.addEventListener("click", () => planTurn("left"));
-    el.turnStraightBtn.addEventListener("click", () => planTurn("straight"));
-    el.turnRightBtn.addEventListener("click", () => planTurn("right"));
+    el.turnLeftBtn.addEventListener("click", () => queueTurn("left"));
+    el.turnStraightBtn.addEventListener("click", () => queueTurn("straight"));
+    el.turnRightBtn.addEventListener("click", () => queueTurn("right"));
 }
 
 async function loadMap() {
@@ -289,10 +297,17 @@ function pauseSimulation() {
 function resetSimulation() {
     pauseSimulation();
     state.sim.distanceMeters = 0;
-    state.sim.turnPlanning = false;
+    resetTurnState();
     updateSimulationMarker();
     renderSimulation();
     render();
+}
+
+function resetTurnState() {
+    state.sim.turnPlanning = false;
+    state.sim.pendingIntent = null;
+    state.sim.plannedTurn = null;
+    state.sim.lastTurnSearchMs = 0;
 }
 
 function simulationTick() {
@@ -307,31 +322,95 @@ function simulationTick() {
     );
     updateSimulationMarker();
     renderSimulation();
+    updatePendingTurn();
     if (state.sim.distanceMeters >= state.riderRoute.totalDistanceMeters) {
-        if (!state.sim.turnPlanning) {
+        if (!state.sim.turnPlanning && !state.sim.pendingIntent) {
             setStatus("已到达路线末端，正在延伸前方路线...");
-            planTurn("straight");
+            queueTurn("straight");
         }
     }
 }
 
-async function planTurn(intent) {
+function queueTurn(intent) {
     if (!state.riderRoute || !state.apiKey || state.sim.turnPlanning) return;
+    state.sim.pendingIntent = intent;
+    state.sim.plannedTurn = null;
+    state.sim.lastTurnSearchMs = 0;
+    el.simIntentText.textContent = `${getIntentLabel(intent)}已输入 · 搜索前方 ${TURN_SEARCH_METERS}m 内路口`;
+    setStatus(`${getIntentLabel(intent)}命令已输入，将在前方 ${TURN_SEARCH_METERS}m 内寻找可转向道路。`);
+    render();
+    void updatePendingTurn(true);
+}
+
+function updatePendingTurn(force = false) {
+    if (!state.riderRoute || !state.apiKey || !state.sim.pendingIntent) return;
+
+    if (state.sim.plannedTurn) {
+        const remainingToTurn = state.sim.plannedTurn.anchorDistance - state.sim.distanceMeters;
+        if (remainingToTurn <= TURN_CONTROL_MESSAGE_METERS && remainingToTurn > TURN_APPLY_METERS) {
+            el.simIntentText.textContent = `前方 ${Math.max(0, Math.round(remainingToTurn))}m ${getIntentLabel(state.sim.pendingIntent)}`;
+        }
+        if (remainingToTurn <= TURN_APPLY_METERS) {
+            void applyPlannedTurn();
+        }
+        return;
+    }
+
+    const now = performance.now();
+    if (!force && now - state.sim.lastTurnSearchMs < TURN_SEARCH_INTERVAL_MS) return;
+    if (state.sim.turnPlanning) return;
+    state.sim.lastTurnSearchMs = now;
+    void searchPendingTurn();
+}
+
+async function searchPendingTurn() {
+    if (!state.sim.pendingIntent || state.sim.turnPlanning) return;
+    const intent = state.sim.pendingIntent;
     state.sim.turnPlanning = true;
-    el.simIntentText.textContent = `${getIntentLabel(intent)} · 搜索前方 50m 内可转向点...`;
+    el.simIntentText.textContent = `${getIntentLabel(intent)} · 扫描前方 ${TURN_SEARCH_METERS}m 路口...`;
     render();
 
     try {
         const result = await findTurnRoute({ intent });
         if (!result) {
-            throw new Error("没有找到符合方向意图的路线。");
+            el.simIntentText.textContent = `${getIntentLabel(intent)}待执行 · 暂未发现路口`;
+            return;
         }
-        await applyTurnRoute(result);
-        setStatus(`${getIntentLabel(intent)}规划成功：在前方 ${Math.round(result.offsetMeters)} m 处接入新路线。`, false, true);
+        if (result.anchorDistance <= state.sim.distanceMeters && intent !== "straight") {
+            return;
+        }
+        state.sim.plannedTurn = result;
+        const remainingToTurn = result.anchorDistance - state.sim.distanceMeters;
+        const extensionMeters = result.extensionMeters ?? TURN_DESTINATION_METERS;
+        setStatus(`${getIntentLabel(intent)}路线已预生成：约 ${Math.max(0, Math.round(remainingToTurn))}m 后转向，并接入约 ${extensionMeters}m 后续路线。`, false, true);
+        el.simIntentText.textContent = remainingToTurn <= TURN_CONTROL_MESSAGE_METERS
+            ? `前方 ${Math.max(0, Math.round(remainingToTurn))}m ${getIntentLabel(intent)}`
+            : `${getIntentLabel(intent)}已规划 · ${Math.round(remainingToTurn)}m 后提示`;
+    } catch (error) {
+        setStatus(`${getIntentLabel(intent)}搜索失败：${getMessage(error)}`, true);
+        el.simIntentText.textContent = `${getIntentLabel(intent)}失败`;
+    } finally {
+        state.sim.turnPlanning = false;
+        render();
+    }
+}
+
+async function applyPlannedTurn() {
+    const plannedTurn = state.sim.plannedTurn;
+    const intent = state.sim.pendingIntent;
+    if (!plannedTurn || !intent || state.sim.turnPlanning) return;
+
+    state.sim.turnPlanning = true;
+    try {
+        await applyTurnRoute(plannedTurn);
+        state.sim.pendingIntent = null;
+        state.sim.plannedTurn = null;
+        state.sim.lastTurnSearchMs = 0;
+        setStatus(`${getIntentLabel(intent)}已执行，已接入新的后续路线。`, false, true);
         el.simIntentText.textContent = `${getIntentLabel(intent)}已接入`;
     } catch (error) {
-        setStatus(`${getIntentLabel(intent)}规划失败：${getMessage(error)}`, true);
-        el.simIntentText.textContent = `${getIntentLabel(intent)}失败`;
+        setStatus(`${getIntentLabel(intent)}接入失败：${getMessage(error)}`, true);
+        el.simIntentText.textContent = `${getIntentLabel(intent)}接入失败`;
     } finally {
         state.sim.turnPlanning = false;
         render();
@@ -346,86 +425,142 @@ async function findTurnRoute({ intent }) {
 }
 
 async function findStraightRoute() {
-    for (const offsetMeters of TURN_CANDIDATE_METERS) {
-        const anchorDistance = Math.min(
-            state.riderRoute.totalDistanceMeters,
-            state.sim.distanceMeters + offsetMeters
-        );
-        const anchor = getRoutePointAtDistance(state.riderRoute, anchorDistance);
-        const heading = getRouteHeadingAtDistance(state.riderRoute, anchorDistance);
-        const via = projectPoint(anchor, heading, STRAIGHT_VIA_METERS);
-        const destination = projectPoint(anchor, heading, STRAIGHT_DESTINATION_METERS);
-        const routeResult = await fetchRoutePolyline({
-            apiKey: state.apiKey,
-            origin: anchor,
-            destination,
-            intermediates: [via]
-        }).catch(() => null);
-        if (!routeResult) continue;
+    const anchorDistance = Math.min(
+        state.riderRoute.totalDistanceMeters,
+        state.sim.distanceMeters + TURN_APPLY_METERS
+    );
+    const anchor = getRoutePointAtDistance(state.riderRoute, anchorDistance);
+    const heading = getRouteHeadingAtDistance(state.riderRoute, anchorDistance);
+    const via = projectPoint(anchor, heading, STRAIGHT_VIA_METERS);
+    const destination = projectPoint(anchor, heading, STRAIGHT_DESTINATION_METERS);
+    const routeResult = await fetchRoutePolyline({
+        apiKey: state.apiKey,
+        origin: anchor,
+        destination,
+        intermediates: [via]
+    }).catch(() => null);
+    if (!routeResult) return null;
 
-        const decodedPath = decodePolyline(routeResult.encodedPolyline);
-        if (!isRouteHeadingCompatible({ intent: "straight", oldHeading: heading, newPath: decodedPath })) {
-            continue;
-        }
-
-        return { anchorDistance, offsetMeters, routeResult, decodedPath };
+    const decodedPath = decodePolyline(routeResult.encodedPolyline);
+    if (!isRouteHeadingCompatible({ intent: "straight", oldHeading: heading, newPath: decodedPath })) {
+        return null;
     }
-    return null;
+
+    return {
+        anchorDistance,
+        offsetMeters: TURN_APPLY_METERS,
+        extensionMeters: STRAIGHT_DESTINATION_METERS,
+        routeResult,
+        decodedPath
+    };
 }
 
 async function findSideTurnRoute({ intent }) {
-    for (const offsetMeters of TURN_CANDIDATE_METERS) {
-        const anchorDistance = Math.min(
-            state.riderRoute.totalDistanceMeters,
-            state.sim.distanceMeters + offsetMeters
-        );
-        const anchor = getRoutePointAtDistance(state.riderRoute, anchorDistance);
-        const routeHeading = getRouteHeadingAtDistance(state.riderRoute, anchorDistance);
+    const candidates = await findSideRoadCandidates(intent);
+    if (candidates.length === 0) return null;
 
-        // 垂直投影 20m 到目标方向
-        const headingOffset = intent === "left" ? -90 : 90;
-        const sidePoint = projectPoint(anchor, routeHeading + headingOffset, TURN_SIDE_METERS);
-
-        // 路径吸附：同时吸附锚点和侧向点，判断是否在不同道路
-        const snapped = await snapPointsToRoads([anchor, sidePoint]);
-        if (!snapped) continue;
-
-        const snappedAnchor = snapped[0];
-        const snappedSide = snapped[1];
-
-        // 必须吸附到不同的道路（即确实存在交叉路口）
-        if (snappedAnchor.placeId === snappedSide.placeId) continue;
-
-        // 从吸附锚点指向吸附侧向点的方向 = 转弯目标道路的方向
-        const turnHeading = bearingDegrees(
-            snappedAnchor.location,
-            snappedSide.location
-        );
-
-        // 沿目标道路方向投影 destination
+    for (const candidate of candidates) {
         const destination = projectPoint(
-            snappedSide.location,
-            turnHeading,
+            candidate.snappedSide.location,
+            candidate.turnHeading,
             TURN_DESTINATION_METERS
         );
 
-        // 调 Routes API 重规划路线
         const routeResult = await fetchRoutePolyline({
             apiKey: state.apiKey,
-            origin: anchor,
+            origin: candidate.anchor,
             destination,
-            intermediates: [snappedSide.location]
+            intermediates: [candidate.snappedSide.location]
         }).catch(() => null);
         if (!routeResult) continue;
 
         const decodedPath = decodePolyline(routeResult.encodedPolyline);
-        if (!isRouteHeadingCompatible({ intent, oldHeading: routeHeading, newPath: decodedPath })) {
+        if (!isRouteHeadingCompatible({ intent, oldHeading: candidate.routeHeading, newPath: decodedPath })) {
             continue;
         }
 
-        return { anchorDistance, offsetMeters, routeResult, decodedPath };
+        return {
+            anchorDistance: candidate.anchorDistance,
+            offsetMeters: candidate.offsetMeters,
+            extensionMeters: TURN_DESTINATION_METERS,
+            routeResult,
+            decodedPath
+        };
     }
+
     return null;
+}
+
+async function findSideRoadCandidates(intent) {
+    const headingOffset = intent === "left" ? -90 : 90;
+    const probes = [];
+    for (const forwardMeters of TURN_FORWARD_GRID_METERS) {
+        const anchorDistance = Math.min(
+            state.riderRoute.totalDistanceMeters,
+            state.sim.distanceMeters + forwardMeters
+        );
+        const anchor = getRoutePointAtDistance(state.riderRoute, anchorDistance);
+        const routeHeading = getRouteHeadingAtDistance(state.riderRoute, anchorDistance);
+        probes.push({
+            type: "anchor",
+            forwardMeters,
+            sideMeters: 0,
+            anchorDistance,
+            anchor,
+            routeHeading,
+            point: anchor
+        });
+
+        for (const sideMeters of TURN_SIDE_GRID_METERS) {
+            const point = projectPoint(anchor, routeHeading + headingOffset, sideMeters);
+            probes.push({
+                type: "side",
+                forwardMeters,
+                sideMeters,
+                anchorDistance,
+                anchor,
+                routeHeading,
+                point
+            });
+        }
+    }
+
+    const indexedProbes = probes.map((probe, index) => ({ ...probe, index }));
+    const snapped = await snapPointsToRoads(indexedProbes.map((probe) => probe.point));
+    if (!snapped) return [];
+
+    const candidates = [];
+    for (const anchorProbe of indexedProbes.filter((probe) => probe.type === "anchor")) {
+        const snappedAnchor = snapped[anchorProbe.index];
+        if (!snappedAnchor) continue;
+
+        const sideProbes = indexedProbes
+            .filter((probe) => probe.type === "side" && probe.forwardMeters === anchorProbe.forwardMeters);
+
+        for (const sideProbe of sideProbes) {
+            const snappedSide = snapped[sideProbe.index];
+            if (!snappedSide || snappedSide.placeId === snappedAnchor.placeId) continue;
+            const snapDistance = haversineDistanceMeters(sideProbe.point, snappedSide.location);
+            if (snapDistance > MAX_ROAD_SNAP_DISTANCE_METERS) continue;
+
+            const turnHeading = bearingDegrees(snappedAnchor.location, snappedSide.location);
+            const diff = signedAngleDegrees(anchorProbe.routeHeading, turnHeading);
+            if (intent === "right" && (diff < 25 || diff > 160)) continue;
+            if (intent === "left" && (diff > -25 || diff < -160)) continue;
+
+            candidates.push({
+                anchorDistance: anchorProbe.anchorDistance,
+                offsetMeters: anchorProbe.forwardMeters,
+                anchor: anchorProbe.anchor,
+                routeHeading: anchorProbe.routeHeading,
+                snappedAnchor,
+                snappedSide,
+                turnHeading
+            });
+        }
+    }
+
+    return candidates;
 }
 
 async function snapPointsToRoads(points) {
@@ -439,13 +574,22 @@ async function snapPointsToRoads(points) {
         );
         if (!response.ok) return null;
         const data = await response.json();
-        if (!Array.isArray(data.snappedPoints) || data.snappedPoints.length < points.length) {
+        if (!Array.isArray(data.snappedPoints) || data.snappedPoints.length === 0) {
             return null;
         }
-        return data.snappedPoints.map((sp) => ({
-            location: { lat: sp.location.latitude, lng: sp.location.longitude },
-            placeId: sp.placeId
-        }));
+        const snappedByIndex = [];
+        for (let fallbackIndex = 0; fallbackIndex < data.snappedPoints.length; fallbackIndex += 1) {
+            const snappedPoint = data.snappedPoints[fallbackIndex];
+            const index = Number.isInteger(snappedPoint.originalIndex)
+                ? snappedPoint.originalIndex
+                : fallbackIndex;
+            if (!Number.isInteger(index) || snappedByIndex[index]) continue;
+            snappedByIndex[index] = {
+                location: { lat: snappedPoint.location.latitude, lng: snappedPoint.location.longitude },
+                placeId: snappedPoint.placeId
+            };
+        }
+        return snappedByIndex;
     } catch {
         return null;
     }
@@ -676,6 +820,7 @@ function resetSelection() {
     state.destination = null;
     state.riderRoute = null;
     state.sim.distanceMeters = 0;
+    resetTurnState();
     clearRoutePreview();
     setStatus("已清空。点击地图选择新的起点。");
     renderEmptyChart();
