@@ -4,6 +4,14 @@ import path from "node:path";
 const DEFAULT_STORE_PATH = path.resolve(process.cwd(), "data", "strava-tokens.json");
 
 export function createTokenStore(filePath = DEFAULT_STORE_PATH) {
+    let operationQueue = Promise.resolve();
+
+    function enqueueOperation(operation) {
+        const nextOperation = operationQueue.then(operation, operation);
+        operationQueue = nextOperation.catch(() => {});
+        return nextOperation;
+    }
+
     async function loadAll() {
         try {
             const content = await fs.readFile(filePath, "utf8");
@@ -22,14 +30,17 @@ export function createTokenStore(filePath = DEFAULT_STORE_PATH) {
     }
 
     async function get(userId) {
+        await operationQueue;
         const all = await loadAll();
         return all[userId] ?? null;
     }
 
     async function set(userId, tokenPayload) {
-        const all = await loadAll();
-        all[userId] = tokenPayload;
-        await saveAll(all);
+        return enqueueOperation(async () => {
+            const all = await loadAll();
+            all[userId] = tokenPayload;
+            await saveAll(all);
+        });
     }
 
     return {
