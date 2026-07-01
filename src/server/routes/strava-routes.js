@@ -9,6 +9,78 @@ import { normalizeText, normalizeUserId, parseBoolean } from "../shared/http-uti
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
+export function createOAuthStateStore({
+    ttlMs = OAUTH_STATE_TTL_MS,
+    now = () => Date.now(),
+    setTimeoutFn = setTimeout,
+    clearTimeoutFn = clearTimeout
+} = {}) {
+    const states = new Map();
+
+    function deleteState(state) {
+        const meta = states.get(state);
+        if (!meta) return false;
+        if (meta.timer) {
+            clearTimeoutFn(meta.timer);
+        }
+        states.delete(state);
+        return true;
+    }
+
+    function sweepExpired() {
+        const currentTime = now();
+        for (const [state, meta] of states.entries()) {
+            if (meta.expiresAtMs <= currentTime) {
+                deleteState(state);
+            }
+        }
+    }
+
+    function set(state, userId) {
+        deleteState(state);
+        const expiresAtMs = now() + ttlMs;
+        const timer = setTimeoutFn(() => {
+            states.delete(state);
+        }, ttlMs);
+        if (typeof timer?.unref === "function") {
+            timer.unref();
+        }
+        states.set(state, {
+            userId,
+            expiresAtMs,
+            timer
+        });
+        return states.get(state);
+    }
+
+    function consume(state) {
+        sweepExpired();
+        const meta = states.get(state);
+        if (!meta) return null;
+        deleteState(state);
+        return meta;
+    }
+
+    function has(state) {
+        sweepExpired();
+        return states.has(state);
+    }
+
+    function size() {
+        sweepExpired();
+        return states.size;
+    }
+
+    return {
+        set,
+        consume,
+        delete: deleteState,
+        sweepExpired,
+        has,
+        size
+    };
+}
+
 export function createStravaRoutes({
     configStore,
     tokenStore,
@@ -22,7 +94,7 @@ export function createStravaRoutes({
     frontendRedirectUrl
 }) {
     const router = express.Router();
-    const oauthStateMap = new Map();
+    const oauthStates = createOAuthStateStore();
 
     async function getStravaConfig() {
         if (clientId && clientSecret) {
@@ -145,10 +217,8 @@ export function createStravaRoutes({
 
         const userId = normalizeUserId(req.query.userId);
         const state = `${userId}:${crypto.randomBytes(12).toString("hex")}`;
-        oauthStateMap.set(state, {
-            userId,
-            expiresAtMs: Date.now() + OAUTH_STATE_TTL_MS
-        });
+        oauthStates.sweepExpired();
+        oauthStates.set(state, userId);
 
         res.json({
             ok: true,
@@ -165,6 +235,9 @@ export function createStravaRoutes({
         const { code, state, error, scope } = req.query;
 
         if (error) {
+            if (state) {
+                oauthStates.delete(String(state));
+            }
             return sendOAuthResultPage(res, {
                 ok: false,
                 title: "Strava authorization failed",
@@ -172,22 +245,12 @@ export function createStravaRoutes({
             });
         }
 
-        if (!code || !state || !oauthStateMap.has(state)) {
+        const stateMeta = code && state ? oauthStates.consume(String(state)) : null;
+        if (!code || !state || !stateMeta) {
             return sendOAuthResultPage(res, {
                 ok: false,
                 title: "Strava authorization expired",
                 message: "Missing code/state, or the authorization state has expired. Please try connecting again."
-            });
-        }
-
-        const stateMeta = oauthStateMap.get(state);
-        oauthStateMap.delete(state);
-
-        if (!stateMeta || stateMeta.expiresAtMs < Date.now()) {
-            return sendOAuthResultPage(res, {
-                ok: false,
-                title: "Strava authorization expired",
-                message: "The authorization state has expired. Please try connecting again."
             });
         }
 
