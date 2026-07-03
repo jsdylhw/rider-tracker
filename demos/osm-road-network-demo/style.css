@@ -1,0 +1,327 @@
+:root {
+    color-scheme: dark;
+    --bg: #101820;
+    --panel: #16212b;
+    --panel-2: #1f2d38;
+    --border: #324756;
+    --text: #e7edf2;
+    --muted: #9fb0bd;
+    --accent: #3fb4ff;
+    --accent-strong: #0ea5e9;
+    --danger: #f87171;
+    --good: #34d399;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.page {
+    display: grid;
+    grid-template-columns: minmax(360px, 430px) minmax(0, 1fr);
+    min-height: 100vh;
+}
+
+.panel {
+    padding: 18px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+}
+
+.header {
+    margin-bottom: 16px;
+}
+
+.eyebrow {
+    margin: 0 0 4px;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+    margin-top: 0;
+}
+
+h1 {
+    margin-bottom: 8px;
+    font-size: 26px;
+}
+
+h2 {
+    margin-bottom: 12px;
+    font-size: 16px;
+}
+
+.hint,
+#chartMeta {
+    color: var(--muted);
+    line-height: 1.55;
+}
+
+.field {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.field span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+input,
+textarea,
+select {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: #0b1218;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font: inherit;
+}
+
+.field-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.field.compact {
+    margin-bottom: 10px;
+}
+
+.controls,
+.card-title-row,
+.chart-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.controls {
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.turn-controls button {
+    flex: 1;
+}
+
+.card-title-row,
+.chart-title-row {
+    justify-content: space-between;
+}
+
+button {
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 9px 12px;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+button.primary {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: #03121f;
+}
+
+button:disabled {
+    opacity: 0.48;
+    cursor: not-allowed;
+}
+
+.status {
+    min-height: 36px;
+    margin-bottom: 12px;
+    color: var(--accent);
+    line-height: 1.45;
+}
+
+.status.error {
+    color: var(--danger);
+}
+
+.status.good {
+    color: var(--good);
+}
+
+.card {
+    margin-top: 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #111b24;
+}
+
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.metric-list {
+    display: grid;
+    gap: 10px;
+}
+
+.metric {
+    padding: 10px;
+    border: 1px solid rgba(159, 176, 189, 0.2);
+    border-radius: 8px;
+    background: #0b1218;
+}
+
+.compact-metric {
+    min-height: 68px;
+}
+
+.metric span {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.metric strong {
+    display: block;
+    min-height: 20px;
+    font-size: 14px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.json-output {
+    min-height: 260px;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.workspace {
+    display: grid;
+    grid-template-rows: minmax(420px, 1fr) auto;
+    min-width: 0;
+    min-height: 100vh;
+}
+
+.map-streetview-grid {
+    display: grid;
+    grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
+    min-height: 420px;
+}
+
+.map {
+    min-height: 420px;
+    background: #0b1218;
+}
+
+.street-view-container {
+    position: relative;
+    min-height: 420px;
+    border-left: 1px solid var(--border);
+    background: #05080c;
+    overflow: hidden;
+}
+
+.pano {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    z-index: 1;
+    transition: opacity 180ms ease;
+}
+
+.pano.active {
+    opacity: 1;
+    z-index: 2;
+}
+
+.street-view-placeholder {
+    position: absolute;
+    inset: auto 18px 18px 18px;
+    z-index: 3;
+    padding: 8px 10px;
+    border: 1px solid rgba(159, 176, 189, 0.24);
+    border-radius: 8px;
+    background: rgba(5, 8, 12, 0.72);
+    color: var(--muted);
+    font-size: 12px;
+    pointer-events: none;
+}
+
+.leaflet-container {
+    background: #0b1218;
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.leaflet-control-attribution {
+    font-size: 11px;
+}
+
+.chart-card {
+    padding: 14px 18px 18px;
+    border-top: 1px solid var(--border);
+    background: #111b24;
+}
+
+.chart-shell {
+    height: 240px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #0b1218;
+    overflow: hidden;
+}
+
+.chart-shell svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.empty-chart-text {
+    fill: var(--muted);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+@media (max-width: 980px) {
+    .page {
+        grid-template-columns: 1fr;
+    }
+
+    .panel {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .workspace {
+        min-height: 70vh;
+    }
+
+    .map-streetview-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .street-view-container {
+        border-left: 0;
+        border-top: 1px solid var(--border);
+    }
+}
