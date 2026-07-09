@@ -11,7 +11,8 @@ import {
     isPointInsideBounds,
     normalizeLatLng
 } from "./road-network-core.js";
-import { createStreetViewController, loadGoogleMapsForStreetView } from "../../src/ui/map/street-view-controller.js";
+import { createRouteElevationController } from "./elevation-controller.js";
+import { createStreetViewController, loadGoogleMapsForStreetView } from "./street-view-controller.js";
 
 const OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
@@ -71,7 +72,6 @@ const state = {
     selectedCenter: DEFAULT_CENTER,
     preselectedStart: null,
     preselectedDirection: null,
-    previewRouteReady: false,
     bounds: null,
     graph: null,
     networkSource: null,
@@ -81,6 +81,7 @@ const state = {
     streetViewLoaded: false,
     streetViewController: null,
     streetViewService: null,
+    elevationController: null,
     streetViewProbePending: false,
     lastStreetViewProbeAt: 0,
     sim: {
@@ -156,7 +157,6 @@ function selectTileRoutePoint(point) {
         pauseSimulation();
         state.preselectedStart = normalizedPoint;
         state.preselectedDirection = null;
-        state.previewRouteReady = false;
         state.selectedCenter = state.preselectedStart;
         state.bounds = buildBoundsAroundCenter(state.selectedCenter, NETWORK_SIZE_KM);
         state.selectedStart = null;
@@ -174,19 +174,18 @@ function selectTileRoutePoint(point) {
         clearPreviewRouteLayer();
         clearRiderMarker();
         el.routeJsonOutput.value = "";
-        setStatus("已选择起点。继续点击前方道路，确定起步方向。", false, true);
+        setStatus("已选择起点。继续点击终点，生成路线会沿 OSM graph 前往该点。", false, true);
         render();
         return;
     }
 
     state.preselectedDirection = normalizedPoint;
-    state.previewRouteReady = false;
     state.selectedCenter = midpoint(state.preselectedStart, state.preselectedDirection);
     state.bounds = buildBoundsAroundCenter(state.selectedCenter, NETWORK_SIZE_KM);
     drawCenterSelection({ fit: false });
     drawDirectionMarker(state.preselectedDirection);
     clearPreviewRouteLayer();
-    setStatus(`终点/方向点已选择。点击“生成路线”预览路线，然后点击“开始”加载路网。`, false, true);
+    setStatus(`终点已选择。点击“生成路线”加载 OSM graph，并生成起点到终点的沿路路线。`, false, true);
     render();
 }
 
@@ -217,7 +216,7 @@ function boundsToLeaflet(bounds) {
 async function loadNetworkForPreviewRoute() {
     if (state.loadingNetwork) return;
     if (!state.preselectedStart || !state.preselectedDirection) {
-        setStatus("请先在瓦片地图上点击起点和终点/方向点。", true);
+        setStatus("请先在瓦片地图上点击起点和终点。", true);
         return;
     }
     state.loadingNetwork = true;
@@ -466,7 +465,6 @@ function moveToSanFrancisco() {
         showTileLayer();
         state.preselectedStart = null;
         state.preselectedDirection = null;
-        state.previewRouteReady = false;
         state.selectedStart = null;
         clearDirectionMarker();
         clearRouteLayer();
@@ -483,7 +481,7 @@ function moveToSanFrancisco() {
     state.map.setView([DEFAULT_CENTER.lat, DEFAULT_CENTER.lng], 13);
     drawCenterSelection({ fit: false });
     if (!state.route) {
-        setStatus("已移动到旧金山。点击地图设置起点，再次点击设置终点/方向点。", false, true);
+        setStatus("已移动到旧金山。点击地图设置起点，再次点击设置终点。", false, true);
     }
     render();
 }
@@ -492,7 +490,6 @@ function clearTileSelection() {
     if (state.sim.running) return;
     state.preselectedStart = null;
     state.preselectedDirection = null;
-    state.previewRouteReady = false;
     state.selectedStart = null;
     state.route = null;
     clearDirectionMarker();
@@ -504,49 +501,47 @@ function clearTileSelection() {
         state.startMarker = null;
     }
     el.routeJsonOutput.value = "";
-    setStatus("已清除选点。点击地图设置起点，再次点击设置终点/方向点。");
+    setStatus("已清除选点。点击地图设置起点，再次点击设置终点。");
     render();
 }
 
-function buildPreviewRoute() {
+async function buildPreviewRoute() {
     if (!state.preselectedStart || !state.preselectedDirection) {
-        setStatus("请先点击地图选择起点和终点/方向点。", true);
+        setStatus("请先点击地图选择起点和终点。", true);
         return;
     }
-    state.previewRouteReady = true;
+    if (state.loadingNetwork) return;
+    pauseSimulation();
     state.route = null;
     state.selectedStart = null;
     clearRouteLayer();
     clearRiderMarker();
     clearPreviewRouteLayer();
-    state.previewRouteLayer = L.polyline([
-        [state.preselectedStart.lat, state.preselectedStart.lng],
-        [state.preselectedDirection.lat, state.preselectedDirection.lng]
-    ], {
-        color: "#22c55e",
-        weight: 4,
-        opacity: 0.9,
-        dashArray: "8 8"
-    }).addTo(state.map);
-    setStatus("路线预览已生成。点击“开始”后会请求本地范围路网、吸附道路并关闭瓦片。", false, true);
+    setStatus("正在加载 OSM graph，并生成起点到终点的沿路路线...");
     render();
+    if (state.graph) {
+        buildPreselectedInitialRoute();
+        return;
+    }
+    await loadNetworkForPreviewRoute();
 }
 
 function buildInitialRouteTowardPoint(point) {
     if (!state.graph || !state.selectedStart) return;
-    const snappedDirection = findNearestEdgePoint(point, state.graph.edges);
-    if (!snappedDirection) {
-        setStatus("方向点附近没有可用道路。", true);
+    const snappedDestination = findNearestEdgePoint(point, state.graph.edges);
+    if (!snappedDestination) {
+        setStatus("终点附近没有可用道路。", true);
         return;
     }
-    drawDirectionMarker(snappedDirection.point);
-    const heading = bearingDegrees(state.selectedStart.point, snappedDirection.point);
-    const route = buildRouteFromSnappedStart({
+    drawDirectionMarker(snappedDestination.point);
+    const heading = bearingDegrees(state.selectedStart.point, snappedDestination.point);
+    const route = buildRouteToSnappedDestination({
         snappedStart: state.selectedStart,
+        snappedDestination,
         desiredHeading: heading
     });
     if (!route || route.points.length < 2) {
-        setStatus("无法按所选路段生成起步路线，请换一个方向点。", true);
+        setStatus("无法沿 OSM graph 生成起点到终点的路线，请换一个终点。", true);
         return;
     }
     hideTileLayer();
@@ -556,9 +551,10 @@ function buildInitialRouteTowardPoint(point) {
     resetTurnState();
     drawRoute();
     updateRiderMarker();
+    requestRouteElevation("initial");
     syncStreetView();
     const sourceLabel = getNetworkSourceLabel();
-    setStatus(`起步路段已确定，已使用${sourceLabel}，瓦片已关闭。将先前进 ${INTERSECTIONS_PER_SEGMENT} 个路口。`, false, true);
+    setStatus(`路线已生成，已使用${sourceLabel}，瓦片已关闭。开始后会从起点骑到终点，随后自动进入路口决策。`, false, true);
     render();
 }
 
@@ -574,26 +570,121 @@ function buildPreselectedInitialRoute() {
     buildInitialRouteTowardPoint(snappedDirection.point);
 }
 
-function buildRouteFromSnappedStart({ snappedStart, desiredHeading }) {
+function buildRouteToSnappedDestination({ snappedStart, snappedDestination, desiredHeading }) {
     const forward = chooseEdgeDirection(snappedStart.edge, desiredHeading);
+    const destinationEdge = chooseEdgeDirection(snappedDestination.edge, desiredHeading);
     const startPoint = {
         lat: snappedStart.point.lat,
         lng: snappedStart.point.lng,
         nodeId: null,
         distanceMeters: 0,
-        edgeId: snappedStart.edge.id
+        edgeId: forward.id
     };
+    if (isSameDirectedEdge(forward, destinationEdge)) {
+        const startRatio = getSnappedRatioOnEdge(snappedStart, forward);
+        const destinationRatio = getSnappedRatioOnEdge(snappedDestination, destinationEdge);
+        if (destinationRatio >= startRatio) {
+            const destinationPoint = {
+                lat: snappedDestination.point.lat,
+                lng: snappedDestination.point.lng,
+                nodeId: null,
+                continueNodeId: destinationEdge.to,
+                distanceMeters: round(haversineDistanceMeters(startPoint, snappedDestination.point), 1),
+                edgeId: destinationEdge.id
+            };
+            return buildRoute([startPoint, destinationPoint], "osm-road-network-demo");
+        }
+    }
+
     const nextNode = state.graph.nodes.get(forward.to);
     const distanceToNext = haversineDistanceMeters(startPoint, nextNode);
-    const points = [startPoint, makeRoutePoint(nextNode, distanceToNext, forward.id)];
-    extendRouteByIntersections({
-        points,
-        fromNodeId: forward.to,
-        incomingHeading: forward.heading,
-        firstIntent: "straight",
-        intersectionCount: INTERSECTIONS_PER_SEGMENT
-    });
+    const path = findShortestPathToAnyNode(forward.to, [destinationEdge.from]);
+    if (!path) return null;
+
+    const points = [startPoint];
+    const firstNode = state.graph.nodes.get(forward.to);
+    points.push(makeRoutePoint(firstNode, distanceToNext, forward.id));
+    appendPathNodes(points, path.nodeIds.slice(1), path.edgeIds);
+
+    const destinationPoint = {
+        lat: snappedDestination.point.lat,
+        lng: snappedDestination.point.lng,
+        nodeId: null,
+        continueNodeId: destinationEdge.to,
+        distanceMeters: round((points.at(-1)?.distanceMeters ?? 0) + haversineDistanceMeters(points.at(-1), snappedDestination.point), 1),
+        edgeId: destinationEdge.id
+    };
+    points.push(destinationPoint);
     return buildRoute(points, "osm-road-network-demo");
+}
+
+function isSameDirectedEdge(a, b) {
+    return a?.from === b?.from && a?.to === b?.to;
+}
+
+function getSnappedRatioOnEdge(snapped, edge) {
+    if (snapped.edge.from === edge.from && snapped.edge.to === edge.to) {
+        return snapped.ratio;
+    }
+    if (snapped.edge.from === edge.to && snapped.edge.to === edge.from) {
+        return 1 - snapped.ratio;
+    }
+    return snapped.ratio;
+}
+
+function appendPathNodes(points, nodeIds, edgeIds) {
+    for (let index = 0; index < nodeIds.length; index += 1) {
+        const node = state.graph.nodes.get(nodeIds[index]);
+        const previous = points.at(-1);
+        const edgeId = edgeIds[index] ?? previous?.edgeId ?? null;
+        points.push(makeRoutePoint(node, previous.distanceMeters + haversineDistanceMeters(previous, node), edgeId));
+    }
+}
+
+function findShortestPathToAnyNode(startNodeId, targetNodeIds) {
+    const targets = new Set(targetNodeIds.filter(Boolean));
+    if (targets.size === 0) return null;
+    const distances = new Map([[startNodeId, 0]]);
+    const previous = new Map();
+    const queue = [{ nodeId: startNodeId, distance: 0 }];
+    const visited = new Set();
+
+    while (queue.length > 0) {
+        queue.sort((a, b) => a.distance - b.distance);
+        const current = queue.shift();
+        if (visited.has(current.nodeId)) continue;
+        visited.add(current.nodeId);
+        if (targets.has(current.nodeId)) {
+            return reconstructPath(previous, current.nodeId);
+        }
+
+        const node = state.graph.nodes.get(current.nodeId);
+        for (const edge of node?.edges ?? []) {
+            const nextDistance = current.distance + edge.distanceMeters;
+            if (nextDistance >= (distances.get(edge.to) ?? Infinity)) continue;
+            distances.set(edge.to, nextDistance);
+            previous.set(edge.to, {
+                nodeId: current.nodeId,
+                edgeId: edge.id
+            });
+            queue.push({ nodeId: edge.to, distance: nextDistance });
+        }
+    }
+
+    return null;
+}
+
+function reconstructPath(previous, endNodeId) {
+    const nodeIds = [endNodeId];
+    const edgeIds = [];
+    let cursor = endNodeId;
+    while (previous.has(cursor)) {
+        const item = previous.get(cursor);
+        nodeIds.unshift(item.nodeId);
+        edgeIds.unshift(item.edgeId);
+        cursor = item.nodeId;
+    }
+    return { nodeIds, edgeIds };
 }
 
 function extendRouteByIntersections({ points, fromNodeId, incomingHeading, firstIntent, intersectionCount }) {
@@ -651,6 +742,7 @@ function makeSampledRoutePoint(point, index) {
         distanceMeters: round(point.distanceMeters, 1),
         gradePercent: 0,
         elevationMeters: 0,
+        elevationLoaded: false,
         nodeId: point.nodeId ?? null,
         edgeId: point.edgeId ?? null,
         sampleIndex: index
@@ -670,12 +762,8 @@ function makeRoutePoint(node, distanceMeters, edgeId) {
 async function startSimulation() {
     if (state.sim.running) return;
     if (!state.route) {
-        if (!state.previewRouteReady) {
-            setStatus("请先点击“生成路线”完成预览。", true);
-            return;
-        }
-        await loadNetworkForPreviewRoute();
-        if (!state.route) return;
+        setStatus("请先点击“生成路线”，生成沿 OSM graph 到下一个路口的路线。", true);
+        return;
     }
     state.sim.running = true;
     state.sim.lastTickMs = performance.now();
@@ -752,6 +840,9 @@ async function loadStreetViewPrototype() {
             container1: el.svPano1,
             container2: el.svPano2
         });
+        state.elevationController = createRouteElevationController({
+            onUpdate: syncRouteElevationUpdate
+        });
         state.streetViewService = new window.google.maps.StreetViewService();
         state.streetViewLoaded = true;
         if (el.streetViewPlaceholder) {
@@ -760,6 +851,7 @@ async function loadStreetViewPrototype() {
         setStreetViewStatus(state.route
             ? "街景已加载，会跟随模拟位置更新。"
             : "街景已加载，生成路线/开始模拟后更新。", false, true);
+        requestRouteElevation("initial");
         syncStreetView();
     } catch (error) {
         state.streetViewLoaded = false;
@@ -783,8 +875,10 @@ function syncStreetView() {
     const distanceMeters = Math.min(state.sim.distanceMeters, state.route.totalDistanceMeters);
     const point = routePointAtDistance(state.route, distanceMeters);
     const heading = getRouteHeadingAtDistance(distanceMeters);
+    const routeSample = routeSampleAtDistance(state.route, distanceMeters);
+    const grade = Number.isFinite(routeSample?.gradePercent) ? routeSample.gradePercent : 0;
     setStreetViewStatus(
-        `同步 GPS ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)} · heading ${Math.round(heading)}deg · 主控制器约 3 秒更新一次`,
+        `同步 GPS ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)} · heading ${Math.round(heading)}deg · grade ${grade.toFixed(1)}% · 视角随 tick 更新`,
         false,
         true
     );
@@ -795,6 +889,28 @@ function syncStreetView() {
         positionLong: point.lng
     });
     runStreetViewProbe(point, { force: distanceMeters === 0 });
+}
+
+function requestRouteElevation(mode) {
+    if (!state.route || !state.elevationController) return;
+    state.elevationController.enrichRoute(state.route, { mode })
+        .then((summary) => {
+            if (!state.route) return;
+            render();
+            syncStreetView();
+            if (summary.requests > 0 || summary.skippedByQuota) {
+                const quotaText = summary.skippedByQuota ? "，已达到 demo quota cap" : "";
+                setStatus(`坡度已更新：${summary.requests} 次请求 / ${summary.requestedPoints} 个点，缓存命中 ${summary.cacheHits}${quotaText}。`, summary.skippedByQuota, !summary.skippedByQuota);
+            }
+        })
+        .catch((error) => {
+            setStatus(`坡度请求失败：${getMessage(error)}`, true);
+        });
+}
+
+function syncRouteElevationUpdate() {
+    render();
+    syncStreetView();
 }
 
 function runStreetViewProbe(point, { force = false } = {}) {
@@ -845,15 +961,20 @@ function continueFromDecision(intent, { isDefault = false } = {}) {
 
     const routeNodes = state.route.rawNodes ?? [];
     const endPoint = routeNodes.at(-1);
-    if (!endPoint?.nodeId) {
+    const continuationNodeId = endPoint?.nodeId ?? endPoint?.continueNodeId;
+    if (!continuationNodeId) {
         setStatus("当前路线终点不是 OSM 路口，无法继续延伸。", true);
         state.sim.waitingAtDecision = false;
         resetTurnState();
         return;
     }
+    const basePoints = buildContinuationBasePoints(routeNodes, continuationNodeId);
+    const continuationPoint = basePoints.at(-1);
 
-    const incomingHeading = getRouteHeadingAtDistance(Math.max(0, state.route.totalDistanceMeters - 20));
-    const edge = chooseNextEdge(endPoint.nodeId, incomingHeading, intent);
+    const incomingHeading = endPoint?.nodeId
+        ? getRouteHeadingAtDistance(Math.max(0, state.route.totalDistanceMeters - 20))
+        : bearingDegrees(endPoint, continuationPoint);
+    const edge = chooseNextEdge(continuationNodeId, incomingHeading, intent);
     if (!edge) {
         setStatus(`${getIntentLabel(intent)}不可用，前方没有合适道路。`, true);
         state.sim.waitingAtDecision = false;
@@ -862,9 +983,9 @@ function continueFromDecision(intent, { isDefault = false } = {}) {
         return;
     }
 
-    const points = [...routeNodes];
+    const points = [...basePoints];
     const nextNode = state.graph.nodes.get(edge.to);
-    points.push(makeRoutePoint(nextNode, endPoint.distanceMeters + edge.distanceMeters, edge.id));
+    points.push(makeRoutePoint(nextNode, continuationPoint.distanceMeters + edge.distanceMeters, edge.id));
     extendRouteByIntersections({
         points,
         fromNodeId: edge.to,
@@ -878,11 +999,30 @@ function continueFromDecision(intent, { isDefault = false } = {}) {
     state.sim.lastTickMs = performance.now();
     drawRoute();
     updateRiderMarker();
+    requestRouteElevation("incremental");
     syncStreetView();
     const actionLabel = isDefault ? `默认${getIntentLabel(intent)}` : getIntentLabel(intent);
     el.intentText.textContent = `${actionLabel}已执行`;
     setStatus(`${actionLabel}已执行，继续前进 ${INTERSECTIONS_PER_SEGMENT} 个路口。`, false, true);
     render();
+}
+
+function buildContinuationBasePoints(routeNodes, continuationNodeId) {
+    const points = [...routeNodes];
+    const endPoint = points.at(-1);
+    if (endPoint?.nodeId === continuationNodeId) {
+        return points;
+    }
+    const continuationNode = state.graph.nodes.get(continuationNodeId);
+    if (!continuationNode || !endPoint) {
+        return points;
+    }
+    points.push(makeRoutePoint(
+        continuationNode,
+        endPoint.distanceMeters + haversineDistanceMeters(endPoint, continuationNode),
+        endPoint.edgeId
+    ));
+    return points;
 }
 
 function isDecisionNode(nodeId) {
@@ -941,7 +1081,7 @@ function drawDirectionMarker(point) {
         weight: 2,
         fillColor: "#86efac",
         fillOpacity: 0.9
-    }).addTo(state.map).bindTooltip("方向点");
+    }).addTo(state.map).bindTooltip("终点");
 }
 
 function clearDirectionMarker() {
@@ -1019,6 +1159,21 @@ function routePointAtDistance(route, distanceMeters) {
     };
 }
 
+function routeSampleAtDistance(route, distanceMeters) {
+    const points = route.points ?? [];
+    if (points.length === 0) return null;
+    let best = points[0];
+    let bestDistance = Math.abs(points[0].distanceMeters - distanceMeters);
+    for (const point of points) {
+        const distance = Math.abs(point.distanceMeters - distanceMeters);
+        if (distance < bestDistance) {
+            best = point;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
 function getRouteHeadingAtDistance(distanceMeters) {
     const from = routePointAtDistance(state.route, Math.max(0, distanceMeters));
     const to = routePointAtDistance(state.route, Math.min(state.route.totalDistanceMeters, distanceMeters + 20));
@@ -1083,7 +1238,6 @@ function resetAll() {
     showTileLayer();
     state.preselectedStart = null;
     state.preselectedDirection = null;
-    state.previewRouteReady = false;
     state.selectedStart = null;
     state.graph = null;
     state.networkSource = null;
@@ -1106,7 +1260,7 @@ function resetAll() {
     clearPreviewRouteLayer();
     clearRiderMarker();
     el.routeJsonOutput.value = "";
-    setStatus("已重置。点击地图设置起点，再次点击设置终点/方向点。");
+    setStatus("已重置。点击地图设置起点，再次点击设置终点。");
     render();
 }
 
@@ -1126,7 +1280,7 @@ function render() {
     el.usePresetStartBtn.disabled = state.sim.running || (!hasTileSelection && !hasRoute);
     el.resetBtn.disabled = state.loadingNetwork || (!hasNetwork && !hasStart && !hasRoute && !hasTileSelection);
     el.buildRouteBtn.disabled = state.sim.running || state.loadingNetwork || !hasCompleteTileSelection;
-    el.startSimBtn.disabled = state.sim.running || state.loadingNetwork || (!hasRoute && !state.previewRouteReady);
+    el.startSimBtn.disabled = state.sim.running || state.loadingNetwork || !hasRoute;
     el.pauseSimBtn.disabled = !state.sim.running;
     el.resetSimBtn.disabled = !hasRoute;
     el.turnLeftBtn.disabled = !hasRoute;
@@ -1138,7 +1292,7 @@ function render() {
         : (state.preselectedStart ? formatPoint(state.preselectedStart) : "未选择");
     el.networkText.textContent = hasNetwork
         ? `${getNetworkSourceLabel()} · ${state.graph.nodes.size} nodes · ${state.graph.edges.length / 2} road segments`
-        : (state.previewRouteReady ? "开始时加载" : "未加载");
+        : "未加载";
     if (hasRoute) {
         el.routeText.textContent = `${(state.route.totalDistanceMeters / 1000).toFixed(2)} km`;
         el.routeJsonOutput.value = JSON.stringify(state.route, null, 2);
