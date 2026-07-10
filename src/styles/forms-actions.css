@@ -87,6 +87,67 @@ tbody tr:last-child td {
     margin-bottom: 16px;
 }
 
+.route-mode-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: #f8fafc;
+}
+
+.route-mode-tab {
+    border: 0;
+    border-radius: 10px;
+    padding: 10px 8px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.route-mode-tab:hover {
+    background: #eef2ff;
+    color: var(--primary);
+}
+
+.route-mode-tab.active {
+    background: #ffffff;
+    color: var(--primary);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.route-mode-panel {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: #ffffff;
+}
+
+.route-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.route-panel-head strong {
+    display: block;
+    color: var(--text);
+    font-size: 15px;
+}
+
+.route-panel-head span {
+    display: block;
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
 .route-source-row {
     display: flex;
     align-items: center;
@@ -102,6 +163,31 @@ tbody tr:last-child td {
 .route-source-row strong {
     color: var(--text);
     font-size: 15px;
+}
+
+.map-route-planner {
+    display: grid;
+    gap: 10px;
+}
+
+.map-route-point-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.map-route-point-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.map-route-point-row strong {
+    color: var(--text);
+    font-weight: 600;
+    text-align: right;
 }
 
 .form-grid {

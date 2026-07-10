@@ -34,9 +34,13 @@ export function createFakeElement(initial = {}) {
         style: {},
         className: "",
         classList: createFakeClassList(),
+        attributes: {},
         addEventListener(type, handler) {
             if (!listeners.has(type)) listeners.set(type, []);
             listeners.get(type).push(handler);
+        },
+        setAttribute(name, value) {
+            element.attributes[name] = String(value);
         },
         dispatch(type, payload = {}) {
             const handlers = listeners.get(type) ?? [];

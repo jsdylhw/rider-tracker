@@ -53,6 +53,23 @@ export function createMapController({ previewElement, dashboardElement, initialP
 
     const previewLayers = createLayerSet(previewMap);
     const dashboardLayers = createLayerSet(dashboardMap);
+    let plannerClickHandler = null;
+    let plannerMode = null;
+
+    if (previewMap) {
+        previewMap.on("click", (event) => {
+            if (!plannerClickHandler || !plannerMode) {
+                return;
+            }
+            plannerClickHandler({
+                mode: plannerMode,
+                point: {
+                    lat: event.latlng.lat,
+                    lng: event.latlng.lng
+                }
+            });
+        });
+    }
 
     function setMapProvider(providerKey) {
         if (!MAP_PROVIDERS[providerKey] || providerKey === currentProviderKey) {
@@ -84,10 +101,33 @@ export function createMapController({ previewElement, dashboardElement, initialP
         renderRoute(dashboardMap, dashboardLayers, route, currentRecord);
     }
 
+    function setPlannerClickHandler(handler) {
+        plannerClickHandler = handler;
+    }
+
+    function setPlannerMode(mode) {
+        plannerMode = ["start", "destination"].includes(mode) ? mode : null;
+        if (previewMap?._container) {
+            previewMap._container.style.cursor = plannerMode ? "crosshair" : "";
+        }
+    }
+
+    function syncPlannerSelection(selection) {
+        renderPlannerSelection(previewMap, previewLayers, selection);
+    }
+
+    function invalidatePreviewSize() {
+        previewMap?.invalidateSize();
+    }
+
     return {
         syncRoute,
         syncRide,
         setMapProvider,
+        setPlannerClickHandler,
+        setPlannerMode,
+        syncPlannerSelection,
+        invalidatePreviewSize,
         isReady: Boolean(window.L)
     };
 }
@@ -97,7 +137,7 @@ function createLayerSet(map) {
         return null;
     }
 
-    return {
+    const layers = {
         routeLine: window.L.polyline([], {
             color: "#0ea5e9",
             weight: 5,
@@ -129,8 +169,38 @@ function createLayerSet(map) {
             fillColor: "#ff4757",
             fillOpacity: 1
         }).addTo(map),
+        plannerStartMarker: window.L.circleMarker([0, 0], {
+            radius: 10,
+            color: "#ffffff",
+            weight: 3,
+            fillColor: "#22c55e",
+            opacity: 0,
+            fillOpacity: 0
+        }).addTo(map),
+        plannerDestinationMarker: window.L.circleMarker([0, 0], {
+            radius: 10,
+            color: "#ffffff",
+            weight: 3,
+            fillColor: "#ef4444",
+            opacity: 0,
+            fillOpacity: 0
+        }).addTo(map),
+        hasVisibleRoute: false,
         lastRouteKey: ""
     };
+
+    layers.plannerStartMarker.bindTooltip?.("起点", {
+        direction: "top",
+        offset: [0, -10],
+        opacity: 0.95
+    });
+    layers.plannerDestinationMarker.bindTooltip?.("终点", {
+        direction: "top",
+        offset: [0, -10],
+        opacity: 0.95
+    });
+
+    return layers;
 }
 
 function renderRoute(map, layers, route, currentRecord) {
@@ -149,14 +219,17 @@ function renderRoute(map, layers, route, currentRecord) {
         layers.currentMarker.setStyle({ opacity: 0, fillOpacity: 0 });
         layers.startMarker.setStyle({ opacity: 0, fillOpacity: 0 });
         layers.endMarker.setStyle({ opacity: 0, fillOpacity: 0 });
+        layers.hasVisibleRoute = false;
         layers.lastRouteKey = "";
         return;
     }
 
     map.invalidateSize();
+    layers.routeLine.setStyle(resolveRouteLineStyle(route));
     layers.routeLine.setLatLngs(geoPoints);
     layers.startMarker.setLatLng(geoPoints[0]).setStyle({ opacity: 1, fillOpacity: 1 });
     layers.endMarker.setLatLng(geoPoints.at(-1)).setStyle({ opacity: 1, fillOpacity: 1 });
+    layers.hasVisibleRoute = true;
 
     if (layers.lastRouteKey !== routeKey) {
         map.fitBounds(window.L.latLngBounds(geoPoints), {
@@ -177,6 +250,56 @@ function renderRoute(map, layers, route, currentRecord) {
     layers.riddenLine.setLatLngs(riddenPoints);
     layers.currentMarker.setLatLng(currentLatLng).setStyle({ opacity: 1, fillOpacity: 1 });
     map.panTo(currentLatLng, { animate: true, duration: 0.5 });
+}
+
+function renderPlannerSelection(map, layers, selection) {
+    if (!map || !layers) {
+        return;
+    }
+
+    setOptionalMarker(layers.plannerStartMarker, selection?.start);
+    setOptionalMarker(layers.plannerDestinationMarker, selection?.destination);
+
+    const points = [selection?.start, selection?.destination]
+        .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lng))
+        .map((point) => [point.lat, point.lng]);
+
+    if (points.length === 2 && !layers.hasVisibleRoute) {
+        map.fitBounds(window.L.latLngBounds(points), {
+            padding: [32, 32]
+        });
+    }
+}
+
+function resolveRouteLineStyle(route) {
+    if (route?.source === "osm-map") {
+        return {
+            color: "#2563eb",
+            weight: 7,
+            opacity: 0.96
+        };
+    }
+
+    return {
+        color: "#0ea5e9",
+        weight: 5,
+        opacity: 0.95
+    };
+}
+
+function setOptionalMarker(marker, point) {
+    if (!marker) {
+        return;
+    }
+
+    if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lng)) {
+        marker.setStyle({ opacity: 0, fillOpacity: 0 });
+        marker.closeTooltip?.();
+        return;
+    }
+
+    marker.setLatLng([point.lat, point.lng]).setStyle({ opacity: 1, fillOpacity: 1 });
+    marker.openTooltip?.();
 }
 
 function buildRiddenPoints(route, distanceMeters, currentLatLng) {

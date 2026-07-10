@@ -1,62 +1,8 @@
 import { STREET_VIEW_UPDATE_INTERVAL_MS } from "../../app/store/initial-state.js";
-
-const GOOGLE_CALLBACK_NAME = "__riderTrackerStreetViewInit";
-let googleMapsLoadPromise = null;
+import { loadGoogleMapsApi } from "../../adapters/maps/google-maps-loader.js";
 
 export function loadGoogleMapsForStreetView(apiKey) {
-    if (!apiKey) {
-        return Promise.reject(new Error("缺少 Google Maps API Key"));
-    }
-
-    if (window.google?.maps?.StreetViewPanorama && window.google?.maps?.geometry) {
-        return Promise.resolve();
-    }
-
-    if (googleMapsLoadPromise) {
-        return googleMapsLoadPromise;
-    }
-
-    googleMapsLoadPromise = new Promise((resolve, reject) => {
-        const previousAuthFailure = window.gm_authFailure;
-
-        window.gm_authFailure = () => {
-            cleanup();
-            reject(new Error("API Key 验证失败，请检查 Key 与配额设置。"));
-        };
-
-        window[GOOGLE_CALLBACK_NAME] = () => {
-            cleanup();
-            resolve();
-        };
-
-        const script = document.createElement("script");
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=${GOOGLE_CALLBACK_NAME}`;
-        script.async = true;
-        script.defer = true;
-        script.onerror = () => {
-            cleanup();
-            reject(new Error("Google Maps API 加载失败，请检查网络连接或 API Key。"));
-        };
-
-        function cleanup() {
-            if (window[GOOGLE_CALLBACK_NAME]) {
-                delete window[GOOGLE_CALLBACK_NAME];
-            }
-            if (previousAuthFailure) {
-                window.gm_authFailure = previousAuthFailure;
-            } else if (window.gm_authFailure) {
-                delete window.gm_authFailure;
-            }
-        }
-
-        document.body.appendChild(script);
-    }).catch((error) => {
-        // 失败后允许下次重新触发加载
-        googleMapsLoadPromise = null;
-        throw error;
-    });
-
-    return googleMapsLoadPromise;
+    return loadGoogleMapsApi(apiKey);
 }
 
 export function createStreetViewController({ container1, container2 }) {
