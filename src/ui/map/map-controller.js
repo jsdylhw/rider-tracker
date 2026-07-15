@@ -106,7 +106,7 @@ export function createMapController({ previewElement, dashboardElement, initialP
     }
 
     function setPlannerMode(mode) {
-        plannerMode = ["start", "destination"].includes(mode) ? mode : null;
+        plannerMode = ["start", "destination", "select"].includes(mode) ? mode : null;
         if (previewMap?._container) {
             previewMap._container.style.cursor = plannerMode ? "crosshair" : "";
         }
@@ -185,6 +185,13 @@ function createLayerSet(map) {
             opacity: 0,
             fillOpacity: 0
         }).addTo(map),
+        plannerGuideLine: window.L.polyline([], {
+            color: "#64748b",
+            weight: 3,
+            opacity: 0.85,
+            dashArray: "8 10"
+        }).addTo(map),
+        routeLineOpacity: 0.95,
         hasVisibleRoute: false,
         lastRouteKey: ""
     };
@@ -194,7 +201,7 @@ function createLayerSet(map) {
         offset: [0, -10],
         opacity: 0.95
     });
-    layers.plannerDestinationMarker.bindTooltip?.("终点", {
+    layers.plannerDestinationMarker.bindTooltip?.("起步目标", {
         direction: "top",
         offset: [0, -10],
         opacity: 0.95
@@ -208,10 +215,10 @@ function renderRoute(map, layers, route, currentRecord) {
         return;
     }
 
-    const geoPoints = (route?.points ?? [])
-        .filter((point) => typeof point.latitude === "number" && typeof point.longitude === "number")
+    const geoPoints = getRouteMapGeometry(route)
+        .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude))
         .map((point) => [point.latitude, point.longitude]);
-    const routeKey = `${route?.source ?? "unknown"}:${route?.name ?? "route"}:${route?.totalDistanceMeters ?? 0}:${geoPoints.length}`;
+    const routeKey = buildRouteGeometryKey(route, geoPoints);
 
     if (geoPoints.length < 2) {
         layers.routeLine.setLatLngs([]);
@@ -225,8 +232,11 @@ function renderRoute(map, layers, route, currentRecord) {
     }
 
     map.invalidateSize();
-    layers.routeLine.setStyle(resolveRouteLineStyle(route));
+    const routeLineStyle = resolveRouteLineStyle(route);
+    layers.routeLineOpacity = routeLineStyle.opacity;
+    layers.routeLine.setStyle(routeLineStyle);
     layers.routeLine.setLatLngs(geoPoints);
+    layers.routeLine.bringToFront?.();
     layers.startMarker.setLatLng(geoPoints[0]).setStyle({ opacity: 1, fillOpacity: 1 });
     layers.endMarker.setLatLng(geoPoints.at(-1)).setStyle({ opacity: 1, fillOpacity: 1 });
     layers.hasVisibleRoute = true;
@@ -252,6 +262,24 @@ function renderRoute(map, layers, route, currentRecord) {
     map.panTo(currentLatLng, { animate: true, duration: 0.5 });
 }
 
+function getRouteMapGeometry(route) {
+    return route?.mapGeometry?.length >= 2 ? route.mapGeometry : (route?.points ?? []);
+}
+
+export function buildRouteGeometryKey(route, geoPoints) {
+    let hash = 2166136261;
+
+    for (const [latitude, longitude] of geoPoints) {
+        const coordinate = `${latitude.toFixed(6)},${longitude.toFixed(6)};`;
+        for (let index = 0; index < coordinate.length; index += 1) {
+            hash ^= coordinate.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+        }
+    }
+
+    return `${route?.source ?? "unknown"}:${geoPoints.length}:${(hash >>> 0).toString(36)}`;
+}
+
 function renderPlannerSelection(map, layers, selection) {
     if (!map || !layers) {
         return;
@@ -264,7 +292,9 @@ function renderPlannerSelection(map, layers, selection) {
         .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lng))
         .map((point) => [point.lat, point.lng]);
 
-    if (points.length === 2 && !layers.hasVisibleRoute) {
+    layers.plannerGuideLine.setLatLngs(points.length === 2 ? points : []);
+
+    if (points.length === 2) {
         map.fitBounds(window.L.latLngBounds(points), {
             padding: [32, 32]
         });
@@ -272,7 +302,15 @@ function renderPlannerSelection(map, layers, selection) {
 }
 
 function resolveRouteLineStyle(route) {
-    if (route?.source === "osm-map") {
+    if (route?.networkSource === "synthetic") {
+        return {
+            color: "#f97316",
+            weight: 7,
+            opacity: 0.96
+        };
+    }
+
+    if (route?.source === "osm-map" || route?.source === "osm-exploration") {
         return {
             color: "#2563eb",
             weight: 7,

@@ -30,7 +30,7 @@ export function createStreetViewController({ container1, container2 }) {
     const pano2 = new window.google.maps.StreetViewPanorama(container2, { ...commonOptions });
 
     let activeIndex = 1;
-    let lastDistance = -1;
+    let lastTargetSignature = "";
     let pauseAutoUntil = 0;
     let applyingProgrammaticPov = false;
     let panoramaRequestInFlight = false;
@@ -84,62 +84,21 @@ export function createStreetViewController({ container1, container2 }) {
     bindUserInteractionPause(container1, pano1);
     bindUserInteractionPause(container2, pano2);
 
-    function getTargetStateAtDistance(route, distanceMeters) {
-        if (!route || !route.points || route.points.length === 0) return null;
-        const points = route.points;
-        if (distanceMeters <= 0) return { lat: points[0].latitude, lng: points[0].longitude, grade: points[0].gradePercent };
-        if (distanceMeters >= route.totalDistanceMeters) return { lat: points[points.length - 1].latitude, lng: points[points.length - 1].longitude, grade: points[points.length - 1].gradePercent };
-
-        let low = 0;
-        let high = points.length - 1;
-        while (low < high) {
-            const mid = Math.floor((low + high) / 2);
-            if (points[mid].distanceMeters < distanceMeters) {
-                low = mid + 1;
-            } else {
-                high = mid;
-            }
-        }
-        const idx = Math.max(0, low - 1);
-        const p1 = points[idx];
-        const p2 = points[idx + 1];
-        if (!p2) return { lat: p1.latitude, lng: p1.longitude, grade: p1.gradePercent };
-
-        const segmentDist = p2.distanceMeters - p1.distanceMeters;
-        const ratio = segmentDist === 0 ? 0 : (distanceMeters - p1.distanceMeters) / segmentDist;
-
-        return {
-            lat: p1.latitude + (p2.latitude - p1.latitude) * ratio,
-            lng: p1.longitude + (p2.longitude - p1.longitude) * ratio,
-            grade: p1.gradePercent + (p2.gradePercent - p1.gradePercent) * ratio
-        };
-    }
-
-    function update(route, currentRecord) {
-        if (!route || !currentRecord || isAutoUpdatePaused() || panoramaRequestInFlight) return;
+    function update(target) {
+        if (!isStreetViewTarget(target) || isAutoUpdatePaused() || panoramaRequestInFlight) return;
 
         const now = Date.now();
-        const currentDistanceMeters = currentRecord.distanceKm * 1000;
+        const targetSignature = `${target.latitude.toFixed(6)}:${target.longitude.toFixed(6)}:${Math.round(target.heading)}`;
 
-        if (lastDistance !== -1 && now - lastUpdateTime <= UPDATE_INTERVAL_MS) {
+        if (lastTargetSignature && now - lastUpdateTime <= UPDATE_INTERVAL_MS) {
             return;
         }
 
         lastUpdateTime = now;
-        lastDistance = currentDistanceMeters;
+        lastTargetSignature = targetSignature;
 
-        const state = getTargetStateAtDistance(route, currentDistanceMeters);
-        if (!state) return;
-
-        const nextState = getTargetStateAtDistance(route, currentDistanceMeters + 5);
-        let heading = 0;
-        if (nextState) {
-            heading = window.google.maps.geometry.spherical.computeHeading(
-                new window.google.maps.LatLng(state.lat, state.lng),
-                new window.google.maps.LatLng(nextState.lat, nextState.lng)
-            );
-        }
-        const pitch = Math.atan(state.grade / 100) * (180 / Math.PI);
+        const heading = normalizeHeading(target.heading);
+        const pitch = Math.atan((target.gradePercent ?? 0) / 100) * (180 / Math.PI);
 
         const activePanorama = activeIndex === 1 ? pano1 : pano2;
         const nextPanorama = activeIndex === 1 ? pano2 : pano1;
@@ -155,7 +114,7 @@ export function createStreetViewController({ container1, container2 }) {
             requestInFlightTimeoutId = null;
         }, 10000);
 
-        svService.getPanorama({ location: new window.google.maps.LatLng(state.lat, state.lng), radius: 50 }, (data, status) => {
+        svService.getPanorama({ location: new window.google.maps.LatLng(target.latitude, target.longitude), radius: 50 }, (data, status) => {
             panoramaRequestInFlight = false;
             if (requestInFlightTimeoutId !== null) {
                 window.clearTimeout(requestInFlightTimeoutId);
@@ -204,10 +163,11 @@ export function createStreetViewController({ container1, container2 }) {
             statusTimeoutId = window.setTimeout(cleanupStatusListener, UPDATE_INTERVAL_MS);
 
             // Preload next update window
-            const speedMps = (currentRecord.speedKph || 25) / 3.6;
-            const futureState = getTargetStateAtDistance(route, currentDistanceMeters + speedMps * (UPDATE_INTERVAL_MS / 1000));
-            if (futureState) {
-                svService.getPanorama({ location: new window.google.maps.LatLng(futureState.lat, futureState.lng), radius: 50 }, () => {});
+            if (isStreetViewLocation(target.prefetchLocation)) {
+                svService.getPanorama({
+                    location: new window.google.maps.LatLng(target.prefetchLocation.latitude, target.prefetchLocation.longitude),
+                    radius: 50
+                }, () => {});
             }
         });
     }
@@ -232,4 +192,100 @@ export function createStreetViewController({ container1, container2 }) {
     }
 
     return { update, destroy };
+}
+
+export function buildStreetViewTargetFromRoute(route, currentRecord) {
+    if (!route || !currentRecord || !Number.isFinite(currentRecord.distanceKm)) {
+        return null;
+    }
+
+    const currentDistanceMeters = currentRecord.distanceKm * 1000;
+    const state = getRouteStateAtDistance(route, currentDistanceMeters);
+    const nextState = getRouteStateAtDistance(route, currentDistanceMeters + 5);
+    if (!state || !nextState) {
+        return null;
+    }
+
+    const speedKph = Number.isFinite(currentRecord.speedKph) ? currentRecord.speedKph : 25;
+    const futureDistanceMeters = currentDistanceMeters + (speedKph / 3.6) * (STREET_VIEW_UPDATE_INTERVAL_MS / 1000);
+    const futureState = getRouteStateAtDistance(route, futureDistanceMeters);
+
+    return {
+        latitude: state.latitude,
+        longitude: state.longitude,
+        heading: bearingDegrees(state, nextState),
+        gradePercent: state.gradePercent,
+        speedKph,
+        prefetchLocation: futureState ? {
+            latitude: futureState.latitude,
+            longitude: futureState.longitude
+        } : null
+    };
+}
+
+function getRouteStateAtDistance(route, distanceMeters) {
+    if (!route?.points?.length) return null;
+
+    const points = route.points;
+    if (distanceMeters <= 0) return toRouteState(points[0]);
+    if (distanceMeters >= route.totalDistanceMeters) return toRouteState(points.at(-1));
+
+    let low = 0;
+    let high = points.length - 1;
+    while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        if (points[mid].distanceMeters < distanceMeters) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+
+    const first = points[Math.max(0, low - 1)];
+    const second = points[low];
+    if (!second) return toRouteState(first);
+
+    const segmentDistance = second.distanceMeters - first.distanceMeters;
+    const ratio = segmentDistance === 0 ? 0 : (distanceMeters - first.distanceMeters) / segmentDistance;
+    return {
+        latitude: first.latitude + (second.latitude - first.latitude) * ratio,
+        longitude: first.longitude + (second.longitude - first.longitude) * ratio,
+        gradePercent: (first.gradePercent ?? 0) + ((second.gradePercent ?? 0) - (first.gradePercent ?? 0)) * ratio
+    };
+}
+
+function toRouteState(point) {
+    if (!Number.isFinite(point?.latitude) || !Number.isFinite(point?.longitude)) {
+        return null;
+    }
+    return {
+        latitude: point.latitude,
+        longitude: point.longitude,
+        gradePercent: point.gradePercent ?? 0
+    };
+}
+
+function isStreetViewTarget(target) {
+    return Number.isFinite(target?.latitude)
+        && Number.isFinite(target?.longitude)
+        && Number.isFinite(target?.heading);
+}
+
+function isStreetViewLocation(location) {
+    return Number.isFinite(location?.latitude) && Number.isFinite(location?.longitude);
+}
+
+function bearingDegrees(from, to) {
+    const toRadians = (degrees) => degrees * Math.PI / 180;
+    const fromLatitude = toRadians(from.latitude);
+    const toLatitude = toRadians(to.latitude);
+    const deltaLongitude = toRadians(to.longitude - from.longitude);
+    const y = Math.sin(deltaLongitude) * Math.cos(toLatitude);
+    const x = Math.cos(fromLatitude) * Math.sin(toLatitude)
+        - Math.sin(fromLatitude) * Math.cos(toLatitude) * Math.cos(deltaLongitude);
+    return normalizeHeading(Math.atan2(y, x) * 180 / Math.PI);
+}
+
+function normalizeHeading(value) {
+    return ((value % 360) + 360) % 360;
 }

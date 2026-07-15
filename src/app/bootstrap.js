@@ -32,7 +32,7 @@ const userService = createUserService({ store });
 const routeService = createRouteService({ store });
 const deviceService = createDeviceService({ store });
 const exportService = createExportService({ store });
-const rideService = createRideService({ store, deviceService, exportService });
+const rideService = createRideService({ store, deviceService, exportService, routeService });
 const uiService = createUiService({ store });
 const workoutService = createWorkoutService({ store, deviceService });
 

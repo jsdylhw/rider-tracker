@@ -31,8 +31,8 @@ function createBaseState() {
             totalDistanceMeters: 1000,
             name: "Test",
             points: [
-                { latitude: 31.1, longitude: 121.1 },
-                { latitude: 31.2, longitude: 121.2 }
+                { latitude: 31.1, longitude: 121.1, distanceMeters: 0, gradePercent: 0 },
+                { latitude: 31.2, longitude: 121.2, distanceMeters: 1000, gradePercent: 0 }
             ]
         },
         workout: { runtime: { targetTrainerGradePercent: 0 } },
@@ -118,11 +118,11 @@ export const suite = {
                 const elements = createElements();
                 const state = createBaseState();
                 const store = createStore(state);
-                let syncedRecord = null;
+                let syncedTarget = null;
                 const streetViewRef = {
                     current: {
-                        update(route, currentRecord) {
-                            syncedRecord = currentRecord;
+                        update(target) {
+                            syncedTarget = target;
                         }
                     }
                 };
@@ -142,8 +142,8 @@ export const suite = {
                 elements.immersiveStreetViewBtn.dispatch("click");
 
                 assertEqual(elements.rideDashboard.classList.contains("immersive-street-view"), true);
-                assertEqual(syncedRecord?.segmentName, "街景调试起点");
-                assertEqual(syncedRecord?.latitude, 31.1);
+                assertEqual(syncedTarget?.latitude, 31.1);
+                assertEqual(syncedTarget?.longitude, 121.1);
             }
         },
         {

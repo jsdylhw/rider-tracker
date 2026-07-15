@@ -1,4 +1,11 @@
-import { buildRoadGraph, buildBoundsAroundRoute, buildOverpassRoadQuery, planOsmRoute } from "../../src/domain/route/osm-road-network.js";
+import {
+    buildRoadGraph,
+    buildBoundsAroundRoute,
+    buildOverpassRoadQuery,
+    buildSyntheticGridRoadNetwork,
+    extendOsmRoute,
+    planOsmRoute
+} from "../../src/domain/route/osm-road-network.js";
 import { assert, assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
 
 const SIMPLE_OVERPASS = {
@@ -44,6 +51,47 @@ export const suite = {
                 assertGreaterThan(route.points.length, 2);
                 assertEqual(route.points[0].distanceMeters, 0);
                 assertEqual(route.points.at(-1).distanceMeters, route.totalDistanceMeters);
+            }
+        },
+        {
+            name: "builds a labeled fallback grid that can still produce a route",
+            run() {
+                const bounds = buildBoundsAroundRoute(
+                    { lat: 37.0, lng: -122.0 },
+                    { lat: 37.01, lng: -121.99 }
+                );
+                const graph = buildRoadGraph(buildSyntheticGridRoadNetwork(bounds));
+                const route = planOsmRoute({
+                    graph,
+                    start: { lat: 37.0, lng: -122.0 },
+                    destination: { lat: 37.01, lng: -121.99 }
+                });
+
+                assertEqual(graph.synthetic, true);
+                assertGreaterThan(route.points.length, 2);
+            }
+        },
+        {
+            name: "extends an initial route along the local graph for exploration",
+            run() {
+                const graph = buildRoadGraph(buildSyntheticGridRoadNetwork(buildBoundsAroundRoute(
+                    { lat: 37.0, lng: -122.0 },
+                    { lat: 37.01, lng: -121.99 }
+                )));
+                const initialRoute = planOsmRoute({
+                    graph,
+                    start: { lat: 37.0, lng: -122.0 },
+                    destination: { lat: 37.01, lng: -121.99 }
+                });
+                const extendedRoute = extendOsmRoute({
+                    graph,
+                    rawNodes: initialRoute.rawNodes,
+                    intersectionCount: 2
+                });
+
+                assertGreaterThan(extendedRoute.totalDistanceMeters, initialRoute.totalDistanceMeters);
+                assertGreaterThan(extendedRoute.edgesAdded, 0);
+                assertEqual(extendedRoute.points.at(-1).distanceMeters, extendedRoute.totalDistanceMeters);
             }
         }
     ]

@@ -10,6 +10,7 @@ export const suite = {
             run() {
                 let plannerClickHandler = null;
                 let planned = null;
+                const plannerModes = [];
                 const elements = {
                     routeModeGpxBtn: createFakeElement(),
                     routeModeManualBtn: createFakeElement(),
@@ -19,8 +20,6 @@ export const suite = {
                     mapRoutePanel: createFakeElement(),
                     routeMapShell: createFakeElement({ hidden: true }),
                     routeTableShell: createFakeElement(),
-                    selectMapRouteStartBtn: createFakeElement(),
-                    selectMapRouteDestinationBtn: createFakeElement(),
                     clearMapRouteSelectionBtn: createFakeElement(),
                     planMapRouteBtn: createFakeElement(),
                     mapRouteGoogleApiKeyInput: createFakeElement({ value: "test-key" }),
@@ -29,13 +28,15 @@ export const suite = {
                     mapRouteDestinationText: createFakeElement()
                 };
 
-                createRouteRenderer({
+                const renderer = createRouteRenderer({
                     elements,
                     mapController: {
                         setMapProvider() {},
                         syncRoute() {},
                         syncPlannerSelection() {},
-                        setPlannerMode() {},
+                        setPlannerMode(mode) {
+                            plannerModes.push(mode);
+                        },
                         setPlannerClickHandler(handler) {
                             plannerClickHandler = handler;
                         }
@@ -50,11 +51,11 @@ export const suite = {
                     onRemoveRouteSegment() {}
                 });
 
+                renderer.render({ route: { source: "manual", points: [], segments: [] }, routeSegments: [] });
+
                 elements.routeModeMapBtn.dispatch("click");
-                elements.selectMapRouteStartBtn.dispatch("click");
-                plannerClickHandler({ mode: "start", point: { lat: 37.1, lng: -122.1 } });
-                elements.selectMapRouteDestinationBtn.dispatch("click");
-                plannerClickHandler({ mode: "destination", point: { lat: 37.2, lng: -122.2 } });
+                plannerClickHandler({ mode: "select", point: { lat: 37.1, lng: -122.1 } });
+                plannerClickHandler({ mode: "select", point: { lat: 37.2, lng: -122.2 } });
                 elements.planMapRouteBtn.dispatch("click");
 
                 assertEqual(elements.mapRoutePanel.hidden, false);
@@ -65,6 +66,7 @@ export const suite = {
                 assertEqual(planned.googleApiKey, "test-key");
                 assertEqual(planned.start.lat, 37.1);
                 assertEqual(planned.destination.lng, -122.2);
+                assertEqual(plannerModes.includes("select"), true);
             }
         }
     ]

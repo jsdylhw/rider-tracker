@@ -2,6 +2,9 @@ import { runSuites, renderResults } from "./helpers/test-harness.js";
 import { installDomParserPolyfill } from "./helpers/dom-parser-polyfill.js";
 import { suite as routeSuite } from "./unit/route-builder.test.js";
 import { suite as osmRoadNetworkSuite } from "./unit/osm-road-network.test.js";
+import { suite as mapControllerSuite } from "./unit/map-controller.test.js";
+import { suite as overpassClientSuite } from "./unit/overpass-client.test.js";
+import { suite as streetViewTargetSuite } from "./unit/street-view-target.test.js";
 import { suite as googleElevationClientSuite } from "./unit/google-elevation-client.test.js";
 import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
@@ -51,6 +54,9 @@ installDomParserPolyfill();
 const suites = [
     routeSuite,
     osmRoadNetworkSuite,
+    mapControllerSuite,
+    overpassClientSuite,
+    streetViewTargetSuite,
     googleElevationClientSuite,
     gpxSuite,
     physicsSuite,

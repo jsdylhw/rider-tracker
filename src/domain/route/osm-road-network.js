@@ -65,6 +65,44 @@ export function buildOverpassRoadQuery(bounds) {
     `;
 }
 
+export function buildSyntheticGridRoadNetwork(bounds, { lineCount = 13 } = {}) {
+    const count = clamp(Math.round(lineCount), 3, 25);
+    const latitudes = buildLinearValues(bounds.south, bounds.north, count);
+    const longitudes = buildLinearValues(bounds.west, bounds.east, count);
+    const elements = [];
+    const nodeIds = new Map();
+    let nextNodeId = 1;
+    let nextWayId = 1;
+
+    for (const latitude of latitudes) {
+        for (const longitude of longitudes) {
+            const id = nextNodeId++;
+            nodeIds.set(`${latitude}:${longitude}`, id);
+            elements.push({ type: "node", id, lat: latitude, lon: longitude });
+        }
+    }
+
+    for (const latitude of latitudes) {
+        elements.push({
+            type: "way",
+            id: nextWayId++,
+            tags: { highway: "residential", name: "备用网格横向道路" },
+            nodes: longitudes.map((longitude) => nodeIds.get(`${latitude}:${longitude}`))
+        });
+    }
+
+    for (const longitude of longitudes) {
+        elements.push({
+            type: "way",
+            id: nextWayId++,
+            tags: { highway: "residential", name: "备用网格纵向道路" },
+            nodes: latitudes.map((latitude) => nodeIds.get(`${latitude}:${longitude}`))
+        });
+    }
+
+    return { synthetic: true, elements };
+}
+
 export function buildRoadGraph(overpassData) {
     const nodes = new Map();
     const edges = [];
@@ -108,7 +146,12 @@ export function buildRoadGraph(overpassData) {
         }
     }
 
-    return { nodes, edges };
+    return { nodes, edges, synthetic: overpassData?.synthetic === true };
+}
+
+function buildLinearValues(start, end, count) {
+    const step = (end - start) / Math.max(1, count - 1);
+    return Array.from({ length: count }, (_, index) => round(start + step * index, 7));
 }
 
 export function planOsmRoute({ graph, start, destination, sampleSpacingMeters = OSM_ROUTE_SAMPLE_SPACING_METERS }) {
@@ -149,6 +192,74 @@ export function planOsmRoute({ graph, start, destination, sampleSpacingMeters = 
     };
 }
 
+export function extendOsmRoute({
+    graph,
+    rawNodes,
+    intersectionCount = 2,
+    sampleSpacingMeters = OSM_ROUTE_SAMPLE_SPACING_METERS
+}) {
+    if (!graph?.nodes?.size || !Array.isArray(rawNodes) || rawNodes.length < 2) {
+        throw new Error("探索路线缺少可延伸的 OSM 路网");
+    }
+
+    const nextRawNodes = rawNodes.map((node) => ({ ...node }));
+    const endNodeId = nextRawNodes.at(-1)?.nodeId ?? nextRawNodes.at(-1)?.continueNodeId;
+    const endNode = graph.nodes.get(endNodeId);
+    if (!endNode) {
+        throw new Error("当前探索路线终点无法接入 OSM 路网");
+    }
+
+    if (nextRawNodes.at(-1)?.nodeId !== endNodeId) {
+        appendRouteNode(nextRawNodes, endNode, nextRawNodes.at(-1)?.edgeId ?? null);
+    }
+
+    let currentNodeId = endNodeId;
+    let incomingHeading = getIncomingHeading(nextRawNodes);
+    let previousNodeId = nextRawNodes.at(-2)?.nodeId ?? null;
+    let intersectionsPassed = 0;
+    let edgesAdded = 0;
+    const maxEdges = Math.max(20, Math.max(1, intersectionCount) * 40);
+
+    while (intersectionsPassed < intersectionCount && edgesAdded < maxEdges) {
+        const edge = chooseStraightestEdge(graph, currentNodeId, incomingHeading, previousNodeId);
+        if (!edge) break;
+
+        const nextNode = graph.nodes.get(edge.to);
+        if (!nextNode) break;
+        appendRouteNode(nextRawNodes, nextNode, edge.id);
+        previousNodeId = currentNodeId;
+        currentNodeId = edge.to;
+        incomingHeading = edge.heading;
+        edgesAdded += 1;
+
+        if ((graph.nodes.get(currentNodeId)?.edges.length ?? 0) >= 3) {
+            intersectionsPassed += 1;
+        }
+    }
+
+    if (edgesAdded === 0) {
+        throw new Error("前方没有可继续探索的道路");
+    }
+
+    return {
+        ...buildOsmRouteFromRawNodes(nextRawNodes, sampleSpacingMeters),
+        intersectionsPassed,
+        edgesAdded
+    };
+}
+
+export function buildOsmRouteFromRawNodes(rawNodes, sampleSpacingMeters = OSM_ROUTE_SAMPLE_SPACING_METERS) {
+    if (!Array.isArray(rawNodes) || rawNodes.length < 2) {
+        throw new Error("OSM 路线至少需要两个路网点");
+    }
+
+    return {
+        rawNodes,
+        points: sampleRouteNodes(rawNodes, sampleSpacingMeters),
+        totalDistanceMeters: round(rawNodes.at(-1)?.distanceMeters ?? 0, 1)
+    };
+}
+
 function buildRawRouteNodes({ graph, snappedStart, snappedDestination, directedStartEdge, directedDestinationEdge }) {
     const startPoint = {
         lat: snappedStart.point.lat,
@@ -168,6 +279,7 @@ function buildRawRouteNodes({ graph, snappedStart, snappedDestination, directedS
                     lat: snappedDestination.point.lat,
                     lng: snappedDestination.point.lng,
                     nodeId: null,
+                    continueNodeId: directedDestinationEdge.from,
                     distanceMeters: round(haversineDistanceMeters(startPoint, snappedDestination.point), 1),
                     edgeId: directedDestinationEdge.id
                 }
@@ -192,6 +304,7 @@ function buildRawRouteNodes({ graph, snappedStart, snappedDestination, directedS
         lat: snappedDestination.point.lat,
         lng: snappedDestination.point.lng,
         nodeId: null,
+        continueNodeId: directedDestinationEdge.from,
         distanceMeters: round(previous.distanceMeters + haversineDistanceMeters(previous, snappedDestination.point), 1),
         edgeId: directedDestinationEdge.id
     });
@@ -352,6 +465,29 @@ function appendPathNodes(graph, rawNodes, nodeIds, edgeIds) {
         const edgeId = edgeIds[index] ?? previous?.edgeId ?? null;
         rawNodes.push(makeRouteNode(node, previous.distanceMeters + haversineDistanceMeters(previous, node), edgeId));
     }
+}
+
+function appendRouteNode(rawNodes, node, edgeId) {
+    const previous = rawNodes.at(-1);
+    rawNodes.push(makeRouteNode(node, previous.distanceMeters + haversineDistanceMeters(previous, node), edgeId));
+}
+
+function getIncomingHeading(rawNodes) {
+    const end = rawNodes.at(-1);
+    const previous = rawNodes.at(-2);
+    return previous && end ? bearingDegrees(previous, end) : 0;
+}
+
+function chooseStraightestEdge(graph, nodeId, incomingHeading, previousNodeId) {
+    const edges = graph.nodes.get(nodeId)?.edges ?? [];
+    const nonReturningEdges = edges.filter((edge) => edge.to !== previousNodeId);
+    const candidates = nonReturningEdges.length > 0 ? nonReturningEdges : edges;
+    return candidates.reduce((best, edge) => {
+        if (!best || headingDelta(edge.heading, incomingHeading) < headingDelta(best.heading, incomingHeading)) {
+            return edge;
+        }
+        return best;
+    }, null);
 }
 
 function sampleRouteNodes(rawNodes, spacingMeters) {

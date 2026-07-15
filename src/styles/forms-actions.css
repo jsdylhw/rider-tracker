@@ -167,27 +167,105 @@ tbody tr:last-child td {
 
 .map-route-planner {
     display: grid;
+    gap: 12px;
+}
+
+.map-route-planner-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 2px 2px 0;
+}
+
+.map-route-planner-head span,
+.map-route-selection-card span {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.map-route-planner-head strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--text);
+    font-size: 15px;
+}
+
+.map-route-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.map-route-selection-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
 }
 
-.map-route-point-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+.map-route-selection-card {
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-radius: 8px;
+    background: #f8fafc;
 }
 
-.map-route-point-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    color: var(--muted);
-    font-size: 13px;
+.map-route-selection-card.start {
+    border-left-color: #22c55e;
 }
 
-.map-route-point-row strong {
+.map-route-selection-card.destination {
+    border-left-color: #ef4444;
+}
+
+.map-route-selection-card strong {
+    display: block;
+    margin-top: 4px;
+    overflow: hidden;
     color: var(--text);
-    font-weight: 600;
-    text-align: right;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.map-route-settings {
+    display: grid;
+    grid-template-columns: minmax(160px, 0.45fr) minmax(0, 1fr);
+    gap: 10px;
+}
+
+.map-route-settings .field {
+    margin: 0;
+}
+
+.map-route-plan-status {
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+    .map-route-planner-head,
+    .map-route-settings {
+        grid-template-columns: 1fr;
+        display: grid;
+    }
+
+    .map-route-actions {
+        justify-content: stretch;
+    }
+
+    .map-route-actions .btn {
+        flex: 1;
+    }
 }
 
 .form-grid {
