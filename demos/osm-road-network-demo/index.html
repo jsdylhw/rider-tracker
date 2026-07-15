@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSM Road Network Demo</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <main class="page">
+        <section class="panel">
+            <div class="header">
+                <p class="eyebrow">Rider Tracker Demo</p>
+                <h1>OSM 路网骑行模拟</h1>
+                <p class="hint">
+                    打开瓦片地图后先选择起点和终点/方向点，生成路线预览；开始时再加载 OSM graph，关闭瓦片后模拟城市自由骑行。
+                </p>
+            </div>
+
+            <div class="controls">
+                <button id="loadNetworkBtn" class="primary">旧金山</button>
+                <button id="usePresetStartBtn" disabled>清除选点</button>
+                <button id="resetBtn" disabled>重置</button>
+            </div>
+
+            <div class="status" id="statusText">点击地图设置起点，再次点击设置终点/方向点。</div>
+
+            <section class="card">
+                <h2>起点与路线</h2>
+                <div class="field-row">
+                    <div class="metric compact-metric">
+                        <span>起步方式</span>
+                        <strong>两次点击选择起终点</strong>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button id="buildRouteBtn" disabled>生成路线</button>
+                </div>
+                <div class="metric-list">
+                    <div class="metric">
+                        <span>起点</span>
+                        <strong id="startText">未选择</strong>
+                    </div>
+                    <div class="metric">
+                        <span>路网</span>
+                        <strong id="networkText">未加载</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>动态骑行模拟</h2>
+                <div class="field-row">
+                    <label class="field compact">
+                        <span>速度 km/h</span>
+                        <input id="speedInput" type="number" min="5" max="60" step="1" value="22">
+                    </label>
+                    <div class="metric compact-metric">
+                        <span>转向规则</span>
+                        <strong>每 1 个路口决策</strong>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button id="startSimBtn" disabled>开始</button>
+                    <button id="pauseSimBtn" disabled>暂停</button>
+                    <button id="resetSimBtn" disabled>归零</button>
+                </div>
+                <div class="controls turn-controls">
+                    <button id="turnLeftBtn" disabled>左拐</button>
+                    <button id="turnStraightBtn" disabled>直行</button>
+                    <button id="turnRightBtn" disabled>右拐</button>
+                </div>
+                <div class="metric-grid">
+                    <div class="metric">
+                        <span>当前位置</span>
+                        <strong id="distanceText">--</strong>
+                    </div>
+                    <div class="metric">
+                        <span>路线长度</span>
+                        <strong id="routeText">--</strong>
+                    </div>
+                    <div class="metric">
+                        <span>方向</span>
+                        <strong id="headingText">--</strong>
+                    </div>
+                    <div class="metric">
+                        <span>命令状态</span>
+                        <strong id="intentText">等待路线</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>街景原型</h2>
+                <label class="field">
+                    <span>Google Maps API Key</span>
+                    <input id="streetViewApiKey" type="password" placeholder="AIza...">
+                </label>
+                <div class="controls">
+                    <button id="loadStreetViewBtn">加载街景</button>
+                </div>
+                <div class="status" id="streetViewStatusText">可选：加载后会跟随当前模拟位置更新。</div>
+                <div class="metric-list">
+                    <div class="metric">
+                        <span>街景探测</span>
+                        <strong id="streetViewProbeText">未探测</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-title-row">
+                    <h2>Route JSON</h2>
+                    <button id="copyJsonBtn" disabled>复制</button>
+                </div>
+                <textarea id="routeJsonOutput" class="json-output" readonly placeholder="生成路线后会显示 demo route JSON。"></textarea>
+            </section>
+        </section>
+
+        <section class="workspace">
+            <div class="map-streetview-grid">
+                <div id="map" class="map"></div>
+                <div id="streetViewContainer" class="street-view-container">
+                    <div id="svPano1" class="pano active"></div>
+                    <div id="svPano2" class="pano"></div>
+                    <div class="street-view-placeholder">加载街景后显示当前模拟位置</div>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title-row">
+                    <div>
+                        <h2>路网说明</h2>
+                        <p id="chartMeta">规划阶段显示瓦片，生成路线先画绿色预览；开始后关闭瓦片，灰线是 OSM graph，蓝线是当前计划路线。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Route Planner Demo</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <main class="page">
+        <section class="panel">
+            <div class="header">
+                <p class="eyebrow">Rider Tracker Demo</p>
+                <h1>地图规划路线</h1>
+                <p class="hint">
+                    在地图上点选起点和终点，调用 Google Routes API 生成路线，输出 Rider Tracker route JSON，并模拟骑行中的转向重规划。
+                </p>
+            </div>
+
+            <label class="field">
+                <span>Google Maps API Key</span>
+                <input id="apiKeyInput" type="password" placeholder="AIza...">
+            </label>
+
+            <div class="controls">
+                <button id="loadMapBtn" class="primary">加载地图</button>
+                <button id="loadSfPresetBtn" disabled>旧金山 GPX</button>
+                <button id="resetBtn" disabled>重选点位</button>
+                <button id="planRouteBtn" disabled>生成路线</button>
+            </div>
+
+            <div class="status" id="statusText">输入 API Key 后加载地图。</div>
+
+            <section class="card">
+                <h2>点位</h2>
+                <div class="metric-list">
+                    <div class="metric">
+                        <span>起点</span>
+                        <strong id="originText">未选择</strong>
+                    </div>
+                    <div class="metric">
+                        <span>终点</span>
+                        <strong id="destinationText">未选择</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>路线摘要</h2>
+                <div class="metric-grid">
+                    <div class="metric">
+                        <span>距离</span>
+                        <strong id="distanceText">--</strong>
+                    </div>
+                    <div class="metric">
+                        <span>爬升</span>
+                        <strong id="ascentText">--</strong>
+                    </div>
+                    <div class="metric">
+                        <span>采样点</span>
+                        <strong id="pointCountText">--</strong>
+                    </div>
+                    <div class="metric">
+                        <span>路线类型</span>
+                        <strong id="averageGradeText">--</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>动态骑行模拟</h2>
+                <div class="field-row">
+                    <label class="field compact">
+                        <span>速度 km/h</span>
+                        <input id="simSpeedInput" type="number" min="5" max="60" step="1" value="24">
+                    </label>
+                    <div class="metric compact-metric">
+                        <span>转向规则</span>
+                        <strong>50m 搜索 · 20m 提示</strong>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button id="startSimBtn" disabled>开始</button>
+                    <button id="pauseSimBtn" disabled>暂停</button>
+                    <button id="resetSimBtn" disabled>归零</button>
+                </div>
+                <div class="controls turn-controls">
+                    <button id="turnLeftBtn" disabled>左拐</button>
+                    <button id="turnStraightBtn" disabled>直行</button>
+                    <button id="turnRightBtn" disabled>右拐</button>
+                </div>
+                <div class="metric-grid">
+                    <div class="metric">
+                        <span>当前位置</span>
+                        <strong id="simDistanceText">--</strong>
+                    </div>
+                    <div class="metric">
+                        <span>剩余路线</span>
+                        <strong id="simRemainingText">--</strong>
+                    </div>
+                    <div class="metric">
+                        <span>方向</span>
+                        <strong id="simHeadingText">--</strong>
+                    </div>
+                    <div class="metric">
+                        <span>命令状态</span>
+                        <strong id="simIntentText">等待路线</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-title-row">
+                    <h2>Route JSON</h2>
+                    <button id="copyJsonBtn" disabled>复制</button>
+                </div>
+                <textarea id="routeJsonOutput" class="json-output" readonly placeholder="生成路线后会显示内部 route JSON。"></textarea>
+            </section>
+        </section>
+
+        <section class="workspace">
+            <div id="map" class="map"></div>
+            <div class="chart-card">
+                <div class="chart-title-row">
+                    <div>
+                        <h2>路线预览</h2>
+                        <p id="chartMeta">等待生成路线</p>
+                    </div>
+                </div>
+                <div id="chartShell" class="chart-shell">
+                    <svg id="routeChart" viewBox="0 0 900 240" preserveAspectRatio="none" aria-label="路线预览图"></svg>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+</body>
+</html>
