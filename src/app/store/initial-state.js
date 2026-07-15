@@ -56,6 +56,11 @@ export function createInitialState(session, options = {}) {
         routeSegments,
         route,
         settings: { ...defaultSettings },
+        rideInput: {
+            powerSource: "device",
+            virtualPowerWatts: defaultSettings.power,
+            virtualCadenceRpm: 85
+        },
         workout: createInitialWorkoutState(),
         session,
         selectedActivity: null,

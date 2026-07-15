@@ -38,7 +38,8 @@ export function createRideService({ store, deviceService, exportService }) {
     function startRide() {
         const state = store.getState();
         const streetViewDebugEnabled = isStreetViewDebugEnabled();
-        if ((!state.liveRide.canStart && !streetViewDebugEnabled) || state.liveRide.isActive) {
+        const virtualRideEnabled = streetViewDebugEnabled && state.rideInput?.powerSource === "virtual";
+        if ((!state.liveRide.canStart && !virtualRideEnabled && !streetViewDebugEnabled) || state.liveRide.isActive) {
             return;
         }
 
@@ -47,6 +48,7 @@ export function createRideService({ store, deviceService, exportService }) {
         const sampledSensors = resolveStartRideSensorSnapshot({
             sampling: state.ble.sampling,
             settings: state.settings,
+            rideInput: state.rideInput,
             streetViewDebugEnabled
         });
         const baseSession = createLiveRideSession({
@@ -263,6 +265,7 @@ export function createRideService({ store, deviceService, exportService }) {
         const sampledSensors = resolveStartRideSensorSnapshot({
             sampling: state.ble.sampling,
             settings: state.settings,
+            rideInput: state.rideInput,
             streetViewDebugEnabled: isStreetViewDebugEnabled()
         });
         const nextTickIntervalMs = resolveAdaptivePhysicsTickMs(sampledSensors);
@@ -274,7 +277,8 @@ export function createRideService({ store, deviceService, exportService }) {
 
         const now = Date.now();
         let dispatchedCommand = null;
-        const shouldDispatchTrainerCommand = canDispatchTrainerCommand({
+        const canSendTrainerCommand = state.rideInput?.powerSource !== "virtual" || state.ble.trainer?.isConnected === true;
+        const shouldDispatchTrainerCommand = canSendTrainerCommand && canDispatchTrainerCommand({
             command: rideState.session.pendingTrainerCommand,
             dispatchState: state.liveRide.commandDispatch,
             now
@@ -396,6 +400,49 @@ export function createRideService({ store, deviceService, exportService }) {
         }));
     }
 
+    function startVirtualRide() {
+        if (!isStreetViewDebugEnabled()) {
+            store.setState((state) => ({
+                ...state,
+                statusText: "模拟功率仅在街景调试模式可用。"
+            }));
+            return;
+        }
+        const state = store.getState();
+        updateRideInput({
+            powerSource: "virtual",
+            virtualPowerWatts: state.rideInput?.virtualPowerWatts,
+            virtualCadenceRpm: state.rideInput?.virtualCadenceRpm
+        });
+        store.setState((currentState) => ({
+            ...currentState,
+            uiMode: "live"
+        }));
+        startRide();
+    }
+
+    function updateRideInput(input) {
+        const virtualAllowed = isStreetViewDebugEnabled();
+        const powerSource = virtualAllowed && input?.powerSource !== "device" ? "virtual" : "device";
+        store.setState((state) => ({
+            ...state,
+            rideInput: {
+                powerSource,
+                virtualPowerWatts: clampVirtualPower(input?.virtualPowerWatts, state.rideInput?.virtualPowerWatts),
+                virtualCadenceRpm: clampVirtualCadence(input?.virtualCadenceRpm, state.rideInput?.virtualCadenceRpm)
+            },
+            liveRide: {
+                ...state.liveRide,
+                canStart: powerSource === "device"
+                    ? Boolean(state.ble.trainer.isConnected || state.ble.powerMeter.sourceType !== "none")
+                    : true
+            },
+            statusText: powerSource === "device"
+                ? "已切换为已连接设备功率。"
+                : "已切换为模拟功率，可直接开始实时骑行。"
+        }));
+    }
+
     function openRideDashboard() {
         store.setState((state) => ({
             ...state,
@@ -415,6 +462,8 @@ export function createRideService({ store, deviceService, exportService }) {
         stopRide,
         finalizeRideSync,
         runSimulation,
+        startVirtualRide,
+        updateRideInput,
         openRideDashboard,
         closeRideDashboard
     };
@@ -474,8 +523,11 @@ function archiveCompletedRideSession(session, exportService) {
         });
 }
 
-function resolveStartRideSensorSnapshot({ sampling, settings, streetViewDebugEnabled }) {
+function resolveStartRideSensorSnapshot({ sampling, settings, rideInput, streetViewDebugEnabled }) {
     const sampledSensors = buildEffectiveSensorSnapshot(sampling);
+    if (streetViewDebugEnabled && rideInput?.powerSource === "virtual") {
+        return buildVirtualRideSensorSnapshot(sampledSensors, rideInput);
+    }
     if (!streetViewDebugEnabled || sampledSensors.power !== null) {
         return sampledSensors;
     }
@@ -505,6 +557,40 @@ function resolveStartRideSensorSnapshot({ sampling, settings, streetViewDebugEna
             heartRate: sampledSensors.heartRate !== null
         }
     };
+}
+
+function buildVirtualRideSensorSnapshot(sampledSensors, rideInput) {
+    const now = Date.now();
+    return {
+        ...sampledSensors,
+        power: clampVirtualPower(rideInput?.virtualPowerWatts, STREET_VIEW_DEBUG_POWER_WATTS),
+        cadence: clampVirtualCadence(rideInput?.virtualCadenceRpm, STREET_VIEW_DEBUG_CADENCE_RPM),
+        powerSourceType: "virtual",
+        powerTimestamp: now,
+        powerSignal: {
+            observedIntervalMs: DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS,
+            estimatedIntervalMs: DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS,
+            estimatedHz: 1000 / DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS,
+            jitterMs: 0,
+            isStable: true,
+            intervalSampleCount: 1
+        },
+        freshness: {
+            ...(sampledSensors.freshness ?? {}),
+            power: true,
+            cadence: true
+        }
+    };
+}
+
+function clampVirtualPower(value, fallback = STREET_VIEW_DEBUG_POWER_WATTS) {
+    const number = Number(value);
+    return Math.round(Math.min(600, Math.max(0, Number.isFinite(number) ? number : fallback)));
+}
+
+function clampVirtualCadence(value, fallback = STREET_VIEW_DEBUG_CADENCE_RPM) {
+    const number = Number(value);
+    return Math.round(Math.min(160, Math.max(0, Number.isFinite(number) ? number : fallback)));
 }
 
 function archiveSimulationSession(session, exportService) {
