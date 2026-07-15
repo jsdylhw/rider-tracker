@@ -45,6 +45,7 @@ export function createMainView({
     onCloseRideDashboard,
     onStartRide,
     onStopRide,
+    onUpdateRideInput,
     onRunSimulation,
     onDownloadSession,
     onDownloadFit,
@@ -75,7 +76,8 @@ export function createMainView({
     const liveView = createLiveView({
         onCloseRideDashboard,
         onStartRide,
-        onStopRide
+        onStopRide,
+        onUpdateRideInput
     });
     const exportView = createExportView({
         onDownloadSession,

@@ -1,4 +1,4 @@
-export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }) {
+export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide, onUpdateRideInput }) {
     const elements = {
         viewLive: document.getElementById("view-live"),
         liveCol1: document.getElementById("live-col-1"),
@@ -6,6 +6,10 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
         connectHrBtn: document.getElementById("connectHrBtn"),
         connectPowerBtn: document.getElementById("connectPowerBtn"),
         connectTrainerBtn: document.getElementById("connectTrainerBtn"),
+        rideInputCard: document.getElementById("rideInputCard"),
+        ridePowerSourceSelect: document.getElementById("ridePowerSourceSelect"),
+        virtualPowerInput: document.getElementById("virtualPowerInput"),
+        virtualCadenceInput: document.getElementById("virtualCadenceInput"),
         workoutModeForm: document.getElementById("workoutModeForm"),
         workoutModeSelect: document.getElementById("workoutModeSelect"),
         workoutModeRadios: [...document.querySelectorAll('input[name="workoutMode"]')],
@@ -103,6 +107,19 @@ export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide }
     bind(elements.closeRideDashboardBtn, "click", onCloseRideDashboard);
     bind(elements.startRideDashboardBtn, "click", onStartRide);
     bind(elements.stopRideDashboardBtn, "click", onStopRide);
+    bind(elements.ridePowerSourceSelect, "change", () => onUpdateRideInput?.({
+        powerSource: elements.ridePowerSourceSelect.value,
+        virtualPowerWatts: Number(elements.virtualPowerInput?.value),
+        virtualCadenceRpm: Number(elements.virtualCadenceInput?.value)
+    }));
+    [elements.virtualPowerInput, elements.virtualCadenceInput].forEach((input) => bind(input, "input", () => {
+        if (elements.ridePowerSourceSelect?.value !== "virtual") return;
+        onUpdateRideInput?.({
+            powerSource: "virtual",
+            virtualPowerWatts: Number(elements.virtualPowerInput?.value),
+            virtualCadenceRpm: Number(elements.virtualCadenceInput?.value)
+        });
+    }));
 
     return { elements };
 }

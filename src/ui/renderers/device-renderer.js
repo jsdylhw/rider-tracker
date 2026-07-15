@@ -65,7 +65,17 @@ export function createDeviceRenderer({
             });
             elements.connectTrainerBtn.title = trainer.isConnected ? "点击断开骑行台" : "";
         }
-        const canStartRide = liveRide.canStart || isStreetViewDebugEnabled();
+        const streetViewDebugEnabled = isStreetViewDebugEnabled();
+        const isVirtualPower = streetViewDebugEnabled && state.rideInput?.powerSource === "virtual";
+        const canStartRide = liveRide.canStart || isVirtualPower || streetViewDebugEnabled;
+        if (elements.rideInputCard) {
+            elements.rideInputCard.hidden = !streetViewDebugEnabled;
+        }
+        if (streetViewDebugEnabled) {
+            if (elements.ridePowerSourceSelect) elements.ridePowerSourceSelect.value = state.rideInput?.powerSource ?? "device";
+            if (elements.virtualPowerInput) elements.virtualPowerInput.value = state.rideInput?.virtualPowerWatts ?? 220;
+            if (elements.virtualCadenceInput) elements.virtualCadenceInput.value = state.rideInput?.virtualCadenceRpm ?? 85;
+        }
         if (elements.startRideBtn) elements.startRideBtn.disabled = !canStartRide || liveRide.isActive;
         if (elements.stopRideBtn) elements.stopRideBtn.disabled = !liveRide.isActive;
         if (elements.openRideDashboardBtn) elements.openRideDashboardBtn.disabled = false;
@@ -94,8 +104,10 @@ export function createDeviceRenderer({
         }
 
         if (elements.liveHeartRateDisplay) elements.liveHeartRateDisplay.innerHTML = `${heartRate.value ?? "--"} <span class="unit">bpm</span>`;
-        if (elements.livePowerDisplay) elements.livePowerDisplay.innerHTML = `${powerMeter.power ?? "--"} <span class="unit">W</span>`;
-        if (elements.liveCadenceDisplay) elements.liveCadenceDisplay.innerHTML = `${powerMeter.cadence ?? "--"} <span class="unit">rpm</span>`;
+        const displayedPower = isVirtualPower ? state.rideInput.virtualPowerWatts : powerMeter.power;
+        const displayedCadence = isVirtualPower ? state.rideInput.virtualCadenceRpm : powerMeter.cadence;
+        if (elements.livePowerDisplay) elements.livePowerDisplay.innerHTML = `${displayedPower ?? "--"} <span class="unit">W</span>`;
+        if (elements.liveCadenceDisplay) elements.liveCadenceDisplay.innerHTML = `${displayedCadence ?? "--"} <span class="unit">rpm</span>`;
         if (elements.liveAvgPowerDisplay) {
             elements.liveAvgPowerDisplay.innerHTML = liveSession
                 ? `${Math.round(sessionMetrics.power.averageWatts ?? 0)} <span class="unit">W</span>`

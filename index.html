@@ -74,7 +74,7 @@
             <section class="hero card">
                 <div class="hero-copy">
                     <p class="eyebrow">Simulation</p>
-                    <h1>按路线模拟整段骑行</h1>
+                    <h1>实时虚拟骑行设置</h1>
                     <div class="controls mode-controls">
                         <button class="btn ghost go-home-btn">返回首页</button>
                     </div>
@@ -130,7 +130,7 @@
                             </label>
                         </form>
                         <div class="controls">
-                            <button id="runSimulationBtn" class="btn primary">运行模拟</button>
+                            <button id="runSimulationBtn" class="btn primary">开始虚拟骑行</button>
                         </div>
                     </div>
 
@@ -277,6 +277,28 @@
                 </div>
 
                 <div class="column" id="live-col-2">
+                    <div id="rideInputCard" class="card" hidden>
+                        <div class="section-title-row">
+                            <div><h2>骑行输入</h2></div>
+                        </div>
+                        <div class="form-grid">
+                            <label class="field">
+                                <span>功率来源</span>
+                                <select id="ridePowerSourceSelect">
+                                    <option value="virtual">模拟功率</option>
+                                    <option value="device" selected>骑行台 / 功率计</option>
+                                </select>
+                            </label>
+                            <label class="field">
+                                <span>模拟功率 W</span>
+                                <input id="virtualPowerInput" type="number" min="0" max="600" step="5" value="220">
+                            </label>
+                            <label class="field">
+                                <span>模拟踏频 rpm</span>
+                                <input id="virtualCadenceInput" type="number" min="0" max="160" step="1" value="85">
+                            </label>
+                        </div>
+                    </div>
                     <div class="card">
                         <div class="section-title-row">
                             <div>
