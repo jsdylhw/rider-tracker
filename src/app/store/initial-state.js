@@ -74,7 +74,7 @@ export function createInitialState(session, options = {}) {
         pipConfig: normalizeSelection(pipPreferences.pipConfig, DEFAULT_PIP_METRIC_SELECTION),
         pipChartConfig: normalizeSelection(pipPreferences.pipChartConfig, DEFAULT_PIP_CHART_SELECTION),
         pipLayout: ["compact", "grid", "wide"].includes(pipPreferences.pipLayout) ? pipPreferences.pipLayout : "grid",
-        statusText: "请先设置路线与模拟参数。"
+        statusText: "请选择路线并连接骑行设备。"
     };
 }
 

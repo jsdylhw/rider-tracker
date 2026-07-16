@@ -1,5 +1,4 @@
 import { savePipPreferences } from "../../adapters/storage/session-storage.js";
-import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 
 export function createUiService({ store }) {
     function setUiMode(mode) {
@@ -19,31 +18,11 @@ export function createUiService({ store }) {
         }));
     }
 
-    function enterSimulationMode() {
-        if (!isStreetViewDebugEnabled()) {
-            enterLiveMode();
-            return;
-        }
-        store.setState((state) => ({
-            ...state,
-            uiMode: "live",
-            rideInput: {
-                ...state.rideInput,
-                powerSource: "virtual"
-            },
-            liveRide: {
-                ...state.liveRide,
-                canStart: true
-            },
-            statusText: "已进入实时骑行设置，当前使用模拟功率。"
-        }));
-    }
-
     function enterLiveMode() {
         store.setState((state) => ({
             ...state,
             uiMode: "live",
-            statusText: "已进入虚拟骑行，请选择路线并连接骑行设备。"
+            statusText: "已进入骑行设置，请选择路线并连接骑行设备。"
         }));
     }
 
@@ -80,7 +59,6 @@ export function createUiService({ store }) {
     return {
         setUiMode,
         openActivityDetail,
-        enterSimulationMode,
         enterLiveMode,
         updatePipConfig,
         updatePipChartConfig,

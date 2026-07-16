@@ -1,7 +1,4 @@
-import { formatDuration, formatNumber } from "../../shared/format.js";
-import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
-import { createMapController } from "../map/map-controller.js";
-import { createStreetViewController, loadGoogleMapsForStreetView } from "../map/street-view-controller.js";
+import { createRideVisualsController } from "../map/ride-visuals-controller.js";
 import { createRouteRenderer } from "./route-renderer.js";
 import { createDashboardRenderer } from "./dashboard-renderer.js";
 import { createExportRenderer } from "./export-renderer.js";
@@ -10,327 +7,162 @@ import { createLayoutCoordinator } from "./layout-coordinator.js";
 import { createWorkoutRenderer } from "./workout-renderer.js";
 import { createCustomWorkoutTargetRenderer } from "./custom-workout-target-renderer.js";
 import { createActivityHistoryRenderer } from "./activity-history-renderer.js";
-import { buildDistanceTimeChartSvg } from "./svg/session-charts.js";
-import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
+import { createSessionSummaryRenderer } from "./session-summary-renderer.js";
+import { createSessionHistoryRenderer } from "./session-history-renderer.js";
+import { createSessionChartRenderer } from "./session-chart-renderer.js";
 import { createHomeView } from "../views/home-view.js";
-import { createSimulationView } from "../views/simulation-view.js";
 import { createLiveView } from "../views/live-view.js";
 import { createExportView } from "../views/export-view.js";
 import { createActivityDetailView } from "../views/activity-detail-view.js";
 import { buildActivityDetailPageHtml } from "./activity-detail-renderer.js";
 
-export function createMainView({
-    store,
-    onSetUiMode,
-    onOpenActivityDetail,
-    onEnterSimulationMode,
-    onEnterLiveMode,
-    onUpdateWorkoutMode,
-    onUpdateGradeSimulationConfig,
-    onUpdateErgTargetPower,
-    onUpdateErgConfirmationMode,
-    onUpdateResistanceLevel,
-    onUpdateCustomWorkoutTargetEnabled,
-    onAddCustomWorkoutTargetStep,
-    onEditCustomWorkoutTarget,
-    onApplyCustomWorkoutTargetPreset,
-    onUpdateCustomWorkoutTargetStep,
-    onRemoveCustomWorkoutTargetStep,
-    onAddSegment,
-    onResetRoute,
-    onToggleHeartRate,
-    onTogglePowerMeter,
-    onToggleTrainer,
-    onOpenRideDashboard,
-    onCloseRideDashboard,
-    onStartRide,
-    onStopRide,
-    onUpdateRideInput,
-    onRunSimulation,
-    onDownloadSession,
-    onDownloadFit,
-    onImportFit,
-    onConnectStrava,
-    onUploadFit,
-    onUploadActivityFit,
-    onImportGpx,
-    onUpdateRouteSegment,
-    onRemoveRouteSegment,
-    onUpdateSettings,
-    onUpdateExportMetadata,
-    onUpdatePipConfig,
-    onUpdatePipChartConfig,
-    onUpdatePipLayout,
-    pipController
-}) {
+export function createMainView({ store, pipController, actions }) {
+    const { navigation, workout, route, ride, device, export: exportActions, pip } = actions;
     const homeView = createHomeView({
-        onSetUiMode,
-        onEnterSimulationMode,
-        onEnterLiveMode,
-        onUpdateSettings
-    });
-    const simulationView = createSimulationView({
-        onRunSimulation,
-        onUpdateSettings
+        onSetUiMode: navigation.setUiMode,
+        onEnterLiveMode: navigation.enterLiveMode,
+        onUpdateSettings: actions.user.updateSettings
     });
     const liveView = createLiveView({
-        onCloseRideDashboard,
-        onStartRide,
-        onStopRide,
-        onUpdateRideInput
+        onCloseRideDashboard: ride.closeRideDashboard,
+        onStartRide: ride.startRide,
+        onStopRide: ride.stopRide,
+        onUpdateRideInput: ride.updateRideInput
     });
     const exportView = createExportView({
-        onDownloadSession,
-        onDownloadFit,
-        onImportFit,
-        onConnectStrava,
-        onUploadFit,
-        onUpdateExportMetadata,
+        onDownloadSession: exportActions.downloadSession,
+        onDownloadFit: exportActions.downloadFit,
+        onImportFit: exportActions.importFit,
+        onConnectStrava: exportActions.connectStrava,
+        onUploadFit: exportActions.uploadFit,
+        onUpdateExportMetadata: exportActions.updateExportMetadata,
         getExportMetadata: () => store.getState().exportMetadata
     });
     const activityDetailView = createActivityDetailView({
-        onSetUiMode,
-        onConnectStrava,
-        onUploadActivityFit,
-        onUpdateExportMetadata,
+        onSetUiMode: navigation.setUiMode,
+        onConnectStrava: exportActions.connectStrava,
+        onUploadActivityFit: exportActions.uploadActivityFit,
+        onUpdateExportMetadata: exportActions.updateExportMetadata,
         getExportMetadata: () => store.getState().exportMetadata
     });
-
     const elements = {
         ...homeView.elements,
-        ...simulationView.elements,
         ...liveView.elements,
         ...exportView.elements,
         ...activityDetailView.elements,
         pipBtn: document.getElementById("pipBtn")
     };
 
+    // These are view-local render caches, not application state.
     let lastRenderedSettingsSignature = "";
     let lastRenderedActivityDetailSignature = "";
-    let lastSessionHeavyRender = 0;
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
-    const mapController = createMapController({
-        previewElement: elements.routeMapPreview,
-        dashboardElement: elements.rideDashboardMap,
-        initialProviderKey: elements.mapProviderSelect?.value
-    });
+    const rideVisuals = createRideVisualsController({ elements });
     const routeRenderer = createRouteRenderer({
         elements,
-        mapController,
-        onAddSegment,
-        onResetRoute,
-        onImportGpx,
-        onUpdateRouteSegment,
-        onRemoveRouteSegment
+        rideVisuals,
+        onAddSegment: route.addSegment,
+        onResetRoute: route.resetRoute,
+        onImportGpx: route.importGpx,
+        onUpdateRouteSegment: route.updateSegment,
+        onRemoveRouteSegment: route.removeSegment
     });
-    const streetViewControllerRef = { current: null };
-
-    async function enableStreetView({ apiKey, container1, container2 }) {
-        await loadGoogleMapsForStreetView(apiKey);
-        if (streetViewControllerRef.current) {
-            streetViewControllerRef.current.destroy();
-        }
-        streetViewControllerRef.current = createStreetViewController({ container1, container2 });
-    }
-
-    const dashboardRenderer = createDashboardRenderer({
-        elements,
-        mapController,
-        streetViewControllerRef,
-        onEnableStreetView: enableStreetView
-    });
+    const dashboardRenderer = createDashboardRenderer({ elements, rideVisuals });
     dashboardRenderer.bindEvents(store);
     bindPipMetricControls();
 
     const exportRenderer = createExportRenderer({
         elements,
-        onUpdateExportMetadata
+        onUpdateExportMetadata: exportActions.updateExportMetadata
     });
     const deviceRenderer = createDeviceRenderer({
         elements,
-        onToggleHeartRate,
-        onTogglePowerMeter,
-        onToggleTrainer,
-        onOpenRideDashboard,
-        onStartRide,
-        onStopRide
+        onToggleHeartRate: device.toggleHeartRate,
+        onTogglePowerMeter: device.togglePowerMeter,
+        onToggleTrainer: device.toggleTrainer,
+        onOpenRideDashboard: ride.openRideDashboard,
+        onStartRide: ride.startRide,
+        onStopRide: ride.stopRide
     });
     const workoutRenderer = createWorkoutRenderer({
         elements,
-        onUpdateWorkoutMode,
-        onUpdateGradeSimulationConfig,
-        onUpdateErgTargetPower,
-        onUpdateErgConfirmationMode,
-        onUpdateResistanceLevel
+        onUpdateWorkoutMode: workout.updateMode,
+        onUpdateGradeSimulationConfig: workout.updateGradeSimulationConfig,
+        onUpdateErgTargetPower: workout.updateErgTargetPower,
+        onUpdateErgConfirmationMode: workout.updateErgConfirmationMode,
+        onUpdateResistanceLevel: workout.updateResistanceLevel
     });
     const customWorkoutTargetRenderer = createCustomWorkoutTargetRenderer({
         elements,
-        onUpdateCustomWorkoutTargetEnabled,
-        onAddCustomWorkoutTargetStep,
-        onEditCustomWorkoutTarget,
-        onApplyCustomWorkoutTargetPreset,
-        onUpdateCustomWorkoutTargetStep,
-        onRemoveCustomWorkoutTargetStep
+        onUpdateCustomWorkoutTargetEnabled: workout.updateCustomTargetEnabled,
+        onAddCustomWorkoutTargetStep: workout.addCustomTargetStep,
+        onEditCustomWorkoutTarget: workout.editCustomTarget,
+        onApplyCustomWorkoutTargetPreset: workout.applyCustomTargetPreset,
+        onUpdateCustomWorkoutTargetStep: workout.updateCustomTargetStep,
+        onRemoveCustomWorkoutTargetStep: workout.removeCustomTargetStep
     });
+    const sessionSummaryRenderer = createSessionSummaryRenderer({ elements });
+    const sessionHistoryRenderer = createSessionHistoryRenderer({ elements });
+    const sessionChartRenderer = createSessionChartRenderer({ elements, routeRenderer });
     const activityHistoryRenderer = createActivityHistoryRenderer({
-        containers: [
-            elements.historyContainer,
-            elements.postRideHistoryContainer
-        ],
-        onStatus: (statusText) => {
-            store.setState((state) => ({
-                ...state,
-                statusText
-            }));
-        },
-        onSummary: (summary) => {
-            homeView.renderActivitySummary(summary);
-        },
-        onOpenActivityDetail: (activity) => {
-            onOpenActivityDetail(activity);
-        }
+        containers: [elements.historyContainer, elements.postRideHistoryContainer],
+        onStatus: (statusText) => store.setState((state) => ({ ...state, statusText })),
+        onSummary: (summary) => homeView.renderActivitySummary(summary),
+        onOpenActivityDetail: navigation.openActivityDetail
     });
     void activityHistoryRenderer.refresh();
 
-    store.subscribe((state) => {
-        layoutCoordinator.render(state);
-        renderSettings(state);
-        routeRenderer.render(state);
-        exportRenderer.render(state);
-        workoutRenderer.render(state);
-        customWorkoutTargetRenderer.render(state);
-        deviceRenderer.render(state);
-        renderSession(state);
-        dashboardRenderer.render(state);
-        renderPostRideReport(state);
-        renderActivityDetail(state);
-        renderPipControls(state);
+    store.subscribe((state, previousState) => {
+        const initialRender = previousState === undefined;
+        if (initialRender || state.uiMode !== previousState.uiMode) {
+            layoutCoordinator.render(state);
+        }
+        if (initialRender || state.settings !== previousState.settings) renderSettings(state);
+        if (initialRender || state.route !== previousState.route || state.routeSegments !== previousState.routeSegments || state.uiMode !== previousState.uiMode) {
+            routeRenderer.render(state);
+        }
+        if (initialRender || state.exportMetadata !== previousState.exportMetadata || state.liveRide !== previousState.liveRide || state.session !== previousState.session) {
+            exportRenderer.render(state);
+        }
+        if (initialRender || state.workout !== previousState.workout || state.ble !== previousState.ble) {
+            workoutRenderer.render(state);
+            customWorkoutTargetRenderer.render(state);
+        }
+        if (initialRender || state.ble !== previousState.ble || state.liveRide !== previousState.liveRide || state.rideInput !== previousState.rideInput || state.workout !== previousState.workout) {
+            deviceRenderer.render(state);
+        }
+        if (initialRender || state.liveRide !== previousState.liveRide || state.session !== previousState.session || state.settings !== previousState.settings || state.statusText !== previousState.statusText || state.route !== previousState.route || state.workout !== previousState.workout) {
+            sessionSummaryRenderer.render(state);
+            sessionHistoryRenderer.render(state);
+            sessionChartRenderer.render(state);
+        }
+        if (shouldRenderDashboard(state, previousState)) {
+            dashboardRenderer.render(state);
+        }
+        if (initialRender || state.selectedActivity !== previousState.selectedActivity) renderActivityDetail(state);
+        if (initialRender || state.liveRide !== previousState.liveRide || state.ble !== previousState.ble || state.route !== previousState.route || state.pipConfig !== previousState.pipConfig || state.pipChartConfig !== previousState.pipChartConfig || state.pipLayout !== previousState.pipLayout) {
+            renderPipControls(state);
+        }
     });
 
     function renderSettings(state) {
         const signature = JSON.stringify(state.settings);
         if (signature === lastRenderedSettingsSignature) return;
-
         homeView.renderSettings(state);
-        simulationView.renderSettings(state);
         lastRenderedSettingsSignature = signature;
-    }
-
-    function renderSession(state) {
-        const isLiveMode = state.uiMode === "live";
-        const session = isLiveMode
-            ? (state.liveRide.session ?? state.session)
-            : state.session;
-        const summary = isLiveMode
-            ? (state.liveRide.summary ?? session?.summary)
-            : session?.summary;
-        const records = isLiveMode
-            ? (state.liveRide.records ?? session?.records ?? [])
-            : (session?.records ?? []);
-        const metrics = resolveRideMetrics({
-            summary,
-            records,
-            ftp: state.settings?.ftp ?? null
-        });
-
-        if (elements.avgSpeedDisplay) elements.avgSpeedDisplay.innerHTML = `${formatNumber(metrics.speed.averageKph, 1)} <span class="unit">km/h</span>`;
-        if (elements.distanceDisplay) elements.distanceDisplay.innerHTML = `${formatNumber(metrics.ride.distanceKm, 2)} <span class="unit">km</span>`;
-        if (elements.heartRateDisplay) elements.heartRateDisplay.innerHTML = `${Math.round(metrics.heartRate.averageBpm)} <span class="unit">bpm</span>`;
-        if (elements.elevationDisplay) elements.elevationDisplay.innerHTML = `${Math.round(metrics.ride.ascentMeters)} <span class="unit">m</span>`;
-        if (elements.elapsedTimeValue) elements.elapsedTimeValue.textContent = formatDuration(metrics.ride.elapsedSeconds);
-        if (elements.routeProgressValue) elements.routeProgressValue.textContent = `${Math.round((metrics.ride.routeProgress ?? 0) * 100)}%`;
-        if (elements.currentGradeValue) elements.currentGradeValue.textContent = `${formatNumber(metrics.grade.currentPercent ?? 0, 1)}%`;
-        if (elements.recordCountValue) elements.recordCountValue.textContent = String(records.length);
-        if (elements.statusText) elements.statusText.textContent = state.statusText;
-        if (elements.downloadSessionBtn) elements.downloadSessionBtn.disabled = !session || state.liveRide.isActive;
-        if (elements.downloadFitBtn) elements.downloadFitBtn.disabled = !session || state.liveRide.isActive;
-        if (elements.importFitBtn) elements.importFitBtn.disabled = state.liveRide.isActive;
-        if (elements.homeImportFitBtn) elements.homeImportFitBtn.disabled = state.liveRide.isActive;
-        if (elements.connectStravaBtn) elements.connectStravaBtn.disabled = state.liveRide.isActive || !state.exportMetadata.stravaServerUrl;
-        if (elements.uploadFitBtn) {
-            elements.uploadFitBtn.disabled = !session || state.liveRide.isActive || !state.exportMetadata.stravaServerUrl;
-        }
-        if (elements.runSimulationBtn) elements.runSimulationBtn.disabled = state.liveRide.isActive;
-        if (elements.exportCardContainer && state.uiMode === "live") {
-            elements.exportCardContainer.hidden = true;
-        }
-        if (elements.liveElevationCard) {
-            const isGradeSimulation = state.workout?.mode === WORKOUT_MODES.GRADE_SIM;
-            elements.liveElevationCard.hidden = !isGradeSimulation || (!session?.route && !state.route);
-        }
-
-        const now = Date.now();
-        const shouldThrottleHeavyRender = state.liveRide.isActive;
-        if (!shouldThrottleHeavyRender || now - lastSessionHeavyRender >= 1000) {
-            renderRecords(records, metrics);
-            renderChart(records);
-
-            const previewRoute = state.liveRide.isActive
-                ? (state.liveRide.session?.route ?? state.route)
-                : state.route;
-            const currentRecord = state.liveRide.isActive
-                ? (state.liveRide.session?.currentRecord ?? state.liveRide.records?.at(-1) ?? null)
-                : null;
-            routeRenderer.renderElevationChart(previewRoute, currentRecord);
-            lastSessionHeavyRender = now;
-        }
-    }
-
-    function renderRecords(records, metrics) {
-        if (!elements.recordsTableBody) return;
-
-        if (records.length === 0) {
-            elements.recordsTableBody.innerHTML = `<tr><td class="empty-state" colspan="6">运行模拟后将在这里显示记录。</td></tr>`;
-            return;
-        }
-
-        const durationSeconds = metrics.ride.elapsedSeconds;
-        const distanceKm = metrics.ride.distanceKm;
-        const avgSpeedKph = metrics.speed.averageKph;
-        const avgPower = Math.round(metrics.power.averageWatts);
-        const avgHr = Math.round(metrics.heartRate.averageBpm);
-        const routeName = "当前路线总计";
-
-        elements.recordsTableBody.innerHTML = `
-            <tr>
-                <td>${routeName}</td>
-                <td>${formatDuration(durationSeconds)}</td>
-                <td>${formatNumber(distanceKm, 2)} km</td>
-                <td>${formatNumber(avgSpeedKph, 1)} km/h</td>
-                <td>${avgPower} W</td>
-                <td>${avgHr} bpm</td>
-            </tr>
-        `;
-    }
-
-    function renderChart(records) {
-        if (!elements.distanceChart) return;
-        elements.distanceChart.innerHTML = buildDistanceTimeChartSvg(records);
-    }
-
-    function renderPostRideReport(state) {
-        if (!elements.postRideReportCard) return;
-        elements.postRideReportCard.hidden = true;
     }
 
     function renderActivityDetail(state) {
         if (!elements.activityDetailContent) return;
         const activity = state.selectedActivity;
         const signature = activity
-            ? [
-                activity.id ?? "",
-                activity.updatedAt ?? "",
-                activity.rawSession?.records?.length ?? 0,
-                activity.rawSession?.createdAt ?? ""
-            ].join("|")
+            ? [activity.id ?? "", activity.updatedAt ?? "", activity.rawSession?.records?.length ?? 0, activity.rawSession?.createdAt ?? ""].join("|")
             : "empty";
-        if (signature === lastRenderedActivityDetailSignature) {
-            return;
-        }
+        if (signature === lastRenderedActivityDetailSignature) return;
         lastRenderedActivityDetailSignature = signature;
-        elements.activityDetailContent.innerHTML = buildActivityDetailPageHtml(state.selectedActivity);
-        activityDetailView.setActivity(state.selectedActivity);
+        elements.activityDetailContent.innerHTML = buildActivityDetailPageHtml(activity);
+        activityDetailView.setActivity(activity);
     }
 
     function renderPipControls(state) {
@@ -338,41 +170,28 @@ export function createMainView({
         const hasLiveData = state.ble.heartRate.value !== null || state.ble.powerMeter.power !== null;
         const hasRoute = state.route && state.route.segments.length > 0;
         elements.pipBtn.disabled = !pipController.isSupported || (!state.liveRide.isActive && !hasLiveData && !hasRoute);
-
-        renderPipMetricControls(state);
+        elements.pipMetricInputs?.forEach((input) => { input.checked = state.pipConfig?.[input.value] === true; });
+        elements.pipChartInputs?.forEach((input) => { input.checked = state.pipChartConfig?.[input.value] === true; });
+        if (elements.pipLayoutSelect && elements.pipLayoutSelect.value !== state.pipLayout) elements.pipLayoutSelect.value = state.pipLayout ?? "grid";
         pipController.render();
         pipController.sync();
     }
 
     function bindPipMetricControls() {
-        elements.pipMetricInputs?.forEach((input) => {
-            input.addEventListener("change", (event) => {
-                onUpdatePipConfig(event.target.value, event.target.checked);
-            });
-        });
-
-        elements.pipChartInputs?.forEach((input) => {
-            input.addEventListener("change", (event) => {
-                onUpdatePipChartConfig(event.target.value, event.target.checked);
-            });
-        });
-
-        elements.pipLayoutSelect?.addEventListener("change", (event) => {
-            onUpdatePipLayout(event.target.value);
-        });
+        elements.pipMetricInputs?.forEach((input) => input.addEventListener("change", (event) => pip.updateConfig(event.target.value, event.target.checked)));
+        elements.pipChartInputs?.forEach((input) => input.addEventListener("change", (event) => pip.updateChartConfig(event.target.value, event.target.checked)));
+        elements.pipLayoutSelect?.addEventListener("change", (event) => pip.updateLayout(event.target.value));
     }
 
-    function renderPipMetricControls(state) {
-        elements.pipMetricInputs?.forEach((input) => {
-            input.checked = state.pipConfig?.[input.value] === true;
-        });
+    return { destroy: () => rideVisuals.destroy() };
+}
 
-        elements.pipChartInputs?.forEach((input) => {
-            input.checked = state.pipChartConfig?.[input.value] === true;
-        });
-
-        if (elements.pipLayoutSelect && elements.pipLayoutSelect.value !== state.pipLayout) {
-            elements.pipLayoutSelect.value = state.pipLayout ?? "grid";
-        }
-    }
+export function shouldRenderDashboard(state, previousState) {
+    return previousState === undefined
+        || state.liveRide !== previousState.liveRide
+        || state.route !== previousState.route
+        || state.ble !== previousState.ble
+        || state.workout !== previousState.workout
+        || state.settings !== previousState.settings
+        || state.uiMode !== previousState.uiMode;
 }

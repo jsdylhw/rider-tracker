@@ -1,7 +1,6 @@
-export function createHomeView({ onSetUiMode, onEnterSimulationMode, onEnterLiveMode, onUpdateSettings }) {
+export function createHomeView({ onSetUiMode, onEnterLiveMode, onUpdateSettings }) {
     const elements = {
         viewHome: document.getElementById("view-home"),
-        goToSimBtn: document.getElementById("goToSimBtn"),
         goToLiveBtn: document.getElementById("goToLiveBtn"),
         goHomeBtns: [...document.querySelectorAll(".go-home-btn")],
         homeProfileCard: document.getElementById("homeProfileCard"),
@@ -14,7 +13,6 @@ export function createHomeView({ onSetUiMode, onEnterSimulationMode, onEnterLive
         personalSettingsForm: document.getElementById("personalSettingsForm")
     };
 
-    bind(elements.goToSimBtn, "click", onEnterSimulationMode);
     bind(elements.goToLiveBtn, "click", onEnterLiveMode);
     elements.goHomeBtns.forEach((button) => bind(button, "click", () => onSetUiMode("home")));
 

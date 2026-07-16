@@ -18,13 +18,26 @@ const STREET_VIEW_SYNC_INTERVAL_MS = 500;
 
 export function createDashboardRenderer({
     elements,
+    rideVisuals,
+    // Kept as a compatibility seam for focused renderer tests and external embedders.
     mapController,
     streetViewControllerRef,
     onEnableStreetView,
     streetViewDebugEnabled = isStreetViewDebugEnabled()
 }) {
+    const visuals = rideVisuals ?? {
+        hasStreetView: () => streetViewControllerRef?.current != null,
+        enableStreetView: onEnableStreetView,
+        syncMap(route, currentRecord) {
+            mapController?.syncRide(route, currentRecord);
+        },
+        syncStreetView(route, currentRecord) {
+            streetViewControllerRef?.current?.update(route, currentRecord);
+        }
+    };
+
     function isStreetViewLoaded() {
-        return streetViewControllerRef?.current != null;
+        return visuals.hasStreetView();
     }
     const dashboardMetricsRenderer = createDashboardMetricsRenderer({ elements });
     const workoutRuntimeRenderer = createWorkoutRuntimeRenderer({ elements });
@@ -114,7 +127,7 @@ export function createDashboardRenderer({
                 elements.loadStreetViewBtn.disabled = true;
                 elements.loadStreetViewBtn.textContent = "加载中...";
                 try {
-                    await onEnableStreetView({
+                    await visuals.enableStreetView({
                         apiKey,
                         container1: elements.svPano1,
                         container2: elements.svPano2
@@ -458,7 +471,10 @@ export function createDashboardRenderer({
         elements.streetViewTrajectorySvg.innerHTML = buildTrajectoryOverviewSvg(
             route,
             currentRecord,
-            { title: "路线平面图" }
+            {
+                title: "路线平面图",
+                theme: immersiveStreetViewMode ? "immersive" : "default"
+            }
         );
     }
 
@@ -497,11 +513,10 @@ export function createDashboardRenderer({
             && shouldRenderVisual(visualRenderState.streetView, positionSignature, now, STREET_VIEW_SYNC_INTERVAL_MS, force);
 
         if (shouldSyncMap) {
-            mapController.syncRide(route, currentRecord);
+            visuals.syncMap(route, currentRecord);
         }
-
         if (shouldSyncStreetView) {
-            streetViewControllerRef.current.update(route, currentRecord);
+            visuals.syncStreetView(route, currentRecord);
         }
     }
 

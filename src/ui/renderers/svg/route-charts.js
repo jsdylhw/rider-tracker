@@ -193,13 +193,11 @@ export function buildImmersiveElevationGradeSvg(route, currentRecord, { transpar
     const currentPoint = getPointAtDistance(route.points, currentDistanceMeters);
     const currentElevationX = toElevationX(currentDistanceMeters);
     const currentElevationY = toElevationY(currentPoint.elevationMeters ?? 0);
-    const detailWindowSpan = currentRecord
-        ? Math.min(totalDist, Math.max(1200, Math.min(totalDist * 0.16, 6000)))
-        : totalDist;
     const detailWindowStart = currentRecord
-        ? clamp(currentDistanceMeters - detailWindowSpan / 2, 0, Math.max(totalDist - detailWindowSpan, 0))
+        ? Math.max(currentDistanceMeters - 200, 0)
         : 0;
-    const detailWindowEnd = currentRecord ? Math.min(detailWindowStart + detailWindowSpan, totalDist) : totalDist;
+    const detailWindowEnd = currentRecord ? Math.min(currentDistanceMeters + 800, totalDist) : totalDist;
+    const detailWindowSpan = detailWindowEnd - detailWindowStart;
     const detailSourcePoints = currentRecord
         ? getPointsWithinDistanceRange(route.points, detailWindowStart, detailWindowEnd)
         : route.points;

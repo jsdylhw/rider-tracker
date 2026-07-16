@@ -1,6 +1,6 @@
 import { createDashboardRenderer } from "../../src/ui/renderers/dashboard-renderer.js";
 import { createStore } from "../../src/app/store/app-store.js";
-import { assertEqual } from "../helpers/test-harness.js";
+import { assert, assertEqual } from "../helpers/test-harness.js";
 import { createFakeElement, createFakeClassList } from "../helpers/fake-dom.js";
 
 const originalDocument = globalThis.document;
@@ -144,6 +144,36 @@ export const suite = {
                 assertEqual(elements.rideDashboard.classList.contains("immersive-street-view"), true);
                 assertEqual(syncedRecord?.segmentName, "街景调试起点");
                 assertEqual(syncedRecord?.latitude, 31.1);
+            }
+        },
+        {
+            name: "沉浸街景只同步街景，不刷新隐藏地图",
+            run() {
+                const elements = createElements();
+                const store = createStore(createBaseState());
+                let mapSyncCount = 0;
+                let streetViewSyncCount = 0;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => true,
+                        enableStreetView: async () => {},
+                        syncMap() { mapSyncCount += 1; },
+                        syncStreetView() { streetViewSyncCount += 1; }
+                    },
+                    streetViewDebugEnabled: true
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                const mapSyncCountBeforeImmersive = mapSyncCount;
+                const streetViewSyncCountBeforeImmersive = streetViewSyncCount;
+
+                elements.immersiveStreetViewBtn.dispatch("click");
+
+                assertEqual(mapSyncCount, mapSyncCountBeforeImmersive);
+                assert(streetViewSyncCount > streetViewSyncCountBeforeImmersive,
+                    "immersive mode should continue to update Street View");
             }
         },
         {

@@ -55,6 +55,7 @@ export const suite = {
                 assert(svg.includes("当前位置附近坡度"));
                 assert(svg.includes(">135 m<"));
                 assert(svg.includes(">+2.5%<"));
+                assert(svg.includes("4.8 - 5.8 km"));
             }
         },
         {
@@ -74,6 +75,21 @@ export const suite = {
                 assert(!svg.includes(">起点<"));
                 assert(!svg.includes(">终点<"));
                 assert(svg.includes(">5.0 km<"));
+            }
+        },
+        {
+            name: "沉浸路线总览图使用透明深色主题",
+            run() {
+                const svg = buildTrajectoryOverviewSvg(createRoute(), {
+                    distanceKm: 5,
+                    positionLat: 31.115,
+                    positionLong: 121.136
+                }, { theme: "immersive" });
+
+                assert(svg.includes('fill="transparent"'));
+                assert(svg.includes('stroke="#38bdf8"'));
+                assert(svg.includes('fill="#e2e8f0"'));
+                assert(!svg.includes('fill="#ffffff" stroke="#e2e8f0"'));
             }
         },
         {

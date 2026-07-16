@@ -5,6 +5,8 @@ import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
 import { suite as heartRateModelSuite } from "./unit/heart-rate-model.test.js";
 import { suite as initialStateSuite } from "./unit/initial-state.test.js";
+import { suite as appStoreSuite } from "./unit/app-store.test.js";
+import { suite as mainViewRenderingSuite } from "./unit/main-view-rendering.test.js";
 import { suite as sensorSamplingSuite } from "./unit/sensor-sampling.test.js";
 import { suite as simulatorSuite } from "./unit/simulator.test.js";
 import { suite as liveRideSuite } from "./unit/live-ride-session.test.js";
@@ -22,6 +24,7 @@ import { suite as deviceRendererSuite } from "./unit/device-renderer.test.js";
 import { suite as ergLiveFlowSuite } from "./integration/erg-live-flow.test.js";
 import { suite as gpxFixturesSuite } from "./integration/gpx-fixtures.test.js";
 import { suite as rideRegressionSuite } from "./integration/ride-regression.test.js";
+import { suite as virtualRideDebugFlowSuite } from "./integration/virtual-ride-debug-flow.test.js";
 import { suite as streetviewUiSuite } from "./integration/streetview-ui.test.js";
 import { suite as routeRendererImportSuite } from "./unit/route-renderer-import.test.js";
 import { suite as routeRendererImmersiveSuite } from "./unit/route-renderer-immersive.test.js";
@@ -48,6 +51,8 @@ const suites = [
     physicsSuite,
     heartRateModelSuite,
     initialStateSuite,
+    appStoreSuite,
+    mainViewRenderingSuite,
     sensorSamplingSuite,
     simulatorSuite,
     liveRideSuite,
@@ -65,6 +70,7 @@ const suites = [
     ergLiveFlowSuite,
     gpxFixturesSuite,
     rideRegressionSuite,
+    virtualRideDebugFlowSuite,
     streetviewUiSuite,
     routeRendererImportSuite,
     routeRendererImmersiveSuite,
