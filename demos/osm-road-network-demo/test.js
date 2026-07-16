@@ -13,6 +13,7 @@ import {
     createStreetViewController,
     getNativeLinkMoveDistanceMeters,
     getNativeLinkMoveIntervalMs,
+    getNativeLookaheadHopCount,
     shouldResyncToRoutePano
 } from "./street-view-controller.js";
 import { readFile } from "node:fs/promises";
@@ -136,7 +137,7 @@ const tests = [
 
                 controller.update(route, { distanceKm: 0, speedKph: 20 });
                 runTimers();
-                const requestCountAfterInitialLookup = panoramaRequests.length;
+                const locationRequestCountAfterInitialLookup = panoramaRequests.filter((request) => request.location).length;
                 panoramaInstances[0].links = [
                     { pano: "backward", heading: 270 },
                     { pano: "forward", heading: 90 }
@@ -145,7 +146,10 @@ const tests = [
                 const result = controller.update(route, { distanceKm: 0.02, speedKph: 20 });
 
                 assertEqual(panoramaInstances[0].getPano(), "forward");
-                assertEqual(panoramaRequests.length, requestCountAfterInitialLookup);
+                assertEqual(
+                    panoramaRequests.filter((request) => request.location).length,
+                    locationRequestCountAfterInitialLookup
+                );
                 assertEqual(result.navigation, "native-link");
                 controller.destroy();
             });
@@ -170,6 +174,39 @@ const tests = [
             assertEqual(getNativeLinkMoveDistanceMeters(80), 1.2);
             assertGreaterThan(getNativeLinkMoveIntervalMs(22), getNativeLinkMoveIntervalMs(30));
             assertGreaterThan(getNativeLinkMoveIntervalMs(30), getNativeLinkMoveIntervalMs(60));
+            assertEqual(getNativeLookaheadHopCount(22), 1);
+            assertEqual(getNativeLookaheadHopCount(30), 2);
+            assertEqual(getNativeLookaheadHopCount(45), 3);
+        }
+    },
+    {
+        name: "uses pre-read pano metadata to skip to the second route-aligned link at higher speeds",
+        async run() {
+            await withFakeGoogleMaps(({ panoramaInstances, panoMetadataById, runTimers }) => {
+                panoMetadataById.set("first", {
+                    location: { pano: "first", latLng: { lat: 37.7750, lng: -122.4188 } },
+                    links: [{ pano: "second", heading: 90 }]
+                });
+                panoMetadataById.set("second", {
+                    location: { pano: "second", latLng: { lat: 37.7751, lng: -122.4185 } },
+                    links: [{ pano: "third", heading: 90 }]
+                });
+
+                const { container1, container2 } = createPanoramaContainers();
+                const controller = createStreetViewController({ container1, container2 });
+                const route = createStreetViewRoute();
+
+                controller.update(route, { distanceKm: 0, speedKph: 30 });
+                runTimers();
+                panoramaInstances[0].links = [{ pano: "first", heading: 90 }];
+
+                const result = controller.update(route, { distanceKm: 0.01, speedKph: 30 });
+
+                assertEqual(result.navigation, "native-link");
+                assertEqual(result.nativeLinkHops, 2);
+                assertEqual(panoramaInstances[0].getPano(), "second");
+                controller.destroy();
+            });
         }
     },
     {
@@ -342,6 +379,7 @@ function createFakeGoogleMapsWindow() {
     const panoramaInstances = [];
     const panoramaRequests = [];
     const elevationRequests = [];
+    const panoMetadataById = new Map();
     const timers = new Map();
     let nextTimerId = 1;
 
@@ -355,6 +393,13 @@ function createFakeGoogleMapsWindow() {
     class StreetViewService {
         getPanorama(request, callback) {
             panoramaRequests.push(request);
+            if (request.pano) {
+                callback(
+                    panoMetadataById.get(request.pano) ?? { location: { pano: request.pano }, links: [] },
+                    "OK"
+                );
+                return;
+            }
             const lat = Number(request.location.lat);
             const lng = Number(request.location.lng);
             callback({ location: { pano: `${lat.toFixed(4)},${lng.toFixed(4)}` } }, "OK");
@@ -404,6 +449,7 @@ function createFakeGoogleMapsWindow() {
         panoramaInstances,
         panoramaRequests,
         elevationRequests,
+        panoMetadataById,
         runTimers() {
             const dueTimers = [...timers.entries()];
             timers.clear();

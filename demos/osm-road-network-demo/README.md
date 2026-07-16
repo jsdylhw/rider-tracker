@@ -80,7 +80,7 @@ demos/osm-road-network-demo/street-view-controller.js
 
 验证目标是确认“OSM graph 当前位置 -> route/currentRecord -> Street View controller”的数据链路可行。未加载 Google API 时 route 会按平坡 fallback；加载街景后会用 demo-local elevation controller 补 `gradePercent`，街景 pitch 随坡度更新。
 
-当前 demo-local controller 在试单个 `StreetViewPanorama` 的位置驱动方案：模拟 tick 会持续更新当前 pano 的 POV，让视角沿路线 heading / grade 前进。优先从当前 pano 的原生相邻 links 中选择与路线 heading 最接近的 pano，模拟 Google Street View 自己的前进切换；没有可用 link 时，才按当前位置查最近 pano id。原生 link 的推进阈值和等待时间都反向关联模拟速度，22 km/h 约每 2m / 318ms 尝试，30 km/h 约每 1.5m / 233ms 尝试；坐标查找仍按约 1 秒 / 18 米节流，并缓存坐标桶结果。Street View 加载成功即切入全屏街景，路网地图缩为右下角小窗；原生 links 和点击前往保持关闭，用户手动平移视角后会暂停自动更新 3 秒。这个实验用来验证是否能减少按坐标跳 pano 带来的黑屏和模糊。
+当前 demo-local controller 在试单个 `StreetViewPanorama` 的位置驱动方案：模拟 tick 会持续更新当前 pano 的 POV，让视角沿路线 heading / grade 前进。优先从当前 pano 的原生相邻 links 中选择与路线 heading 最接近的 pano，模拟 Google Street View 自己的前进切换；没有可用 link 时，才按当前位置查最近 pano id。当前 pano 的 links 可用后，会在后台解析同一路线方向的后续 2-3 跳元数据（pano id、坐标、heading），但不会创建第二个可渲染 pano。原生 link 的推进阈值和等待时间都反向关联模拟速度，22 km/h 约每 2m / 318ms 尝试并走单跳，30 km/h 优先取已缓存的两跳，42 km/h 以上优先取三跳；缓存未就绪时会自动回退单跳。坐标查找仍按约 1 秒 / 18 米节流，并缓存坐标桶结果。Street View 加载成功即切入全屏街景，路网地图缩为右下角小窗；原生 links 和点击前往保持关闭，用户手动平移视角后会暂停自动更新 3 秒。这个实验用来验证是否能减少按坐标跳 pano 带来的黑屏和模糊。
 
 坡度也先在 demo 内独立补全：
 

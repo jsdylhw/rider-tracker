@@ -905,14 +905,18 @@ function syncStreetView() {
         positionLong: point.lng
     });
     setStreetViewStatus(
-        `同步 GPS ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)} · heading ${Math.round(heading)}deg · grade ${grade.toFixed(1)}% · ${getStreetViewNavigationLabel(streetViewUpdate?.navigation)}`,
+        `同步 GPS ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)} · heading ${Math.round(heading)}deg · grade ${grade.toFixed(1)}% · ${getStreetViewNavigationLabel(streetViewUpdate)}`,
         false,
         true
     );
     runStreetViewProbe(point, { force: distanceMeters === 0 });
 }
 
-function getStreetViewNavigationLabel(navigation) {
+function getStreetViewNavigationLabel(update) {
+    const navigation = update?.navigation;
+    if (navigation === "native-link" && update.nativeLinkHops > 1) {
+        return `原生相邻 pano 跳 ${update.nativeLinkHops} 段`;
+    }
     if (navigation === "native-link") return "原生相邻 pano 前进";
     if (navigation === "gps-lookup") return "GPS 查找 pano";
     if (navigation === "gps-resync") return "偏离路线，重新定位 pano";
