@@ -11,8 +11,24 @@ const COLORS = {
     border: "#e2e8f0",
     current: "#f59e0b",
     currentSoft: "rgba(245, 158, 11, 0.18)",
+    currentForeground: "#ffffff",
+    labelBackground: "#ffffff",
     start: "#16a34a",
     end: "#dc2626"
+};
+
+const IMMERSIVE_COLORS = {
+    background: "transparent",
+    routeLine: "#38bdf8",
+    text: "#e2e8f0",
+    muted: "#94a3b8",
+    border: "rgba(148, 163, 184, 0.34)",
+    current: "#fbbf24",
+    currentSoft: "rgba(251, 191, 36, 0.2)",
+    currentForeground: "#f8fafc",
+    labelBackground: "rgba(15, 23, 42, 0.82)",
+    start: "#4ade80",
+    end: "#fb7185"
 };
 
 export function buildRouteMapSvg({
@@ -21,8 +37,10 @@ export function buildRouteMapSvg({
     currentRecord = null,
     width = DEFAULT_WIDTH,
     height = DEFAULT_HEIGHT,
-    title = "路线平面图"
+    title = "路线平面图",
+    theme = "default"
 } = {}) {
+    const colors = resolveColors(theme);
     const points = collectRouteMapPoints({ route, records });
     if (points.length < 2) {
         return buildCenteredMessageSvg({ width, height, message: "暂无轨迹数据" });
@@ -38,16 +56,17 @@ export function buildRouteMapSvg({
         currentRecord: currentRecord ?? records.at(-1) ?? null,
         width,
         height,
-        geometry
+        geometry,
+        theme
     });
 
     return `
-        <rect x="0" y="0" width="${width}" height="${height}" rx="10" fill="${COLORS.background}" stroke="${COLORS.border}" stroke-width="1"></rect>
-        <text x="${padding.left}" y="21" fill="${COLORS.text}" font-size="13" font-weight="800">${escapeHtml(title)}</text>
-        <text x="${width - padding.right}" y="21" text-anchor="end" fill="${COLORS.muted}" font-size="11">${escapeHtml(formatDistanceLabel(totalDistanceMeters))}</text>
-        <polyline data-role="route-map-line" points="${buildPolyline(plottedPoints)}" fill="none" stroke="${COLORS.routeLine}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></polyline>
-        <circle data-role="route-map-start" cx="${start.x.toFixed(1)}" cy="${start.y.toFixed(1)}" r="4.4" fill="${COLORS.start}"></circle>
-        <circle data-role="route-map-end" cx="${end.x.toFixed(1)}" cy="${end.y.toFixed(1)}" r="4.4" fill="${COLORS.end}"></circle>
+        <rect x="0" y="0" width="${width}" height="${height}" rx="10" fill="${colors.background}" stroke="${colors.border}" stroke-width="1"></rect>
+        <text x="${padding.left}" y="21" fill="${colors.text}" font-size="13" font-weight="800">${escapeHtml(title)}</text>
+        <text x="${width - padding.right}" y="21" text-anchor="end" fill="${colors.muted}" font-size="11">${escapeHtml(formatDistanceLabel(totalDistanceMeters))}</text>
+        <polyline data-role="route-map-line" points="${buildPolyline(plottedPoints)}" fill="none" stroke="${colors.routeLine}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></polyline>
+        <circle data-role="route-map-start" cx="${start.x.toFixed(1)}" cy="${start.y.toFixed(1)}" r="4.4" fill="${colors.start}"></circle>
+        <circle data-role="route-map-end" cx="${end.x.toFixed(1)}" cy="${end.y.toFixed(1)}" r="4.4" fill="${colors.end}"></circle>
         <g data-role="route-map-marker-layer">${markerSvg}</g>
     `;
 }
@@ -58,8 +77,10 @@ export function buildRouteMapMarkerSvg({
     currentRecord = null,
     width = DEFAULT_WIDTH,
     height = DEFAULT_HEIGHT,
-    geometry = null
+    geometry = null,
+    theme = "default"
 } = {}) {
+    const colors = resolveColors(theme);
     const resolvedGeometry = geometry ?? buildRouteMapGeometry({ route, records, width, height });
     if (!resolvedGeometry) {
         return "";
@@ -77,11 +98,15 @@ export function buildRouteMapMarkerSvg({
     const currentLabel = formatDistanceLabel(currentPoint.distanceMeters ?? 0);
 
     return `
-        <circle data-role="route-map-current-halo" cx="${currentX.toFixed(1)}" cy="${currentY.toFixed(1)}" r="8" fill="${COLORS.currentSoft}"></circle>
-        <circle data-role="route-map-current" cx="${currentX.toFixed(1)}" cy="${currentY.toFixed(1)}" r="4.8" fill="#ffffff" stroke="${COLORS.current}" stroke-width="2.2"></circle>
-        <rect x="${currentPillX.toFixed(1)}" y="${height - 28}" width="96" height="21" rx="6" fill="#ffffff" stroke="${COLORS.border}" stroke-width="1"></rect>
-        <text data-role="route-map-current-label" x="${(currentPillX + 48).toFixed(1)}" y="${height - 14}" text-anchor="middle" fill="${COLORS.text}" font-size="10.5" font-weight="800">${escapeHtml(currentLabel)}</text>
+        <circle data-role="route-map-current-halo" cx="${currentX.toFixed(1)}" cy="${currentY.toFixed(1)}" r="8" fill="${colors.currentSoft}"></circle>
+        <circle data-role="route-map-current" cx="${currentX.toFixed(1)}" cy="${currentY.toFixed(1)}" r="4.8" fill="${colors.currentForeground}" stroke="${colors.current}" stroke-width="2.2"></circle>
+        <rect x="${currentPillX.toFixed(1)}" y="${height - 28}" width="96" height="21" rx="6" fill="${colors.labelBackground}" stroke="${colors.border}" stroke-width="1"></rect>
+        <text data-role="route-map-current-label" x="${(currentPillX + 48).toFixed(1)}" y="${height - 14}" text-anchor="middle" fill="${colors.text}" font-size="10.5" font-weight="800">${escapeHtml(currentLabel)}</text>
     `;
+}
+
+function resolveColors(theme) {
+    return theme === "immersive" ? IMMERSIVE_COLORS : COLORS;
 }
 
 export function buildRouteMapGeometry({

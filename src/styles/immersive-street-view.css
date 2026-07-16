@@ -80,6 +80,11 @@
     display: none;
 }
 
+.ride-dashboard.immersive-street-view #deviceControlsPanel {
+    /* The renderer restores this panel with an inline display value before a ride starts. */
+    display: none !important;
+}
+
 .ride-dashboard.immersive-street-view .ride-metrics-column {
     display: none;
 }
@@ -257,7 +262,7 @@
     left: 50%;
     transform: translateX(-50%);
     bottom: 12px;
-    width: min(70vw, 660px);
+    width: min(86vw, 920px);
     z-index: 50;
     background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.7));
     border: 1px solid rgba(148, 163, 184, 0.28);
@@ -300,10 +305,16 @@ body.immersive-street-view-active {
 }
 
 .ride-dashboard.immersive-street-view #liveElevationCard .ride-elevation-chart-shell {
-    width: 640px;
-    height: 168px;
+    width: min(84vw, 880px);
+    height: auto;
     min-height: 0;
     max-width: 100%;
     aspect-ratio: 640 / 180;
     padding: 0;
+}
+
+.ride-dashboard.immersive-street-view #liveElevationCard .ride-elevation-chart-shell > svg {
+    display: block;
+    width: 100%;
+    height: 100%;
 }

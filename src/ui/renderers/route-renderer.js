@@ -7,6 +7,8 @@ import {
 
 export function createRouteRenderer({
     elements,
+    rideVisuals,
+    // Compatibility for focused renderer tests while callers move to rideVisuals.
     mapController,
     onAddSegment,
     onResetRoute,
@@ -14,6 +16,11 @@ export function createRouteRenderer({
     onUpdateRouteSegment,
     onRemoveRouteSegment
 }) {
+    const visuals = rideVisuals ?? {
+        setMapProvider: (providerKey) => mapController?.setMapProvider(providerKey),
+        syncRoute: (route) => mapController?.syncRoute(route)
+    };
+
     function bindEvents() {
         if (elements.addSegmentBtn) {
             elements.addSegmentBtn.addEventListener("click", onAddSegment);
@@ -38,9 +45,9 @@ export function createRouteRenderer({
             });
         }
         if (elements.mapProviderSelect) {
-            mapController.setMapProvider(elements.mapProviderSelect.value);
+            visuals.setMapProvider(elements.mapProviderSelect.value);
             elements.mapProviderSelect.addEventListener("change", (e) => {
-                mapController.setMapProvider(e.target.value);
+                visuals.setMapProvider(e.target.value);
             });
         }
     }
@@ -48,7 +55,6 @@ export function createRouteRenderer({
     function render(state) {
         renderRouteTable(state);
         renderRouteSummary(state);
-        renderElevationChart(state.route, null);
         renderRouteMap(state);
     }
 
@@ -121,7 +127,7 @@ export function createRouteRenderer({
 
     function renderRouteMap(state) {
         try {
-            mapController.syncRoute(state.route);
+            visuals.syncRoute(state.route);
         } catch (error) {
             console.warn("路线地图渲染失败，不影响距离/海拔预览。", error);
         }

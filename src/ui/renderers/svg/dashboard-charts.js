@@ -1,13 +1,14 @@
 import { buildRouteMapSvg } from "./route-map-chart.js";
 
 export function buildTrajectoryOverviewSvg(route, currentRecord, options = {}) {
-    const { width = 300, height = 180, title = "路线平面图" } = options;
+    const { width = 300, height = 180, title = "路线平面图", theme = "default" } = options;
     return buildRouteMapSvg({
         route,
         currentRecord,
         width,
         height,
-        title
+        title,
+        theme
     });
 }
 

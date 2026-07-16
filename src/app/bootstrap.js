@@ -43,53 +43,68 @@ const pipController = createPipController({
     getData: () => buildPipViewModel(store.getState())
 });
 
-createMainView({
+const mainView = createMainView({
     store,
     pipController,
-    onSetUiMode: uiService.setUiMode,
-    onOpenActivityDetail: uiService.openActivityDetail,
-    onEnterSimulationMode: uiService.enterSimulationMode,
-    onEnterLiveMode: uiService.enterLiveMode,
-    onUpdateWorkoutMode: workoutService.updateWorkoutMode,
-    onUpdateGradeSimulationConfig: workoutService.updateGradeSimulationConfig,
-    onUpdateErgTargetPower: workoutService.updateErgTargetPower,
-    onUpdateErgConfirmationMode: workoutService.updateErgConfirmationMode,
-    onUpdateResistanceLevel: workoutService.updateResistanceLevel,
-    onUpdateCustomWorkoutTargetEnabled: workoutService.updateCustomWorkoutTargetEnabled,
-    onAddCustomWorkoutTargetStep: workoutService.addCustomWorkoutTargetStep,
-    onEditCustomWorkoutTarget: workoutService.editCustomWorkoutTarget,
-    onApplyCustomWorkoutTargetPreset: workoutService.applyCustomWorkoutTargetPreset,
-    onUpdateCustomWorkoutTargetStep: workoutService.updateCustomWorkoutTargetStep,
-    onRemoveCustomWorkoutTargetStep: workoutService.removeCustomWorkoutTargetStep,
-    onAddSegment: routeService.addSegment,
-    onResetRoute: routeService.resetRoute,
-    onToggleHeartRate: deviceService.toggleHeartRate,
-    onTogglePowerMeter: deviceService.togglePowerMeter,
-    onToggleTrainer: deviceService.toggleTrainer,
-    onOpenRideDashboard: rideService.openRideDashboard,
-    onCloseRideDashboard: rideService.closeRideDashboard,
-    onStartRide: rideService.startRide,
-    onStopRide: rideService.stopRide,
-    onUpdateRideInput: rideService.updateRideInput,
-    onRunSimulation: rideService.startVirtualRide,
-    onDownloadSession: exportService.downloadSession,
-    onDownloadFit: exportService.downloadFit,
-    onImportFit: exportService.importFit,
-    onConnectStrava: exportService.connectStrava,
-    onUploadFit: exportService.uploadFit,
-    onUploadActivityFit: exportService.uploadActivityFit,
-    onImportGpx: routeService.importGpx,
-    onUpdateRouteSegment: routeService.updateRouteSegment,
-    onRemoveRouteSegment: routeService.removeRouteSegment,
-    onUpdateSettings: userService.updateSettings,
-    onUpdateExportMetadata: exportService.updateExportMetadata,
-    onUpdatePipConfig: uiService.updatePipConfig,
-    onUpdatePipChartConfig: uiService.updatePipChartConfig,
-    onUpdatePipLayout: uiService.updatePipLayout
+    actions: {
+        navigation: {
+            setUiMode: uiService.setUiMode,
+            openActivityDetail: uiService.openActivityDetail,
+            enterLiveMode: uiService.enterLiveMode
+        },
+        user: { updateSettings: userService.updateSettings },
+        route: {
+            addSegment: routeService.addSegment,
+            resetRoute: routeService.resetRoute,
+            importGpx: routeService.importGpx,
+            updateSegment: routeService.updateRouteSegment,
+            removeSegment: routeService.removeRouteSegment
+        },
+        ride: {
+            openRideDashboard: rideService.openRideDashboard,
+            closeRideDashboard: rideService.closeRideDashboard,
+            startRide: rideService.startRide,
+            stopRide: rideService.stopRide,
+            updateRideInput: rideService.updateRideInput
+        },
+        device: {
+            toggleHeartRate: deviceService.toggleHeartRate,
+            togglePowerMeter: deviceService.togglePowerMeter,
+            toggleTrainer: deviceService.toggleTrainer
+        },
+        workout: {
+            updateMode: workoutService.updateWorkoutMode,
+            updateGradeSimulationConfig: workoutService.updateGradeSimulationConfig,
+            updateErgTargetPower: workoutService.updateErgTargetPower,
+            updateErgConfirmationMode: workoutService.updateErgConfirmationMode,
+            updateResistanceLevel: workoutService.updateResistanceLevel,
+            updateCustomTargetEnabled: workoutService.updateCustomWorkoutTargetEnabled,
+            addCustomTargetStep: workoutService.addCustomWorkoutTargetStep,
+            editCustomTarget: workoutService.editCustomWorkoutTarget,
+            applyCustomTargetPreset: workoutService.applyCustomWorkoutTargetPreset,
+            updateCustomTargetStep: workoutService.updateCustomWorkoutTargetStep,
+            removeCustomTargetStep: workoutService.removeCustomWorkoutTargetStep
+        },
+        export: {
+            downloadSession: exportService.downloadSession,
+            downloadFit: exportService.downloadFit,
+            importFit: exportService.importFit,
+            connectStrava: exportService.connectStrava,
+            uploadFit: exportService.uploadFit,
+            uploadActivityFit: exportService.uploadActivityFit,
+            updateExportMetadata: exportService.updateExportMetadata
+        },
+        pip: {
+            updateConfig: uiService.updatePipConfig,
+            updateChartConfig: uiService.updatePipChartConfig,
+            updateLayout: uiService.updatePipLayout
+        }
+    }
 });
 
 // 4. 注册页面关闭时的清理逻辑（同步收尾 + 尝试 sendBeacon 发送 FIT）
 window.addEventListener("beforeunload", () => {
+    mainView.destroy();
     if (store.getState().liveRide.isActive) {
         rideService.finalizeRideSync({ sendBeacon: true });
     }
@@ -99,7 +114,7 @@ window.addEventListener("beforeunload", () => {
 if (persistedSession) {
     store.setState((state) => ({
         ...state,
-        statusText: `已恢复最近一次模拟：${formatDuration(persistedSession.summary.metrics?.ride?.elapsedSeconds ?? 0)} / ${formatNumber(persistedSession.summary.metrics?.ride?.distanceKm ?? 0, 2)} km`
+        statusText: `已恢复最近一次骑行：${formatDuration(persistedSession.summary.metrics?.ride?.elapsedSeconds ?? 0)} / ${formatNumber(persistedSession.summary.metrics?.ride?.distanceKm ?? 0, 2)} km`
     }));
 }
 
@@ -107,15 +122,11 @@ userService.loadUserProfile();
 
 function inferInitialUiMode() {
     const hasHomeView = Boolean(document.getElementById("view-home"));
-    const hasSimulationView = Boolean(document.getElementById("view-simulation"));
     const hasLiveView = Boolean(document.getElementById("view-live"));
 
     // For standalone pages like live.html, auto-enter corresponding mode.
-    if (!hasHomeView && hasLiveView && !hasSimulationView) {
+    if (!hasHomeView && hasLiveView) {
         return "live";
-    }
-    if (!hasHomeView && hasSimulationView && !hasLiveView) {
-        return "simulation";
     }
 
     return "home";

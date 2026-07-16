@@ -7,9 +7,10 @@ export function createStore(initialState) {
     }
 
     function setState(updater) {
+        const previousState = state;
         const nextState = typeof updater === "function" ? updater(state) : { ...state, ...updater };
         state = nextState;
-        listeners.forEach((listener) => listener(state));
+        listeners.forEach((listener) => listener(state, previousState));
         return state;
     }
 

@@ -13,6 +13,15 @@ export function createExportRenderer({
     }
 
     function render(state) {
+        const session = state.session;
+        const rideActive = state.liveRide.isActive;
+        if (elements.downloadSessionBtn) elements.downloadSessionBtn.disabled = !session || rideActive;
+        if (elements.downloadFitBtn) elements.downloadFitBtn.disabled = !session || rideActive;
+        if (elements.importFitBtn) elements.importFitBtn.disabled = rideActive;
+        if (elements.homeImportFitBtn) elements.homeImportFitBtn.disabled = rideActive;
+        if (elements.connectStravaBtn) elements.connectStravaBtn.disabled = rideActive || !state.exportMetadata.stravaServerUrl;
+        if (elements.uploadFitBtn) elements.uploadFitBtn.disabled = !session || rideActive || !state.exportMetadata.stravaServerUrl;
+
         const signature = JSON.stringify(state.exportMetadata);
 
         if (signature === lastRenderedExportSignature) {

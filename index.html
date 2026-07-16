@@ -15,8 +15,7 @@
                     <h1>Rider Tracker 🚴‍♂️</h1>
                     <p class="hero-kicker">让室内骑行更轻量、更自由</p>
                     <div class="controls mode-controls">
-                        <button id="goToSimBtn" class="btn primary" hidden>模拟骑行</button>
-                        <button id="goToLiveBtn" class="btn secondary">台子模拟骑行</button>
+                        <button id="goToLiveBtn" class="btn secondary">进入骑行设置</button>
                     </div>
                 </div>
                 <div class="hero-metrics">
@@ -70,147 +69,42 @@
             </section>
         </div>
 
-        <div id="view-simulation" class="view-section" hidden>
+        <div id="view-live" class="view-section" hidden>
             <section class="hero card">
                 <div class="hero-copy">
-                    <p class="eyebrow">Simulation</p>
-                    <h1>实时虚拟骑行设置</h1>
+                    <p class="eyebrow">Live Ride</p>
+                    <h1>实时骑行设置</h1>
                     <div class="controls mode-controls">
                         <button class="btn ghost go-home-btn">返回首页</button>
+                        <button id="openRideDashboardBtn" class="btn primary">进入骑行界面</button>
                     </div>
                 </div>
                 <div class="hero-metrics">
                     <div class="metric-chip">
                         <span>状态</span>
-                        <strong id="statusText">请先设置路线与模拟参数。</strong>
+                        <strong id="statusText">请选择路线并连接骑行设备。</strong>
                     </div>
                 </div>
             </section>
 
-            <section class="layout-grid">
-                <div class="column" id="sim-col-1">
-                    <div class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>模拟参数</h2>
-                            </div>
-                        </div>
-                        <form id="simulationForm" class="form-grid">
-                            <label class="field">
-                                <span>恒定功率 W</span>
-                                <input id="powerInput" name="power" type="number" min="0" max="600" step="5">
-                            </label>
-                            <label class="field">
-                                <span>FTP W</span>
-                                <input name="ftp" type="number" min="100" max="450" step="5">
-                            </label>
-                            <label class="field">
-                                <span>骑手总质量 kg</span>
-                                <input name="mass" type="number" min="40" max="150" step="1">
-                            </label>
-                            <label class="field">
-                                <span>静息心率 bpm</span>
-                                <input name="restingHr" type="number" min="40" max="100" step="1">
-                            </label>
-                            <label class="field">
-                                <span>最高心率 bpm</span>
-                                <input name="maxHr" type="number" min="120" max="220" step="1">
-                            </label>
-                            <label class="field">
-                                <span>空气阻力 CdA</span>
-                                <input name="cda" type="number" min="0.2" max="0.8" step="0.01">
-                            </label>
-                            <label class="field">
-                                <span>滚阻 Crr</span>
-                                <input name="crr" type="number" min="0.001" max="0.02" step="0.001">
-                            </label>
-                            <label class="field">
-                                <span>风速 m/s</span>
-                                <input name="windSpeed" type="number" min="-10" max="10" step="0.5">
-                            </label>
-                        </form>
-                        <div class="controls">
-                            <button id="runSimulationBtn" class="btn primary">开始虚拟骑行</button>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>模拟结果</h2>
-                            </div>
-                        </div>
-                        <div class="data-grid">
-                            <div class="data-item">
-                                <div class="data-label">平均速度</div>
-                                <div class="data-display" id="avgSpeedDisplay">0.0 <span class="unit">km/h</span></div>
-                            </div>
-                            <div class="data-item">
-                                <div class="data-label">总距离</div>
-                                <div class="data-display" id="distanceDisplay">0.00 <span class="unit">km</span></div>
-                            </div>
-                            <div class="data-item">
-                                <div class="data-label">平均心率</div>
-                                <div class="data-display" id="heartRateDisplay">0 <span class="unit">bpm</span></div>
-                            </div>
-                            <div class="data-item">
-                                <div class="data-label">累计爬升</div>
-                                <div class="data-display" id="elevationDisplay">0 <span class="unit">m</span></div>
-                            </div>
-                        </div>
-                        <div class="summary-grid">
-                            <div class="summary-card"><span>总用时</span><strong id="elapsedTimeValue">00:00</strong></div>
-                            <div class="summary-card"><span>路线进度</span><strong id="routeProgressValue">0%</strong></div>
-                            <div class="summary-card"><span>当前坡度</span><strong id="currentGradeValue">0.0%</strong></div>
-                            <div class="summary-card"><span>记录数</span><strong id="recordCountValue">0</strong></div>
-                        </div>
-                        <div class="chart-shell">
-                            <svg id="distanceChart" viewBox="0 0 640 280" preserveAspectRatio="none"></svg>
-                        </div>
-                        <div class="table-shell">
-                            <table class="route-table">
-                                <thead>
-                                    <tr>
-                                        <th>路线</th>
-                                        <th>时长</th>
-                                        <th>距离</th>
-                                        <th>均速</th>
-                                        <th>均功率</th>
-                                        <th>均心率</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="recordsTableBody">
-                                    <tr><td class="empty-state" colspan="6">运行模拟后将在这里显示记录。</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div id="exportCardContainer"></div>
-                </div>
-
-                <div class="column">
+            <section class="layout-grid live-setup-grid">
+                <div class="column" id="live-col-1">
                     <div id="routeCardContainer">
                         <div id="routeCard" class="card">
                             <div class="section-title-row">
-                                <div>
-                                    <h2>路线轨迹设置</h2>
-                                </div>
+                                <div><h2>路线轨迹设置</h2></div>
                                 <div class="inline-actions">
                                     <button id="addSegmentBtn" class="btn secondary">新增路段</button>
                                     <button id="resetRouteBtn" class="btn ghost">恢复默认</button>
                                 </div>
                             </div>
-
                             <div class="import-panel">
                                 <label class="field field-wide">
                                     <span>导入 GPX 文件</span>
                                     <input id="gpxFileInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
                                 </label>
-                                <div>
-                                    <div id="setupElevationChartShell" class="chart-shell" style="margin-top: 0;">
-                                        <svg id="setupElevationChart" viewBox="0 0 640 180" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block;"></svg>
-                                    </div>
+                                <div id="setupElevationChartShell" class="chart-shell" style="margin-top: 0;">
+                                    <svg id="setupElevationChart" viewBox="0 0 640 180" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block;"></svg>
                                 </div>
                                 <div class="route-source-row">
                                     <span>当前路线来源</span>
@@ -224,46 +118,39 @@
                                     </select>
                                 </label>
                             </div>
-
-                            <div id="routeMapShell" class="chart-shell route-map-shell">
-                                <div id="routeMapPreview" class="map-canvas"></div>
-                            </div>
-
+                            <div id="routeMapShell" class="chart-shell route-map-shell"><div id="routeMapPreview" class="map-canvas"></div></div>
                             <div id="routeTableShell" class="table-shell">
                                 <table class="route-table">
-                                    <thead>
-                                        <tr>
-                                            <th>名称</th>
-                                            <th>距离 km</th>
-                                            <th>坡度 %</th>
-                                            <th>操作</th>
-                                        </tr>
-                                    </thead>
+                                    <thead><tr><th>名称</th><th>距离 km</th><th>坡度 %</th><th>操作</th></tr></thead>
                                     <tbody id="routeTableBody"></tbody>
                                 </table>
                             </div>
                             <div id="routeSummary" class="route-summary">路线概览待生成。</div>
                         </div>
                     </div>
-                </div>
-            </section>
-        </div>
-
-        <div id="view-live" class="view-section" hidden>
-            <section class="hero card">
-                <div class="hero-copy">
-                    <p class="eyebrow">Live Ride</p>
-                    <h1>实时虚拟骑行</h1>
-                    <div class="controls mode-controls">
-                        <button class="btn ghost go-home-btn">返回首页</button>
-                        <button id="openRideDashboardBtn" class="btn primary">进入骑行界面</button>
+                    <div id="exportCardContainer"></div>
+                    <div class="card">
+                        <div class="section-title-row"><div><h2>最近骑行摘要</h2></div></div>
+                        <div class="data-grid">
+                            <div class="data-item"><div class="data-label">平均速度</div><div class="data-display" id="avgSpeedDisplay">0.0 <span class="unit">km/h</span></div></div>
+                            <div class="data-item"><div class="data-label">总距离</div><div class="data-display" id="distanceDisplay">0.00 <span class="unit">km</span></div></div>
+                            <div class="data-item"><div class="data-label">平均心率</div><div class="data-display" id="heartRateDisplay">0 <span class="unit">bpm</span></div></div>
+                            <div class="data-item"><div class="data-label">累计爬升</div><div class="data-display" id="elevationDisplay">0 <span class="unit">m</span></div></div>
+                        </div>
+                        <div class="summary-grid">
+                            <div class="summary-card"><span>总用时</span><strong id="elapsedTimeValue">00:00</strong></div>
+                            <div class="summary-card"><span>路线进度</span><strong id="routeProgressValue">0%</strong></div>
+                            <div class="summary-card"><span>当前坡度</span><strong id="currentGradeValue">0.0%</strong></div>
+                            <div class="summary-card"><span>记录数</span><strong id="recordCountValue">0</strong></div>
+                        </div>
+                        <div class="chart-shell"><svg id="distanceChart" viewBox="0 0 640 280" preserveAspectRatio="none"></svg></div>
+                        <div class="table-shell">
+                            <table class="route-table">
+                                <thead><tr><th>路线</th><th>时长</th><th>距离</th><th>均速</th><th>均功率</th><th>均心率</th></tr></thead>
+                                <tbody id="recordsTableBody"><tr><td class="empty-state" colspan="6">开始骑行后将在这里显示记录。</td></tr></tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
-            </section>
-
-            <section class="layout-grid live-setup-grid">
-                <div class="column" id="live-col-1">
-                    <div id="liveExportSlot"></div>
                     <div id="postRideReportCard" class="card" hidden>
                         <div class="section-title-row">
                             <div>
