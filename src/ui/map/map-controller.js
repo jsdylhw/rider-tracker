@@ -215,9 +215,7 @@ function renderRoute(map, layers, route, currentRecord) {
         return;
     }
 
-    const geoPoints = getRouteMapGeometry(route)
-        .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude))
-        .map((point) => [point.latitude, point.longitude]);
+    const geoPoints = collectRouteMapLatLngs(route);
     const routeKey = buildRouteGeometryKey(route, geoPoints);
 
     if (geoPoints.length < 2) {
@@ -262,8 +260,17 @@ function renderRoute(map, layers, route, currentRecord) {
     map.panTo(currentLatLng, { animate: true, duration: 0.5 });
 }
 
-function getRouteMapGeometry(route) {
-    return route?.mapGeometry?.length >= 2 ? route.mapGeometry : (route?.points ?? []);
+export function collectRouteMapLatLngs(route) {
+    const geometry = route?.mapGeometry?.length >= 2 ? route.mapGeometry : route?.points;
+    return (geometry ?? [])
+        .map((point) => {
+            const latitude = point?.latitude ?? point?.lat;
+            const longitude = point?.longitude ?? point?.lng;
+            return Number.isFinite(latitude) && Number.isFinite(longitude)
+                ? [latitude, longitude]
+                : null;
+        })
+        .filter(Boolean);
 }
 
 export function buildRouteGeometryKey(route, geoPoints) {
@@ -292,13 +299,18 @@ function renderPlannerSelection(map, layers, selection) {
         .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lng))
         .map((point) => [point.lat, point.lng]);
 
-    layers.plannerGuideLine.setLatLngs(points.length === 2 ? points : []);
+    const shouldFitSelection = shouldFitPlannerSelection(layers, points.length);
+    layers.plannerGuideLine.setLatLngs(shouldFitSelection ? points : []);
 
-    if (points.length === 2) {
+    if (shouldFitSelection) {
         map.fitBounds(window.L.latLngBounds(points), {
             padding: [32, 32]
         });
     }
+}
+
+export function shouldFitPlannerSelection(layers, pointCount) {
+    return pointCount === 2 && layers?.hasVisibleRoute !== true;
 }
 
 function resolveRouteLineStyle(route) {

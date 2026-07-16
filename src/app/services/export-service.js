@@ -11,7 +11,6 @@ import {
     saveActivityFitFile,
     saveRiderSessionActivity
 } from "../../adapters/storage/activity-history-client.js";
-import { downloadBinary, downloadJson } from "../../shared/format.js";
 import { sanitizeExportMetadata } from "../store/initial-state.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
 
@@ -109,66 +108,6 @@ export function createExportService({ store }) {
                 statusText: message
             }));
         }
-    }
-
-    function downloadSession() {
-        const { session } = store.getState();
-
-        if (!session) {
-            return;
-        }
-
-        const timestamp = session.createdAt.replaceAll(":", "-").split(".")[0];
-        downloadJson(`ride-simulation-${timestamp}.json`, session);
-
-        store.setState((state) => ({
-            ...state,
-            statusText: "Current ride session exported as JSON."
-        }));
-    }
-
-    async function downloadFit() {
-        const { session, exportMetadata } = store.getState();
-
-        if (!session) {
-            return;
-        }
-
-        store.setState((state) => ({
-            ...state,
-            statusText: "Generating FIT file..."
-        }));
-
-        try {
-            const fitBytes = await exportSessionAsFit(session, exportMetadata, {
-                markVirtualActivity: exportMetadata?.markVirtualActivity
-            });
-            const timestamp = session.createdAt.replaceAll(":", "-").split(".")[0];
-            const filename = `virtual-ride-${timestamp}.fit`;
-            await saveFitFileForSession({ session, fitBytes, filename });
-            downloadBinary(filename, fitBytes, "application/vnd.ant.fit");
-
-            store.setState((state) => ({
-                ...state,
-                statusText: "FIT file exported."
-            }));
-        } catch (error) {
-            console.error("FIT export failed", error);
-            store.setState((state) => ({
-                ...state,
-                statusText: `FIT export failed: ${extractErrorMessage(error)}`
-            }));
-        }
-    }
-
-    async function uploadFit() {
-        const { session, exportMetadata } = store.getState();
-
-        if (!session) {
-            return;
-        }
-
-        await uploadSessionFit({ session, exportMetadata });
     }
 
     async function importFit(file) {
@@ -320,84 +259,6 @@ export function createExportService({ store }) {
         }
     }
 
-    async function uploadSessionFit({ session, exportMetadata, selectedActivity = null }) {
-        if (!exportMetadata.stravaServerUrl) {
-            store.setState((state) => ({
-                ...state,
-                statusText: "Missing Strava server URL."
-            }));
-            return;
-        }
-
-        store.setState((state) => ({
-            ...state,
-            statusText: "Checking Strava connection..."
-        }));
-
-        try {
-            const connection = await getStravaConnection({
-                serverUrl: exportMetadata.stravaServerUrl,
-                userId: exportMetadata.stravaUserId
-            });
-
-            if (!connection?.configured) {
-                throw new Error("Strava credentials are not configured on the local server.");
-            }
-
-            if (!connection?.connected) {
-                store.setState((state) => ({
-                    ...state,
-                    statusText: "Click Connect Strava first, then upload FIT."
-                }));
-                return;
-            }
-
-            store.setState((state) => ({
-                ...state,
-                statusText: "Generating and uploading FIT file..."
-            }));
-
-            const fitBytes = await exportSessionAsFit(session, exportMetadata, {
-                markVirtualActivity: exportMetadata?.markVirtualActivity
-            });
-            const timestamp = resolveSessionTimestamp(session);
-            const filename = `virtual-ride-${timestamp}.fit`;
-            const savedActivity = await saveFitFileForSession({ session, fitBytes, filename });
-            updateSelectedActivityFit(savedActivity ?? selectedActivity, session, selectedActivity);
-            const uploadAsVirtual = exportMetadata?.markVirtualActivity !== false;
-            const hasGpsTrack = sessionHasGpsTrack(session);
-
-            if (!savedActivity?.id || !savedActivity?.fitFilePath) {
-                throw new Error("Activity FIT archive is missing.");
-            }
-
-            const upload = await uploadSavedActivityFitToStravaServer({
-                serverUrl: exportMetadata.stravaServerUrl,
-                userId: exportMetadata.stravaUserId,
-                activityId: savedActivity.id,
-                activityName: exportMetadata.activityName,
-                fitDescription: exportMetadata.fitDescription,
-                repositoryUrl: exportMetadata.repositoryUrl,
-                generatedMessage: buildGeneratedMessage(exportMetadata.repositoryUrl),
-                trainer: uploadAsVirtual && !hasGpsTrack,
-                commute: false,
-                sportType: uploadAsVirtual ? "VirtualRide" : "Ride",
-                externalId: buildExternalId(session, timestamp)
-            });
-
-            store.setState((state) => ({
-                ...state,
-                statusText: `Strava upload complete. Activity ID: ${upload.activity_id}.`
-            }));
-        } catch (error) {
-            console.error("FIT upload failed", error);
-            store.setState((state) => ({
-                ...state,
-                statusText: `FIT upload failed: ${extractErrorMessage(error)}`
-            }));
-        }
-    }
-
     async function uploadActivityFitFromDatabase({ activity, session, exportMetadata }) {
         if (!exportMetadata.stravaServerUrl) {
             store.setState((state) => ({
@@ -499,10 +360,7 @@ export function createExportService({ store }) {
     return {
         updateExportMetadata,
         connectStrava,
-        downloadSession,
-        downloadFit,
         importFit,
-        uploadFit,
         uploadActivityFit,
         archiveFitForSession,
         archiveSessionAsFitActivity

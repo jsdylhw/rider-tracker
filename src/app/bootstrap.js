@@ -86,11 +86,8 @@ const mainView = createMainView({
             removeCustomTargetStep: workoutService.removeCustomWorkoutTargetStep
         },
         export: {
-            downloadSession: exportService.downloadSession,
-            downloadFit: exportService.downloadFit,
             importFit: exportService.importFit,
             connectStrava: exportService.connectStrava,
-            uploadFit: exportService.uploadFit,
             uploadActivityFit: exportService.uploadActivityFit,
             updateExportMetadata: exportService.updateExportMetadata
         },

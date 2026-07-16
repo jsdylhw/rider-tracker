@@ -53,7 +53,9 @@ export const suite = {
 
                 renderer.render({ route: { source: "manual", points: [], segments: [] }, routeSegments: [] });
 
-                elements.routeModeMapBtn.dispatch("click");
+                assertEqual(elements.mapRoutePanel.hidden, false);
+                assertEqual(elements.manualRoutePanel.hidden, true);
+                assertEqual(elements.routeModeMapBtn.classList.contains("active"), true);
                 plannerClickHandler({ mode: "select", point: { lat: 37.1, lng: -122.1 } });
                 plannerClickHandler({ mode: "select", point: { lat: 37.2, lng: -122.2 } });
                 elements.planMapRouteBtn.dispatch("click");

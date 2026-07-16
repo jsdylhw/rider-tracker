@@ -1,34 +1,21 @@
-export function createExportView({ onDownloadSession, onDownloadFit, onImportFit, onConnectStrava, onUploadFit, onUpdateExportMetadata, getExportMetadata }) {
-    const exportCardContainer = document.getElementById("exportCardContainer");
-    const exportCardTemplate = document.getElementById("export-card-template");
-    mountSharedExportCard({ exportCardContainer, exportCardTemplate });
-
-    const exportCardRoot = exportCardContainer ?? document;
+export function createExportView({ onImportFit }) {
     const elements = {
-        exportCardContainer,
-        liveExportSlot: document.getElementById("liveExportSlot"),
-        exportCardTemplate,
         homeImportFitInput: document.getElementById("homeImportFitInput"),
-        homeImportFitBtn: document.getElementById("homeImportFitBtn"),
-        fitExportForm: exportCardRoot.querySelector("#fitExportForm"),
-        downloadSessionBtn: exportCardRoot.querySelector("#downloadSessionBtn"),
-        downloadFitBtn: exportCardRoot.querySelector("#downloadFitBtn"),
-        importFitInput: exportCardRoot.querySelector("#importFitInput"),
-        importFitBtn: exportCardRoot.querySelector("#importFitBtn"),
-        connectStravaBtn: exportCardRoot.querySelector("#connectStravaBtn"),
-        uploadFitBtn: exportCardRoot.querySelector("#uploadFitBtn")
+        homeImportFitBtn: document.getElementById("homeImportFitBtn")
     };
 
-    bind(elements.downloadSessionBtn, "click", onDownloadSession);
-    bind(elements.downloadFitBtn, "click", onDownloadFit);
-    bindFitImport(elements.importFitBtn, elements.importFitInput, onImportFit);
     bindFitImport(elements.homeImportFitBtn, elements.homeImportFitInput, onImportFit);
-    bind(elements.connectStravaBtn, "click", onConnectStrava);
 
-    // Upload → show confirmation modal
-    setupUploadModal({ onUploadFit, onUpdateExportMetadata, getExportMetadata });
+    initializeUploadConfirmModal();
 
-    return { elements };
+    return {
+        elements,
+        render(state) {
+            if (elements.homeImportFitBtn) {
+                elements.homeImportFitBtn.disabled = state.liveRide.isActive;
+            }
+        }
+    };
 }
 
 function bind(el, event, handler) {
@@ -48,16 +35,11 @@ function bindFitImport(button, input, handler) {
     });
 }
 
-function mountSharedExportCard({ exportCardContainer, exportCardTemplate }) {
-    if (exportCardContainer && exportCardTemplate && exportCardContainer.childElementCount === 0) {
-        exportCardContainer.appendChild(exportCardTemplate.content.cloneNode(true));
-    }
-}
-
 let _modalElements = null;
 let _pendingUpload = null;
 
-function setupUploadModal({ onUploadFit, onUpdateExportMetadata, getExportMetadata }) {
+function initializeUploadConfirmModal() {
+    if (_modalElements) return;
     const template = document.getElementById("upload-confirm-template");
     if (!template) return;
 
@@ -72,11 +54,6 @@ function setupUploadModal({ onUploadFit, onUpdateExportMetadata, getExportMetada
     const descTextarea = overlay?.querySelector("[name=\"confirmFitDescription\"]");
 
     _modalElements = { overlay, nameInput, virtualCheckbox, descTextarea };
-
-    const uploadBtn = document.getElementById("uploadFitBtn");
-    bind(uploadBtn, "click", () => {
-        openUploadModal({ onUpload: onUploadFit, onUpdateExportMetadata, getExportMetadata });
-    });
 
     bind(cancelBtn, "click", () => overlay?.classList.remove("open"));
 

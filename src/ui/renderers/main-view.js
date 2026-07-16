@@ -1,14 +1,12 @@
 import { createRideVisualsController } from "../map/ride-visuals-controller.js";
 import { createRouteRenderer } from "./route-renderer.js";
 import { createDashboardRenderer } from "./dashboard-renderer.js";
-import { createExportRenderer } from "./export-renderer.js";
 import { createDeviceRenderer } from "./device-renderer.js";
 import { createLayoutCoordinator } from "./layout-coordinator.js";
 import { createWorkoutRenderer } from "./workout-renderer.js";
 import { createCustomWorkoutTargetRenderer } from "./custom-workout-target-renderer.js";
 import { createActivityHistoryRenderer } from "./activity-history-renderer.js";
 import { createSessionSummaryRenderer } from "./session-summary-renderer.js";
-import { createSessionHistoryRenderer } from "./session-history-renderer.js";
 import { createSessionChartRenderer } from "./session-chart-renderer.js";
 import { createHomeView } from "../views/home-view.js";
 import { createLiveView } from "../views/live-view.js";
@@ -30,13 +28,7 @@ export function createMainView({ store, pipController, actions }) {
         onUpdateRideInput: ride.updateRideInput
     });
     const exportView = createExportView({
-        onDownloadSession: exportActions.downloadSession,
-        onDownloadFit: exportActions.downloadFit,
-        onImportFit: exportActions.importFit,
-        onConnectStrava: exportActions.connectStrava,
-        onUploadFit: exportActions.uploadFit,
-        onUpdateExportMetadata: exportActions.updateExportMetadata,
-        getExportMetadata: () => store.getState().exportMetadata
+        onImportFit: exportActions.importFit
     });
     const activityDetailView = createActivityDetailView({
         onSetUiMode: navigation.setUiMode,
@@ -72,10 +64,6 @@ export function createMainView({ store, pipController, actions }) {
     dashboardRenderer.bindEvents(store);
     bindPipMetricControls();
 
-    const exportRenderer = createExportRenderer({
-        elements,
-        onUpdateExportMetadata: exportActions.updateExportMetadata
-    });
     const deviceRenderer = createDeviceRenderer({
         elements,
         onToggleHeartRate: device.toggleHeartRate,
@@ -103,7 +91,6 @@ export function createMainView({ store, pipController, actions }) {
         onRemoveCustomWorkoutTargetStep: workout.removeCustomTargetStep
     });
     const sessionSummaryRenderer = createSessionSummaryRenderer({ elements });
-    const sessionHistoryRenderer = createSessionHistoryRenderer({ elements });
     const sessionChartRenderer = createSessionChartRenderer({ elements, routeRenderer });
     const activityHistoryRenderer = createActivityHistoryRenderer({
         containers: [elements.historyContainer, elements.postRideHistoryContainer],
@@ -122,8 +109,8 @@ export function createMainView({ store, pipController, actions }) {
         if (initialRender || state.route !== previousState.route || state.routeSegments !== previousState.routeSegments || state.uiMode !== previousState.uiMode) {
             routeRenderer.render(state);
         }
-        if (initialRender || state.exportMetadata !== previousState.exportMetadata || state.liveRide !== previousState.liveRide || state.session !== previousState.session) {
-            exportRenderer.render(state);
+        if (initialRender || state.liveRide !== previousState.liveRide) {
+            exportView.render(state);
         }
         if (initialRender || state.workout !== previousState.workout || state.ble !== previousState.ble) {
             workoutRenderer.render(state);
@@ -134,7 +121,6 @@ export function createMainView({ store, pipController, actions }) {
         }
         if (initialRender || state.liveRide !== previousState.liveRide || state.session !== previousState.session || state.settings !== previousState.settings || state.statusText !== previousState.statusText || state.route !== previousState.route || state.workout !== previousState.workout) {
             sessionSummaryRenderer.render(state);
-            sessionHistoryRenderer.render(state);
             sessionChartRenderer.render(state);
         }
         if (shouldRenderDashboard(state, previousState)) {
