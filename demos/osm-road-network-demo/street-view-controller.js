@@ -5,6 +5,12 @@ const PANORAMA_LOOKUP_TIMEOUT_MS = 10000;
 const PANORAMA_CACHE_MAX_ENTRIES = 240;
 const POV_READY_TIMEOUT_MS = 1200;
 const USER_INTERACTION_PAUSE_MS = 3000;
+const NATIVE_LINK_MOVE_MIN_DISTANCE_METERS = 1.2;
+const NATIVE_LINK_MOVE_MAX_DISTANCE_METERS = 4;
+const NATIVE_LINK_MOVE_MIN_INTERVAL_MS = 100;
+const NATIVE_LINK_MOVE_MAX_INTERVAL_MS = 500;
+const MAX_NATIVE_LINK_HEADING_DELTA_DEGREES = 75;
+const USER_PANO_RESYNC_DISTANCE_METERS = 45;
 
 let googleMapsLoadPromise = null;
 
@@ -100,37 +106,64 @@ export function createStreetViewController({ container1, container2 }) {
     let activePanoId = "";
     let lastLookupDistance = -1;
     let lastLookupTime = 0;
+    let lastNativeLinkDistance = -1;
+    let lastNativeLinkTime = 0;
     let pauseAutoUntil = 0;
     let applyingProgrammaticPov = false;
+    let userMovedPano = false;
 
     bindUserInteractionPause(container1, panorama);
 
     function update(route, currentRecord) {
-        if (!route || !currentRecord || isAutoUpdatePaused()) return;
+        if (!route || !currentRecord) return { navigation: "waiting" };
+        if (isAutoUpdatePaused()) return { navigation: "paused" };
 
         const now = Date.now();
         const currentDistanceMeters = currentRecord.distanceKm * 1000;
         const pov = getPovAtDistance(route, currentDistanceMeters);
-        if (!pov) return;
+        if (!pov) return { navigation: "waiting" };
+
+        const panoramaPosition = readLatLng(panorama.getPosition?.());
+        if (userMovedPano && !panoramaPosition) {
+            return { navigation: "pov-only" };
+        }
+        if (userMovedPano && shouldResyncToRoutePano(panoramaPosition, pov.state)) {
+            userMovedPano = false;
+            lastLookupTime = now;
+            lastLookupDistance = currentDistanceMeters;
+            lookupRoutePanorama(pov, { trackInFlight: true });
+            return { navigation: "gps-resync" };
+        }
+        userMovedPano = false;
 
         setProgrammaticPov(panorama, { heading: pov.heading, pitch: pov.pitch });
+
+        if (moveToRouteAlignedNativeLink(pov, currentDistanceMeters, currentRecord.speedKph, now)) {
+            return { navigation: "native-link" };
+        }
 
         const movedEnough = lastLookupDistance === -1
             || Math.abs(currentDistanceMeters - lastLookupDistance) >= PANORAMA_LOOKUP_DISTANCE_METERS;
         const waitedEnough = lastLookupDistance === -1
             || now - lastLookupTime >= PANORAMA_LOOKUP_INTERVAL_MS;
         if (lookupInFlight || (!movedEnough && !waitedEnough)) {
-            return;
+            return { navigation: "pov-only" };
         }
 
         lastLookupTime = now;
         lastLookupDistance = currentDistanceMeters;
 
+        lookupRoutePanorama(pov, { trackInFlight: true });
+
+        return { navigation: "gps-lookup" };
+    }
+
+    function lookupRoutePanorama(pov, { trackInFlight = false } = {}) {
         requestPanorama(pov.state, (data, status) => {
             if (status !== window.google.maps.StreetViewStatus.OK || !data.location?.pano) return;
 
             const targetPanoId = data.location.pano;
-            if (targetPanoId === activePanoId || targetPanoId === panorama.getPano()) {
+            if (targetPanoId === panorama.getPano()) {
                 activePanoId = targetPanoId;
                 setProgrammaticPov(panorama, { heading: pov.heading, pitch: pov.pitch });
                 return;
@@ -140,7 +173,7 @@ export function createStreetViewController({ container1, container2 }) {
             panorama.setPano(targetPanoId);
             setProgrammaticPov(panorama, { heading: pov.heading, pitch: pov.pitch });
             restorePovWhenPanoramaReady({ heading: pov.heading, pitch: pov.pitch });
-        }, { trackInFlight: true });
+        }, { trackInFlight });
     }
 
     function destroy() {
@@ -189,6 +222,15 @@ export function createStreetViewController({ container1, container2 }) {
                 }
             })
         );
+        listeners.push(
+            googleEvent.addListener(pano, "pano_changed", () => {
+                const currentPanoId = pano.getPano?.();
+                if (currentPanoId && currentPanoId !== activePanoId) {
+                    userMovedPano = true;
+                    pauseAutoUpdateForUserInteraction();
+                }
+            })
+        );
     }
 
     function pauseAutoUpdateForUserInteraction() {
@@ -205,6 +247,30 @@ export function createStreetViewController({ container1, container2 }) {
         queueMicrotask(() => {
             applyingProgrammaticPov = false;
         });
+    }
+
+    function moveToRouteAlignedNativeLink(pov, distanceMeters, speedKph, now) {
+        const currentPanoId = activePanoId || panorama.getPano?.();
+        const moveDistanceMeters = getNativeLinkMoveDistanceMeters(speedKph);
+        const movedEnough = lastNativeLinkDistance === -1
+            || Math.abs(distanceMeters - lastNativeLinkDistance) >= moveDistanceMeters;
+        const waitedEnough = now - lastNativeLinkTime >= getNativeLinkMoveIntervalMs(speedKph);
+        if (!currentPanoId || !movedEnough || !waitedEnough) {
+            return false;
+        }
+
+        const link = chooseRouteAlignedLink(panorama.getLinks?.() ?? [], pov.heading, currentPanoId);
+        if (!link) {
+            return false;
+        }
+
+        lastNativeLinkDistance = distanceMeters;
+        lastNativeLinkTime = now;
+        activePanoId = link.pano;
+        panorama.setPano(link.pano);
+        setProgrammaticPov(panorama, { heading: pov.heading, pitch: pov.pitch });
+        restorePovWhenPanoramaReady({ heading: pov.heading, pitch: pov.pitch });
+        return true;
     }
 
     function restorePovWhenPanoramaReady(pov) {
@@ -357,4 +423,71 @@ export function createStreetViewController({ container1, container2 }) {
     }
 
     return { update, destroy };
+}
+
+export function getNativeLinkMoveDistanceMeters(speedKph) {
+    return clamp(
+        45 / Math.max(1, Number(speedKph) || 0),
+        NATIVE_LINK_MOVE_MIN_DISTANCE_METERS,
+        NATIVE_LINK_MOVE_MAX_DISTANCE_METERS
+    );
+}
+
+export function getNativeLinkMoveIntervalMs(speedKph) {
+    return clamp(
+        7000 / Math.max(1, Number(speedKph) || 0),
+        NATIVE_LINK_MOVE_MIN_INTERVAL_MS,
+        NATIVE_LINK_MOVE_MAX_INTERVAL_MS
+    );
+}
+
+export function chooseRouteAlignedLink(links, routeHeading, currentPanoId = "") {
+    if (!Number.isFinite(routeHeading)) return null;
+
+    return (links ?? [])
+        .filter((link) => link?.pano && link.pano !== currentPanoId && Number.isFinite(link.heading))
+        .map((link) => ({
+            ...link,
+            headingDelta: angularDistanceDegrees(routeHeading, link.heading)
+        }))
+        .filter((link) => link.headingDelta <= MAX_NATIVE_LINK_HEADING_DELTA_DEGREES)
+        .sort((left, right) => left.headingDelta - right.headingDelta)[0] ?? null;
+}
+
+export function shouldResyncToRoutePano(currentPosition, routePosition, maxDistanceMeters = USER_PANO_RESYNC_DISTANCE_METERS) {
+    const current = readLatLng(currentPosition);
+    const target = readLatLng(routePosition);
+    if (!current || !target) return false;
+    return haversineDistanceMeters(current, target) > maxDistanceMeters;
+}
+
+function readLatLng(value) {
+    const lat = typeof value?.lat === "function" ? value.lat() : value?.lat;
+    const lng = typeof value?.lng === "function" ? value.lng() : value?.lng;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+}
+
+function haversineDistanceMeters(first, second) {
+    const earthRadiusMeters = 6371000;
+    const latitudeDelta = toRadians(second.lat - first.lat);
+    const longitudeDelta = toRadians(second.lng - first.lng);
+    const firstLatitude = toRadians(first.lat);
+    const secondLatitude = toRadians(second.lat);
+    const a = Math.sin(latitudeDelta / 2) ** 2
+        + Math.cos(firstLatitude) * Math.cos(secondLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+    return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toRadians(degrees) {
+    return degrees * (Math.PI / 180);
+}
+
+function angularDistanceDegrees(first, second) {
+    const delta = ((first - second + 540) % 360) - 180;
+    return Math.abs(delta);
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
 }

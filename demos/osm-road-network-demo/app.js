@@ -48,10 +48,13 @@ const el = {
     headingText: document.getElementById("headingText"),
     intentText: document.getElementById("intentText"),
     streetViewApiKey: document.getElementById("streetViewApiKey"),
+    requestElevationInput: document.getElementById("requestElevationInput"),
     loadStreetViewBtn: document.getElementById("loadStreetViewBtn"),
     streetViewStatusText: document.getElementById("streetViewStatusText"),
     streetViewProbeText: document.getElementById("streetViewProbeText"),
     streetViewPlaceholder: document.querySelector(".street-view-placeholder"),
+    streetViewFocusStatus: document.getElementById("streetViewFocusStatus"),
+    exitStreetViewFocusBtn: document.getElementById("exitStreetViewFocusBtn"),
     svPano1: document.getElementById("svPano1"),
     svPano2: document.getElementById("svPano2"),
     routeJsonOutput: document.getElementById("routeJsonOutput"),
@@ -128,9 +131,23 @@ function bindEvents() {
     el.turnStraightBtn.addEventListener("click", () => queueTurn("straight"));
     el.turnRightBtn.addEventListener("click", () => queueTurn("right"));
     el.loadStreetViewBtn.addEventListener("click", loadStreetViewPrototype);
+    el.exitStreetViewFocusBtn.addEventListener("click", () => setStreetViewFocusMode(false));
+    el.requestElevationInput.addEventListener("change", () => {
+        if (!el.requestElevationInput.checked) {
+            setStreetViewStatus("已关闭坡度请求，后续路线不会调用 Google Elevation。", false, true);
+            return;
+        }
+        setStreetViewStatus("已开启坡度请求，正在补当前路线海拔。", false, true);
+        requestRouteElevation("initial");
+    });
     el.copyJsonBtn.addEventListener("click", copyRouteJson);
     window.addEventListener("beforeunload", () => {
         state.streetViewController?.destroy?.();
+    });
+    window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && document.body.classList.contains("street-view-focus-mode")) {
+            setStreetViewFocusMode(false);
+        }
     });
 }
 
@@ -553,6 +570,9 @@ function buildInitialRouteTowardPoint(point) {
     updateRiderMarker();
     requestRouteElevation("initial");
     syncStreetView();
+    if (state.streetViewLoaded) {
+        setStreetViewFocusMode(true);
+    }
     const sourceLabel = getNetworkSourceLabel();
     setStatus(`路线已生成，已使用${sourceLabel}，瓦片已关闭。开始后会从起点骑到终点，随后自动进入路口决策。`, false, true);
     render();
@@ -848,6 +868,7 @@ async function loadStreetViewPrototype() {
         if (el.streetViewPlaceholder) {
             el.streetViewPlaceholder.hidden = true;
         }
+        setStreetViewFocusMode(true);
         setStreetViewStatus(state.route
             ? "街景已加载，会跟随模拟位置更新。"
             : "街景已加载，生成路线/开始模拟后更新。", false, true);
@@ -877,22 +898,31 @@ function syncStreetView() {
     const heading = getRouteHeadingAtDistance(distanceMeters);
     const routeSample = routeSampleAtDistance(state.route, distanceMeters);
     const grade = Number.isFinite(routeSample?.gradePercent) ? routeSample.gradePercent : 0;
-    setStreetViewStatus(
-        `同步 GPS ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)} · heading ${Math.round(heading)}deg · grade ${grade.toFixed(1)}% · 视角随 tick 更新`,
-        false,
-        true
-    );
-    state.streetViewController.update(state.route, {
+    const streetViewUpdate = state.streetViewController.update(state.route, {
         distanceKm: distanceMeters / 1000,
         speedKph: clamp(Number(el.speedInput.value), 5, 60),
         positionLat: point.lat,
         positionLong: point.lng
     });
+    setStreetViewStatus(
+        `同步 GPS ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)} · heading ${Math.round(heading)}deg · grade ${grade.toFixed(1)}% · ${getStreetViewNavigationLabel(streetViewUpdate?.navigation)}`,
+        false,
+        true
+    );
     runStreetViewProbe(point, { force: distanceMeters === 0 });
 }
 
+function getStreetViewNavigationLabel(navigation) {
+    if (navigation === "native-link") return "原生相邻 pano 前进";
+    if (navigation === "gps-lookup") return "GPS 查找 pano";
+    if (navigation === "gps-resync") return "偏离路线，重新定位 pano";
+    if (navigation === "pov-only") return "保持当前 pano，更新视角";
+    if (navigation === "paused") return "用户交互后暂缓自动更新";
+    return "等待街景位置";
+}
+
 function requestRouteElevation(mode) {
-    if (!state.route || !state.elevationController) return;
+    if (!el.requestElevationInput.checked || !state.route || !state.elevationController) return;
     state.elevationController.enrichRoute(state.route, { mode })
         .then((summary) => {
             if (!state.route) return;
@@ -1235,6 +1265,7 @@ function fromLocalMeters(point, origin) {
 
 function resetAll() {
     pauseSimulation();
+    setStreetViewFocusMode(false);
     showTileLayer();
     state.preselectedStart = null;
     state.preselectedDirection = null;
@@ -1339,6 +1370,20 @@ function setStreetViewStatus(message, isError = false, isGood = false) {
     el.streetViewStatusText.textContent = message;
     el.streetViewStatusText.classList.toggle("error", isError);
     el.streetViewStatusText.classList.toggle("good", isGood);
+    if (el.streetViewFocusStatus) {
+        el.streetViewFocusStatus.textContent = message;
+        el.streetViewFocusStatus.classList.toggle("error", isError);
+        el.streetViewFocusStatus.classList.toggle("good", isGood);
+    }
+}
+
+function setStreetViewFocusMode(enabled) {
+    const shouldFocus = Boolean(enabled && state.streetViewLoaded);
+    document.body.classList.toggle("street-view-focus-mode", shouldFocus);
+    el.exitStreetViewFocusBtn.hidden = !shouldFocus;
+    el.streetViewFocusStatus.hidden = !shouldFocus;
+    window.setTimeout(() => state.map?.invalidateSize(), 0);
+    window.setTimeout(() => state.map?.invalidateSize(), 120);
 }
 
 function getNetworkSourceLabel() {

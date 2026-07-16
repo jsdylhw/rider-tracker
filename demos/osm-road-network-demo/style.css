@@ -82,6 +82,24 @@ h2 {
     font-size: 12px;
 }
 
+.checkbox-field {
+    gap: 8px;
+}
+
+.checkbox-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text) !important;
+    font-size: 14px !important;
+}
+
+.checkbox-control input {
+    width: auto;
+    margin: 0;
+    accent-color: var(--accent-strong);
+}
+
 input,
 textarea,
 select {
@@ -267,6 +285,80 @@ button:disabled {
     pointer-events: none;
 }
 
+.street-view-focus-status,
+.street-view-focus-exit {
+    position: absolute;
+    z-index: 4;
+}
+
+.street-view-focus-status {
+    left: 18px;
+    bottom: 18px;
+    max-width: min(520px, calc(100% - 36px));
+    padding: 8px 10px;
+    border: 1px solid rgba(159, 176, 189, 0.24);
+    border-radius: 8px;
+    background: rgba(5, 8, 12, 0.76);
+    color: #d9e4ea;
+    font-size: 12px;
+    line-height: 1.4;
+    pointer-events: none;
+}
+
+.street-view-focus-exit {
+    top: 18px;
+    right: 18px;
+}
+
+body.street-view-focus-mode {
+    overflow: hidden;
+}
+
+body.street-view-focus-mode .page,
+body.street-view-focus-mode .workspace,
+body.street-view-focus-mode .map-streetview-grid {
+    display: block;
+    min-height: 0;
+}
+
+body.street-view-focus-mode .chart-card {
+    display: none;
+}
+
+body.street-view-focus-mode .panel {
+    display: block;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    width: min(430px, calc(100vw - 48px));
+    min-height: 0;
+    border-right: 1px solid var(--border);
+    background: rgba(17, 27, 36, 0.96);
+    box-shadow: 12px 0 28px rgba(0, 0, 0, 0.34);
+}
+
+body.street-view-focus-mode .street-view-container {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    min-height: 100vh;
+    border: 0;
+}
+
+body.street-view-focus-mode .map {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 40;
+    width: min(32vw, 380px);
+    height: min(32vh, 260px);
+    min-height: 0;
+    border: 2px solid rgba(210, 224, 233, 0.8);
+    border-radius: 10px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+    overflow: hidden;
+}
+
 .leaflet-container {
     background: #0b1218;
     font-family: "Segoe UI", Arial, sans-serif;
@@ -323,5 +415,29 @@ button:disabled {
     .street-view-container {
         border-left: 0;
         border-top: 1px solid var(--border);
+    }
+}
+
+@media (max-width: 640px) {
+    body.street-view-focus-mode .panel {
+        width: calc(100vw - 24px);
+    }
+
+    body.street-view-focus-mode .map {
+        right: 12px;
+        bottom: 12px;
+        width: calc(100vw - 24px);
+        height: 180px;
+    }
+
+    body.street-view-focus-mode .street-view-focus-exit {
+        top: 12px;
+        right: 12px;
+    }
+
+    body.street-view-focus-mode .street-view-focus-status {
+        left: 12px;
+        bottom: 204px;
+        max-width: calc(100% - 24px);
     }
 }

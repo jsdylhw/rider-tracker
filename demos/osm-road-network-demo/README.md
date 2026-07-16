@@ -80,7 +80,7 @@ demos/osm-road-network-demo/street-view-controller.js
 
 验证目标是确认“OSM graph 当前位置 -> route/currentRecord -> Street View controller”的数据链路可行。未加载 Google API 时 route 会按平坡 fallback；加载街景后会用 demo-local elevation controller 补 `gradePercent`，街景 pitch 随坡度更新。
 
-当前 demo-local controller 在试单个 `StreetViewPanorama` 的位置驱动方案：模拟 tick 会持续更新当前 pano 的 POV，让视角沿路线 heading / grade 前进；pano 查询按约 1 秒 / 18 米节流，并缓存坐标桶结果。切换时不再做双缓冲 z-index swap，而是在同一个 pano 上按当前位置查最近 pano id 后 `setPano`，用来验证是否能减少双缓冲切换黑屏的体感。
+当前 demo-local controller 在试单个 `StreetViewPanorama` 的位置驱动方案：模拟 tick 会持续更新当前 pano 的 POV，让视角沿路线 heading / grade 前进。优先从当前 pano 的原生相邻 links 中选择与路线 heading 最接近的 pano，模拟 Google Street View 自己的前进切换；没有可用 link 时，才按当前位置查最近 pano id。原生 link 的推进阈值和等待时间都反向关联模拟速度，22 km/h 约每 2m / 318ms 尝试，30 km/h 约每 1.5m / 233ms 尝试；坐标查找仍按约 1 秒 / 18 米节流，并缓存坐标桶结果。Street View 加载成功即切入全屏街景，路网地图缩为右下角小窗；原生 links 和点击前往保持关闭，用户手动平移视角后会暂停自动更新 3 秒。这个实验用来验证是否能减少按坐标跳 pano 带来的黑屏和模糊。
 
 坡度也先在 demo 内独立补全：
 
@@ -88,7 +88,7 @@ demos/osm-road-network-demo/street-view-controller.js
 demos/osm-road-network-demo/elevation-controller.js
 ```
 
-加载 Google Maps 后会创建 demo-local elevation controller。初始路线会按 Google Elevation API 的 512 locations 上限批量请求海拔；后续每过一个路口生成新街区路线时，只对 route 中未命中 localStorage 缓存的新坐标增量请求。Demo 还内置日/月请求 cap，避免刷新或反复测试时误刷配额。拿到海拔后会写回 `route.points[].elevationMeters` / `gradePercent`，Street View pitch 随当前采样点坡度更新。
+加载 Google Maps 后可选择“请求 Google Elevation 补海拔和坡度”。该开关默认关闭；开启后初始路线会按 Google Elevation API 的 512 locations 上限批量请求海拔，后续每过一个路口生成新街区路线时，只对 route 中未命中 localStorage 缓存的新坐标增量请求。Demo 还内置日/月请求 cap，避免刷新或反复测试时误刷配额。拿到海拔后会写回 `route.points[].elevationMeters` / `gradePercent`，Street View pitch 随当前采样点坡度更新。
 
 街景面板会显示两类信息：
 

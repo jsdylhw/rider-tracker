@@ -98,6 +98,13 @@
                     <span>Google Maps API Key</span>
                     <input id="streetViewApiKey" type="password" placeholder="AIza...">
                 </label>
+                <label class="field checkbox-field">
+                    <span>坡度数据</span>
+                    <span class="checkbox-control">
+                        <input id="requestElevationInput" type="checkbox">
+                        请求 Google Elevation 补海拔和坡度
+                    </span>
+                </label>
                 <div class="controls">
                     <button id="loadStreetViewBtn">加载街景</button>
                 </div>
@@ -126,6 +133,8 @@
                     <div id="svPano1" class="pano active"></div>
                     <div id="svPano2" class="pano"></div>
                     <div class="street-view-placeholder">加载街景后显示当前模拟位置</div>
+                    <div id="streetViewFocusStatus" class="street-view-focus-status" hidden></div>
+                    <button id="exitStreetViewFocusBtn" class="street-view-focus-exit" type="button" hidden>退出街景</button>
                 </div>
             </div>
             <div class="chart-card">
