@@ -1,7 +1,24 @@
-export const DEFAULT_CENTER = { lat: 37.7749, lng: -122.4194 };
+export const SAN_FRANCISCO_CENTER = { lat: 37.7749, lng: -122.4194 };
+export const UJI_CENTER = { lat: 34.8898, lng: 135.8104 };
+export const DEFAULT_CENTER = SAN_FRANCISCO_CENTER;
 export const WEB_MERCATOR_MAX_LAT = 85.05112878;
 export const NETWORK_SIZE_KM = 10;
 export const SAN_FRANCISCO_ROAD_NETWORK_CACHE_URL = "./fixtures/san-francisco-road-network.json";
+export const UJI_ROAD_NETWORK_CACHE_URL = "./fixtures/uji-road-network.json";
+export const ROAD_NETWORK_PRESETS = [
+    {
+        id: "san-francisco",
+        label: "旧金山",
+        center: SAN_FRANCISCO_CENTER,
+        cacheUrl: SAN_FRANCISCO_ROAD_NETWORK_CACHE_URL
+    },
+    {
+        id: "uji",
+        label: "宇治",
+        center: UJI_CENTER,
+        cacheUrl: UJI_ROAD_NETWORK_CACHE_URL
+    }
+];
 export const OVERPASS_REQUEST_TIMEOUT_MS = 8000;
 export const OVERPASS_TOTAL_TIMEOUT_MS = 20000;
 export const INTERSECTIONS_PER_SEGMENT = 1;

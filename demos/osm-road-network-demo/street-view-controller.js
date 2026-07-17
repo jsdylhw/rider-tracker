@@ -10,7 +10,11 @@ const NATIVE_LINK_MOVE_MAX_DISTANCE_METERS = 4;
 const NATIVE_LINK_MOVE_MIN_INTERVAL_MS = 100;
 const NATIVE_LINK_MOVE_MAX_INTERVAL_MS = 500;
 const MAX_NATIVE_LINK_HEADING_DELTA_DEGREES = 75;
+const NATIVE_PANO_ROUTE_LEAD_METERS = 2;
 const USER_PANO_RESYNC_DISTANCE_METERS = 45;
+const AUTO_CATCH_UP_MIN_INTERVAL_MS = 900;
+const AUTO_CATCH_UP_MIN_DISTANCE_METERS = 28;
+const SINGLE_PANO_PREDICTION_SECONDS = 0.7;
 const NATIVE_LOOKAHEAD_MAX_HOPS = 3;
 const NATIVE_LOOKAHEAD_ROUTE_STEP_METERS = 12;
 const NATIVE_LOOKAHEAD_CACHE_MAX_ENTRIES = 48;
@@ -72,7 +76,7 @@ export function loadGoogleMapsForStreetView(apiKey) {
     return googleMapsLoadPromise;
 }
 
-export function createStreetViewController({ container1, container2 }) {
+export function createStreetViewController({ container1, container2, onTrace } = {}) {
     const svService = new window.google.maps.StreetViewService();
     const googleEvent = window.google.maps.event;
     const listeners = [];
@@ -84,7 +88,8 @@ export function createStreetViewController({ container1, container2 }) {
     const nativeLookaheadCache = new Map();
     let lookupInFlight = false;
     let lookupTimeoutId = null;
-    let povReadyTimeoutId = null;
+    let cancelPanoReadyWait = null;
+    let panoLoad = null;
 
     const commonOptions = {
         zoom: 1,
@@ -117,10 +122,18 @@ export function createStreetViewController({ container1, container2 }) {
     let lastNativeLinkDistance = -1;
     let lastNativeLinkTime = 0;
     let pauseAutoUntil = 0;
-    let applyingProgrammaticPov = false;
-    let userMovedPano = false;
+    let lastAutoCatchUpTime = 0;
+    let latestDesiredPov = null;
+    let latestRoutePov = null;
+    let latestRouteDistanceMeters = 0;
+    let gpsLookupGeneration = 0;
+    let previousNativePanoId = "";
+    let lastNativeWaitPanoId = "";
+    let lastNativeWaitLogTime = 0;
+    let waitingForNativeRoutePosition = false;
 
     bindUserInteractionPause(container1, panorama);
+    trace("controller-ready", "Street View controller 已就绪");
 
     function update(route, currentRecord) {
         if (!route || !currentRecord) return { navigation: "waiting" };
@@ -130,25 +143,40 @@ export function createStreetViewController({ container1, container2 }) {
         const currentDistanceMeters = currentRecord.distanceKm * 1000;
         const pov = getPovAtDistance(route, currentDistanceMeters);
         if (!pov) return { navigation: "waiting" };
+        waitingForNativeRoutePosition = false;
+        latestDesiredPov = { heading: pov.heading, pitch: pov.pitch };
+        latestRoutePov = pov;
+        latestRouteDistanceMeters = currentDistanceMeters;
 
         const panoramaPosition = readLatLng(panorama.getPosition?.());
-        if (userMovedPano && !panoramaPosition) {
-            return { navigation: "pov-only" };
-        }
-        if (userMovedPano && shouldResyncToRoutePano(panoramaPosition, pov.state)) {
-            userMovedPano = false;
+
+        const hasNativeForwardLink = hasRouteAlignedNativeLink(pov.heading, previousNativePanoId);
+        if (!hasNativeForwardLink && shouldAutoCatchUp(panoramaPosition, pov.state, currentRecord.speedKph, now)) {
             lastLookupTime = now;
             lastLookupDistance = currentDistanceMeters;
-            lookupRoutePanorama(pov, { trackInFlight: true });
-            return { navigation: "gps-resync" };
+            lookupRoutePanorama(
+                getPredictedPov(route, currentDistanceMeters, currentRecord.speedKph) ?? pov,
+                { trackInFlight: true, reason: "gps-catch-up" }
+            );
+            return { navigation: "gps-catch-up" };
         }
-        userMovedPano = false;
 
-        setProgrammaticPov(panorama, { heading: pov.heading, pitch: pov.pitch });
+        if (isPanoLoadPending(now)) {
+            setProgrammaticPov(panorama, latestDesiredPov);
+            return { navigation: "pano-loading", pano: panoLoad.pano };
+        }
 
         const nativeMove = moveToRouteAlignedNativeLink(route, pov, currentDistanceMeters, currentRecord.speedKph, now);
         if (nativeMove) {
             return { navigation: "native-link", nativeLinkHops: nativeMove.hops };
+        }
+
+        if (hasNativeForwardLink) {
+            if (waitingForNativeRoutePosition) {
+                return { navigation: "pano-waiting" };
+            }
+            setProgrammaticPov(panorama, latestDesiredPov);
+            return { navigation: "pov-only" };
         }
 
         const movedEnough = lastLookupDistance === -1
@@ -156,32 +184,74 @@ export function createStreetViewController({ container1, container2 }) {
         const waitedEnough = lastLookupDistance === -1
             || now - lastLookupTime >= PANORAMA_LOOKUP_INTERVAL_MS;
         if (lookupInFlight || (!movedEnough && !waitedEnough)) {
-            return { navigation: "pov-only" };
+            return { navigation: "pano-waiting" };
         }
 
         lastLookupTime = now;
         lastLookupDistance = currentDistanceMeters;
 
-        lookupRoutePanorama(pov, { trackInFlight: true });
+        lookupRoutePanorama(pov, { trackInFlight: true, reason: "gps-lookup" });
 
         return { navigation: "gps-lookup" };
     }
 
-    function lookupRoutePanorama(pov, { trackInFlight = false } = {}) {
-        requestPanorama(pov.state, (data, status) => {
-            if (status !== window.google.maps.StreetViewStatus.OK || !data.location?.pano) return;
+    function lookupRoutePanorama(pov, {
+        trackInFlight = false,
+        reason = "gps-lookup",
+        distanceMeters = latestRouteDistanceMeters
+    } = {}) {
+        const startedAt = Date.now();
+        const lookupGeneration = ++gpsLookupGeneration;
+        trace("gps-request", `GPS 查找 pano (${reason})`, { reason, lat: pov.state.lat, lng: pov.state.lng });
+        requestPanorama(pov.state, (data, status, requestMeta) => {
+            const durationMs = Date.now() - startedAt;
+            if (lookupGeneration !== gpsLookupGeneration) {
+                trace("gps-stale", "忽略已过期的 GPS 查找结果", {
+                    reason,
+                    durationMs,
+                    source: requestMeta.source
+                });
+                return;
+            }
+            if (status !== window.google.maps.StreetViewStatus.OK || !data.location?.pano) {
+                trace("gps-failed", `GPS 查找失败: ${status}`, { reason, durationMs, source: requestMeta.source });
+                return;
+            }
+
+            if (!activePanoId
+                && latestRoutePov
+                && Math.abs(latestRouteDistanceMeters - distanceMeters) >= PANORAMA_LOOKUP_DISTANCE_METERS) {
+                trace("gps-stale", "初始 GPS 查找已落后路线，重新查找当前位置", {
+                    reason,
+                    durationMs,
+                    advancedMeters: Math.round(Math.abs(latestRouteDistanceMeters - distanceMeters))
+                });
+                lookupRoutePanorama(latestRoutePov, {
+                    trackInFlight,
+                    reason: "gps-refresh",
+                    distanceMeters: latestRouteDistanceMeters
+                });
+                return;
+            }
 
             const targetPanoId = data.location.pano;
-            if (targetPanoId === panorama.getPano()) {
+            trace("gps-ready", `GPS 查找到 pano ${targetPanoId}`, {
+                reason,
+                durationMs,
+                source: requestMeta.source
+            });
+            if (targetPanoId === activePanoId || targetPanoId === panorama.getPano()) {
                 activePanoId = targetPanoId;
                 setProgrammaticPov(panorama, { heading: pov.heading, pitch: pov.pitch });
+                trace("gps-reuse", `GPS 结果与当前 pano 相同: ${targetPanoId}`, { reason });
                 return;
             }
 
             activePanoId = targetPanoId;
+            beginPanoLoad(targetPanoId, reason);
             panorama.setPano(targetPanoId);
-            setProgrammaticPov(panorama, { heading: pov.heading, pitch: pov.pitch });
-            restorePovWhenPanoramaReady({ heading: pov.heading, pitch: pov.pitch });
+            setProgrammaticPov(panorama, latestDesiredPov ?? { heading: pov.heading, pitch: pov.pitch });
+            restorePovWhenPanoramaReady({ heading: pov.heading, pitch: pov.pitch }, targetPanoId);
         }, { trackInFlight });
     }
 
@@ -190,10 +260,8 @@ export function createStreetViewController({ container1, container2 }) {
             window.clearTimeout(lookupTimeoutId);
             lookupTimeoutId = null;
         }
-        if (povReadyTimeoutId !== null) {
-            window.clearTimeout(povReadyTimeoutId);
-            povReadyTimeoutId = null;
-        }
+        cancelPanoReadyWait?.();
+        cancelPanoReadyWait = null;
         lookupInFlight = false;
         listeners.forEach((listener) => {
             try {
@@ -227,22 +295,6 @@ export function createStreetViewController({ container1, container2 }) {
             });
         }
 
-        listeners.push(
-            googleEvent.addListener(pano, "pov_changed", () => {
-                if (!applyingProgrammaticPov) {
-                    pauseAutoUpdateForUserInteraction();
-                }
-            })
-        );
-        listeners.push(
-            googleEvent.addListener(pano, "pano_changed", () => {
-                const currentPanoId = pano.getPano?.();
-                if (currentPanoId && currentPanoId !== activePanoId) {
-                    userMovedPano = true;
-                    pauseAutoUpdateForUserInteraction();
-                }
-            })
-        );
     }
 
     function pauseAutoUpdateForUserInteraction() {
@@ -254,11 +306,33 @@ export function createStreetViewController({ container1, container2 }) {
     }
 
     function setProgrammaticPov(pano, pov) {
-        applyingProgrammaticPov = true;
         pano.setPov(pov);
-        queueMicrotask(() => {
-            applyingProgrammaticPov = false;
-        });
+    }
+
+    function shouldAutoCatchUp(panoramaPosition, routePosition, speedKph, now) {
+        if (!panoramaPosition || now - lastAutoCatchUpTime < AUTO_CATCH_UP_MIN_INTERVAL_MS) {
+            return false;
+        }
+
+        const speedMetersPerSecond = Math.max(0, Number(speedKph) || 0) / 3.6;
+        const maxDistanceMeters = Math.max(
+            AUTO_CATCH_UP_MIN_DISTANCE_METERS,
+            speedMetersPerSecond * 2
+        );
+        if (!shouldResyncToRoutePano(panoramaPosition, routePosition, maxDistanceMeters)) {
+            return false;
+        }
+
+        lastAutoCatchUpTime = now;
+        return true;
+    }
+
+    function getPredictedPov(route, distanceMeters, speedKph) {
+        const speedMetersPerSecond = Math.max(0, Number(speedKph) || 0) / 3.6;
+        return getPovAtDistance(
+            route,
+            distanceMeters + speedMetersPerSecond * SINGLE_PANO_PREDICTION_SECONDS
+        );
     }
 
     function moveToRouteAlignedNativeLink(route, pov, distanceMeters, speedKph, now) {
@@ -271,50 +345,108 @@ export function createStreetViewController({ container1, container2 }) {
             return false;
         }
 
-        const target = getNativeLookaheadTarget(route, currentPanoId, pov.heading, distanceMeters, speedKph);
+        const target = getNativeLookaheadTarget(
+            route,
+            currentPanoId,
+            pov.heading,
+            distanceMeters,
+            speedKph,
+            previousNativePanoId
+        );
         if (!target) {
+            return false;
+        }
+
+        const targetRouteDistanceMeters = getRouteDistanceAtPosition(route, target.position);
+        if (Number.isFinite(targetRouteDistanceMeters)
+            && targetRouteDistanceMeters > distanceMeters + NATIVE_PANO_ROUTE_LEAD_METERS) {
+            waitingForNativeRoutePosition = true;
+            if (target.pano !== lastNativeWaitPanoId || now - lastNativeWaitLogTime >= 1000) {
+                trace("native-wait", "等待模拟位置追上前方 pano", {
+                    pano: target.pano,
+                    routeDistanceMeters: Math.round(distanceMeters),
+                    targetRouteDistanceMeters: Math.round(targetRouteDistanceMeters)
+                });
+                lastNativeWaitPanoId = target.pano;
+                lastNativeWaitLogTime = now;
+            }
             return false;
         }
 
         lastNativeLinkDistance = distanceMeters;
         lastNativeLinkTime = now;
+        lastLookupDistance = distanceMeters;
+        lastLookupTime = now;
+        gpsLookupGeneration += 1;
+        previousNativePanoId = currentPanoId;
+        lastNativeWaitPanoId = "";
         activePanoId = target.pano;
+        beginPanoLoad(target.pano, `native-link-${target.hops}`);
         panorama.setPano(target.pano);
-        setProgrammaticPov(panorama, { heading: pov.heading, pitch: pov.pitch });
-        restorePovWhenPanoramaReady({ heading: pov.heading, pitch: pov.pitch });
+        setProgrammaticPov(panorama, latestDesiredPov ?? { heading: pov.heading, pitch: pov.pitch });
+        restorePovWhenPanoramaReady({ heading: pov.heading, pitch: pov.pitch }, target.pano);
         promoteNativeLookaheadTarget(target, pov.heading);
+        trace("native-link", `原生 link 切换到 ${target.pano}`, {
+            hops: target.hops,
+            lookaheadHops: target.lookaheadHops,
+            routeDistanceMeters: Math.round(distanceMeters),
+            targetRouteDistanceMeters: Number.isFinite(targetRouteDistanceMeters)
+                ? Math.round(targetRouteDistanceMeters)
+                : null
+        });
         return target;
     }
 
-    function getNativeLookaheadTarget(route, currentPanoId, routeHeading, distanceMeters, speedKph) {
+    function hasRouteAlignedNativeLink(routeHeading, blockedPanoId = "") {
+        const currentPanoId = activePanoId || panorama.getPano?.();
+        return Boolean(chooseRouteAlignedLink(
+            panorama.getLinks?.() ?? [],
+            routeHeading,
+            currentPanoId,
+            blockedPanoId ? [blockedPanoId] : []
+        ));
+    }
+
+    function getNativeLookaheadTarget(route, currentPanoId, routeHeading, distanceMeters, speedKph, blockedPanoId = "") {
         if (!currentPanoId) return null;
 
-        const lookahead = primeNativeLookahead(route, currentPanoId, routeHeading, distanceMeters);
+        const lookahead = primeNativeLookahead(route, currentPanoId, routeHeading, distanceMeters, blockedPanoId);
         if (!lookahead?.entries.length) return null;
 
         const desiredHops = getNativeLookaheadHopCount(speedKph);
-        const index = Math.min(desiredHops, lookahead.entries.length) - 1;
+        const index = 0;
+        const entry = lookahead.entries[index];
+        if (!entry.position && lookahead.pending) return null;
         return {
-            ...lookahead.entries[index],
+            ...entry,
             sourcePanoId: currentPanoId,
             cacheKey: lookahead.cacheKey,
             index,
-            hops: index + 1
+            hops: 1,
+            lookaheadHops: Math.min(desiredHops, lookahead.entries.length)
         };
     }
 
-    function primeNativeLookahead(route, currentPanoId, routeHeading, distanceMeters) {
+    function primeNativeLookahead(route, currentPanoId, routeHeading, distanceMeters, blockedPanoId = "") {
         const cached = nativeLookaheadCache.get(currentPanoId);
-        if (cached && angularDistanceDegrees(cached.routeHeading, routeHeading) <= MAX_NATIVE_LINK_HEADING_DELTA_DEGREES) {
+        if (cached
+            && cached.blockedPanoId === blockedPanoId
+            && angularDistanceDegrees(cached.routeHeading, routeHeading) <= MAX_NATIVE_LINK_HEADING_DELTA_DEGREES) {
             return cached;
         }
 
-        const firstLink = chooseRouteAlignedLink(panorama.getLinks?.() ?? [], routeHeading, currentPanoId);
+        const firstLink = chooseRouteAlignedLink(
+            panorama.getLinks?.() ?? [],
+            routeHeading,
+            currentPanoId,
+            blockedPanoId ? [blockedPanoId] : []
+        );
         if (!firstLink) return null;
 
         const lookahead = {
             cacheKey: `${currentPanoId}:${Date.now()}`,
             routeHeading,
+            blockedPanoId,
             entries: [toLookaheadEntry(firstLink)],
             pending: true
         };
@@ -362,6 +494,7 @@ export function createStreetViewController({ container1, container2 }) {
         rememberNativeLookahead(target.pano, {
             cacheKey: `${target.pano}:${Date.now()}`,
             routeHeading,
+            blockedPanoId: "",
             entries: remainingEntries,
             pending: sourceLookahead.pending
         });
@@ -375,10 +508,38 @@ export function createStreetViewController({ container1, container2 }) {
         };
     }
 
-    function restorePovWhenPanoramaReady(pov) {
+    function beginPanoLoad(panoId, reason) {
+        cancelPanoReadyWait?.();
+        cancelPanoReadyWait = null;
+        panoLoad = {
+            pano: panoId,
+            reason,
+            startedAt: Date.now(),
+            ready: false
+        };
+        trace("pano-set", `切换 pano ${panoId}`, { reason });
+    }
+
+    function isPanoLoadPending(now) {
+        if (!panoLoad || panoLoad.ready) return false;
+        if (now - panoLoad.startedAt <= POV_READY_TIMEOUT_MS) return true;
+
+        trace("pano-ready-timeout", `pano ${panoLoad.pano} 等待就绪超时`, {
+            reason: panoLoad.reason,
+            durationMs: now - panoLoad.startedAt
+        });
+        panoLoad = null;
+        return false;
+    }
+
+    function restorePovWhenPanoramaReady(pov, expectedPanoId) {
         let statusListener = null;
         let linksListener = null;
+        let timeoutId = null;
+        let finished = false;
         const cleanup = () => {
+            if (finished) return;
+            finished = true;
             if (statusListener) {
                 googleEvent.removeListener(statusListener);
                 statusListener = null;
@@ -387,23 +548,39 @@ export function createStreetViewController({ container1, container2 }) {
                 googleEvent.removeListener(linksListener);
                 linksListener = null;
             }
-            if (povReadyTimeoutId !== null) {
-                window.clearTimeout(povReadyTimeoutId);
-                povReadyTimeoutId = null;
+            if (timeoutId !== null) {
+                window.clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            if (cancelPanoReadyWait === cleanup) {
+                cancelPanoReadyWait = null;
             }
         };
-        const applyAndCleanup = () => {
-            setProgrammaticPov(panorama, pov);
+        const applyAndCleanup = (source) => {
+            if (panorama.getPano?.() !== expectedPanoId) {
+                cleanup();
+                return;
+            }
+            setProgrammaticPov(panorama, latestDesiredPov ?? pov);
+            if (panoLoad?.pano === expectedPanoId) {
+                panoLoad.ready = true;
+                trace("pano-ready", `pano ${expectedPanoId} 已就绪`, {
+                    reason: panoLoad.reason,
+                    source,
+                    durationMs: Date.now() - panoLoad.startedAt
+                });
+            }
             cleanup();
         };
 
         statusListener = googleEvent.addListener(panorama, "status_changed", () => {
             if (panorama.getStatus() === window.google.maps.StreetViewStatus.OK) {
-                applyAndCleanup();
+                applyAndCleanup("status");
             }
         });
-        linksListener = googleEvent.addListener(panorama, "links_changed", applyAndCleanup);
-        povReadyTimeoutId = window.setTimeout(applyAndCleanup, POV_READY_TIMEOUT_MS);
+        linksListener = googleEvent.addListener(panorama, "links_changed", () => applyAndCleanup("links"));
+        timeoutId = window.setTimeout(() => applyAndCleanup("timeout"), POV_READY_TIMEOUT_MS);
+        cancelPanoReadyWait = cleanup;
     }
 
     function getTargetStateAtDistance(route, distanceMeters) {
@@ -471,7 +648,7 @@ export function createStreetViewController({ container1, container2 }) {
         const key = getPanoramaCacheKey(state);
         const cached = panoramaCache.get(key);
         if (cached) {
-            callback(cached.data, cached.status);
+            callback(cached.data, cached.status, { source: "cache" });
             return;
         }
 
@@ -494,7 +671,7 @@ export function createStreetViewController({ container1, container2 }) {
             rememberPanoramaResult(key, { data, status });
             const callbacks = pendingPanoramaRequests.get(key) ?? [];
             pendingPanoramaRequests.delete(key);
-            callbacks.forEach((fn) => fn(data, status));
+            callbacks.forEach((fn) => fn(data, status, { source: "network" }));
         });
     }
 
@@ -560,6 +737,11 @@ export function createStreetViewController({ container1, container2 }) {
         }
     }
 
+    function trace(event, message, details = {}) {
+        const entry = { event, message, at: Date.now(), ...details };
+        onTrace?.(entry);
+    }
+
     return { update, destroy };
 }
 
@@ -586,11 +768,48 @@ export function getNativeLookaheadHopCount(speedKph) {
     return 1;
 }
 
-export function chooseRouteAlignedLink(links, routeHeading, currentPanoId = "") {
+export function getRouteDistanceAtPosition(route, position) {
+    const target = readLatLng(position);
+    const points = route?.points ?? [];
+    if (!target || points.length === 0) return null;
+    if (points.length === 1) return points[0].distanceMeters ?? 0;
+
+    let nearestDistanceMeters = null;
+    let nearestSquaredDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < points.length - 1; index += 1) {
+        const first = toRoutePointState(points[index]);
+        const second = toRoutePointState(points[index + 1]);
+        const segment = toLocalMeters(second, first);
+        const targetOffset = toLocalMeters(target, first);
+        const segmentLengthSquared = segment.x ** 2 + segment.y ** 2;
+        if (segmentLengthSquared === 0) continue;
+
+        const ratio = clamp(
+            (targetOffset.x * segment.x + targetOffset.y * segment.y) / segmentLengthSquared,
+            0,
+            1
+        );
+        const closest = { x: segment.x * ratio, y: segment.y * ratio };
+        const squaredDistance = (targetOffset.x - closest.x) ** 2 + (targetOffset.y - closest.y) ** 2;
+        if (squaredDistance >= nearestSquaredDistance) continue;
+
+        const firstDistance = points[index].distanceMeters ?? 0;
+        const secondDistance = points[index + 1].distanceMeters ?? firstDistance;
+        nearestSquaredDistance = squaredDistance;
+        nearestDistanceMeters = firstDistance + (secondDistance - firstDistance) * ratio;
+    }
+    return nearestDistanceMeters;
+}
+
+export function chooseRouteAlignedLink(links, routeHeading, currentPanoId = "", excludedPanoIds = []) {
     if (!Number.isFinite(routeHeading)) return null;
+    const excluded = new Set(excludedPanoIds);
 
     return (links ?? [])
-        .filter((link) => link?.pano && link.pano !== currentPanoId && Number.isFinite(link.heading))
+        .filter((link) => link?.pano
+            && link.pano !== currentPanoId
+            && !excluded.has(link.pano)
+            && Number.isFinite(link.heading))
         .map((link) => ({
             ...link,
             headingDelta: angularDistanceDegrees(routeHeading, link.heading)
@@ -622,6 +841,22 @@ function haversineDistanceMeters(first, second) {
     const a = Math.sin(latitudeDelta / 2) ** 2
         + Math.cos(firstLatitude) * Math.cos(secondLatitude) * Math.sin(longitudeDelta / 2) ** 2;
     return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toLocalMeters(point, origin) {
+    const metersPerDegreeLat = 111320;
+    const metersPerDegreeLng = metersPerDegreeLat * Math.cos(toRadians(origin.lat));
+    return {
+        x: (point.lng - origin.lng) * metersPerDegreeLng,
+        y: (point.lat - origin.lat) * metersPerDegreeLat
+    };
+}
+
+function toRoutePointState(point) {
+    return {
+        lat: point.latitude,
+        lng: point.longitude
+    };
 }
 
 function toRadians(degrees) {

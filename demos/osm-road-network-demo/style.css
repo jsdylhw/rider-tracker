@@ -285,6 +285,34 @@ button:disabled {
     pointer-events: none;
 }
 
+.street-view-trace {
+    margin-top: 12px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.street-view-trace summary {
+    padding: 10px 0 6px;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.street-view-trace summary button {
+    margin-left: 8px;
+    padding: 3px 7px;
+    font-size: 11px;
+}
+
+.street-view-trace ol {
+    display: grid;
+    gap: 5px;
+    max-height: 180px;
+    margin: 0;
+    padding: 0 0 0 18px;
+    overflow: auto;
+}
+
 .street-view-focus-status,
 .street-view-focus-exit {
     position: absolute;

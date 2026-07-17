@@ -2,8 +2,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-    DEFAULT_CENTER,
     NETWORK_SIZE_KM,
+    ROAD_NETWORK_PRESETS,
     buildBoundsAroundCenter,
     buildOverpassQuery
 } from "./road-network-core.js";
@@ -19,13 +19,19 @@ const REQUEST_HEADERS = {
     "User-Agent": "rider-tracker-osm-road-network-demo/1.0 (local prototype; contact: local)"
 };
 
-const demoDir = dirname(fileURLToPath(import.meta.url));
-const outputPath = resolve(demoDir, "fixtures/san-francisco-road-network.json");
+const presetId = process.argv[2] ?? "san-francisco";
+const preset = ROAD_NETWORK_PRESETS.find((candidate) => candidate.id === presetId);
+if (!preset) {
+    throw new Error(`Unknown road-network preset: ${presetId}`);
+}
 
-const bounds = buildBoundsAroundCenter(DEFAULT_CENTER, NETWORK_SIZE_KM);
+const demoDir = dirname(fileURLToPath(import.meta.url));
+const outputPath = resolve(demoDir, `fixtures/${preset.id}-road-network.json`);
+
+const bounds = buildBoundsAroundCenter(preset.center, NETWORK_SIZE_KM);
 const query = buildOverpassQuery(bounds);
 
-console.log(`Fetching San Francisco ${NETWORK_SIZE_KM}km road network...`);
+console.log(`Fetching ${preset.label} ${NETWORK_SIZE_KM}km road network...`);
 console.log(`Bounds: ${bounds.south}, ${bounds.west}, ${bounds.north}, ${bounds.east}`);
 
 const data = await fetchOverpassJson(query);
@@ -34,7 +40,8 @@ const output = {
     cacheMetadata: {
         generatedAt: new Date().toISOString(),
         source: "overpass",
-        center: DEFAULT_CENTER,
+        presetId: preset.id,
+        center: preset.center,
         sizeKm: NETWORK_SIZE_KM,
         bounds,
         query

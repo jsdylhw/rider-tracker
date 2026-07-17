@@ -4,15 +4,15 @@ import {
     NETWORK_SIZE_KM,
     OVERPASS_REQUEST_TIMEOUT_MS,
     OVERPASS_TOTAL_TIMEOUT_MS,
-    SAN_FRANCISCO_ROAD_NETWORK_CACHE_URL,
+    ROAD_NETWORK_PRESETS,
     WEB_MERCATOR_MAX_LAT,
     buildBoundsAroundCenter,
     buildOverpassQuery,
     isPointInsideBounds,
     normalizeLatLng
-} from "./road-network-core.js";
+} from "./road-network-core.js?roadNetworkPreset=2";
 import { createRouteElevationController } from "./elevation-controller.js";
-import { createStreetViewController, loadGoogleMapsForStreetView } from "./street-view-controller.js";
+import { createStreetViewController, loadGoogleMapsForStreetView } from "./street-view-controller.js?streetViewTrace=9";
 
 const OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
@@ -29,7 +29,8 @@ const ALLOWED_HIGHWAYS = new Set([
 ]);
 
 const el = {
-    loadNetworkBtn: document.getElementById("loadNetworkBtn"),
+    moveSanFranciscoBtn: document.getElementById("moveSanFranciscoBtn"),
+    moveUjiBtn: document.getElementById("moveUjiBtn"),
     usePresetStartBtn: document.getElementById("usePresetStartBtn"),
     resetBtn: document.getElementById("resetBtn"),
     buildRouteBtn: document.getElementById("buildRouteBtn"),
@@ -52,6 +53,7 @@ const el = {
     loadStreetViewBtn: document.getElementById("loadStreetViewBtn"),
     streetViewStatusText: document.getElementById("streetViewStatusText"),
     streetViewProbeText: document.getElementById("streetViewProbeText"),
+    downloadStreetViewTraceBtn: document.getElementById("downloadStreetViewTraceBtn"),
     streetViewPlaceholder: document.querySelector(".street-view-placeholder"),
     streetViewFocusStatus: document.getElementById("streetViewFocusStatus"),
     exitStreetViewFocusBtn: document.getElementById("exitStreetViewFocusBtn"),
@@ -78,6 +80,7 @@ const state = {
     bounds: null,
     graph: null,
     networkSource: null,
+    networkCachePreset: null,
     selectedStart: null,
     route: null,
     loadingNetwork: false,
@@ -87,6 +90,8 @@ const state = {
     elevationController: null,
     streetViewProbePending: false,
     lastStreetViewProbeAt: 0,
+    streetViewTrace: [],
+    streetViewHasVisiblePano: false,
     sim: {
         running: false,
         timer: null,
@@ -120,13 +125,15 @@ function initMap() {
 }
 
 function bindEvents() {
-    el.loadNetworkBtn.addEventListener("click", moveToSanFrancisco);
+    el.moveSanFranciscoBtn.addEventListener("click", () => moveToPreset("san-francisco"));
+    el.moveUjiBtn.addEventListener("click", () => moveToPreset("uji"));
     el.usePresetStartBtn.addEventListener("click", clearTileSelection);
     el.resetBtn.addEventListener("click", resetAll);
     el.buildRouteBtn.addEventListener("click", buildPreviewRoute);
     el.startSimBtn.addEventListener("click", startSimulation);
     el.pauseSimBtn.addEventListener("click", pauseSimulation);
     el.resetSimBtn.addEventListener("click", resetSimulation);
+    el.downloadStreetViewTraceBtn.addEventListener("click", downloadStreetViewTrace);
     el.turnLeftBtn.addEventListener("click", () => queueTurn("left"));
     el.turnStraightBtn.addEventListener("click", () => queueTurn("straight"));
     el.turnRightBtn.addEventListener("click", () => queueTurn("right"));
@@ -180,6 +187,7 @@ function selectTileRoutePoint(point) {
         state.route = null;
         state.graph = null;
         state.networkSource = null;
+        state.networkCachePreset = null;
         if (state.roadLayer) {
             state.roadLayer.remove();
             state.roadLayer = null;
@@ -245,13 +253,15 @@ async function loadNetworkForPreviewRoute() {
     try {
         let data = null;
         let networkSource = null;
-        const cachedData = await tryLoadCachedRoadNetwork();
+        const cached = await tryLoadCachedRoadNetwork();
 
-        if (cachedData) {
-            data = cachedData;
+        if (cached) {
+            data = cached.data;
             networkSource = "cache";
-            setStatus("已加载旧金山缓存路网，开始生成本地 graph。", false, true);
+            state.networkCachePreset = cached.preset;
+            setStatus(`已加载${cached.preset.label}缓存路网，开始生成本地 graph。`, false, true);
         } else {
+            state.networkCachePreset = null;
             const query = buildOverpassQuery(state.bounds);
             try {
                 data = await fetchOverpassJson(query);
@@ -275,23 +285,28 @@ async function loadNetworkForPreviewRoute() {
 }
 
 async function tryLoadCachedRoadNetwork() {
-    try {
-        const response = await fetch(SAN_FRANCISCO_ROAD_NETWORK_CACHE_URL, {
-            cache: "force-cache"
-        });
-        if (!response.ok) return null;
-        const data = await response.json();
-        const cacheBounds = data.cacheMetadata?.bounds;
-        if (!cacheBounds) return null;
-        const startInside = isPointInsideBounds(state.preselectedStart, cacheBounds);
-        const directionInside = isPointInsideBounds(state.preselectedDirection, cacheBounds);
-        if (!startInside || !directionInside) {
-            return null;
+    for (const preset of ROAD_NETWORK_PRESETS) {
+        const expectedBounds = buildBoundsAroundCenter(preset.center, NETWORK_SIZE_KM);
+        if (!isPointInsideBounds(state.preselectedStart, expectedBounds)
+            || !isPointInsideBounds(state.preselectedDirection, expectedBounds)) {
+            continue;
         }
-        return data;
-    } catch {
-        return null;
+        try {
+            const response = await fetch(preset.cacheUrl, { cache: "force-cache" });
+            if (!response.ok) continue;
+            const data = await response.json();
+            const cacheBounds = data.cacheMetadata?.bounds;
+            if (!cacheBounds
+                || !isPointInsideBounds(state.preselectedStart, cacheBounds)
+                || !isPointInsideBounds(state.preselectedDirection, cacheBounds)) {
+                continue;
+            }
+            return { data, preset };
+        } catch {
+            // Try another preset or fall back to Overpass.
+        }
     }
+    return null;
 }
 
 async function fetchOverpassJson(query) {
@@ -476,13 +491,16 @@ function drawRoadNetwork() {
     }))).addTo(state.map);
 }
 
-function moveToSanFrancisco() {
+function moveToPreset(presetId) {
     if (!state.map) return;
+    const preset = ROAD_NETWORK_PRESETS.find((candidate) => candidate.id === presetId);
+    if (!preset) return;
     if (!state.graph && !state.route) {
         showTileLayer();
         state.preselectedStart = null;
         state.preselectedDirection = null;
         state.selectedStart = null;
+        state.networkCachePreset = null;
         clearDirectionMarker();
         clearRouteLayer();
         clearPreviewRouteLayer();
@@ -493,12 +511,12 @@ function moveToSanFrancisco() {
         }
         el.routeJsonOutput.value = "";
     }
-    state.selectedCenter = DEFAULT_CENTER;
+    state.selectedCenter = preset.center;
     state.bounds = buildBoundsAroundCenter(state.selectedCenter, NETWORK_SIZE_KM);
-    state.map.setView([DEFAULT_CENTER.lat, DEFAULT_CENTER.lng], 13);
+    state.map.setView([preset.center.lat, preset.center.lng], 13);
     drawCenterSelection({ fit: false });
     if (!state.route) {
-        setStatus("已移动到旧金山。点击地图设置起点，再次点击设置终点。", false, true);
+        setStatus(`已移动到${preset.label}。点击地图设置起点，再次点击设置终点。`, false, true);
     }
     render();
 }
@@ -856,18 +874,25 @@ async function loadStreetViewPrototype() {
     try {
         await loadGoogleMapsForStreetView(apiKey);
         state.streetViewController?.destroy?.();
+        state.streetViewTrace = [];
+        state.streetViewHasVisiblePano = false;
+        renderStreetViewTrace();
+        appendStreetViewTrace({
+            event: "api-ready",
+            message: "Google Maps API 已加载",
+            at: Date.now()
+        });
         state.streetViewController = createStreetViewController({
             container1: el.svPano1,
-            container2: el.svPano2
+            container2: el.svPano2,
+            onTrace: appendStreetViewTrace
         });
         state.elevationController = createRouteElevationController({
             onUpdate: syncRouteElevationUpdate
         });
         state.streetViewService = new window.google.maps.StreetViewService();
         state.streetViewLoaded = true;
-        if (el.streetViewPlaceholder) {
-            el.streetViewPlaceholder.hidden = true;
-        }
+        showStreetViewLoadingPlaceholder("正在查找并加载首个街景 pano...");
         setStreetViewFocusMode(true);
         setStreetViewStatus(state.route
             ? "街景已加载，会跟随模拟位置更新。"
@@ -920,6 +945,9 @@ function getStreetViewNavigationLabel(update) {
     if (navigation === "native-link") return "原生相邻 pano 前进";
     if (navigation === "gps-lookup") return "GPS 查找 pano";
     if (navigation === "gps-resync") return "偏离路线，重新定位 pano";
+    if (navigation === "gps-catch-up") return "街景落后，GPS 追赶中";
+    if (navigation === "pano-loading") return "等待当前 pano 加载完成";
+    if (navigation === "pano-waiting") return "前方暂无可用街景，保持当前视角";
     if (navigation === "pov-only") return "保持当前 pano，更新视角";
     if (navigation === "paused") return "用户交互后暂缓自动更新";
     return "等待街景位置";
@@ -971,6 +999,69 @@ function runStreetViewProbe(point, { force = false } = {}) {
             el.streetViewProbeText.textContent = `${status} ${latencyMs}ms · 当前位置 50m 内无可用街景`;
         }
     );
+}
+
+function appendStreetViewTrace(entry) {
+    state.streetViewTrace.unshift(entry);
+    state.streetViewTrace = state.streetViewTrace.slice(0, 200);
+    if (entry.event === "pano-ready" && !state.streetViewHasVisiblePano) {
+        state.streetViewHasVisiblePano = true;
+        if (el.streetViewPlaceholder) {
+            el.streetViewPlaceholder.hidden = true;
+        }
+    }
+    renderStreetViewTrace();
+}
+
+function showStreetViewLoadingPlaceholder(message) {
+    if (!el.streetViewPlaceholder) return;
+    el.streetViewPlaceholder.textContent = message;
+    el.streetViewPlaceholder.hidden = false;
+}
+
+function renderStreetViewTrace() {
+    const traceList = document.getElementById("streetViewTraceList");
+    if (!traceList) return;
+
+    traceList.replaceChildren();
+    if (!state.streetViewTrace.length) {
+        const item = document.createElement("li");
+        item.textContent = "尚无街景加载记录。";
+        traceList.appendChild(item);
+        return;
+    }
+
+    state.streetViewTrace.slice(0, 12).forEach((entry) => {
+        const item = document.createElement("li");
+        const time = new Date(entry.at).toLocaleTimeString("zh-CN", { hour12: false });
+        const duration = Number.isFinite(entry.durationMs) ? ` ${entry.durationMs}ms` : "";
+        item.textContent = `${time} ${entry.message}${duration}`;
+        traceList.appendChild(item);
+    });
+}
+
+function downloadStreetViewTrace(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const payload = {
+        exportedAt: new Date().toISOString(),
+        trace: [...state.streetViewTrace].reverse()
+    };
+    const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `osm-street-view-trace-${formatTraceFileTimestamp(new Date())}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function formatTraceFileTimestamp(date) {
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
 function handleDecisionPoint() {
@@ -1276,6 +1367,7 @@ function resetAll() {
     state.selectedStart = null;
     state.graph = null;
     state.networkSource = null;
+    state.networkCachePreset = null;
     state.route = null;
     state.sim.distanceMeters = 0;
     state.selectedCenter = DEFAULT_CENTER;
@@ -1310,8 +1402,8 @@ function render() {
     const hasRoute = Boolean(state.route);
     const hasTileSelection = Boolean(state.preselectedStart || state.preselectedDirection);
     const hasCompleteTileSelection = Boolean(state.preselectedStart && state.preselectedDirection);
-    el.loadNetworkBtn.disabled = state.loadingNetwork;
-    el.loadNetworkBtn.textContent = state.loadingNetwork ? "加载中..." : "旧金山";
+    el.moveSanFranciscoBtn.disabled = state.loadingNetwork;
+    el.moveUjiBtn.disabled = state.loadingNetwork;
     el.usePresetStartBtn.disabled = state.sim.running || (!hasTileSelection && !hasRoute);
     el.resetBtn.disabled = state.loadingNetwork || (!hasNetwork && !hasStart && !hasRoute && !hasTileSelection);
     el.buildRouteBtn.disabled = state.sim.running || state.loadingNetwork || !hasCompleteTileSelection;
@@ -1391,7 +1483,7 @@ function setStreetViewFocusMode(enabled) {
 }
 
 function getNetworkSourceLabel() {
-    if (state.networkSource === "cache") return "旧金山缓存路网";
+    if (state.networkSource === "cache") return `${state.networkCachePreset?.label ?? "本地"}缓存路网`;
     if (state.networkSource === "overpass") return "实时 OSM 路网";
     if (state.networkSource === "synthetic" || state.graph?.synthetic) return "内置网格 fallback";
     return "OSM 路网";

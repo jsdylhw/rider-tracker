@@ -8,8 +8,8 @@
 
 - 规划阶段使用 OSM 瓦片地图选择一段路：第一次点击起点，第二次点击终点
 - 地图上蓝色圆点表示起点，绿色圆点表示终点；浅蓝矩形表示即将加载的路网范围
-- 点击“旧金山”只移动地图视野，不会自动设置起点
-- 点击“生成路线”后，Demo 会优先复用旧金山本地路网缓存；缓存未命中时才从 Overpass API 加载约 10km x 10km 区域路网
+- 点击“旧金山”或“宇治”只移动地图视野，不会自动设置起点
+- 点击“生成路线”后，Demo 会优先复用对应地点的本地路网缓存；缓存未命中时才从 Overpass API 加载约 10km x 10km 区域路网
 - 生成路线时会自动把起点和终点吸附到本地 graph，并沿 OSM 道路规划起点到终点的路线，不再画两点直连线
 - 如果公共 Overpass endpoint 暂不可用，会回退到内置网格路网，方便继续测试转向逻辑
 - 在浏览器本地把 OSM ways / nodes 建成双向 graph
@@ -44,12 +44,13 @@ cd /home/liuhaowen/codes/rider-tracker
 node demos/osm-road-network-demo/test.js
 ```
 
-## 旧金山路网缓存
+## 预加载路网缓存
 
-为了减少街景原型测试时的变量，demo 内置了一份旧金山中心点附近约 10km x 10km 的 OSM 路网缓存：
+为了减少街景原型测试时的变量，demo 内置了旧金山与宇治中心点附近约 10km x 10km 的 OSM 路网缓存：
 
 ```text
 demos/osm-road-network-demo/fixtures/san-francisco-road-network.json
+demos/osm-road-network-demo/fixtures/uji-road-network.json
 ```
 
 刷新缓存：
@@ -57,9 +58,10 @@ demos/osm-road-network-demo/fixtures/san-francisco-road-network.json
 ```bash
 cd /home/liuhaowen/codes/rider-tracker
 node demos/osm-road-network-demo/fetch-san-francisco-road-network.js
+node demos/osm-road-network-demo/fetch-uji-road-network.js
 ```
 
-页面逻辑是：如果起点和终点都落在缓存 bbox 内，直接使用这份本地缓存；否则再请求 Overpass。状态栏会显示当前使用的是“旧金山缓存路网”“实时 OSM 路网”还是“内置网格 fallback”。
+页面逻辑是：如果起点和终点都落在任一缓存 bbox 内，直接使用对应地点的本地缓存；否则再请求 Overpass。状态栏会显示当前使用的是“旧金山缓存路网”“宇治缓存路网”“实时 OSM 路网”还是“内置网格 fallback”。
 
 ## 外部服务
 
@@ -80,7 +82,9 @@ demos/osm-road-network-demo/street-view-controller.js
 
 验证目标是确认“OSM graph 当前位置 -> route/currentRecord -> Street View controller”的数据链路可行。未加载 Google API 时 route 会按平坡 fallback；加载街景后会用 demo-local elevation controller 补 `gradePercent`，街景 pitch 随坡度更新。
 
-当前 demo-local controller 在试单个 `StreetViewPanorama` 的位置驱动方案：模拟 tick 会持续更新当前 pano 的 POV，让视角沿路线 heading / grade 前进。优先从当前 pano 的原生相邻 links 中选择与路线 heading 最接近的 pano，模拟 Google Street View 自己的前进切换；没有可用 link 时，才按当前位置查最近 pano id。当前 pano 的 links 可用后，会在后台解析同一路线方向的后续 2-3 跳元数据（pano id、坐标、heading），但不会创建第二个可渲染 pano。原生 link 的推进阈值和等待时间都反向关联模拟速度，22 km/h 约每 2m / 318ms 尝试并走单跳，30 km/h 优先取已缓存的两跳，42 km/h 以上优先取三跳；缓存未就绪时会自动回退单跳。坐标查找仍按约 1 秒 / 18 米节流，并缓存坐标桶结果。Street View 加载成功即切入全屏街景，路网地图缩为右下角小窗；原生 links 和点击前往保持关闭，用户手动平移视角后会暂停自动更新 3 秒。这个实验用来验证是否能减少按坐标跳 pano 带来的黑屏和模糊。
+当前 demo-local controller 在试单个 `StreetViewPanorama` 的位置驱动方案：优先从当前 pano 的原生相邻 links 中选择与路线 heading 最接近的 pano。当前 pano 的 links 可用后，会在后台解析同一路线方向的后续 2-3 跳元数据（pano id、坐标、heading），但不会创建第二个可渲染 pano，也不会直接跳过中间 pano。下一张 pano 的坐标会投影到骑行路线，只有模拟位置追上该路线里程附近时才切换，因此 pano 间距不会放大为视觉速度；30km/h 与 29km/h 都按单跳渲染。没有可沿路线继续的街景时，保留当前 pano 和视角，等待下一次可用定位或原生 link。坐标查找仍按约 1 秒 / 18 米节流，并缓存坐标桶结果。当前 pano 与模拟路线相差过大时，controller 最多每 900ms 按 0.7 秒速度预测发起一次 GPS catch-up。Street View 加载成功即切入全屏街景，路网地图缩为右下角小窗；原生 links 和点击前往保持关闭，用户手动平移视角后会暂停自动更新 3 秒。这个实验用来验证是否能减少按坐标跳 pano 带来的黑屏和模糊。
+
+为定位黑屏，街景原型面板会记录最近 200 条 `GPS 查找 / setPano / pano 就绪 / 超时` 事件；页面仅展示最新 12 条。点击“下载 JSON”可导出完整时间线，用于检查是查找请求慢、pano 就绪慢，还是连续切换在前一个 pano 完成前覆盖了它。首个 pano 未就绪时会保留加载提示，避免 GPS 首次查找期间显示纯黑画面。
 
 坡度也先在 demo 内独立补全：
 
@@ -116,7 +120,7 @@ demos/osm-road-network-demo/elevation-controller.js
 
 ## 当前限制
 
-- 路网 bbox 是以用户选择的起终点中点为中心的约 10km x 10km 区域；“旧金山”按钮只负责移动视野。
+- 路网 bbox 是以用户选择的起终点中点为中心的约 10km x 10km 区域；“旧金山”和“宇治”按钮只负责移动视野。
 - 为降低 Overpass 压力，默认不加载 `service`、`footway`、`path` 等细碎道路类型。
 - 初始路线使用本地 graph shortest path；初始终点之后只做局部沿路延伸和路口选择。
 - 不处理 OSM 单行线、turn restriction、bike-only routing cost。

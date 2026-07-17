@@ -2,6 +2,8 @@ import {
     INTERSECTIONS_PER_SEGMENT,
     NETWORK_SIZE_KM,
     SAN_FRANCISCO_ROAD_NETWORK_CACHE_URL,
+    UJI_CENTER,
+    UJI_ROAD_NETWORK_CACHE_URL,
     WEB_MERCATOR_MAX_LAT,
     buildBoundsAroundCenter,
     buildOverpassQuery,
@@ -14,6 +16,7 @@ import {
     getNativeLinkMoveDistanceMeters,
     getNativeLinkMoveIntervalMs,
     getNativeLookaheadHopCount,
+    getRouteDistanceAtPosition,
     shouldResyncToRoutePano
 } from "./street-view-controller.js";
 import { readFile } from "node:fs/promises";
@@ -86,15 +89,36 @@ const tests = [
         }
     },
     {
+        name: "has a reusable Uji road-network cache fixture",
+        async run() {
+            const cacheUrl = new URL(UJI_ROAD_NETWORK_CACHE_URL, import.meta.url);
+            const cache = JSON.parse(await readFile(cacheUrl, "utf8"));
+
+            assertEqual(cache.cacheMetadata?.presetId, "uji");
+            assertApprox(cache.cacheMetadata?.center?.lat, UJI_CENTER.lat, 0.000001);
+            assertApprox(cache.cacheMetadata?.center?.lng, UJI_CENTER.lng, 0.000001);
+            assertEqual(cache.cacheMetadata?.sizeKm, NETWORK_SIZE_KM);
+            assertGreaterThan(cache.elements?.length ?? 0, 1000);
+            assert(cache.elements.some((element) => element.type === "way"), "cache should include OSM ways");
+            assert(cache.elements.some((element) => element.type === "node"), "cache should include OSM nodes");
+        }
+    },
+    {
         name: "keeps a single Street View panorama visible",
         async run() {
             await withFakeGoogleMaps(({ panoramaInstances, runTimers }) => {
                 const { container1, container2 } = createPanoramaContainers();
-                const controller = createStreetViewController({ container1, container2 });
+                const trace = [];
+                const controller = createStreetViewController({
+                    container1,
+                    container2,
+                    onTrace: (entry) => trace.push(entry)
+                });
 
                 controller.update(createStreetViewRoute(), { distanceKm: 0, speedKph: 20 });
 
                 assertEqual(panoramaInstances.length, 1);
+                assertEqual(trace[0]?.event, "controller-ready");
                 assertEqual(container1.style.opacity, "1");
                 assertEqual(container1.style.zIndex, "2");
                 assertEqual(container2.style.opacity, "0");
@@ -107,7 +131,7 @@ const tests = [
         }
     },
     {
-        name: "updates Street View POV on movement ticks without duplicate panorama lookup",
+        name: "holds Street View POV when no route-aligned pano is available",
         async run() {
             await withFakeGoogleMaps(({ panoramaInstances, panoramaRequests, runTimers }) => {
                 const { container1, container2 } = createPanoramaContainers();
@@ -122,9 +146,74 @@ const tests = [
                 controller.update(route, { distanceKm: 0.001, speedKph: 20 });
 
                 assertEqual(panoramaRequests.length, requestCountAfterFirstUpdate);
-                assertGreaterThan(panoramaInstances[0].povCalls.length, activePovCountAfterFirstUpdate);
+                assertEqual(panoramaInstances[0].povCalls.length, activePovCountAfterFirstUpdate);
                 controller.destroy();
             });
+        }
+    },
+    {
+        name: "does not pause auto movement for a delayed Street View POV event",
+        async run() {
+            await withFakeGoogleMaps(({ emitGoogleEvent, panoramaInstances, runTimers }) => {
+                const { container1, container2 } = createPanoramaContainers();
+                const controller = createStreetViewController({ container1, container2 });
+                const route = createStreetViewRoute();
+
+                controller.update(route, { distanceKm: 0, speedKph: 20 });
+                runTimers();
+                emitGoogleEvent(panoramaInstances[0], "pov_changed");
+
+                const result = controller.update(route, { distanceKm: 0.001, speedKph: 20 });
+
+                assertEqual(result.navigation, "pano-waiting");
+                controller.destroy();
+            });
+        }
+    },
+    {
+        name: "does not treat an asynchronous pano change event as user interaction",
+        async run() {
+            await withFakeGoogleMaps(({ emitGoogleEvent, panoramaInstances, runTimers }) => {
+                const { container1, container2 } = createPanoramaContainers();
+                const controller = createStreetViewController({ container1, container2 });
+                const route = createStreetViewRoute();
+
+                controller.update(route, { distanceKm: 0, speedKph: 20 });
+                runTimers();
+                panoramaInstances[0].setPano("late-programmatic-pano");
+                emitGoogleEvent(panoramaInstances[0], "pano_changed");
+
+                const result = controller.update(route, { distanceKm: 0.001, speedKph: 20 });
+
+                assert(result.navigation !== "paused");
+                controller.destroy();
+            });
+        }
+    },
+    {
+        name: "uses a rate-limited GPS catch-up when the active pano falls behind the route",
+        async run() {
+            const originalNow = Date.now;
+            let now = 10000;
+            Date.now = () => now;
+            try {
+                await withFakeGoogleMaps(({ panoramaInstances, runTimers }) => {
+                    const { container1, container2 } = createPanoramaContainers();
+                    const controller = createStreetViewController({ container1, container2 });
+                    const route = createStreetViewRoute();
+
+                    controller.update(route, { distanceKm: 0, speedKph: 30 });
+                    runTimers();
+                    panoramaInstances[0].position = { lat: 37.77, lng: -122.4194 };
+
+                    const result = controller.update(route, { distanceKm: 0.02, speedKph: 30 });
+
+                    assertEqual(result.navigation, "gps-catch-up");
+                    controller.destroy();
+                });
+            } finally {
+                Date.now = originalNow;
+            }
         }
     },
     {
@@ -156,6 +245,107 @@ const tests = [
         }
     },
     {
+        name: "does not run periodic GPS lookup while a route-aligned native link is available",
+        async run() {
+            const originalNow = Date.now;
+            let now = 10000;
+            Date.now = () => now;
+            try {
+                await withFakeGoogleMaps(({ panoramaInstances, panoramaRequests, runTimers }) => {
+                    const { container1, container2 } = createPanoramaContainers();
+                    const controller = createStreetViewController({ container1, container2 });
+                    const route = createStreetViewRoute();
+
+                    controller.update(route, { distanceKm: 0, speedKph: 20 });
+                    runTimers();
+                    panoramaInstances[0].links = [{ pano: "first", heading: 90 }];
+                    controller.update(route, { distanceKm: 0.02, speedKph: 20 });
+                    runTimers();
+                    panoramaInstances[0].links = [{ pano: "second", heading: 90 }];
+                    const locationRequestCount = panoramaRequests.filter((request) => request.location).length;
+                    now += 1100;
+
+                    const result = controller.update(route, { distanceKm: 0.021, speedKph: 20 });
+
+                    assertEqual(result.navigation, "pov-only");
+                    assertEqual(panoramaRequests.filter((request) => request.location).length, locationRequestCount);
+                    controller.destroy();
+                });
+            } finally {
+                Date.now = originalNow;
+            }
+        }
+    },
+    {
+        name: "ignores a delayed GPS lookup after native pano navigation advances",
+        async run() {
+            await withFakeGoogleMaps(({ deferLocationPanoramaResponses, panoramaInstances, releaseLocationPanoramaResponses, runTimers }) => {
+                const { container1, container2 } = createPanoramaContainers();
+                const trace = [];
+                const controller = createStreetViewController({
+                    container1,
+                    container2,
+                    onTrace: (entry) => trace.push(entry)
+                });
+                const route = createStreetViewRoute();
+
+                controller.update(route, { distanceKm: 0, speedKph: 20 });
+                runTimers();
+                deferLocationPanoramaResponses();
+                controller.update(route, { distanceKm: 0.02, speedKph: 20 });
+                panoramaInstances[0].links = [{ pano: "forward", heading: 90 }];
+                controller.update(route, { distanceKm: 0.03, speedKph: 20 });
+                releaseLocationPanoramaResponses();
+
+                assertEqual(panoramaInstances[0].getPano(), "forward");
+                assert(trace.some((entry) => entry.event === "gps-stale"));
+                controller.destroy();
+            });
+        }
+    },
+    {
+        name: "waits for the active pano to become ready before the next native link switch",
+        async run() {
+            await withFakeGoogleMaps(({ panoramaInstances, runTimers }) => {
+                const { container1, container2 } = createPanoramaContainers();
+                const controller = createStreetViewController({ container1, container2 });
+                const route = createStreetViewRoute();
+
+                controller.update(route, { distanceKm: 0, speedKph: 30 });
+                runTimers();
+                panoramaInstances[0].links = [{ pano: "first", heading: 90 }];
+                controller.update(route, { distanceKm: 0.02, speedKph: 30 });
+
+                const result = controller.update(route, { distanceKm: 0.04, speedKph: 30 });
+
+                assertEqual(result.navigation, "pano-loading");
+                controller.destroy();
+            });
+        }
+    },
+    {
+        name: "keeps the latest route POV when a pano finishes loading",
+        async run() {
+            await withFakeGoogleMaps(({ panoramaInstances, runTimers }) => {
+                const { container1, container2 } = createPanoramaContainers();
+                const controller = createStreetViewController({ container1, container2 });
+                const route = createStreetViewRoute();
+                route.points[1].gradePercent = 10;
+
+                controller.update(route, { distanceKm: 0, speedKph: 30 });
+                runTimers();
+                panoramaInstances[0].links = [{ pano: "uphill", heading: 90 }];
+                controller.update(route, { distanceKm: 0.02, speedKph: 30 });
+                controller.update(route, { distanceKm: 0.04, speedKph: 30 });
+                runTimers();
+
+                const latestPov = panoramaInstances[0].povCalls.at(-1);
+                assertApprox(latestPov.pitch, Math.atan(8 / 100) * (180 / Math.PI), 0.01);
+                controller.destroy();
+            });
+        }
+    },
+    {
         name: "rejects native links that point too far away from the route heading",
         run() {
             const link = chooseRouteAlignedLink([
@@ -164,6 +354,17 @@ const tests = [
             ], 90, "current");
 
             assertEqual(link, null);
+        }
+    },
+    {
+        name: "does not choose the pano that was just left as the next native link",
+        run() {
+            const link = chooseRouteAlignedLink([
+                { pano: "previous", heading: 90 },
+                { pano: "forward", heading: 90 }
+            ], 90, "current", ["previous"]);
+
+            assertEqual(link.pano, "forward");
         }
     },
     {
@@ -180,7 +381,22 @@ const tests = [
         }
     },
     {
-        name: "uses pre-read pano metadata to skip to the second route-aligned link at higher speeds",
+        name: "projects a Street View pano position onto route distance before advancing",
+        run() {
+            const route = {
+                points: [
+                    { latitude: 35, longitude: 135, distanceMeters: 0 },
+                    { latitude: 35.0008983, longitude: 135, distanceMeters: 100 }
+                ]
+            };
+
+            const distanceMeters = getRouteDistanceAtPosition(route, { lat: 35.00044915, lng: 135 });
+
+            assertApprox(distanceMeters, 50, 0.2);
+        }
+    },
+    {
+        name: "uses pre-read pano metadata while rendering only the next route-aligned pano",
         async run() {
             await withFakeGoogleMaps(({ panoramaInstances, panoMetadataById, runTimers }) => {
                 panoMetadataById.set("first", {
@@ -199,12 +415,17 @@ const tests = [
                 controller.update(route, { distanceKm: 0, speedKph: 30 });
                 runTimers();
                 panoramaInstances[0].links = [{ pano: "first", heading: 90 }];
+                const povCountBeforeWaiting = panoramaInstances[0].povCalls.length;
 
-                const result = controller.update(route, { distanceKm: 0.01, speedKph: 30 });
+                const waitingResult = controller.update(route, { distanceKm: 0.01, speedKph: 30 });
+                assertEqual(waitingResult.navigation, "pano-waiting");
+                assertEqual(panoramaInstances[0].povCalls.length, povCountBeforeWaiting);
+
+                const result = controller.update(route, { distanceKm: 0.035, speedKph: 30 });
 
                 assertEqual(result.navigation, "native-link");
-                assertEqual(result.nativeLinkHops, 2);
-                assertEqual(panoramaInstances[0].getPano(), "second");
+                assertEqual(result.nativeLinkHops, 1);
+                assertEqual(panoramaInstances[0].getPano(), "first");
                 controller.destroy();
             });
         }
@@ -224,6 +445,7 @@ const tests = [
                     runTimers();
                     panoramaInstances[0].links = [{ pano: "slow-first", heading: 90 }];
                     slowController.update(route, { distanceKm: 0, speedKph: 22 });
+                    runTimers();
                     panoramaInstances[0].links = [{ pano: "slow-forward", heading: 90 }];
                     now += 500;
 
@@ -237,6 +459,7 @@ const tests = [
                     runTimers();
                     panoramaInstances[1].links = [{ pano: "fast-first", heading: 90 }];
                     fastController.update(route, { distanceKm: 0, speedKph: 30 });
+                    runTimers();
                     panoramaInstances[1].links = [{ pano: "fast-forward", heading: 90 }];
                     now += 500;
 
@@ -380,6 +603,9 @@ function createFakeGoogleMapsWindow() {
     const panoramaRequests = [];
     const elevationRequests = [];
     const panoMetadataById = new Map();
+    const googleEventListeners = new Map();
+    const pendingLocationPanoramaResponses = [];
+    let deferLocationPanoramaResponses = false;
     const timers = new Map();
     let nextTimerId = 1;
 
@@ -400,10 +626,18 @@ function createFakeGoogleMapsWindow() {
                 );
                 return;
             }
-            const lat = Number(request.location.lat);
-            const lng = Number(request.location.lng);
-            callback({ location: { pano: `${lat.toFixed(4)},${lng.toFixed(4)}` } }, "OK");
+            if (deferLocationPanoramaResponses) {
+                pendingLocationPanoramaResponses.push({ request, callback });
+                return;
+            }
+            respondToLocationPanoramaRequest(request, callback);
         }
+    }
+
+    function respondToLocationPanoramaRequest(request, callback) {
+        const lat = Number(request.location.lat);
+        const lng = Number(request.location.lng);
+        callback({ location: { pano: `${lat.toFixed(4)},${lng.toFixed(4)}` } }, "OK");
     }
 
     class StreetViewPanorama {
@@ -431,7 +665,16 @@ function createFakeGoogleMapsWindow() {
             return this.status;
         }
 
+        getPosition() {
+            return this.position ?? null;
+        }
+
+        getPov() {
+            return this.pov ?? null;
+        }
+
         setPov(pov) {
+            this.pov = pov;
             this.povCalls.push(pov);
         }
     }
@@ -450,6 +693,18 @@ function createFakeGoogleMapsWindow() {
         panoramaRequests,
         elevationRequests,
         panoMetadataById,
+        deferLocationPanoramaResponses() {
+            deferLocationPanoramaResponses = true;
+        },
+        releaseLocationPanoramaResponses() {
+            deferLocationPanoramaResponses = false;
+            const pending = pendingLocationPanoramaResponses.splice(0);
+            pending.forEach(({ request, callback }) => respondToLocationPanoramaRequest(request, callback));
+        },
+        emitGoogleEvent(target, eventName) {
+            const listeners = googleEventListeners.get(target)?.get(eventName) ?? [];
+            listeners.forEach((handler) => handler());
+        },
         runTimers() {
             const dueTimers = [...timers.entries()];
             timers.clear();
@@ -474,9 +729,21 @@ function createFakeGoogleMapsWindow() {
                     LatLng,
                     event: {
                         addListener(target, eventName, handler) {
+                            if (!googleEventListeners.has(target)) {
+                                googleEventListeners.set(target, new Map());
+                            }
+                            const listeners = googleEventListeners.get(target);
+                            const handlers = listeners.get(eventName) ?? [];
+                            handlers.push(handler);
+                            listeners.set(eventName, handlers);
                             return { target, eventName, handler };
                         },
-                        removeListener() {}
+                        removeListener(listener) {
+                            const handlers = googleEventListeners.get(listener.target)?.get(listener.eventName);
+                            if (!handlers) return;
+                            const index = handlers.indexOf(listener.handler);
+                            if (index >= 0) handlers.splice(index, 1);
+                        }
                     },
                     geometry: {
                         spherical: {

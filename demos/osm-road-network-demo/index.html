@@ -20,7 +20,8 @@
             </div>
 
             <div class="controls">
-                <button id="loadNetworkBtn" class="primary">旧金山</button>
+                <button id="moveSanFranciscoBtn" class="primary">旧金山</button>
+                <button id="moveUjiBtn" class="primary">宇治</button>
                 <button id="usePresetStartBtn" disabled>清除选点</button>
                 <button id="resetBtn" disabled>重置</button>
             </div>
@@ -115,6 +116,12 @@
                         <strong id="streetViewProbeText">未探测</strong>
                     </div>
                 </div>
+                <details class="street-view-trace" open>
+                    <summary>街景加载日志 <button id="downloadStreetViewTraceBtn" type="button">下载 JSON</button></summary>
+                    <ol id="streetViewTraceList">
+                        <li>尚无街景加载记录。</li>
+                    </ol>
+                </details>
             </section>
 
             <section class="card">
@@ -150,6 +157,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?streetViewTrace=9"></script>
 </body>
 </html>
