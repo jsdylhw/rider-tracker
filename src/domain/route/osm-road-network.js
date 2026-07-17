@@ -2,10 +2,9 @@ export const WEB_MERCATOR_MAX_LAT = 85.05112878;
 export const DEFAULT_OSM_ROUTE_BOUNDS_SIZE_KM = 10;
 export const MAX_OSM_ROUTE_BOUNDS_SIZE_KM = 60;
 export const OSM_ROUTE_SAMPLE_SPACING_METERS = 50;
-export const ALLOWED_HIGHWAY_PATTERN = "^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street)$";
+export const ALLOWED_HIGHWAY_PATTERN = "^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$";
 
 const ALLOWED_HIGHWAYS = new Set([
-    "motorway",
     "trunk",
     "primary",
     "secondary",
@@ -125,7 +124,7 @@ export function buildRoadGraph(overpassData) {
         }
 
         const highway = element.tags?.highway;
-        if (!ALLOWED_HIGHWAYS.has(highway)) {
+        if (!ALLOWED_HIGHWAYS.has(highway) || !isCyclingAllowed(element.tags)) {
             continue;
         }
 
@@ -141,8 +140,13 @@ export function buildRoadGraph(overpassData) {
                 continue;
             }
 
-            addDirectedEdge({ edges, fromNode, toNode, wayId: element.id, highway });
-            addDirectedEdge({ edges, fromNode: toNode, toNode: fromNode, wayId: element.id, highway });
+            const direction = getBicycleTravelDirection(element.tags);
+            if (direction !== "reverse") {
+                addDirectedEdge({ edges, fromNode, toNode, wayId: element.id, highway });
+            }
+            if (direction !== "forward") {
+                addDirectedEdge({ edges, fromNode: toNode, toNode: fromNode, wayId: element.id, highway });
+            }
         }
     }
 
@@ -167,8 +171,8 @@ export function planOsmRoute({ graph, start, destination, sampleSpacingMeters = 
     }
 
     const desiredHeading = bearingDegrees(snappedStart.point, snappedDestination.point);
-    const directedStartEdge = chooseEdgeDirection(snappedStart.edge, desiredHeading);
-    const directedDestinationEdge = chooseEdgeDirection(snappedDestination.edge, desiredHeading);
+    const directedStartEdge = chooseEdgeDirection(graph, snappedStart.edge, desiredHeading);
+    const directedDestinationEdge = chooseEdgeDirection(graph, snappedDestination.edge, desiredHeading);
     const rawNodes = buildRawRouteNodes({
         graph,
         snappedStart,
@@ -381,26 +385,44 @@ function projectPointToSegment(point, start, end) {
     };
 }
 
-function chooseEdgeDirection(edge, desiredHeading) {
+function chooseEdgeDirection(graph, edge, desiredHeading) {
     const forwardDelta = headingDelta(edge.heading, desiredHeading);
-    const reverseHeading = normalizeHeading(edge.heading + 180);
-    const reverseDelta = headingDelta(reverseHeading, desiredHeading);
+    const reverseEdge = graph.nodes.get(edge.to)?.edges.find((candidate) => (
+        candidate.to === edge.from && candidate.wayId === edge.wayId
+    ));
+    if (!reverseEdge) {
+        return edge;
+    }
+    const reverseDelta = headingDelta(reverseEdge.heading, desiredHeading);
 
     if (forwardDelta <= reverseDelta) {
         return edge;
     }
 
-    return {
-        ...edge,
-        id: `${edge.id}:reverse`,
-        from: edge.to,
-        to: edge.from,
-        fromLat: edge.toLat,
-        fromLng: edge.toLng,
-        toLat: edge.fromLat,
-        toLng: edge.fromLng,
-        heading: reverseHeading
-    };
+    return reverseEdge;
+}
+
+function isCyclingAllowed(tags = {}) {
+    const bicycle = String(tags.bicycle ?? "").toLowerCase();
+    const access = String(tags.access ?? "").toLowerCase();
+    const vehicle = String(tags.vehicle ?? "").toLowerCase();
+    if (bicycle === "no" || bicycle === "use_sidepath") {
+        return false;
+    }
+    if (["yes", "designated", "permissive"].includes(bicycle)) {
+        return true;
+    }
+    return access !== "no"
+        && access !== "private"
+        && vehicle !== "no"
+        && vehicle !== "private";
+}
+
+function getBicycleTravelDirection(tags = {}) {
+    const value = String(tags["oneway:bicycle"] ?? tags.oneway ?? "").toLowerCase();
+    if (value === "-1") return "reverse";
+    if (value === "yes" || value === "true" || value === "1") return "forward";
+    return "both";
 }
 
 function findShortestPathToAnyNode(graph, startNodeId, targetNodeIds) {

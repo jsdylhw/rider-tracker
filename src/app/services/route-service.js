@@ -282,6 +282,7 @@ export function createRouteService({ store }) {
         updateRouteSegment,
         removeRouteSegment,
         importGpx,
+        invalidatePendingMapRoute,
         planMapRoute,
         ensureExplorationRouteAhead
     };

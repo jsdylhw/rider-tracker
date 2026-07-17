@@ -1,5 +1,9 @@
 import { createMapController } from "./map-controller.js";
-import { createStreetViewController, loadGoogleMapsForStreetView } from "./street-view-controller.js";
+import {
+    buildStreetViewTargetFromRoute,
+    createStreetViewController,
+    loadGoogleMapsForStreetView
+} from "./street-view-controller.js";
 
 export function createRideVisualsController({ elements }) {
     const mapController = createMapController({
@@ -28,11 +32,30 @@ export function createRideVisualsController({ elements }) {
     }
 
     function syncStreetView(route, currentRecord) {
-        streetViewController?.update(route, currentRecord);
+        const target = buildStreetViewTargetFromRoute(route, currentRecord);
+        if (target) {
+            streetViewController?.update(target);
+        }
     }
 
     function setMapProvider(providerKey) {
         mapController.setMapProvider(providerKey);
+    }
+
+    function setPlannerClickHandler(handler) {
+        mapController.setPlannerClickHandler(handler);
+    }
+
+    function setPlannerMode(mode) {
+        mapController.setPlannerMode(mode);
+    }
+
+    function syncPlannerSelection(selection) {
+        mapController.syncPlannerSelection(selection);
+    }
+
+    function invalidatePreviewSize() {
+        mapController.invalidatePreviewSize();
     }
 
     function destroy() {
@@ -47,6 +70,10 @@ export function createRideVisualsController({ elements }) {
         syncMap,
         syncStreetView,
         setMapProvider,
+        setPlannerClickHandler,
+        setPlannerMode,
+        syncPlannerSelection,
+        invalidatePreviewSize,
         destroy
     };
 }

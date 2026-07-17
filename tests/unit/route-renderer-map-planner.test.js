@@ -10,6 +10,7 @@ export const suite = {
             run() {
                 let plannerClickHandler = null;
                 let planned = null;
+                let invalidationCount = 0;
                 const plannerModes = [];
                 const elements = {
                     routeModeGpxBtn: createFakeElement(),
@@ -44,6 +45,9 @@ export const suite = {
                     onAddSegment() {},
                     onResetRoute() {},
                     onImportGpx() {},
+                    onInvalidateMapRoute() {
+                        invalidationCount += 1;
+                    },
                     onPlanMapRoute(plan) {
                         planned = plan;
                     },
@@ -68,6 +72,7 @@ export const suite = {
                 assertEqual(planned.googleApiKey, "test-key");
                 assertEqual(planned.start.lat, 37.1);
                 assertEqual(planned.destination.lng, -122.2);
+                assertEqual(invalidationCount, 2);
                 assertEqual(plannerModes.includes("select"), true);
             }
         }

@@ -178,6 +178,7 @@
                             <div id="routeSummary" class="route-summary">路线概览待生成。</div>
                         </div>
                     </div>
+                    <div id="exportCardContainer"></div>
                     <div id="postRideReportCard" class="card" hidden>
                         <div class="section-title-row">
                             <div>
@@ -338,6 +339,66 @@
     <template id="pip-template">
         <div id="pip-container" class="pip-mode">
             <div class="pip-content" id="pip-content"></div>
+        </div>
+    </template>
+
+    <template id="export-card-template">
+        <div id="sharedExportCard" class="card">
+            <div class="section-title-row">
+                <div><h2>会话导出</h2></div>
+            </div>
+            <div class="controls">
+                <button id="downloadSessionBtn" class="btn power-btn" disabled>导出 JSON</button>
+                <button id="downloadFitBtn" class="btn secondary" disabled>导出 FIT</button>
+                <input id="importFitInput" type="file" accept=".fit,application/vnd.ant.fit" hidden>
+                <button id="importFitBtn" class="btn secondary" type="button">导入 FIT</button>
+                <button id="connectStravaBtn" class="btn secondary" disabled>连接 Strava</button>
+                <button id="uploadFitBtn" class="btn primary" disabled>上传 FIT</button>
+            </div>
+            <form id="fitExportForm" class="form-grid">
+                <label class="field">
+                    <span>活动标题</span>
+                    <input name="activityName" type="text" maxlength="48">
+                </label>
+                <label class="field">
+                    <span>FIT 类型</span>
+                    <label class="export-toggle">
+                        <input name="markVirtualActivity" type="checkbox" checked>
+                        <span class="export-toggle-track" aria-hidden="true"></span>
+                        <span class="export-toggle-label">
+                            <span class="export-toggle-title">
+                                <span class="when-checked">模拟骑行</span>
+                                <span class="when-unchecked">普通骑行</span>
+                            </span>
+                            <span class="export-toggle-subtitle">
+                                <span class="when-checked">写入 virtualActivity</span>
+                                <span class="when-unchecked">不写入 virtualActivity</span>
+                            </span>
+                        </span>
+                    </label>
+                </label>
+                <label class="field">
+                    <span>仓库地址</span>
+                    <input name="repositoryUrl" type="url">
+                </label>
+                <details class="advanced-settings field-wide">
+                    <summary>高级设置</summary>
+                    <div class="advanced-settings-grid">
+                        <label class="field">
+                            <span>Strava Server</span>
+                            <input name="stravaServerUrl" type="url" placeholder="http://localhost:8787">
+                        </label>
+                        <label class="field">
+                            <span>Strava User ID</span>
+                            <input name="stravaUserId" type="text" maxlength="64" placeholder="default">
+                        </label>
+                    </div>
+                </details>
+                <label class="field field-wide">
+                    <span>说明信息</span>
+                    <textarea name="fitDescription" rows="3" maxlength="180"></textarea>
+                </label>
+            </form>
         </div>
     </template>
 

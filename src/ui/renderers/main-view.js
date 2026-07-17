@@ -1,6 +1,7 @@
 import { createRideVisualsController } from "../map/ride-visuals-controller.js";
 import { createRouteRenderer } from "./route-renderer.js";
 import { createDashboardRenderer } from "./dashboard-renderer.js";
+import { createExportRenderer } from "./export-renderer.js";
 import { createDeviceRenderer } from "./device-renderer.js";
 import { createLayoutCoordinator } from "./layout-coordinator.js";
 import { createWorkoutRenderer } from "./workout-renderer.js";
@@ -28,7 +29,13 @@ export function createMainView({ store, pipController, actions }) {
         onUpdateRideInput: ride.updateRideInput
     });
     const exportView = createExportView({
-        onImportFit: exportActions.importFit
+        onDownloadSession: exportActions.downloadSession,
+        onDownloadFit: exportActions.downloadFit,
+        onImportFit: exportActions.importFit,
+        onConnectStrava: exportActions.connectStrava,
+        onUploadFit: exportActions.uploadFit,
+        onUpdateExportMetadata: exportActions.updateExportMetadata,
+        getExportMetadata: () => store.getState().exportMetadata
     });
     const activityDetailView = createActivityDetailView({
         onSetUiMode: navigation.setUiMode,
@@ -57,12 +64,18 @@ export function createMainView({ store, pipController, actions }) {
         onAddSegment: route.addSegment,
         onResetRoute: route.resetRoute,
         onImportGpx: route.importGpx,
+        onInvalidateMapRoute: route.invalidatePendingMapRoute,
+        onPlanMapRoute: route.planMapRoute,
         onUpdateRouteSegment: route.updateSegment,
         onRemoveRouteSegment: route.removeSegment
     });
     const dashboardRenderer = createDashboardRenderer({ elements, rideVisuals });
     dashboardRenderer.bindEvents(store);
     bindPipMetricControls();
+    const exportRenderer = createExportRenderer({
+        elements,
+        onUpdateExportMetadata: exportActions.updateExportMetadata
+    });
 
     const deviceRenderer = createDeviceRenderer({
         elements,
@@ -109,8 +122,8 @@ export function createMainView({ store, pipController, actions }) {
         if (initialRender || state.route !== previousState.route || state.routeSegments !== previousState.routeSegments || state.uiMode !== previousState.uiMode) {
             routeRenderer.render(state);
         }
-        if (initialRender || state.liveRide !== previousState.liveRide) {
-            exportView.render(state);
+        if (initialRender || state.exportMetadata !== previousState.exportMetadata || state.liveRide !== previousState.liveRide || state.session !== previousState.session) {
+            exportRenderer.render(state);
         }
         if (initialRender || state.workout !== previousState.workout || state.ble !== previousState.ble) {
             workoutRenderer.render(state);

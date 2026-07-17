@@ -54,6 +54,38 @@ export const suite = {
             }
         },
         {
+            name: "keeps OSM one-way direction and excludes roads prohibited for cycling",
+            run() {
+                const graph = buildRoadGraph({
+                    elements: [
+                        { type: "node", id: 1, lat: 37.0, lon: -122.0 },
+                        { type: "node", id: 2, lat: 37.0, lon: -121.999 },
+                        { type: "node", id: 3, lat: 37.001, lon: -122.0 },
+                        { type: "node", id: 4, lat: 37.001, lon: -121.999 },
+                        { type: "node", id: 5, lat: 37.002, lon: -122.0 },
+                        { type: "node", id: 6, lat: 37.002, lon: -121.999 },
+                        { type: "node", id: 7, lat: 37.003, lon: -122.0 },
+                        { type: "node", id: 8, lat: 37.003, lon: -121.999 },
+                        { type: "node", id: 9, lat: 37.004, lon: -122.0 },
+                        { type: "node", id: 10, lat: 37.004, lon: -121.999 },
+                        { type: "way", id: 10, tags: { highway: "residential", oneway: "yes" }, nodes: [1, 2] },
+                        { type: "way", id: 11, tags: { highway: "residential", oneway: "-1" }, nodes: [3, 4] },
+                        { type: "way", id: 12, tags: { highway: "residential", bicycle: "no" }, nodes: [5, 6] },
+                        { type: "way", id: 13, tags: { highway: "motorway" }, nodes: [7, 8] },
+                        { type: "way", id: 14, tags: { highway: "residential", access: "no", bicycle: "yes" }, nodes: [9, 10] }
+                    ]
+                });
+
+                assertEqual(graph.edges.length, 4);
+                assert(graph.edges.some((edge) => edge.from === 1 && edge.to === 2));
+                assert(graph.edges.some((edge) => edge.from === 4 && edge.to === 3));
+                assert(!graph.edges.some((edge) => edge.from === 2 && edge.to === 1));
+                assert(!graph.edges.some((edge) => edge.wayId === 12));
+                assert(!graph.edges.some((edge) => edge.wayId === 13));
+                assert(graph.edges.some((edge) => edge.wayId === 14));
+            }
+        },
+        {
             name: "builds a labeled fallback grid that can still produce a route",
             run() {
                 const bounds = buildBoundsAroundRoute(

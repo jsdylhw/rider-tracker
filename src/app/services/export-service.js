@@ -11,6 +11,7 @@ import {
     saveActivityFitFile,
     saveRiderSessionActivity
 } from "../../adapters/storage/activity-history-client.js";
+import { downloadBinary, downloadJson } from "../../shared/format.js";
 import { sanitizeExportMetadata } from "../store/initial-state.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
 
@@ -108,6 +109,46 @@ export function createExportService({ store }) {
                 statusText: message
             }));
         }
+    }
+
+    function downloadSession() {
+        const { session } = store.getState();
+        if (!session) return;
+
+        const timestamp = formatSessionTimestamp(session);
+        downloadJson(`ride-simulation-${timestamp}.json`, session);
+        store.setState((state) => ({
+            ...state,
+            statusText: "当前骑行会话已导出为 JSON。"
+        }));
+    }
+
+    async function downloadFit() {
+        const { session, exportMetadata } = store.getState();
+        if (!session) return;
+
+        store.setState((state) => ({ ...state, statusText: "正在生成 FIT 文件..." }));
+        try {
+            const fitBytes = await exportSessionAsFit(session, exportMetadata, {
+                markVirtualActivity: exportMetadata?.markVirtualActivity
+            });
+            const filename = `virtual-ride-${formatSessionTimestamp(session)}.fit`;
+            await saveFitFileForSession({ session, fitBytes, filename });
+            downloadBinary(filename, fitBytes, "application/vnd.ant.fit");
+            store.setState((state) => ({ ...state, statusText: "FIT 文件已导出。" }));
+        } catch (error) {
+            console.error("FIT export failed", error);
+            store.setState((state) => ({
+                ...state,
+                statusText: `FIT 导出失败：${extractErrorMessage(error)}`
+            }));
+        }
+    }
+
+    async function uploadFit() {
+        const { session, exportMetadata } = store.getState();
+        if (!session) return;
+        await uploadActivityFitFromDatabase({ activity: null, session, exportMetadata });
     }
 
     async function importFit(file) {
@@ -360,11 +401,18 @@ export function createExportService({ store }) {
     return {
         updateExportMetadata,
         connectStrava,
+        downloadSession,
+        downloadFit,
         importFit,
+        uploadFit,
         uploadActivityFit,
         archiveFitForSession,
         archiveSessionAsFitActivity
     };
+}
+
+function formatSessionTimestamp(session) {
+    return String(session?.createdAt ?? new Date().toISOString()).replaceAll(":", "-").split(".")[0];
 }
 
 async function saveFitFileForSession({ session, fitBytes, filename }) {

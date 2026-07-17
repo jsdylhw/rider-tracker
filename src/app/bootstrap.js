@@ -57,6 +57,8 @@ const mainView = createMainView({
             addSegment: routeService.addSegment,
             resetRoute: routeService.resetRoute,
             importGpx: routeService.importGpx,
+            invalidatePendingMapRoute: routeService.invalidatePendingMapRoute,
+            planMapRoute: routeService.planMapRoute,
             updateSegment: routeService.updateRouteSegment,
             removeSegment: routeService.removeRouteSegment
         },
@@ -86,8 +88,11 @@ const mainView = createMainView({
             removeCustomTargetStep: workoutService.removeCustomWorkoutTargetStep
         },
         export: {
+            downloadSession: exportService.downloadSession,
+            downloadFit: exportService.downloadFit,
             importFit: exportService.importFit,
             connectStrava: exportService.connectStrava,
+            uploadFit: exportService.uploadFit,
             uploadActivityFit: exportService.uploadActivityFit,
             updateExportMetadata: exportService.updateExportMetadata
         },

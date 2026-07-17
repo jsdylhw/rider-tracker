@@ -1,5 +1,6 @@
 import { formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
+import { buildStreetViewTargetFromRoute } from "../map/street-view-controller.js";
 import { buildDashboardViewModel } from "../../app/view-models/live-ride-view-model.js";
 import { buildTrajectoryOverviewSvg } from "./svg/dashboard-charts.js";
 import { buildImmersiveElevationGradeSvg } from "./svg/route-charts.js";
@@ -32,7 +33,10 @@ export function createDashboardRenderer({
             mapController?.syncRide(route, currentRecord);
         },
         syncStreetView(route, currentRecord) {
-            streetViewControllerRef?.current?.update(route, currentRecord);
+            const target = buildStreetViewTargetFromRoute(route, currentRecord);
+            if (target) {
+                streetViewControllerRef?.current?.update(target);
+            }
         }
     };
 
