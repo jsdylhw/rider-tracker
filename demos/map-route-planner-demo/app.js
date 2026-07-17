@@ -1,3 +1,5 @@
+import { isCurrentRouteRequest, scaleRoutePointDistances } from "./route-planner-core.js";
+
 const ROUTES_ENDPOINT = "https://routes.googleapis.com/directions/v2:computeRoutes";
 const ROADS_API_ENDPOINT = "https://roads.googleapis.com/v1/nearestRoads";
 const SAMPLE_SPACING_METERS = 40;
@@ -57,6 +59,7 @@ const state = {
     simMarker: null,
     riderRoute: null,
     planning: false,
+    routePlanGeneration: 0,
     sim: {
         running: false,
         timer: null,
@@ -129,6 +132,8 @@ async function loadSanFranciscoPreset() {
         return;
     }
 
+    const presetGeneration = invalidateRoutePlan();
+
     try {
         setStatus("正在加载旧金山 GPX 预设...");
         const response = await fetch(SF_PRESET_GPX_URL);
@@ -140,6 +145,7 @@ async function loadSanFranciscoPreset() {
         if (path.length < 2) {
             throw new Error("GPX 点数不足。");
         }
+        if (!isCurrentRoutePlan(presetGeneration)) return;
 
         pauseSimulation();
         clearRoutePreview();
@@ -158,14 +164,20 @@ async function loadSanFranciscoPreset() {
         renderRouteResult();
         setStatus("已加载旧金山网格 GPX（平坡），适合测试 50m 内转向。", false, true);
     } catch (error) {
-        setStatus(`旧金山 GPX 加载失败：${getMessage(error)}`, true);
+        if (isCurrentRoutePlan(presetGeneration)) {
+            setStatus(`旧金山 GPX 加载失败：${getMessage(error)}`, true);
+        }
     } finally {
-        render();
+        if (isCurrentRoutePlan(presetGeneration)) {
+            render();
+        }
     }
 }
 
 function handleMapClick(point) {
     if (!state.map) return;
+
+    invalidateRoutePlan();
 
     if (!state.origin || (state.origin && state.destination)) {
         clearRoutePreview();
@@ -193,6 +205,7 @@ async function planRoute() {
         return;
     }
 
+    const routePlanGeneration = ++state.routePlanGeneration;
     state.planning = true;
     setStatus("正在请求 Google Routes API...");
     render();
@@ -204,6 +217,8 @@ async function planRoute() {
             destination: state.destination,
             fieldMask: "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline,routes.legs"
         });
+        if (!isCurrentRoutePlan(routePlanGeneration)) return;
+
         const decodedPath = decodePolyline(routeResult.encodedPolyline);
         if (decodedPath.length < 2) {
             throw new Error("Routes API 返回的路线点不足。");
@@ -222,10 +237,14 @@ async function planRoute() {
         renderRouteResult();
         setStatus("路线生成完成（demo 暂不请求海拔，按平坡处理）。", false, true);
     } catch (error) {
-        setStatus(`生成路线失败：${getMessage(error)}`, true);
+        if (isCurrentRoutePlan(routePlanGeneration)) {
+            setStatus(`生成路线失败：${getMessage(error)}`, true);
+        }
     } finally {
-        state.planning = false;
-        render();
+        if (isCurrentRoutePlan(routePlanGeneration)) {
+            state.planning = false;
+            render();
+        }
     }
 }
 
@@ -650,12 +669,13 @@ function buildRiderRoute({ routeResult, points, elevationAvailable = true }) {
         });
     }
 
-    smoothGrades(routePoints);
-
     const finalDistanceMeters = routeResult.distanceMeters ?? totalDistanceMeters;
+    const normalizedRoutePoints = scaleRoutePointDistances(routePoints, finalDistanceMeters);
+    smoothGrades(normalizedRoutePoints);
+
     const distanceKm = finalDistanceMeters / 1000;
     const averageGradePercent = finalDistanceMeters > 0
-        ? ((routePoints.at(-1)?.elevationMeters ?? 0) - (routePoints[0]?.elevationMeters ?? 0)) / finalDistanceMeters * 100
+        ? ((normalizedRoutePoints.at(-1)?.elevationMeters ?? 0) - (normalizedRoutePoints[0]?.elevationMeters ?? 0)) / finalDistanceMeters * 100
         : 0;
 
     return {
@@ -668,7 +688,7 @@ function buildRiderRoute({ routeResult, points, elevationAvailable = true }) {
         totalAscentMeters: round(totalAscentMeters, 1),
         averageGradePercent: round(averageGradePercent, 2),
         durationText: routeResult.duration ?? null,
-        points: routePoints,
+        points: normalizedRoutePoints,
         segments: [
             {
                 name: "地图规划路线",
@@ -815,6 +835,7 @@ function fitSelectedBounds() {
 }
 
 function resetSelection() {
+    invalidateRoutePlan();
     pauseSimulation();
     state.origin = null;
     state.destination = null;
@@ -826,6 +847,16 @@ function resetSelection() {
     renderEmptyChart();
     renderSimulation();
     render();
+}
+
+function invalidateRoutePlan() {
+    state.routePlanGeneration += 1;
+    state.planning = false;
+    return state.routePlanGeneration;
+}
+
+function isCurrentRoutePlan(routePlanGeneration) {
+    return isCurrentRouteRequest(routePlanGeneration, state.routePlanGeneration);
 }
 
 function clearRoutePreview() {
