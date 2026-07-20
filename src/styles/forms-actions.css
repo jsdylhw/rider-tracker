@@ -651,3 +651,7 @@ tbody tr:last-child td {
     justify-content: flex-end;
     margin-top: 20px;
 }
+
+#streetViewContainer.streetview-debug-empty {
+    background: #000000;
+}

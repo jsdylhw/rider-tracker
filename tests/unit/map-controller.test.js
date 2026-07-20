@@ -1,4 +1,9 @@
-import { buildRouteGeometryKey, collectRouteMapLatLngs, shouldFitPlannerSelection } from "../../src/ui/map/map-controller.js";
+import {
+    buildRouteGeometryKey,
+    collectRouteMapLatLngs,
+    createMapController,
+    shouldFitPlannerSelection
+} from "../../src/ui/map/map-controller.js";
 import { assert, assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
@@ -58,6 +63,124 @@ export const suite = {
                 assertEqual(points.length, 3);
                 assertEqual(points[1][0], 31.2312);
                 assertEqual(points[1][1], 121.4748);
+            }
+        },
+        {
+            name: "falls back to sampled route points when map geometry has invalid coordinates",
+            run() {
+                const route = {
+                    mapGeometry: [
+                        { latitude: null, longitude: null },
+                        { latitude: undefined, longitude: undefined }
+                    ],
+                    points: [
+                        { latitude: 31.2304, longitude: 121.4737 },
+                        { latitude: 31.2312, longitude: 121.4748 }
+                    ]
+                };
+
+                const points = collectRouteMapLatLngs(route);
+                assertEqual(points.length, 2);
+                assertEqual(points[0][0], 31.2304);
+                assertEqual(points[1][1], 121.4748);
+            }
+        },
+        {
+            name: "keeps a GPX route visible after its preview map becomes measurable",
+            run() {
+                const originalWindow = globalThis.window;
+                const originalAnimationFrame = globalThis.requestAnimationFrame;
+                const polylineCalls = [];
+                const circleMarkerCalls = [];
+                let fitBoundsCount = 0;
+                let lastBounds = null;
+                const map = {
+                    attributionControl: { removeAttribution() {}, addAttribution() {} },
+                    on() {},
+                    setView() {},
+                    invalidateSize() {},
+                    fitBounds(bounds) { fitBoundsCount += 1; lastBounds = bounds; },
+                    panTo() {}
+                };
+                const makeLayer = (points, options) => ({
+                    points,
+                    options,
+                    addTo() { return this; },
+                    bindTooltip() {},
+                    setLatLng() { return this; },
+                    setLatLngs(points) { this.points = points; return this; },
+                    setStyle() { return this; },
+                    bringToFront() {
+                        this.bringToFrontCount = (this.bringToFrontCount ?? 0) + 1;
+                        return this;
+                    },
+                    closeTooltip() {},
+                    openTooltip() {},
+                    remove() {}
+                });
+                globalThis.window = {
+                    L: {
+                        map: () => map,
+                        tileLayer: () => makeLayer([], {}),
+                        polyline(points, options) {
+                            const layer = makeLayer(points, options);
+                            polylineCalls.push(layer);
+                            return layer;
+                        },
+                        circleMarker(point, options) {
+                            const layer = makeLayer([point], options);
+                            circleMarkerCalls.push(layer);
+                            return layer;
+                        },
+                        latLngBounds: (points) => ({ points })
+                    }
+                };
+                globalThis.requestAnimationFrame = (callback) => callback();
+
+                try {
+                    const controller = createMapController({ previewElement: {}, dashboardElement: {} });
+                    controller.syncRoute({
+                        source: "gpx",
+                        points: [
+                            { latitude: 31.2, longitude: 121.4 },
+                            { latitude: 31.21, longitude: 121.41 },
+                            { latitude: 31.22, longitude: 121.42 }
+                        ]
+                    });
+                    const routeLayer = polylineCalls.find((layer) => layer.options.color === "#0ea5e9");
+
+                    assert(routeLayer, "GPX should use the persistent route polyline");
+                    assertEqual(routeLayer.options.pane, undefined);
+                    assertEqual(routeLayer.points[2][0], 31.22);
+                    assertEqual(routeLayer.points[2][1], 121.42);
+
+                    controller.invalidatePreviewSize();
+                    assert(fitBoundsCount >= 3, "preview refresh should refit the GPX route after it becomes visible");
+
+                    const dashboardOnlyRoute = {
+                        source: "gpx",
+                        points: [
+                            { latitude: 35.1, longitude: 139.1 },
+                            { latitude: 35.2, longitude: 139.2 }
+                        ]
+                    };
+                    controller.syncRide(dashboardOnlyRoute, {
+                        positionLat: 35.15,
+                        positionLong: 139.15,
+                        distanceKm: 0.5
+                    });
+                    controller.invalidateDashboardSize();
+
+                    assert(polylineCalls.some((layer) => layer.points[0]?.[0] === 35.1),
+                        "dashboard-only route updates should populate the dashboard route layer");
+                    assertEqual(lastBounds.points[0][0], 35.1);
+                    assert(circleMarkerCalls.some((layer) => (
+                        layer.options.fillColor === "#3742fa" && layer.bringToFrontCount > 0
+                    )), "current-position marker should remain above the route line");
+                } finally {
+                    globalThis.window = originalWindow;
+                    globalThis.requestAnimationFrame = originalAnimationFrame;
+                }
             }
         }
     ]

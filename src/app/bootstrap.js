@@ -11,6 +11,7 @@ import { createRouteService } from "./services/route-service.js";
 import { createRideService } from "./services/ride-service.js";
 import { createDeviceService } from "./services/device-service.js";
 import { createExportService } from "./services/export-service.js";
+import { createGoogleMapsConfigService } from "./services/google-maps-config-service.js";
 import { createUiService } from "./services/ui-service.js";
 import { createWorkoutService } from "./services/workout-service.js";
 
@@ -29,7 +30,8 @@ if (inferredInitialUiMode !== store.getState().uiMode) {
 
 // 2. 创建业务服务 (Services)
 const userService = createUserService({ store });
-const routeService = createRouteService({ store });
+const googleMapsConfig = createGoogleMapsConfigService();
+const routeService = createRouteService({ store, googleMapsConfig });
 const deviceService = createDeviceService({ store });
 const exportService = createExportService({ store });
 const rideService = createRideService({ store, deviceService, exportService, routeService });
@@ -53,12 +55,15 @@ const mainView = createMainView({
             enterLiveMode: uiService.enterLiveMode
         },
         user: { updateSettings: userService.updateSettings },
+        googleMaps: googleMapsConfig,
         route: {
             addSegment: routeService.addSegment,
             resetRoute: routeService.resetRoute,
             importGpx: routeService.importGpx,
             invalidatePendingMapRoute: routeService.invalidatePendingMapRoute,
             planMapRoute: routeService.planMapRoute,
+            queueExplorationTurn: routeService.queueExplorationTurn,
+            requestCurrentRouteElevation: routeService.requestCurrentRouteElevation,
             updateSegment: routeService.updateRouteSegment,
             removeSegment: routeService.removeRouteSegment
         },

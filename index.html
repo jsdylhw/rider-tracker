@@ -148,9 +148,6 @@
                                             <strong id="mapRouteDestinationText">未选择</strong>
                                         </div>
                                     </div>
-                                    <div id="routeMapShell" class="chart-shell route-map-shell">
-                                        <div id="routeMapPreview" class="map-canvas"></div>
-                                    </div>
                                     <div class="map-route-settings">
                                         <label class="field">
                                             <span>地图源</span>
@@ -159,12 +156,12 @@
                                                 <option value="amap">高德底图</option>
                                             </select>
                                         </label>
-                                        <label class="field field-wide">
-                                            <span>Google Maps API Key（可选，用于街景与海拔/坡度）</span>
-                                            <input id="mapRouteGoogleApiKeyInput" type="password" autocomplete="off" placeholder="AIza...">
-                                        </label>
                                     </div>
                                     <div id="mapRoutePlanStatus" class="map-route-plan-status" hidden aria-live="polite"></div>
+                                </div>
+
+                                <div id="routeMapShell" class="chart-shell route-map-shell" hidden>
+                                    <div id="routeMapPreview" class="map-canvas"></div>
                                 </div>
 
                                 <div id="setupElevationChartShell" class="chart-shell" style="margin-top: 0;">
@@ -178,7 +175,6 @@
                             <div id="routeSummary" class="route-summary">路线概览待生成。</div>
                         </div>
                     </div>
-                    <div id="exportCardContainer"></div>
                     <div id="postRideReportCard" class="card" hidden>
                         <div class="section-title-row">
                             <div>
@@ -342,66 +338,6 @@
         </div>
     </template>
 
-    <template id="export-card-template">
-        <div id="sharedExportCard" class="card">
-            <div class="section-title-row">
-                <div><h2>会话导出</h2></div>
-            </div>
-            <div class="controls">
-                <button id="downloadSessionBtn" class="btn power-btn" disabled>导出 JSON</button>
-                <button id="downloadFitBtn" class="btn secondary" disabled>导出 FIT</button>
-                <input id="importFitInput" type="file" accept=".fit,application/vnd.ant.fit" hidden>
-                <button id="importFitBtn" class="btn secondary" type="button">导入 FIT</button>
-                <button id="connectStravaBtn" class="btn secondary" disabled>连接 Strava</button>
-                <button id="uploadFitBtn" class="btn primary" disabled>上传 FIT</button>
-            </div>
-            <form id="fitExportForm" class="form-grid">
-                <label class="field">
-                    <span>活动标题</span>
-                    <input name="activityName" type="text" maxlength="48">
-                </label>
-                <label class="field">
-                    <span>FIT 类型</span>
-                    <label class="export-toggle">
-                        <input name="markVirtualActivity" type="checkbox" checked>
-                        <span class="export-toggle-track" aria-hidden="true"></span>
-                        <span class="export-toggle-label">
-                            <span class="export-toggle-title">
-                                <span class="when-checked">模拟骑行</span>
-                                <span class="when-unchecked">普通骑行</span>
-                            </span>
-                            <span class="export-toggle-subtitle">
-                                <span class="when-checked">写入 virtualActivity</span>
-                                <span class="when-unchecked">不写入 virtualActivity</span>
-                            </span>
-                        </span>
-                    </label>
-                </label>
-                <label class="field">
-                    <span>仓库地址</span>
-                    <input name="repositoryUrl" type="url">
-                </label>
-                <details class="advanced-settings field-wide">
-                    <summary>高级设置</summary>
-                    <div class="advanced-settings-grid">
-                        <label class="field">
-                            <span>Strava Server</span>
-                            <input name="stravaServerUrl" type="url" placeholder="http://localhost:8787">
-                        </label>
-                        <label class="field">
-                            <span>Strava User ID</span>
-                            <input name="stravaUserId" type="text" maxlength="64" placeholder="default">
-                        </label>
-                    </div>
-                </details>
-                <label class="field field-wide">
-                    <span>说明信息</span>
-                    <textarea name="fitDescription" rows="3" maxlength="180"></textarea>
-                </label>
-            </form>
-        </div>
-    </template>
-
     <template id="upload-confirm-template">
         <div class="modal-overlay" id="uploadConfirmOverlay">
             <div class="modal-card">
@@ -435,6 +371,22 @@
         </div>
     </template>
 
+    <div class="modal-overlay" id="googleMapsServiceOverlay" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="googleMapsServiceTitle">
+            <h3 id="googleMapsServiceTitle">使用 Google Maps 服务</h3>
+            <p id="googleMapsServiceDescription" class="muted">请输入本次浏览器会话使用的 Google Maps API Key。</p>
+            <label class="field">
+                <span>Google Maps API Key</span>
+                <input id="googleMapsServiceApiKeyInput" type="password" autocomplete="off" placeholder="AIza...">
+            </label>
+            <div id="googleMapsServiceStatus" class="route-summary" aria-live="polite"></div>
+            <div class="modal-actions">
+                <button id="confirmGoogleMapsServiceBtn" class="btn power-btn" type="button">继续</button>
+                <button id="cancelGoogleMapsServiceBtn" class="btn secondary" type="button">取消</button>
+            </div>
+        </div>
+    </div>
+
     <section id="rideDashboard" class="ride-dashboard" hidden>
         <div class="ride-dashboard-inner">
             <div class="ride-dashboard-header">
@@ -443,9 +395,9 @@
                     <h2 id="rideDashboardTitle">实时骑行界面</h2>
                 </div>
                 <div class="inline-actions">
+                    <button id="requestRouteElevationBtn" class="btn secondary" hidden>请求路线海拔</button>
+                    <button id="loadStreetViewBtn" class="btn secondary" hidden>加载街景</button>
                     <button id="customizeMetricsBtn" class="btn secondary">自定义面板</button>
-                    <input type="password" id="streetViewApiKey" placeholder="Google Maps API Key" class="streetview-key-input">
-                    <button id="loadStreetViewBtn" class="btn secondary">加载街景</button>
                     <button id="immersiveStreetViewBtn" class="btn secondary" hidden>进入沉浸街景</button>
                     <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
                     <details class="pip-config-popover">
@@ -623,6 +575,7 @@
                     <div class="section-title-row">
                         <div>
                             <h2>实时位置与街景主视图</h2>
+                            <p id="rideRouteContext" class="ride-route-context">当前路线：-- · 当前位置：--</p>
                         </div>
                     </div>
                     <div class="chart-shell ride-map-large" style="position: relative;">
@@ -633,6 +586,20 @@
                         <div id="streetViewContainer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; display: none;">
                             <div id="svPano1" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; transition: opacity 0.8s ease-in-out; opacity: 1; z-index: 2;"></div>
                             <div id="svPano2" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; transition: opacity 0.8s ease-in-out; opacity: 0; z-index: 1;"></div>
+                        </div>
+
+                        <div id="explorationMiniMapInfo" class="exploration-mini-map-info" hidden>
+                            <strong id="explorationMiniMapRoute">OSM 路网</strong>
+                            <span id="explorationMiniMapPosition">当前位置：--</span>
+                        </div>
+
+                        <div id="explorationTurnControls" class="exploration-turn-controls" hidden>
+                            <span id="explorationTurnStatus">默认直行</span>
+                            <div class="exploration-turn-actions" role="group" aria-label="下一路口方向">
+                                <button id="explorationTurnLeftBtn" class="btn ghost" type="button">左拐</button>
+                                <button id="explorationTurnStraightBtn" class="btn ghost" type="button">直行</button>
+                                <button id="explorationTurnRightBtn" class="btn ghost" type="button">右拐</button>
+                            </div>
                         </div>
 
                         <div id="streetViewHud" class="streetview-hud">

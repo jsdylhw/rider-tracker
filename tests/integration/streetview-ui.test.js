@@ -48,12 +48,17 @@ function createElements() {
         rideDashboard: { classList: createFakeClassList(), hidden: false },
         customizeMetricsBtn: createFakeElement(),
         metricsCustomizer: createFakeElement({ hidden: true, querySelectorAll: () => [] }),
-        loadStreetViewBtn: createFakeElement(),
-        streetViewApiKey: createFakeElement(),
         streetViewContainer: createFakeElement({ style: {} }),
         svPano1: createFakeElement(),
         svPano2: createFakeElement(),
         immersiveStreetViewBtn: createFakeElement({ hidden: true }),
+        loadStreetViewBtn: createFakeElement({ hidden: true }),
+        requestRouteElevationBtn: createFakeElement({ hidden: true }),
+        explorationTurnControls: createFakeElement({ hidden: true }),
+        explorationTurnStatus: createFakeElement(),
+        explorationTurnLeftBtn: createFakeElement(),
+        explorationTurnStraightBtn: createFakeElement(),
+        explorationTurnRightBtn: createFakeElement(),
         immersiveBackBtn: createFakeElement(),
         immersiveUiToggleBtn: createFakeElement(),
         stopRideDashboardBtn: createFakeElement(),
@@ -70,31 +75,52 @@ function createElements() {
     };
 }
 
+function createConfiguredStreetViewVisuals() {
+    let loaded = false;
+    return {
+        hasStreetView: () => loaded,
+        getGoogleMapsConfig: () => ({ apiKey: "test-key" }),
+        async enableConfiguredStreetView() {
+            loaded = true;
+            return { enabled: true };
+        },
+        syncMap() {},
+        syncStreetView() {}
+    };
+}
+
+function waitForUiAction() {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 export const suite = {
     name: "streetview-ui",
     tests: [
         {
-            name: "API key 为空时点击加载街景会提示并中断",
+            name: "未配置 Google Key 时街景仅等待用户点击",
             async run() {
                 const elements = createElements();
-                elements.streetViewApiKey.value = "";
                 const store = createStore(createBaseState());
-                let alertMessage = "";
-                const prevAlert = globalThis.alert;
-                globalThis.alert = (msg) => { alertMessage = msg; };
+                let loadCount = 0;
 
                 const renderer = createDashboardRenderer({
                     elements,
-                    mapController: { syncRide() {} },
-                    streetViewControllerRef: { current: null },
-                    onEnableStreetView: async () => {}
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        getGoogleMapsConfig: () => ({ apiKey: "" }),
+                        async enableConfiguredStreetView() { loadCount += 1; },
+                        syncMap() {},
+                        syncStreetView() {}
+                    }
                 });
 
                 renderer.bindEvents(store);
-                elements.loadStreetViewBtn.dispatch("click");
+                renderer.render(store.getState());
+                await Promise.resolve();
 
-                assertEqual(alertMessage, "请输入 Google Maps API Key");
-                globalThis.alert = prevAlert;
+                assertEqual(loadCount, 0);
+                assertEqual(elements.immersiveStreetViewBtn.hidden, true);
+                assertEqual(elements.loadStreetViewBtn.hidden, true);
             }
         },
         {
@@ -147,7 +173,7 @@ export const suite = {
             }
         },
         {
-            name: "沉浸街景只同步街景，不刷新隐藏地图",
+            name: "沉浸街景低频同步左下角路线小地图",
             run() {
                 const elements = createElements();
                 const store = createStore(createBaseState());
@@ -171,35 +197,162 @@ export const suite = {
 
                 elements.immersiveStreetViewBtn.dispatch("click");
 
-                assertEqual(mapSyncCount, mapSyncCountBeforeImmersive);
+                assert(mapSyncCount > mapSyncCountBeforeImmersive,
+                    "immersive mode should refresh the visible route mini map");
                 assert(streetViewSyncCount > streetViewSyncCountBeforeImmersive,
                     "immersive mode should continue to update Street View");
             }
         },
         {
-            name: "街景调试模式加载街景后立即显示沉浸入口",
+            name: "点击加载街景后初始化街景并显示沉浸入口",
             async run() {
                 const elements = createElements();
                 const state = createBaseState();
                 const store = createStore(state);
-                const streetViewRef = { current: null };
                 const renderer = createDashboardRenderer({
                     elements,
-                    mapController: { syncRide() {} },
-                    streetViewControllerRef: streetViewRef,
-                    onEnableStreetView: async () => {
-                        streetViewRef.current = { update() {}, destroy() {} };
-                    },
+                    rideVisuals: createConfiguredStreetViewVisuals(),
+                    requestGoogleMapsApiKey: async () => "test-key",
                     streetViewDebugEnabled: true
                 });
 
-                elements.streetViewApiKey.value = "test-key";
                 renderer.bindEvents(store);
+                renderer.render(store.getState());
+                assertEqual(elements.loadStreetViewBtn.hidden, false);
                 elements.loadStreetViewBtn.dispatch("click");
-                await Promise.resolve();
+                await waitForUiAction();
 
                 assertEqual(elements.immersiveStreetViewBtn.hidden, false);
                 assertEqual(elements.immersiveStreetViewBtn.textContent, "进入沉浸街景");
+            }
+        },
+        {
+            name: "街景调试模式会将无效 Key 的加载失败呈现为黑屏预览",
+            async run() {
+                const elements = createElements();
+                const store = createStore(createBaseState());
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        getGoogleMapsConfig: () => ({ apiKey: "aa" }),
+                        async enableConfiguredStreetView() {
+                            throw new Error("API Key 验证失败");
+                        },
+                        syncMap() {},
+                        syncStreetView() {}
+                    },
+                    requestGoogleMapsApiKey: async () => "aa",
+                    streetViewDebugEnabled: true
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                elements.loadStreetViewBtn.dispatch("click");
+                await waitForUiAction();
+
+                assertEqual(elements.streetViewContainer.style.display, "block");
+                assertEqual(elements.streetViewContainer.classList.contains("streetview-debug-empty"), true);
+                assertEqual(elements.svPano1.style.display, "none");
+                assertEqual(elements.rideDashboard.classList.contains("immersive-street-view"), true);
+                assertEqual(elements.immersiveStreetViewBtn.hidden, false);
+            }
+        },
+        {
+            name: "街景与海拔请求都从骑行界面按需触发",
+            async run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.liveRide.isActive = true;
+                const store = createStore(state);
+                let requestedKeyFor = "";
+                let elevationRequests = 0;
+                const visuals = createConfiguredStreetViewVisuals();
+                visuals.getGoogleMapsConfig = () => ({ apiKey: "" });
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: visuals,
+                    requestGoogleMapsApiKey: async ({ featureLabel }) => {
+                        requestedKeyFor = featureLabel;
+                        return "test-key";
+                    },
+                    onRequestRouteElevation: async () => { elevationRequests += 1; }
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                assertEqual(elements.loadStreetViewBtn.hidden, false);
+                assertEqual(elements.requestRouteElevationBtn.hidden, false);
+                assertEqual(elements.requestRouteElevationBtn.disabled, true);
+
+                state.liveRide.isActive = false;
+                store.setState(() => state);
+                renderer.render(store.getState());
+                elements.requestRouteElevationBtn.dispatch("click");
+                await waitForUiAction();
+
+                assertEqual(elevationRequests, 1);
+                assertEqual(requestedKeyFor, "请求路线海拔");
+            }
+        },
+        {
+            name: "探索骑行显示下一路口方向并把按钮输入交给路线服务",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.liveRide.isActive = true;
+                state.route = {
+                    ...state.route,
+                    source: "osm-exploration",
+                    exploration: { pendingIntent: "right" }
+                };
+                const store = createStore(state);
+                const intents = [];
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        syncMap() {},
+                        syncStreetView() {}
+                    },
+                    onQueueExplorationTurn: (intent) => intents.push(intent)
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                elements.explorationTurnLeftBtn.dispatch("click");
+
+                assertEqual(elements.explorationTurnControls.hidden, false);
+                assertEqual(elements.explorationTurnStatus.textContent, "下一路口：右拐");
+                assertEqual(elements.explorationTurnRightBtn.attributes["aria-pressed"], "true");
+                assertEqual(intents[0], "left");
+            }
+        },
+        {
+            name: "打开骑行页面后会刷新隐藏期间创建的路线地图",
+            async run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.liveRide.dashboardOpen = false;
+                let dashboardMapRefreshCount = 0;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        syncMap() {},
+                        syncStreetView() {},
+                        invalidateDashboardSize() { dashboardMapRefreshCount += 1; }
+                    }
+                });
+
+                renderer.render(state);
+                renderer.render({
+                    ...state,
+                    liveRide: { ...state.liveRide, dashboardOpen: true }
+                });
+                await Promise.resolve();
+
+                assertEqual(dashboardMapRefreshCount, 1);
             }
         },
         {
@@ -229,20 +382,15 @@ export const suite = {
                 state.liveRide.isActive = true;
                 const store = createStore(state);
 
-                const streetViewRef = { current: null };
                 const renderer = createDashboardRenderer({
                     elements,
-                    mapController: { syncRide() {} },
-                    streetViewControllerRef: streetViewRef,
-                    onEnableStreetView: async () => {
-                        streetViewRef.current = { update() {}, destroy() {} };
-                    }
+                    rideVisuals: createConfiguredStreetViewVisuals()
                 });
 
-                elements.streetViewApiKey.value = "test-key";
                 renderer.bindEvents(store);
+                renderer.render(store.getState());
                 elements.loadStreetViewBtn.dispatch("click");
-                await Promise.resolve();
+                await waitForUiAction();
                 renderer.render(store.getState());
                 elements.immersiveStreetViewBtn.dispatch("click");
 

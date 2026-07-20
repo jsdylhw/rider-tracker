@@ -15,12 +15,21 @@ import { formatNumber } from "../../shared/format.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
 import { defaultRouteSegments } from "../store/initial-state.js";
 
-export function createRouteService({ store }) {
+export function createRouteService({
+    store,
+    googleMapsConfig = null,
+    fetchRoadNetwork = fetchOverpassRoadNetwork,
+    loadGoogleMaps = loadGoogleMapsApi,
+    enrichElevation = enrichTrackPointsWithGoogleElevation
+}) {
+    const EXPLORATION_END_TOLERANCE_METERS = 1;
     let latestMapRouteRequestId = 0;
+    let latestElevationRequestId = 0;
     let activeExploration = null;
 
     function invalidatePendingMapRoute() {
         latestMapRouteRequestId += 1;
+        latestElevationRequestId += 1;
         activeExploration = null;
         return latestMapRouteRequestId;
     }
@@ -96,7 +105,7 @@ export function createRouteService({ store }) {
         }
     }
 
-    async function planMapRoute({ start, destination, googleApiKey }) {
+    async function planMapRoute({ start, destination }) {
         let requestId = null;
         try {
             validateMapRoutePoint(start, "起点");
@@ -114,7 +123,7 @@ export function createRouteService({ store }) {
             let overpassData;
 
             try {
-                overpassData = await fetchOverpassRoadNetwork(bounds);
+                overpassData = await fetchRoadNetwork(bounds);
             } catch (error) {
                 networkSource = "synthetic";
                 networkFailure = summarizeOverpassFailure(error);
@@ -126,30 +135,16 @@ export function createRouteService({ store }) {
             const planned = planOsmRoute({ graph, start, destination });
             let points = planned.points;
             let hasElevationData = false;
-            let elevationSummary = null;
-
-            if (googleApiKey) {
-                store.setState((state) => ({
-                    ...state,
-                    statusText: `OSM 路线已生成，正在请求 Google 海拔：${points.length} 个采样点...`
-                }));
-
-                await loadGoogleMapsApi(googleApiKey);
-                if (!isCurrentMapRouteRequest(requestId)) return;
-                const elevationResult = await enrichTrackPointsWithGoogleElevation(points);
-                if (!isCurrentMapRouteRequest(requestId)) return;
-                points = elevationResult.points;
-                hasElevationData = elevationResult.hasElevationData;
-                elevationSummary = elevationResult.summary;
-            }
+            const requestElevation = false;
 
             const exploration = {
                 graph,
                 rawNodes: planned.rawNodes,
-                googleApiKey,
+                requestElevation,
                 networkSource,
                 networkFailure,
-                extensionCount: 0
+                extensionCount: 0,
+                pendingIntent: null
             };
             const route = buildExplorationRoute({
                 planned,
@@ -158,6 +153,7 @@ export function createRouteService({ store }) {
                 networkSource,
                 networkFailure,
                 extensionCount: exploration.extensionCount,
+                pendingIntent: exploration.pendingIntent,
                 start,
                 destination
             });
@@ -169,8 +165,8 @@ export function createRouteService({ store }) {
                 route,
                 routeSegments: route.segments,
                 statusText: buildMapRouteStatus(route, {
-                    hasGoogleElevation: Boolean(googleApiKey),
-                    elevationSummary,
+                    hasGoogleElevation: false,
+                    elevationSummary: null,
                     networkSource,
                     networkFailure
                 })
@@ -186,53 +182,79 @@ export function createRouteService({ store }) {
         }
     }
 
-    function ensureExplorationRouteAhead({ distanceMeters, minAheadMeters = 250 } = {}) {
+    function ensureExplorationRouteAhead({ distanceMeters } = {}) {
         const exploration = activeExploration;
         const state = store.getState();
         const route = state.route;
         if (!exploration || route?.source !== "osm-exploration" || !Number.isFinite(distanceMeters)) {
             return;
         }
-        if (route.totalDistanceMeters - distanceMeters > minAheadMeters) {
+        if (distanceMeters < route.totalDistanceMeters - EXPLORATION_END_TOLERANCE_METERS) {
             return;
         }
 
         let extension;
+        const intent = exploration.pendingIntent ?? "straight";
         try {
             extension = extendOsmRoute({
                 graph: exploration.graph,
                 rawNodes: exploration.rawNodes,
-                intersectionCount: 2
+                intent,
+                intersectionCount: 1
             });
         } catch (error) {
             console.warn("OSM 探索路线无法继续延伸", error);
-            store.setState((currentState) => ({
-                ...currentState,
-                statusText: `探索路线无法继续延伸：${extractErrorMessage(error)}`
-            }));
+            const statusText = intent === "straight"
+                ? `探索路线无法继续延伸：${extractErrorMessage(error)}`
+                : `${getExplorationIntentLabel(intent)}不可用，已恢复默认直行。`;
+            exploration.pendingIntent = null;
+            updateExplorationRouteState({ pendingIntent: null, statusText });
             return;
         }
 
         exploration.rawNodes = extension.rawNodes;
         exploration.extensionCount += 1;
+        exploration.pendingIntent = null;
         const extendedRoute = buildExplorationRoute({
             planned: extension,
             points: extension.points,
             hasElevationData: false,
             networkSource: exploration.networkSource,
             networkFailure: exploration.networkFailure,
-            extensionCount: exploration.extensionCount
+            extensionCount: exploration.extensionCount,
+            pendingIntent: exploration.pendingIntent
         });
-        applyExplorationRoute(extendedRoute, `探索路线已自动延伸，前方已缓冲 ${Math.round(extendedRoute.totalDistanceMeters - distanceMeters)} m。`);
+        const intentLabel = getExplorationIntentLabel(intent);
+        applyExplorationRoute(extendedRoute, `${intentLabel}已执行，探索路线已延伸至下一个路口。`);
 
-        if (exploration.googleApiKey) {
+        if (exploration.requestElevation) {
             void enrichExplorationExtension({ exploration, extension });
         }
     }
 
+    function queueExplorationTurn(intent) {
+        if (!["left", "straight", "right"].includes(intent)) {
+            return;
+        }
+
+        const exploration = activeExploration;
+        const state = store.getState();
+        if (!exploration || state.route?.source !== "osm-exploration") {
+            return;
+        }
+
+        exploration.pendingIntent = intent;
+        updateExplorationRouteState({
+            pendingIntent: intent,
+            statusText: `${getExplorationIntentLabel(intent)}已输入，将在当前探索段终点执行。`
+        });
+    }
+
     async function enrichExplorationExtension({ exploration, extension }) {
         try {
-            const elevationResult = await enrichTrackPointsWithGoogleElevation(extension.points);
+            const googleApiKey = googleMapsConfig?.getApiKey() ?? "";
+            if (!googleApiKey) return;
+            const elevationResult = await enrichElevation(extension.points);
             if (activeExploration !== exploration || exploration.rawNodes !== extension.rawNodes) {
                 return;
             }
@@ -242,7 +264,8 @@ export function createRouteService({ store }) {
                 hasElevationData: elevationResult.hasElevationData,
                 networkSource: exploration.networkSource,
                 networkFailure: exploration.networkFailure,
-                extensionCount: exploration.extensionCount
+                extensionCount: exploration.extensionCount,
+                pendingIntent: exploration.pendingIntent
             });
             applyExplorationRoute(
                 elevatedRoute,
@@ -250,6 +273,64 @@ export function createRouteService({ store }) {
             );
         } catch (error) {
             console.warn("探索路线海拔增量请求失败", error);
+        }
+    }
+
+    async function requestCurrentRouteElevation() {
+        const initialState = store.getState();
+        const route = initialState.route;
+        if (initialState.liveRide.isActive) {
+            throw new Error("骑行开始后不能替换路线海拔，请先结束当前骑行。");
+        }
+        if (!hasCoordinateRoute(route)) {
+            throw new Error("当前路线没有坐标，无法请求 Google 海拔。");
+        }
+        if (route.hasElevationData) {
+            return { updated: false, reason: "already-loaded" };
+        }
+
+        const apiKey = googleMapsConfig?.getApiKey?.() ?? "";
+        if (!apiKey) {
+            throw new Error("请先填写 Google Maps API Key。");
+        }
+
+        const requestId = ++latestElevationRequestId;
+        store.setState((state) => ({
+            ...state,
+            statusText: `正在请求 Google 海拔：${route.points.length} 个采样点...`
+        }));
+
+        try {
+            await loadGoogleMaps(apiKey);
+            googleMapsConfig?.lockApiKey?.(apiKey);
+            if (requestId !== latestElevationRequestId || store.getState().route !== route) {
+                return { updated: false, reason: "stale" };
+            }
+
+            const elevationResult = await enrichElevation(route.points);
+            if (requestId !== latestElevationRequestId || store.getState().route !== route) {
+                return { updated: false, reason: "stale" };
+            }
+
+            const elevatedRoute = rebuildRouteWithElevation(route, elevationResult.points, elevationResult.hasElevationData);
+            if (route.source === "osm-exploration" && activeExploration) {
+                activeExploration.requestElevation = true;
+            }
+            store.setState((state) => ({
+                ...state,
+                route: elevatedRoute,
+                routeSegments: elevatedRoute.segments,
+                statusText: buildElevationUpdateStatus(elevationResult.summary)
+            }));
+            return { updated: true, summary: elevationResult.summary };
+        } catch (error) {
+            if (requestId === latestElevationRequestId && store.getState().route === route) {
+                store.setState((state) => ({
+                    ...state,
+                    statusText: `Google 海拔请求失败：${extractErrorMessage(error)}`
+                }));
+            }
+            throw error;
         }
     }
 
@@ -276,6 +357,35 @@ export function createRouteService({ store }) {
         });
     }
 
+    function updateExplorationRouteState({ pendingIntent, statusText }) {
+        store.setState((state) => {
+            if (state.route?.source !== "osm-exploration") {
+                return state;
+            }
+            const route = {
+                ...state.route,
+                exploration: {
+                    ...state.route.exploration,
+                    pendingIntent
+                }
+            };
+            const session = state.liveRide.session;
+            const shouldUpdateLiveSession = state.liveRide.isActive && session?.route?.source === "osm-exploration";
+            return {
+                ...state,
+                route,
+                liveRide: shouldUpdateLiveSession ? {
+                    ...state.liveRide,
+                    session: {
+                        ...session,
+                        route
+                    }
+                } : state.liveRide,
+                statusText
+            };
+        });
+    }
+
     return {
         addSegment,
         resetRoute,
@@ -284,8 +394,34 @@ export function createRouteService({ store }) {
         importGpx,
         invalidatePendingMapRoute,
         planMapRoute,
+        requestCurrentRouteElevation,
+        queueExplorationTurn,
         ensureExplorationRouteAhead
     };
+}
+
+function rebuildRouteWithElevation(route, points, hasElevationData) {
+    const rebuilt = buildRouteFromTrackPoints({
+        source: route.source,
+        name: route.name,
+        points,
+        segments: buildSummarySegmentsFromTrackPoints(points, {
+            hasElevationData,
+            namePrefix: route.source === "osm-exploration" ? "OSM 探索" : "路线"
+        }),
+        hasElevationData
+    });
+    return { ...route, ...rebuilt };
+}
+
+function hasCoordinateRoute(route) {
+    return Array.isArray(route?.points)
+        && route.points.some((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+}
+
+function buildElevationUpdateStatus(summary) {
+    const quotaText = summary?.skippedByQuota ? "，部分采样点因 quota cap 未请求" : "";
+    return `路线海拔已更新：Google 请求 ${summary?.requests ?? 0} 次 / ${summary?.requestedPoints ?? 0} 点，缓存命中 ${summary?.cacheHits ?? 0}${quotaText}。`;
 }
 
 function buildExplorationRoute({
@@ -295,6 +431,7 @@ function buildExplorationRoute({
     networkSource,
     networkFailure,
     extensionCount,
+    pendingIntent = null,
     start = null,
     destination = null
 }) {
@@ -319,10 +456,17 @@ function buildExplorationRoute({
         active: true,
         extensionCount,
         navigationMode: "auto-straight",
+        pendingIntent,
         start,
         initialTarget: destination
     };
     return route;
+}
+
+function getExplorationIntentLabel(intent) {
+    if (intent === "left") return "左拐";
+    if (intent === "right") return "右拐";
+    return "直行";
 }
 
 function validateMapRoutePoint(point, label) {
@@ -338,7 +482,7 @@ function buildMapRouteStatus(route, { hasGoogleElevation, elevationSummary, netw
         : `已生成 OSM 街景探索起步路线：${distanceText} km。`;
 
     if (!hasGoogleElevation) {
-        return `${routePrefix}未填写 Google API Key，坡度按 0 处理。`;
+        return `${routePrefix}当前没有海拔，可在骑行界面点“请求路线海拔”。`;
     }
 
     const quotaText = elevationSummary?.skippedByQuota ? "，部分点因 quota cap 未请求" : "";

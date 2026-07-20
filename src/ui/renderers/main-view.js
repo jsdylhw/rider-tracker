@@ -1,7 +1,6 @@
 import { createRideVisualsController } from "../map/ride-visuals-controller.js";
 import { createRouteRenderer } from "./route-renderer.js";
 import { createDashboardRenderer } from "./dashboard-renderer.js";
-import { createExportRenderer } from "./export-renderer.js";
 import { createDeviceRenderer } from "./device-renderer.js";
 import { createLayoutCoordinator } from "./layout-coordinator.js";
 import { createWorkoutRenderer } from "./workout-renderer.js";
@@ -11,12 +10,13 @@ import { createSessionSummaryRenderer } from "./session-summary-renderer.js";
 import { createSessionChartRenderer } from "./session-chart-renderer.js";
 import { createHomeView } from "../views/home-view.js";
 import { createLiveView } from "../views/live-view.js";
+import { createGoogleMapsServiceModal } from "../views/google-maps-service-modal.js";
 import { createExportView } from "../views/export-view.js";
 import { createActivityDetailView } from "../views/activity-detail-view.js";
 import { buildActivityDetailPageHtml } from "./activity-detail-renderer.js";
 
 export function createMainView({ store, pipController, actions }) {
-    const { navigation, workout, route, ride, device, export: exportActions, pip } = actions;
+    const { navigation, workout, route, ride, device, export: exportActions, googleMaps, pip } = actions;
     const homeView = createHomeView({
         onSetUiMode: navigation.setUiMode,
         onEnterLiveMode: navigation.enterLiveMode,
@@ -29,13 +29,7 @@ export function createMainView({ store, pipController, actions }) {
         onUpdateRideInput: ride.updateRideInput
     });
     const exportView = createExportView({
-        onDownloadSession: exportActions.downloadSession,
-        onDownloadFit: exportActions.downloadFit,
-        onImportFit: exportActions.importFit,
-        onConnectStrava: exportActions.connectStrava,
-        onUploadFit: exportActions.uploadFit,
-        onUpdateExportMetadata: exportActions.updateExportMetadata,
-        getExportMetadata: () => store.getState().exportMetadata
+        onImportFit: exportActions.importFit
     });
     const activityDetailView = createActivityDetailView({
         onSetUiMode: navigation.setUiMode,
@@ -57,7 +51,7 @@ export function createMainView({ store, pipController, actions }) {
     let lastRenderedActivityDetailSignature = "";
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
-    const rideVisuals = createRideVisualsController({ elements });
+    const rideVisuals = createRideVisualsController({ elements, googleMapsConfig: googleMaps });
     const routeRenderer = createRouteRenderer({
         elements,
         rideVisuals,
@@ -69,14 +63,16 @@ export function createMainView({ store, pipController, actions }) {
         onUpdateRouteSegment: route.updateSegment,
         onRemoveRouteSegment: route.removeSegment
     });
-    const dashboardRenderer = createDashboardRenderer({ elements, rideVisuals });
+    const googleMapsServiceModal = createGoogleMapsServiceModal({ elements, googleMapsConfig: googleMaps });
+    const dashboardRenderer = createDashboardRenderer({
+        elements,
+        rideVisuals,
+        onQueueExplorationTurn: route.queueExplorationTurn,
+        onRequestRouteElevation: route.requestCurrentRouteElevation,
+        requestGoogleMapsApiKey: googleMapsServiceModal.requestApiKey
+    });
     dashboardRenderer.bindEvents(store);
     bindPipMetricControls();
-    const exportRenderer = createExportRenderer({
-        elements,
-        onUpdateExportMetadata: exportActions.updateExportMetadata
-    });
-
     const deviceRenderer = createDeviceRenderer({
         elements,
         onToggleHeartRate: device.toggleHeartRate,
@@ -121,9 +117,6 @@ export function createMainView({ store, pipController, actions }) {
         if (initialRender || state.settings !== previousState.settings) renderSettings(state);
         if (initialRender || state.route !== previousState.route || state.routeSegments !== previousState.routeSegments || state.uiMode !== previousState.uiMode) {
             routeRenderer.render(state);
-        }
-        if (initialRender || state.exportMetadata !== previousState.exportMetadata || state.liveRide !== previousState.liveRide || state.session !== previousState.session) {
-            exportRenderer.render(state);
         }
         if (initialRender || state.workout !== previousState.workout || state.ble !== previousState.ble) {
             workoutRenderer.render(state);
@@ -182,7 +175,12 @@ export function createMainView({ store, pipController, actions }) {
         elements.pipLayoutSelect?.addEventListener("change", (event) => pip.updateLayout(event.target.value));
     }
 
-    return { destroy: () => rideVisuals.destroy() };
+    return {
+        destroy: () => {
+            googleMapsServiceModal.destroy();
+            rideVisuals.destroy();
+        }
+    };
 }
 
 export function shouldRenderDashboard(state, previousState) {

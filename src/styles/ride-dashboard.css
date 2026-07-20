@@ -45,6 +45,74 @@ body.dashboard-open .app-shell {
     align-items: start;
 }
 
+.ride-route-context {
+    margin: 4px 0 0;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.exploration-mini-map-info {
+    position: absolute;
+    left: 24px;
+    bottom: 166px;
+    z-index: 37;
+    display: grid;
+    gap: 2px;
+    max-width: 240px;
+    padding: 5px 7px;
+    color: #e2e8f0;
+    font-size: 11px;
+    background: rgba(15, 23, 42, 0.78);
+    border-radius: 6px;
+    pointer-events: none;
+}
+
+.exploration-mini-map-info span {
+    color: #cbd5e1;
+}
+
+.exploration-turn-controls {
+    position: absolute;
+    right: 14px;
+    bottom: 14px;
+    z-index: 35;
+    display: grid;
+    gap: 8px;
+    min-width: 232px;
+    padding: 10px;
+    color: #e2e8f0;
+    background: rgba(15, 23, 42, 0.84);
+    border: 1px solid rgba(148, 163, 184, 0.36);
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
+    backdrop-filter: blur(8px);
+}
+
+.exploration-turn-controls > span {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.exploration-turn-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.exploration-turn-actions .btn {
+    min-width: 0;
+    padding: 7px 8px;
+    color: #e2e8f0;
+    background: rgba(51, 65, 85, 0.8);
+    border-color: rgba(148, 163, 184, 0.36);
+}
+
+.exploration-turn-actions .btn.is-selected {
+    color: #052e16;
+    background: #86efac;
+    border-color: #bbf7d0;
+}
+
 .ride-dashboard-grid .data-grid {
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 12px;
@@ -231,4 +299,3 @@ body:has(.pip-mode) {
     color: #a4b0be;
     font-weight: 500;
 }
-

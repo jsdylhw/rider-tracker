@@ -3,6 +3,7 @@ import {
     buildBoundsAroundRoute,
     buildOverpassRoadQuery,
     buildSyntheticGridRoadNetwork,
+    chooseExplorationEdge,
     extendOsmRoute,
     planOsmRoute
 } from "../../src/domain/route/osm-road-network.js";
@@ -124,6 +125,26 @@ export const suite = {
                 assertGreaterThan(extendedRoute.totalDistanceMeters, initialRoute.totalDistanceMeters);
                 assertGreaterThan(extendedRoute.edgesAdded, 0);
                 assertEqual(extendedRoute.points.at(-1).distanceMeters, extendedRoute.totalDistanceMeters);
+            }
+        },
+        {
+            name: "selects the requested left, straight, or right edge at an exploration junction",
+            run() {
+                const graph = buildRoadGraph({
+                    elements: [
+                        { type: "node", id: 1, lat: 37.0, lon: -122.0 },
+                        { type: "node", id: 2, lat: 37.001, lon: -122.0 },
+                        { type: "node", id: 3, lat: 37.002, lon: -122.0 },
+                        { type: "node", id: 4, lat: 37.001, lon: -122.001 },
+                        { type: "node", id: 5, lat: 37.001, lon: -121.999 },
+                        { type: "way", id: 10, tags: { highway: "residential" }, nodes: [1, 2, 3] },
+                        { type: "way", id: 11, tags: { highway: "residential" }, nodes: [4, 2, 5] }
+                    ]
+                });
+
+                assertEqual(chooseExplorationEdge(graph, 2, 0, "left").to, 4);
+                assertEqual(chooseExplorationEdge(graph, 2, 0, "straight").to, 3);
+                assertEqual(chooseExplorationEdge(graph, 2, 0, "right").to, 5);
             }
         }
     ]

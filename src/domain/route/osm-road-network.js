@@ -199,6 +199,7 @@ export function planOsmRoute({ graph, start, destination, sampleSpacingMeters = 
 export function extendOsmRoute({
     graph,
     rawNodes,
+    intent = "straight",
     intersectionCount = 2,
     sampleSpacingMeters = OSM_ROUTE_SAMPLE_SPACING_METERS
 }) {
@@ -219,21 +220,21 @@ export function extendOsmRoute({
 
     let currentNodeId = endNodeId;
     let incomingHeading = getIncomingHeading(nextRawNodes);
-    let previousNodeId = nextRawNodes.at(-2)?.nodeId ?? null;
     let intersectionsPassed = 0;
     let edgesAdded = 0;
+    let nextIntent = normalizeExplorationIntent(intent);
     const maxEdges = Math.max(20, Math.max(1, intersectionCount) * 40);
 
     while (intersectionsPassed < intersectionCount && edgesAdded < maxEdges) {
-        const edge = chooseStraightestEdge(graph, currentNodeId, incomingHeading, previousNodeId);
+        const edge = chooseExplorationEdge(graph, currentNodeId, incomingHeading, nextIntent);
         if (!edge) break;
 
         const nextNode = graph.nodes.get(edge.to);
         if (!nextNode) break;
         appendRouteNode(nextRawNodes, nextNode, edge.id);
-        previousNodeId = currentNodeId;
         currentNodeId = edge.to;
         incomingHeading = edge.heading;
+        nextIntent = "straight";
         edgesAdded += 1;
 
         if ((graph.nodes.get(currentNodeId)?.edges.length ?? 0) >= 3) {
@@ -500,16 +501,36 @@ function getIncomingHeading(rawNodes) {
     return previous && end ? bearingDegrees(previous, end) : 0;
 }
 
-function chooseStraightestEdge(graph, nodeId, incomingHeading, previousNodeId) {
-    const edges = graph.nodes.get(nodeId)?.edges ?? [];
-    const nonReturningEdges = edges.filter((edge) => edge.to !== previousNodeId);
-    const candidates = nonReturningEdges.length > 0 ? nonReturningEdges : edges;
-    return candidates.reduce((best, edge) => {
-        if (!best || headingDelta(edge.heading, incomingHeading) < headingDelta(best.heading, incomingHeading)) {
-            return edge;
-        }
-        return best;
-    }, null);
+export function chooseExplorationEdge(graph, nodeId, incomingHeading, intent = "straight") {
+    const candidates = (graph.nodes.get(nodeId)?.edges ?? [])
+        .map((edge) => ({
+            edge,
+            turnAngle: signedHeadingAngle(incomingHeading, edge.heading)
+        }))
+        .filter(({ turnAngle }) => Math.abs(Math.abs(turnAngle) - 180) > 35);
+
+    if (candidates.length === 0) {
+        return null;
+    }
+
+    if (intent === "right") {
+        return candidates
+            .filter(({ turnAngle }) => turnAngle >= 25 && turnAngle <= 160)
+            .sort((left, right) => Math.abs(left.turnAngle - 90) - Math.abs(right.turnAngle - 90))[0]?.edge ?? null;
+    }
+
+    if (intent === "left") {
+        return candidates
+            .filter(({ turnAngle }) => turnAngle <= -25 && turnAngle >= -160)
+            .sort((left, right) => Math.abs(left.turnAngle + 90) - Math.abs(right.turnAngle + 90))[0]?.edge ?? null;
+    }
+
+    return candidates
+        .sort((left, right) => Math.abs(left.turnAngle) - Math.abs(right.turnAngle))[0]?.edge ?? null;
+}
+
+function normalizeExplorationIntent(intent) {
+    return ["left", "straight", "right"].includes(intent) ? intent : "straight";
 }
 
 function sampleRouteNodes(rawNodes, spacingMeters) {
@@ -600,6 +621,10 @@ function bearingDegrees(from, to) {
 function headingDelta(a, b) {
     const delta = Math.abs(normalizeHeading(a) - normalizeHeading(b));
     return Math.min(delta, 360 - delta);
+}
+
+function signedHeadingAngle(fromHeading, toHeading) {
+    return ((toHeading - fromHeading + 540) % 360) - 180;
 }
 
 function normalizeHeading(value) {

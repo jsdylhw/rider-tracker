@@ -6,6 +6,8 @@ import { suite as mapControllerSuite } from "./unit/map-controller.test.js";
 import { suite as overpassClientSuite } from "./unit/overpass-client.test.js";
 import { suite as streetViewTargetSuite } from "./unit/street-view-target.test.js";
 import { suite as googleElevationClientSuite } from "./unit/google-elevation-client.test.js";
+import { suite as googleMapsConfigServiceSuite } from "./unit/google-maps-config-service.test.js";
+import { suite as routeServiceElevationSuite } from "./unit/route-service-elevation.test.js";
 import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
 import { suite as heartRateModelSuite } from "./unit/heart-rate-model.test.js";
@@ -37,6 +39,7 @@ import { suite as routeRendererImmersiveSuite } from "./unit/route-renderer-imme
 import { suite as routeChartSvgSuite } from "./unit/route-chart-svg.test.js";
 import { suite as exportViewSuite } from "./unit/export-view.test.js";
 import { suite as liveRideViewModelSuite } from "./unit/live-ride-view-model.test.js";
+import { suite as liveViewSuite } from "./unit/live-view.test.js";
 import { suite as liveMetricsSuite } from "./unit/live-metrics.test.js";
 import { suite as pipChartsSuite } from "./unit/pip-charts.test.js";
 import { suite as pipElevationChartSuite } from "./unit/pip-elevation-chart.test.js";
@@ -58,6 +61,8 @@ const suites = [
     overpassClientSuite,
     streetViewTargetSuite,
     googleElevationClientSuite,
+    googleMapsConfigServiceSuite,
+    routeServiceElevationSuite,
     gpxSuite,
     physicsSuite,
     heartRateModelSuite,
@@ -89,6 +94,7 @@ const suites = [
     routeChartSvgSuite,
     exportViewSuite,
     liveRideViewModelSuite,
+    liveViewSuite,
     liveMetricsSuite,
     pipChartsSuite,
     pipElevationChartSuite,

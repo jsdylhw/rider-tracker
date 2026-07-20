@@ -45,12 +45,6 @@ function createImportViewDocument() {
     const homeImportFile = { name: "home-local.fit" };
     const homeImportFitInput = createFileInput(homeImportFile);
     const homeImportFitBtn = createButton();
-    const downloadSessionBtn = createButton();
-    const downloadFitBtn = createButton();
-    const importFitInput = createFileInput();
-    const importFitBtn = createButton();
-    const connectStravaBtn = createButton();
-    const uploadFitBtn = createButton();
     const modalButtons = {
         confirmUploadBtn: createButton(),
         cancelUploadBtn: createButton()
@@ -91,12 +85,6 @@ function createImportViewDocument() {
             return {
                 homeImportFitInput,
                 homeImportFitBtn,
-                downloadSessionBtn,
-                downloadFitBtn,
-                importFitInput,
-                importFitBtn,
-                connectStravaBtn,
-                uploadFitBtn,
                 "upload-confirm-template": uploadConfirmTemplate,
                 uploadConfirmOverlay,
                 confirmUploadBtn: modalButtons.confirmUploadBtn,
@@ -110,10 +98,6 @@ function createImportViewDocument() {
         homeImportFile,
         homeImportFitInput,
         homeImportFitBtn,
-        downloadSessionBtn,
-        downloadFitBtn,
-        connectStravaBtn,
-        uploadFitBtn,
         modalButtons
     };
 }
@@ -122,21 +106,16 @@ export const suite = {
     name: "export-view",
     tests: [
         {
-            name: "binds the retained session export actions and home FIT import",
+            name: "binds home FIT import without mounting a session export card",
             run() {
                 const previousDocument = globalThis.document;
                 const fake = createImportViewDocument();
                 const importedFiles = [];
-                const actions = [];
 
                 globalThis.document = fake.document;
                 try {
                     const view = createExportView({
-                        onImportFit: (file) => { importedFiles.push(file); },
-                        onDownloadSession: () => actions.push("json"),
-                        onDownloadFit: () => actions.push("fit"),
-                        onConnectStrava: () => actions.push("connect"),
-                        onUploadFit: () => actions.push("upload")
+                        onImportFit: (file) => { importedFiles.push(file); }
                     });
 
                     assert(view.elements.homeImportFitBtn, "首页 FIT 导入按钮应可绑定");
@@ -144,15 +123,10 @@ export const suite = {
 
                     fake.homeImportFitBtn.dispatch("click");
                     fake.homeImportFitInput.dispatch("change");
-                    fake.downloadSessionBtn.dispatch("click");
-                    fake.downloadFitBtn.dispatch("click");
-                    fake.connectStravaBtn.dispatch("click");
-                    fake.uploadFitBtn.dispatch("click");
 
                     assertEqual(fake.homeImportFitInput.clickCount, 1);
                     assertEqual(importedFiles[0], fake.homeImportFile);
                     assertEqual(fake.homeImportFitInput.value, "");
-                    assertEqual(actions.join(","), "json,fit,connect");
                     view.render({ liveRide: { isActive: true } });
                     assertEqual(fake.homeImportFitBtn.disabled, true);
                 } finally {

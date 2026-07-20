@@ -41,8 +41,17 @@
 }
 
 .ride-dashboard.immersive-street-view #rideDashboardMap {
-    opacity: 0;
+    top: auto !important;
+    bottom: 16px !important;
+    left: 16px !important;
+    width: 264px !important;
+    height: 180px !important;
+    z-index: 36 !important;
+    opacity: 1;
     pointer-events: none;
+    border: 1px solid rgba(148, 163, 184, 0.48);
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.3);
 }
 
 .ride-dashboard.immersive-street-view #streetViewContainer {
@@ -162,6 +171,13 @@
     backdrop-filter: blur(8px);
 }
 
+.ride-dashboard.immersive-street-view .exploration-turn-controls {
+    top: 64px;
+    right: 16px;
+    bottom: auto;
+    pointer-events: auto;
+}
+
 .ride-dashboard.immersive-street-view #trajectoryCard h3,
 .ride-dashboard.immersive-street-view #trajectoryCard .section-subtitle {
     display: none;
@@ -253,6 +269,9 @@
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #immersiveMetricsCard,
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #workoutTargetHudCard,
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #trajectoryCard,
+.ride-dashboard.immersive-street-view.immersive-ui-hidden .exploration-turn-controls,
+.ride-dashboard.immersive-street-view.immersive-ui-hidden #rideDashboardMap,
+.ride-dashboard.immersive-street-view.immersive-ui-hidden .exploration-mini-map-info,
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #liveElevationCard {
     display: none !important;
 }

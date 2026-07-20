@@ -1,47 +1,11 @@
-export function createExportView({
-    onDownloadSession,
-    onDownloadFit,
-    onImportFit,
-    onConnectStrava,
-    onUploadFit,
-    onUpdateExportMetadata,
-    getExportMetadata
-}) {
-    const exportCardContainer = document.getElementById("exportCardContainer");
-    const exportCardTemplate = document.getElementById("export-card-template");
-    mountSharedExportCard({ exportCardContainer, exportCardTemplate });
-
-    const exportCardRoot = exportCardContainer ?? document;
-    const findExportElement = (selector) => exportCardRoot.querySelector?.(selector)
-        ?? document.getElementById(selector.slice(1));
+export function createExportView({ onImportFit }) {
     const elements = {
-        exportCardContainer,
-        exportCardTemplate,
         homeImportFitInput: document.getElementById("homeImportFitInput"),
-        homeImportFitBtn: document.getElementById("homeImportFitBtn"),
-        fitExportForm: findExportElement("#fitExportForm"),
-        downloadSessionBtn: findExportElement("#downloadSessionBtn"),
-        downloadFitBtn: findExportElement("#downloadFitBtn"),
-        importFitInput: findExportElement("#importFitInput"),
-        importFitBtn: findExportElement("#importFitBtn"),
-        connectStravaBtn: findExportElement("#connectStravaBtn"),
-        uploadFitBtn: findExportElement("#uploadFitBtn")
+        homeImportFitBtn: document.getElementById("homeImportFitBtn")
     };
 
-    bind(elements.downloadSessionBtn, "click", onDownloadSession);
-    bind(elements.downloadFitBtn, "click", onDownloadFit);
-    bindFitImport(elements.importFitBtn, elements.importFitInput, onImportFit);
     bindFitImport(elements.homeImportFitBtn, elements.homeImportFitInput, onImportFit);
-    bind(elements.connectStravaBtn, "click", onConnectStrava);
-
     initializeUploadConfirmModal();
-    bind(elements.uploadFitBtn, "click", () => {
-        openUploadModal({
-            onUpload: onUploadFit,
-            onUpdateExportMetadata,
-            getExportMetadata
-        });
-    });
 
     return {
         elements,
@@ -51,12 +15,6 @@ export function createExportView({
             }
         }
     };
-}
-
-function mountSharedExportCard({ exportCardContainer, exportCardTemplate }) {
-    if (exportCardContainer && exportCardTemplate && exportCardContainer.childElementCount === 0) {
-        exportCardContainer.appendChild(exportCardTemplate.content.cloneNode(true));
-    }
 }
 
 function bind(el, event, handler) {

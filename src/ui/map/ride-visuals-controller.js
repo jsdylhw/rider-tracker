@@ -5,7 +5,7 @@ import {
     loadGoogleMapsForStreetView
 } from "./street-view-controller.js";
 
-export function createRideVisualsController({ elements }) {
+export function createRideVisualsController({ elements, googleMapsConfig = null }) {
     const mapController = createMapController({
         previewElement: elements.routeMapPreview,
         dashboardElement: elements.rideDashboardMap,
@@ -15,12 +15,28 @@ export function createRideVisualsController({ elements }) {
 
     async function enableStreetView({ apiKey, container1, container2 }) {
         await loadGoogleMapsForStreetView(apiKey);
+        googleMapsConfig?.lockApiKey?.(apiKey);
         streetViewController?.destroy();
         streetViewController = createStreetViewController({ container1, container2 });
     }
 
+    async function enableConfiguredStreetView({ container1, container2 }) {
+        const apiKey = googleMapsConfig?.getApiKey?.() ?? "";
+        if (!apiKey) {
+            return { enabled: false, reason: "missing-key" };
+        }
+        if (!streetViewController) {
+            await enableStreetView({ apiKey, container1, container2 });
+        }
+        return { enabled: true };
+    }
+
     function hasStreetView() {
         return streetViewController !== null;
+    }
+
+    function getGoogleMapsConfig() {
+        return googleMapsConfig?.getConfig?.() ?? null;
     }
 
     function syncRoute(route) {
@@ -58,6 +74,10 @@ export function createRideVisualsController({ elements }) {
         mapController.invalidatePreviewSize();
     }
 
+    function invalidateDashboardSize() {
+        mapController.invalidateDashboardSize();
+    }
+
     function destroy() {
         streetViewController?.destroy();
         streetViewController = null;
@@ -65,7 +85,9 @@ export function createRideVisualsController({ elements }) {
 
     return {
         enableStreetView,
+        enableConfiguredStreetView,
         hasStreetView,
+        getGoogleMapsConfig,
         syncRoute,
         syncMap,
         syncStreetView,
@@ -74,6 +96,7 @@ export function createRideVisualsController({ elements }) {
         setPlannerMode,
         syncPlannerSelection,
         invalidatePreviewSize,
+        invalidateDashboardSize,
         destroy
     };
 }
