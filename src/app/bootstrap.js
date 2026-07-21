@@ -99,6 +99,8 @@ const mainView = createMainView({
             connectStrava: exportService.connectStrava,
             uploadFit: exportService.uploadFit,
             uploadActivityFit: exportService.uploadActivityFit,
+            downloadActivitySession: exportService.downloadActivitySession,
+            downloadActivityFit: exportService.downloadActivityFit,
             updateExportMetadata: exportService.updateExportMetadata
         },
         pip: {

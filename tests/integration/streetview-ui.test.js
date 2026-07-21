@@ -71,7 +71,7 @@ function createElements() {
         rideProgressBar: createFakeElement({ style: {} }),
         rideProgressDistance: createFakeElement(),
         rideProgressSegment: createFakeElement(),
-        streetViewTrajectorySvg: createFakeElement()
+        rideDashboardMap: createFakeElement()
     };
 }
 
@@ -173,7 +173,7 @@ export const suite = {
             }
         },
         {
-            name: "沉浸街景低频同步左下角路线小地图",
+            name: "沉浸街景低频同步右下角路线小地图",
             run() {
                 const elements = createElements();
                 const store = createStore(createBaseState());
@@ -201,6 +201,31 @@ export const suite = {
                     "immersive mode should refresh the visible route mini map");
                 assert(streetViewSyncCount > streetViewSyncCountBeforeImmersive,
                     "immersive mode should continue to update Street View");
+            }
+        },
+        {
+            name: "手工路线进入沉浸街景时不显示路线小地图",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.route.source = "manual";
+                const store = createStore(state);
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => true,
+                        enableStreetView: async () => {},
+                        syncMap() {},
+                        syncStreetView() {}
+                    },
+                    streetViewDebugEnabled: true
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                elements.immersiveStreetViewBtn.dispatch("click");
+
+                assertEqual(elements.rideDashboardMap.hidden, true);
             }
         },
         {

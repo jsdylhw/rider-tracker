@@ -2,7 +2,6 @@ import { formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { buildStreetViewTargetFromRoute } from "../map/street-view-controller.js";
 import { buildDashboardViewModel } from "../../app/view-models/live-ride-view-model.js";
-import { buildTrajectoryOverviewSvg } from "./svg/dashboard-charts.js";
 import { buildImmersiveElevationGradeSvg } from "./svg/route-charts.js";
 import { createDashboardMetricsRenderer } from "./dashboard-metrics-renderer.js";
 import { createWorkoutRuntimeRenderer } from "./workout-runtime-renderer.js";
@@ -70,7 +69,6 @@ export function createDashboardRenderer({
     const visualRenderState = {
         map: createVisualRenderSlot(),
         streetView: createVisualRenderSlot(),
-        trajectory: createVisualRenderSlot(),
         gradeChart: createVisualRenderSlot(),
         workoutRuntime: createVisualRenderSlot()
     };
@@ -462,16 +460,13 @@ export function createDashboardRenderer({
             elements.rideRouteContext.textContent = `当前路线：${routeName} · 当前位置：${position}`;
         }
 
-        const showExplorationMiniMap = immersiveStreetViewMode && route?.source === "osm-exploration";
-        if (elements.explorationMiniMapInfo) {
-            elements.explorationMiniMapInfo.hidden = !showExplorationMiniMap;
-        }
-        if (showExplorationMiniMap) {
-            if (elements.explorationMiniMapRoute) {
-                elements.explorationMiniMapRoute.textContent = "OSM 路网 · 当前路线";
-            }
-            if (elements.explorationMiniMapPosition) {
-                elements.explorationMiniMapPosition.textContent = `当前位置：${position}`;
+        const hasMappableRoute = ["gpx", "osm-map", "osm-exploration"].includes(route?.source);
+        const showRouteMiniMap = !immersiveStreetViewMode || hasMappableRoute;
+        const hideRouteMiniMap = !showRouteMiniMap;
+        if (elements.rideDashboardMap && Boolean(elements.rideDashboardMap.hidden) !== hideRouteMiniMap) {
+            elements.rideDashboardMap.hidden = hideRouteMiniMap;
+            if (showRouteMiniMap) {
+                scheduleAfterLayout(() => visuals.invalidateDashboardSize?.());
             }
         }
     }
@@ -618,10 +613,6 @@ export function createDashboardRenderer({
             Math.round((training?.runtime?.customWorkoutTargetProgress ?? 0) * 100)
         ].join(":");
 
-        if (shouldRenderVisual(visualRenderState.trajectory, positionSignature, now, LIVE_VISUAL_UPDATE_INTERVAL_MS, force)) {
-            renderTrajectoryOverview(route, currentRecord, isGradeSimulation);
-        }
-
         if (shouldRenderVisual(visualRenderState.gradeChart, positionSignature, now, LIVE_VISUAL_UPDATE_INTERVAL_MS, force)) {
             renderImmersiveGradeChart(route, currentRecord, isGradeSimulation);
         }
@@ -637,25 +628,6 @@ export function createDashboardRenderer({
             now,
             force
         });
-    }
-
-    function renderTrajectoryOverview(route, currentRecord, isGradeSimulation) {
-        if (elements.trajectoryCard) {
-            elements.trajectoryCard.hidden = !isGradeSimulation;
-        }
-        if (!elements.streetViewTrajectorySvg) return;
-        if (!isGradeSimulation) {
-            elements.streetViewTrajectorySvg.innerHTML = "";
-            return;
-        }
-        elements.streetViewTrajectorySvg.innerHTML = buildTrajectoryOverviewSvg(
-            route,
-            currentRecord,
-            {
-                title: "路线平面图",
-                theme: immersiveStreetViewMode ? "immersive" : "default"
-            }
-        );
     }
 
     function renderImmersiveGradeChart(route, currentRecord, isGradeSimulation) {

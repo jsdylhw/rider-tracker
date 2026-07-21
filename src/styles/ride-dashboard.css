@@ -51,26 +51,6 @@ body.dashboard-open .app-shell {
     font-size: 13px;
 }
 
-.exploration-mini-map-info {
-    position: absolute;
-    left: 24px;
-    bottom: 166px;
-    z-index: 37;
-    display: grid;
-    gap: 2px;
-    max-width: 240px;
-    padding: 5px 7px;
-    color: #e2e8f0;
-    font-size: 11px;
-    background: rgba(15, 23, 42, 0.78);
-    border-radius: 6px;
-    pointer-events: none;
-}
-
-.exploration-mini-map-info span {
-    color: #cbd5e1;
-}
-
 .exploration-turn-controls {
     position: absolute;
     right: 14px;

@@ -87,6 +87,27 @@ export const suite = {
             }
         },
         {
+            name: "treats roundabouts as one-way unless bicycle travel explicitly overrides it",
+            run() {
+                const graph = buildRoadGraph({
+                    elements: [
+                        { type: "node", id: 1, lat: 37.0, lon: -122.0 },
+                        { type: "node", id: 2, lat: 37.0, lon: -121.999 },
+                        { type: "node", id: 3, lat: 37.001, lon: -121.999 },
+                        { type: "way", id: 20, tags: { highway: "residential", junction: "roundabout" }, nodes: [1, 2, 3, 1] },
+                        { type: "way", id: 21, tags: { highway: "residential", junction: "roundabout", "oneway:bicycle": "no" }, nodes: [1, 2] }
+                    ]
+                });
+
+                const implicitRoundaboutEdges = graph.edges.filter((edge) => edge.wayId === 20);
+                const bicycleOverrideEdges = graph.edges.filter((edge) => edge.wayId === 21);
+                assertEqual(implicitRoundaboutEdges.length, 3);
+                assert(!implicitRoundaboutEdges.some((edge) => edge.from === 2 && edge.to === 1));
+                assertEqual(bicycleOverrideEdges.length, 2);
+                assert(bicycleOverrideEdges.some((edge) => edge.from === 2 && edge.to === 1));
+            }
+        },
+        {
             name: "builds a labeled fallback grid that can still produce a route",
             run() {
                 const bounds = buildBoundsAroundRoute(

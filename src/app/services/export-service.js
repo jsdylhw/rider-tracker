@@ -113,19 +113,44 @@ export function createExportService({ store }) {
 
     function downloadSession() {
         const { session } = store.getState();
-        if (!session) return;
-
-        const timestamp = formatSessionTimestamp(session);
-        downloadJson(`ride-simulation-${timestamp}.json`, session);
-        store.setState((state) => ({
-            ...state,
-            statusText: "当前骑行会话已导出为 JSON。"
-        }));
+        return downloadSessionJson(session);
     }
 
     async function downloadFit() {
         const { session, exportMetadata } = store.getState();
-        if (!session) return;
+        return downloadSessionFit(session, exportMetadata);
+    }
+
+    function downloadActivitySession(activity) {
+        return downloadSessionJson(activity?.rawSession ?? null);
+    }
+
+    async function downloadActivityFit(activity) {
+        const session = activity?.rawSession ?? null;
+        const { exportMetadata } = store.getState();
+        return downloadSessionFit(session, {
+            ...exportMetadata,
+            ...(session?.exportMetadata ?? {})
+        });
+    }
+
+    function downloadSessionJson(session) {
+        if (!session) {
+            setExportStatus("当前活动缺少可导出的原始会话数据。");
+            return false;
+        }
+
+        const timestamp = formatSessionTimestamp(session);
+        downloadJson(`ride-simulation-${timestamp}.json`, session);
+        setExportStatus("当前骑行会话已导出为 JSON。");
+        return true;
+    }
+
+    async function downloadSessionFit(session, exportMetadata) {
+        if (!session) {
+            setExportStatus("当前活动缺少可导出的原始会话数据。");
+            return false;
+        }
 
         store.setState((state) => ({ ...state, statusText: "正在生成 FIT 文件..." }));
         try {
@@ -135,14 +160,17 @@ export function createExportService({ store }) {
             const filename = `virtual-ride-${formatSessionTimestamp(session)}.fit`;
             await saveFitFileForSession({ session, fitBytes, filename });
             downloadBinary(filename, fitBytes, "application/vnd.ant.fit");
-            store.setState((state) => ({ ...state, statusText: "FIT 文件已导出。" }));
+            setExportStatus("FIT 文件已导出。");
+            return true;
         } catch (error) {
             console.error("FIT export failed", error);
-            store.setState((state) => ({
-                ...state,
-                statusText: `FIT 导出失败：${extractErrorMessage(error)}`
-            }));
+            setExportStatus(`FIT 导出失败：${extractErrorMessage(error)}`);
+            return false;
         }
+    }
+
+    function setExportStatus(statusText) {
+        store.setState((state) => ({ ...state, statusText }));
     }
 
     async function uploadFit() {
@@ -403,6 +431,8 @@ export function createExportService({ store }) {
         connectStrava,
         downloadSession,
         downloadFit,
+        downloadActivitySession,
+        downloadActivityFit,
         importFit,
         uploadFit,
         uploadActivityFit,
@@ -480,8 +510,51 @@ function buildCompactFitSession(session) {
         summary: session.summary,
         exportMetadata: session.exportMetadata,
         hasGpsTrack: sessionHasGpsTrack(session),
+        route: buildCompactRouteMap(session.route),
         records: []
     };
+}
+
+function buildCompactRouteMap(route) {
+    const sourcePoints = route?.mapGeometry?.length >= 2 ? route.mapGeometry : route?.points;
+    const points = (sourcePoints ?? [])
+        .map((point) => {
+            const latitude = point?.latitude ?? point?.lat;
+            const longitude = point?.longitude ?? point?.lng;
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                return null;
+            }
+            return {
+                latitude,
+                longitude,
+                distanceMeters: Number.isFinite(point?.distanceMeters) ? point.distanceMeters : null
+            };
+        })
+        .filter(Boolean);
+
+    if (points.length < 2) {
+        return null;
+    }
+
+    return {
+        source: route?.source ?? "gpx",
+        name: route?.name ?? "路线",
+        totalDistanceMeters: route?.totalDistanceMeters ?? points.at(-1)?.distanceMeters ?? 0,
+        mapGeometry: downsampleRouteGeometry(points)
+    };
+}
+
+function downsampleRouteGeometry(points, maxPoints = 1600) {
+    if (points.length <= maxPoints) {
+        return points;
+    }
+
+    const lastIndex = points.length - 1;
+    const step = lastIndex / (maxPoints - 1);
+    return Array.from({ length: maxPoints }, (_, index) => {
+        const sourceIndex = index === maxPoints - 1 ? lastIndex : Math.round(index * step);
+        return points[sourceIndex];
+    });
 }
 
 function inferSportTypeForSession(session, exportMetadata = {}) {

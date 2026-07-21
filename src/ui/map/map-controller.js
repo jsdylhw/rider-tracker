@@ -1,4 +1,4 @@
-const MAP_PROVIDERS = {
+export const MAP_PROVIDERS = {
     osm: {
         url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         attribution: '&copy; OpenStreetMap'

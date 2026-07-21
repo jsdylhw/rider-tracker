@@ -35,6 +35,8 @@ export function createMainView({ store, pipController, actions }) {
         onSetUiMode: navigation.setUiMode,
         onConnectStrava: exportActions.connectStrava,
         onUploadActivityFit: exportActions.uploadActivityFit,
+        onDownloadActivitySession: exportActions.downloadActivitySession,
+        onDownloadActivityFit: exportActions.downloadActivityFit,
         onUpdateExportMetadata: exportActions.updateExportMetadata,
         getExportMetadata: () => store.getState().exportMetadata
     });
@@ -133,6 +135,9 @@ export function createMainView({ store, pipController, actions }) {
             dashboardRenderer.render(state);
         }
         if (initialRender || state.selectedActivity !== previousState.selectedActivity) renderActivityDetail(state);
+        if (!initialRender && state.uiMode === "activity-detail" && state.uiMode !== previousState.uiMode) {
+            activityDetailView.invalidateMapSize();
+        }
         if (initialRender || state.liveRide !== previousState.liveRide || state.ble !== previousState.ble || state.route !== previousState.route || state.pipConfig !== previousState.pipConfig || state.pipChartConfig !== previousState.pipChartConfig || state.pipLayout !== previousState.pipLayout) {
             renderPipControls(state);
         }
@@ -179,6 +184,7 @@ export function createMainView({ store, pipController, actions }) {
         destroy: () => {
             googleMapsServiceModal.destroy();
             rideVisuals.destroy();
+            activityDetailView.destroy();
         }
     };
 }

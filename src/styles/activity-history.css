@@ -198,21 +198,13 @@
 
 .activity-detail-analysis-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
     align-items: stretch;
 }
 
-.activity-detail-analysis-layout.is-map-hidden {
-    grid-template-columns: minmax(0, 1fr);
-}
-
-.activity-detail-analysis-layout.is-map-hidden .activity-map-body {
-    display: none;
-}
-
-.activity-detail-analysis-layout.is-map-hidden .activity-map-panel {
-    min-height: 0;
+.activity-detail-analysis-layout.has-route-map {
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
 }
 
 .activity-detail-card {
@@ -234,17 +226,6 @@
     color: var(--text);
 }
 
-.activity-map-title-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-}
-
-.activity-map-toggle {
-    padding: 5px 9px;
-}
-
 .activity-series-panel {
     align-content: start;
 }
@@ -264,8 +245,10 @@
     height: 150px;
 }
 
-.activity-detail-route-map {
-    height: 260px;
+.activity-map-body .activity-detail-route-map {
+    height: 300px;
+    border-radius: 6px;
+    overflow: hidden;
 }
 
 .activity-map-body {

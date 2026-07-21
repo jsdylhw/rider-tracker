@@ -420,10 +420,27 @@ function isCyclingAllowed(tags = {}) {
 }
 
 function getBicycleTravelDirection(tags = {}) {
-    const value = String(tags["oneway:bicycle"] ?? tags.oneway ?? "").toLowerCase();
-    if (value === "-1") return "reverse";
-    if (value === "yes" || value === "true" || value === "1") return "forward";
-    return "both";
+    const bicycleDirection = normalizeOnewayDirection(tags["oneway:bicycle"]);
+    if (bicycleDirection) {
+        return bicycleDirection;
+    }
+
+    const roadDirection = normalizeOnewayDirection(tags.oneway);
+    if (roadDirection) {
+        return roadDirection;
+    }
+
+    return String(tags.junction ?? "").toLowerCase() === "roundabout"
+        ? "forward"
+        : "both";
+}
+
+function normalizeOnewayDirection(value) {
+    const normalized = String(value ?? "").toLowerCase();
+    if (normalized === "-1") return "reverse";
+    if (normalized === "yes" || normalized === "true" || normalized === "1") return "forward";
+    if (normalized === "no" || normalized === "false" || normalized === "0") return "both";
+    return null;
 }
 
 function findShortestPathToAnyNode(graph, startNodeId, targetNodeIds) {

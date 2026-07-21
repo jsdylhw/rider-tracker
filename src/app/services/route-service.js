@@ -131,8 +131,22 @@ export function createRouteService({
                 console.warn("实时 OSM 路网不可用，改用本地备用网格。", error);
             }
             if (!isCurrentMapRouteRequest(requestId)) return;
-            const graph = buildRoadGraph(overpassData);
-            const planned = planOsmRoute({ graph, start, destination });
+            let graph;
+            let planned;
+            try {
+                graph = buildRoadGraph(overpassData);
+                planned = planOsmRoute({ graph, start, destination });
+            } catch (error) {
+                if (networkSource === "synthetic") {
+                    throw error;
+                }
+
+                networkSource = "synthetic";
+                networkFailure = summarizeOverpassFailure(error);
+                console.warn("实时 OSM 路网无法生成可骑行路线，改用本地备用网格。", error);
+                graph = buildRoadGraph(buildSyntheticGridRoadNetwork(bounds));
+                planned = planOsmRoute({ graph, start, destination });
+            }
             let points = planned.points;
             let hasElevationData = false;
             const requestElevation = false;
