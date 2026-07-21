@@ -46,6 +46,7 @@ import { suite as pipElevationChartSuite } from "./unit/pip-elevation-chart.test
 import { suite as pipPreferencesSuite } from "./unit/pip-preferences.test.js";
 import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js";
 import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
+import { suite as activityHistoryRendererSuite } from "./unit/activity-history-renderer.test.js";
 import { suite as activityDetailRendererSuite } from "./unit/activity-detail-renderer.test.js";
 import { suite as activityDetailViewSuite } from "./unit/activity-detail-view.test.js";
 import { suite as activityRouteMapControllerSuite } from "./unit/activity-route-map-controller.test.js";
@@ -103,6 +104,7 @@ const suites = [
     pipPreferencesSuite,
     rideSeriesChartSuite,
     activityStoreSuite,
+    activityHistoryRendererSuite,
     activityDetailRendererSuite,
     activityDetailViewSuite,
     activityRouteMapControllerSuite,

@@ -104,13 +104,50 @@ export const suite = {
                 assertApprox(saved.distanceKm, 12.34, 0.0001);
                 assertEqual(detail.rawSession.records.length, 0);
             }
+        },
+        {
+            name: "pages and filters activity history in sqlite",
+            run() {
+                const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
+                const store = createActivityStore(path.join(tempDir, "activities.db"));
+                store.saveRiderSession(buildVirtualRideSession("virtual-new", "2026-05-03T10:00:00.000Z"), {
+                    source: "rider-tracker",
+                    sportType: "VirtualRide"
+                });
+                store.saveRiderSession(buildVirtualRideSession("outdoor", "2026-05-02T10:00:00.000Z"), {
+                    source: "fit-import",
+                    sportType: "Ride"
+                });
+                store.saveRiderSession(buildVirtualRideSession("virtual-old", "2026-05-01T10:00:00.000Z"), {
+                    source: "rider-tracker",
+                    sportType: "VirtualRide"
+                });
+
+                const firstPage = store.listActivities({ limit: 1, offset: 0 });
+                const secondPage = store.listActivities({ limit: 1, offset: 1 });
+                const virtualRides = store.listActivities({ sportType: "VirtualRide" });
+                const fitImports = store.listActivities({ source: "fit-import" });
+                const history = store.getActivityHistory({ limit: 1, sportType: "VirtualRide" });
+
+                assertEqual(store.countActivities(), 3);
+                assertEqual(firstPage[0].id, "virtual-new");
+                assertEqual(secondPage[0].id, "outdoor");
+                assertEqual(virtualRides.length, 2);
+                assertEqual(fitImports.length, 1);
+                assertEqual(fitImports[0].id, "outdoor");
+                assertEqual(history.total, 2);
+                assertEqual(history.activities.length, 1);
+                assertEqual(history.activities[0].id, "virtual-new");
+                assertEqual(history.summary.activityCount, 3);
+            }
         }
     ]
 };
 
-function buildVirtualRideSession() {
+function buildVirtualRideSession(id, createdAt) {
     return {
-        createdAt: "2026-04-29T10:00:00.000Z",
+        id,
+        createdAt: createdAt ?? "2026-04-29T10:00:00.000Z",
         finishedAt: "2026-04-29T10:30:00.000Z",
         exportMetadata: {
             activityName: "Test Virtual Ride",

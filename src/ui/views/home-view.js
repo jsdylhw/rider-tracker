@@ -2,12 +2,16 @@ export function createHomeView({ onSetUiMode, onEnterLiveMode, onUpdateSettings 
     const elements = {
         viewHome: document.getElementById("view-home"),
         goToLiveBtn: document.getElementById("goToLiveBtn"),
+        openProfileSettingsBtn: document.getElementById("openProfileSettingsBtn"),
+        profileSettingsOverlay: document.getElementById("profileSettingsOverlay"),
+        closeProfileSettingsBtn: document.getElementById("closeProfileSettingsBtn"),
         goHomeBtns: [...document.querySelectorAll(".go-home-btn")],
-        homeProfileCard: document.getElementById("homeProfileCard"),
         homeHistoryCard: document.getElementById("homeHistoryCard"),
         historyContainer: document.getElementById("historyContainer"),
-        homeTotalDistanceChip: document.getElementById("homeTotalDistanceChip"),
-        homeTotalAscentChip: document.getElementById("homeTotalAscentChip"),
+        homeActivityCount: document.getElementById("homeActivityCount"),
+        homeActivityDistance: document.getElementById("homeActivityDistance"),
+        homeActivityDuration: document.getElementById("homeActivityDuration"),
+        homeActivityTss: document.getElementById("homeActivityTss"),
         postRideReportCard: document.getElementById("postRideReportCard"),
         postRideHistoryContainer: document.getElementById("postRideHistoryContainer"),
         personalSettingsForm: document.getElementById("personalSettingsForm")
@@ -15,8 +19,16 @@ export function createHomeView({ onSetUiMode, onEnterLiveMode, onUpdateSettings 
 
     bind(elements.goToLiveBtn, "click", onEnterLiveMode);
     elements.goHomeBtns.forEach((button) => bind(button, "click", () => onSetUiMode("home")));
+    bind(elements.openProfileSettingsBtn, "click", () => setProfileSettingsOpen(elements, true));
+    bind(elements.closeProfileSettingsBtn, "click", () => setProfileSettingsOpen(elements, false));
+    bind(elements.profileSettingsOverlay, "click", (event) => {
+        if (event.target === elements.profileSettingsOverlay) {
+            setProfileSettingsOpen(elements, false);
+        }
+    });
 
     if (elements.personalSettingsForm) {
+        elements.personalSettingsForm.addEventListener("submit", (event) => event.preventDefault());
         elements.personalSettingsForm.addEventListener("input", () => {
             onUpdateSettings(readSettingsFromForm(elements.personalSettingsForm));
         });
@@ -63,17 +75,37 @@ function bind(el, event, handler) {
 
 function renderActivitySummary(elements, summary = {}) {
     const totalDistanceKm = Number(summary.totalDistanceKm ?? 0);
-    const totalAscentMeters = Number(summary.totalAscentMeters ?? 0);
+    const activityCount = Number(summary.activityCount ?? 0);
+    const totalElapsedSeconds = Number(summary.totalElapsedSeconds ?? 0);
+    const totalEstimatedTss = Number(summary.totalEstimatedTss ?? 0);
 
-    if (elements.homeTotalDistanceChip) {
-        elements.homeTotalDistanceChip.textContent = `${formatNumber(totalDistanceKm, 2)} km`;
+    if (elements.homeActivityCount) {
+        elements.homeActivityCount.textContent = String(Math.max(0, Math.round(activityCount)));
     }
-    if (elements.homeTotalAscentChip) {
-        elements.homeTotalAscentChip.textContent = `${Math.round(totalAscentMeters)} m`;
+    if (elements.homeActivityDistance) {
+        elements.homeActivityDistance.textContent = formatNumber(totalDistanceKm, 1);
     }
+    if (elements.homeActivityDuration) {
+        elements.homeActivityDuration.textContent = formatTotalDuration(totalElapsedSeconds);
+    }
+    if (elements.homeActivityTss) {
+        elements.homeActivityTss.textContent = Math.max(0, Math.round(totalEstimatedTss)).toLocaleString("zh-CN");
+    }
+}
+
+function setProfileSettingsOpen(elements, isOpen) {
+    elements.profileSettingsOverlay?.classList.toggle("open", isOpen);
+    elements.profileSettingsOverlay?.setAttribute("aria-hidden", String(!isOpen));
 }
 
 function formatNumber(value, digits = 2) {
     const number = Number(value);
     return Number.isFinite(number) ? number.toFixed(digits) : (0).toFixed(digits);
+}
+
+function formatTotalDuration(value) {
+    const totalMinutes = Math.max(0, Math.round(Number(value) / 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
 }
