@@ -1,4 +1,5 @@
 import { formatNumber } from "../../shared/format.js";
+import { buildRouteGeometryKey, collectRouteMapLatLngs } from "../map/map-controller.js";
 import {
     buildElevationProfileSvg,
     buildGradeChartSvg,
@@ -29,6 +30,7 @@ export function createRouteRenderer({
     const hasRouteModeControls = Boolean(elements.routeModeMapBtn || elements.mapRoutePanel);
     let routeInputMode = hasRouteModeControls ? "map" : "manual";
     let lastRenderedState = null;
+    let lastRenderedMapRouteSignature = "";
     const mapRouteSelection = { mode: null, start: null, destination: null };
 
     function bindEvents() {
@@ -190,7 +192,12 @@ export function createRouteRenderer({
 
     function renderRouteMap(state) {
         try {
+            const routeSignature = buildMapRouteSignature(state.route);
+            if (routeSignature === lastRenderedMapRouteSignature) {
+                return;
+            }
             visuals.syncRoute(state.route);
+            lastRenderedMapRouteSignature = routeSignature;
             visuals.syncPlannerSelection(mapRouteSelection);
         } catch (error) {
             console.warn("路线地图渲染失败，不影响距离/海拔预览。", error);
@@ -305,6 +312,11 @@ export function createRouteRenderer({
         render,
         renderElevationChart // Expose for dashboard to use with currentRecord
     };
+}
+
+function buildMapRouteSignature(route) {
+    const geometry = collectRouteMapLatLngs(route);
+    return `${route?.networkSource ?? "default"}:${buildRouteGeometryKey(route, geometry)}`;
 }
 
 function hasCoordinateRoute(route) {

@@ -154,6 +154,64 @@ export const suite = {
                 assertEqual(elements.routeMapShell.hidden, false);
                 assertEqual(syncedRoute, route);
             }
+        },
+        {
+            name: "does not redraw map geometry when only exploration turn intent changes",
+            run() {
+                const elements = {
+                    routeModeGpxBtn: createFakeElement(),
+                    routeModeManualBtn: createFakeElement(),
+                    routeModeMapBtn: createFakeElement(),
+                    gpxRoutePanel: createFakeElement(),
+                    manualRoutePanel: createFakeElement(),
+                    mapRoutePanel: createFakeElement(),
+                    routeMapShell: createFakeElement({ hidden: true }),
+                    routeSummary: createFakeElement(),
+                    routeSourceLabel: createFakeElement(),
+                    addSegmentBtn: createFakeElement()
+                };
+                let mapRouteSyncCount = 0;
+                const renderer = createRouteRenderer({
+                    elements,
+                    mapController: {
+                        syncRoute() { mapRouteSyncCount += 1; },
+                        syncPlannerSelection() {},
+                        setPlannerMode() {},
+                        setPlannerClickHandler() {},
+                        setMapProvider() {}
+                    },
+                    onAddSegment() {},
+                    onResetRoute() {},
+                    onImportGpx() {},
+                    onUpdateRouteSegment() {},
+                    onRemoveRouteSegment() {}
+                });
+                const route = {
+                    source: "osm-exploration",
+                    networkSource: "overpass",
+                    totalDistanceMeters: 1400,
+                    totalElevationGainMeters: 0,
+                    totalDescentMeters: 0,
+                    hasElevationData: false,
+                    exploration: { pendingIntent: "straight" },
+                    points: [
+                        { latitude: 31.2, longitude: 121.4 },
+                        { latitude: 31.21, longitude: 121.41 }
+                    ],
+                    segments: []
+                };
+
+                renderer.render({ route, routeSegments: [] });
+                renderer.render({
+                    route: {
+                        ...route,
+                        exploration: { pendingIntent: "left" }
+                    },
+                    routeSegments: []
+                });
+
+                assertEqual(mapRouteSyncCount, 1);
+            }
         }
     ]
 };

@@ -16,6 +16,7 @@ export const MAP_PROVIDERS = {
 export function createMapController({ previewElement, dashboardElement, initialProviderKey = "amap" }) {
     let currentProviderKey = MAP_PROVIDERS[initialProviderKey] ? initialProviderKey : "amap";
     let latestRoute = null;
+    let latestDashboardRecord = null;
     
     // Store tile layers references so we can update them later
     let previewTileLayer = null;
@@ -96,11 +97,14 @@ export function createMapController({ previewElement, dashboardElement, initialP
     function syncRoute(route) {
         latestRoute = route;
         renderRoute(previewMap, previewLayers, route, null);
-        renderRoute(dashboardMap, dashboardLayers, route, null);
+        renderRoute(dashboardMap, dashboardLayers, route, latestDashboardRecord, {
+            preserveCurrentPosition: Boolean(latestDashboardRecord)
+        });
     }
 
     function syncRide(route, currentRecord) {
         latestRoute = route;
+        latestDashboardRecord = currentRecord ?? null;
         renderRoute(dashboardMap, dashboardLayers, route, currentRecord);
     }
 
@@ -232,7 +236,10 @@ function createLayerSet(map) {
     return layers;
 }
 
-function renderRoute(map, layers, route, currentRecord, { forceFocus = false } = {}) {
+function renderRoute(map, layers, route, currentRecord, {
+    forceFocus = false,
+    preserveCurrentPosition = false
+} = {}) {
     if (!map || !layers) {
         return;
     }
@@ -251,20 +258,25 @@ function renderRoute(map, layers, route, currentRecord, { forceFocus = false } =
         return;
     }
 
-    map.invalidateSize({ pan: false });
     const routeLineStyle = resolveRouteLineStyle(route);
     layers.routeLineOpacity = routeLineStyle.opacity;
     const routeChanged = layers.lastRouteKey !== routeKey;
-    layers.routeLine.setStyle(routeLineStyle);
-    layers.routeLine.setLatLngs(geoPoints);
-    layers.routeLine.bringToFront?.();
-    layers.startMarker.setLatLng(geoPoints[0]).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
-    layers.endMarker.setLatLng(geoPoints.at(-1)).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
-    layers.hasVisibleRoute = true;
+    const shouldRenderStaticRoute = routeChanged || forceFocus || !layers.hasVisibleRoute;
 
-    if (routeChanged || forceFocus) {
+    if (shouldRenderStaticRoute) {
+        map.invalidateSize({ pan: false });
+        layers.routeLine.setStyle(routeLineStyle);
+        layers.routeLine.setLatLngs(geoPoints);
+        layers.routeLine.bringToFront?.();
+        layers.startMarker.setLatLng(geoPoints[0]).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
+        layers.endMarker.setLatLng(geoPoints.at(-1)).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
+        layers.hasVisibleRoute = true;
         layers.lastRouteKey = routeKey;
         focusRouteAfterLayout(map, layers, geoPoints, routeKey);
+    }
+
+    if (preserveCurrentPosition) {
+        return;
     }
 
     if (!currentRecord || typeof currentRecord.positionLat !== "number" || typeof currentRecord.positionLong !== "number") {
