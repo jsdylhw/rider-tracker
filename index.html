@@ -355,7 +355,10 @@
 
     <div class="modal-overlay" id="googleMapsServiceOverlay" aria-hidden="true">
         <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="googleMapsServiceTitle">
-            <h3 id="googleMapsServiceTitle">使用 Google Maps 服务</h3>
+            <div class="modal-title-row">
+                <h3 id="googleMapsServiceTitle">使用 Google Maps 服务</h3>
+                <button id="closeGoogleMapsServiceBtn" class="modal-close-btn" type="button" aria-label="关闭">&times;</button>
+            </div>
             <p id="googleMapsServiceDescription" class="muted">请输入本次浏览器会话使用的 Google Maps API Key。</p>
             <label class="field">
                 <span>Google Maps API Key</span>

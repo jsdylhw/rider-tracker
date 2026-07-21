@@ -42,19 +42,6 @@ export function createGoogleMapsConfigService({ storage = getSessionStorage() } 
         notify();
     }
 
-    function saveApiKeyForReload(apiKey) {
-        const nextApiKey = typeof apiKey === "string" ? apiKey.trim() : "";
-        if (!nextApiKey) {
-            throw new Error("请填写 Google Maps API Key。");
-        }
-
-        // The loaded Maps JavaScript SDK remains bound to activeApiKey until
-        // the document reloads. Persist the replacement without changing the
-        // current in-memory config, then let the caller reload the page.
-        persistApiKey(storage, nextApiKey);
-        return { apiKey: nextApiKey, requiresReload: true };
-    }
-
     function subscribe(listener) {
         listeners.add(listener);
         return () => listeners.delete(listener);
@@ -65,7 +52,7 @@ export function createGoogleMapsConfigService({ storage = getSessionStorage() } 
         listeners.forEach((listener) => listener(snapshot));
     }
 
-    return { getConfig, getApiKey, lockApiKey, saveApiKeyForReload, subscribe, updateConfig };
+    return { getConfig, getApiKey, lockApiKey, subscribe, updateConfig };
 }
 
 function getSessionStorage() {

@@ -44,22 +44,6 @@ export const suite = {
                 }
                 assert(Boolean(error), "changing a loaded Google Maps key should require a page refresh");
             }
-        },
-        {
-            name: "persists a replacement key for the next page after Maps has initialized",
-            run() {
-                const storage = createStorage();
-                const service = createGoogleMapsConfigService({ storage });
-                service.updateConfig({ apiKey: "key-a" });
-                service.lockApiKey("key-a");
-
-                const result = service.saveApiKeyForReload(" key-b ");
-
-                assertEqual(result.apiKey, "key-b");
-                assertEqual(result.requiresReload, true);
-                assertEqual(service.getApiKey(), "key-a");
-                assertEqual(createGoogleMapsConfigService({ storage }).getApiKey(), "key-b");
-            }
         }
     ]
 };
