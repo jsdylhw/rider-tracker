@@ -31,6 +31,7 @@ export function createRouteRenderer({
     let lastRenderedState = null;
     let lastRenderedMapRouteSignature = "";
     let isEditingMapRoute = false;
+    let isPlanningMapRoute = false;
     const mapRouteSelection = { mode: null, start: null, destination: null };
 
     function bindEvents() {
@@ -63,18 +64,25 @@ export function createRouteRenderer({
             elements.clearMapRouteSelectionBtn.addEventListener("click", clearMapRouteSelection);
         }
         if (elements.planMapRouteBtn) {
-            elements.planMapRouteBtn.addEventListener("click", () => {
+            elements.planMapRouteBtn.addEventListener("click", async () => {
                 isEditingMapRoute = false;
-                onPlanMapRoute?.({
-                    start: mapRouteSelection.start,
-                    destination: mapRouteSelection.destination
-                });
+                isPlanningMapRoute = true;
                 renderMapRoutePlanner();
+                try {
+                    await onPlanMapRoute?.({
+                        start: mapRouteSelection.start,
+                        destination: mapRouteSelection.destination
+                    });
+                } finally {
+                    isPlanningMapRoute = false;
+                    renderMapRoutePlanner();
+                }
             });
         }
         visuals.setPlannerClickHandler(({ mode, point }) => {
             if (routeInputMode !== "map") return;
             isEditingMapRoute = true;
+            isPlanningMapRoute = false;
             const selectionMode = mode === "start" || mode === "destination"
                 ? mode
                 : (!mapRouteSelection.start || mapRouteSelection.destination ? "start" : "destination");
@@ -259,6 +267,7 @@ export function createRouteRenderer({
     function clearMapRouteSelection() {
         onInvalidateMapRoute?.();
         isEditingMapRoute = true;
+        isPlanningMapRoute = false;
         mapRouteSelection.mode = null;
         mapRouteSelection.start = null;
         mapRouteSelection.destination = null;
@@ -268,17 +277,35 @@ export function createRouteRenderer({
 
     function renderMapRoutePlanner() {
         if (!hasRouteModeControls) return;
+        const hasGeneratedRoute = hasGeneratedMapRoute();
         if (elements.mapRouteSelectionStatus) {
-            elements.mapRouteSelectionStatus.textContent = mapRouteSelection.start && mapRouteSelection.destination
-                ? "起点和起步目标已选择，可生成起步路线"
-                : mapRouteSelection.start ? "已选择起点，点击地图选择起步目标" : "点击地图选择起点";
+            elements.mapRouteSelectionStatus.textContent = hasGeneratedRoute
+                ? "起步路线已生成，可开始骑行或重新选点"
+                : isPlanningMapRoute
+                    ? "正在请求路网并生成起步路线..."
+                    : mapRouteSelection.start && mapRouteSelection.destination
+                        ? "起点和起步目标已选择，可生成起步路线"
+                        : mapRouteSelection.start ? "已选择起点，点击地图选择起步目标" : "点击地图选择起点";
         }
         if (elements.mapRouteStartText) elements.mapRouteStartText.textContent = formatPoint(mapRouteSelection.start);
         if (elements.mapRouteDestinationText) elements.mapRouteDestinationText.textContent = formatPoint(mapRouteSelection.destination);
+        if (elements.clearMapRouteSelectionBtn) {
+            elements.clearMapRouteSelectionBtn.textContent = hasGeneratedRoute ? "重新选点" : "清空";
+        }
         if (elements.planMapRouteBtn) {
-            elements.planMapRouteBtn.disabled = routeInputMode !== "map" || !mapRouteSelection.start || !mapRouteSelection.destination;
+            elements.planMapRouteBtn.hidden = hasGeneratedRoute;
+            elements.planMapRouteBtn.disabled = isPlanningMapRoute
+                || routeInputMode !== "map"
+                || !mapRouteSelection.start
+                || !mapRouteSelection.destination;
         }
         visuals.syncPlannerSelection(getVisiblePlannerSelection());
+    }
+
+    function hasGeneratedMapRoute() {
+        return routeInputMode === "map"
+            && lastRenderedState?.route?.source === "osm-exploration"
+            && !isEditingMapRoute;
     }
 
     function getVisiblePlannerSelection() {
