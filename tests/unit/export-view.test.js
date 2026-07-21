@@ -1,4 +1,4 @@
-import { createExportView } from "../../src/ui/views/export-view.js";
+import { createExportView, openUploadModal } from "../../src/ui/views/export-view.js";
 import { assert, assertEqual } from "../helpers/test-harness.js";
 
 function createButton() {
@@ -55,9 +55,23 @@ function createImportViewDocument() {
         confirmMarkVirtual: { checked: true },
         confirmFitDescription: { value: "" }
     };
+    const overlayListeners = new Map();
+    const overlayClasses = new Set();
     const uploadConfirmOverlay = {
-        classList: { add() {}, remove() {} },
-        addEventListener() {},
+        classList: {
+            add(name) { overlayClasses.add(name); },
+            remove(name) { overlayClasses.delete(name); },
+            contains(name) { return overlayClasses.has(name); }
+        },
+        addEventListener(type, handler) {
+            if (!overlayListeners.has(type)) overlayListeners.set(type, []);
+            overlayListeners.get(type).push(handler);
+        },
+        dispatch(type, payload = {}) {
+            for (const handler of overlayListeners.get(type) ?? []) {
+                handler({ target: uploadConfirmOverlay, ...payload });
+            }
+        },
         querySelector(selector) {
             const name = selector.replace(/^\[name="|"\]$/g, "");
             return modalInputs[name] ?? null;
@@ -98,7 +112,8 @@ function createImportViewDocument() {
         homeImportFile,
         homeImportFitInput,
         homeImportFitBtn,
-        modalButtons
+        modalButtons,
+        uploadConfirmOverlay
     };
 }
 
@@ -129,6 +144,12 @@ export const suite = {
                     assertEqual(fake.homeImportFitInput.value, "");
                     view.render({ liveRide: { isActive: true } });
                     assertEqual(fake.homeImportFitBtn.disabled, true);
+
+                    openUploadModal({ onUpload() {} });
+                    fake.uploadConfirmOverlay.dispatch("click", { target: fake.uploadConfirmOverlay });
+                    assertEqual(fake.uploadConfirmOverlay.classList.contains("open"), true);
+                    fake.modalButtons.cancelUploadBtn.dispatch("click");
+                    assertEqual(fake.uploadConfirmOverlay.classList.contains("open"), false);
                 } finally {
                     globalThis.document = previousDocument;
                 }

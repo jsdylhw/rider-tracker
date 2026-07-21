@@ -56,10 +56,6 @@ function initializeUploadConfirmModal() {
 
     bind(cancelBtn, "click", () => overlay?.classList.remove("open"));
 
-    bind(overlay, "click", (e) => {
-        if (e.target === overlay) overlay.classList.remove("open");
-    });
-
     bind(confirmBtn, "click", () => {
         if (!_pendingUpload) return;
         const { onUpload, onUpdateExportMetadata: onUpdate } = _pendingUpload;
