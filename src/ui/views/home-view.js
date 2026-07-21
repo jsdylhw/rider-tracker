@@ -21,11 +21,6 @@ export function createHomeView({ onSetUiMode, onEnterLiveMode, onUpdateSettings 
     elements.goHomeBtns.forEach((button) => bind(button, "click", () => onSetUiMode("home")));
     bind(elements.openProfileSettingsBtn, "click", () => setProfileSettingsOpen(elements, true));
     bind(elements.closeProfileSettingsBtn, "click", () => setProfileSettingsOpen(elements, false));
-    bind(elements.profileSettingsOverlay, "click", (event) => {
-        if (event.target === elements.profileSettingsOverlay) {
-            setProfileSettingsOpen(elements, false);
-        }
-    });
 
     if (elements.personalSettingsForm) {
         elements.personalSettingsForm.addEventListener("submit", (event) => event.preventDefault());
