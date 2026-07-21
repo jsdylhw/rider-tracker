@@ -73,6 +73,10 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         mapController.invalidateDashboardSize();
     }
 
+    function invalidateStreetViewSize() {
+        streetViewController?.invalidateSize?.();
+    }
+
     function destroy() {
         streetViewController?.destroy();
         streetViewController = null;
@@ -91,6 +95,7 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         syncPlannerSelection,
         invalidatePreviewSize,
         invalidateDashboardSize,
+        invalidateStreetViewSize,
         destroy
     };
 }

@@ -93,6 +93,7 @@ export function createDashboardRenderer({
         setImmersiveUiHidden(false);
         elements.rideDashboard?.classList.remove("immersive-street-view");
         document.body.classList.remove("immersive-street-view-active");
+        scheduleAfterLayout(() => visuals.invalidateStreetViewSize?.());
         if (elements.immersiveStreetViewBtn) {
             elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
         }
@@ -112,6 +113,7 @@ export function createDashboardRenderer({
         elements.rideDashboard?.classList.toggle("immersive-street-view", true);
         elements.immersiveStreetViewBtn.textContent = "退出沉浸模式";
         render(store.getState());
+        scheduleAfterLayout(() => visuals.invalidateStreetViewSize?.());
     }
 
     function showRideAlert(message) {

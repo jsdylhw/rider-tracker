@@ -334,6 +334,10 @@ export function createStreetViewController({ container1, container2, onTrace } =
         }) >= GPS_CATCH_UP_DISTANCE_METERS;
     }
 
+    function invalidateSize() {
+        googleEvent.trigger?.(panorama, "resize");
+    }
+
     function destroy() {
         cancelReadyWait?.();
         cancelPovAnimation();
@@ -347,7 +351,7 @@ export function createStreetViewController({ container1, container2, onTrace } =
         onTrace?.({ event, message, at: Date.now(), ...data });
     }
 
-    return { update, destroy };
+    return { update, invalidateSize, destroy };
 }
 
 export function buildStreetViewTargetFromRoute(route, currentRecord) {

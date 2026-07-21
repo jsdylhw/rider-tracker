@@ -204,6 +204,34 @@ export const suite = {
             }
         },
         {
+            name: "沉浸切换后会刷新街景主视图尺寸",
+            async run() {
+                const elements = createElements();
+                const store = createStore(createBaseState());
+                let streetViewResizeCount = 0;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => true,
+                        syncMap() {},
+                        syncStreetView() {},
+                        invalidateStreetViewSize() { streetViewResizeCount += 1; }
+                    },
+                    streetViewDebugEnabled: true
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                elements.immersiveStreetViewBtn.dispatch("click");
+                await Promise.resolve();
+
+                assertEqual(streetViewResizeCount, 1);
+                elements.immersiveBackBtn.dispatch("click");
+                await Promise.resolve();
+                assertEqual(streetViewResizeCount, 2);
+            }
+        },
+        {
             name: "手工路线进入沉浸街景时不显示路线小地图",
             run() {
                 const elements = createElements();
