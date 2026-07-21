@@ -295,6 +295,9 @@ export function createRideService({ store, deviceService, exportService, routeSe
             const cmd = rideState.session.pendingTrainerCommand;
             const controlMode = cmd.controlMode ?? cmd.mode;
             const targetGradePercent = cmd.targetGradePercent ?? cmd.payload?.gradePercent;
+            const windSpeedMps = cmd.payload?.windSpeedMps;
+            const crr = cmd.payload?.crr;
+            const cda = cmd.payload?.cda;
             const targetPowerWatts = cmd.targetPowerWatts ?? cmd.payload?.targetPowerWatts;
             const targetResistanceLevel = cmd.targetResistanceLevel ?? cmd.payload?.resistanceLevel;
             const requiresConfirmation = cmd.requireConfirmation === true;
@@ -305,6 +308,9 @@ export function createRideService({ store, deviceService, exportService, routeSe
                 deviceService,
                 controlMode,
                 targetGradePercent,
+                windSpeedMps,
+                crr,
+                cda,
                 targetPowerWatts,
                 targetResistanceLevel,
                 requiresConfirmation
@@ -622,6 +628,9 @@ function createInitialCommandDispatchState() {
         lastAttemptedAtMs: null,
         lastSentControlMode: null,
         lastSentGradePercent: 0,
+        lastSentWindSpeedMps: 0,
+        lastSentCrr: null,
+        lastSentCda: null,
         lastSentPowerWatts: null,
         lastSentResistanceLevel: null,
         inFlightCommandKey: null
@@ -673,6 +682,9 @@ function buildNextCommandDispatchState({ dispatchState, command, now }) {
         lastSentAtMs: now,
         lastSentControlMode: controlMode,
         lastSentGradePercent: command.targetGradePercent ?? command.payload?.gradePercent ?? 0,
+        lastSentWindSpeedMps: command.payload?.windSpeedMps ?? 0,
+        lastSentCrr: command.payload?.crr ?? null,
+        lastSentCda: command.payload?.cda ?? null,
         lastSentPowerWatts: command.targetPowerWatts ?? command.payload?.targetPowerWatts ?? null,
         lastSentResistanceLevel: command.targetResistanceLevel ?? command.payload?.resistanceLevel ?? null,
         inFlightCommandKey: null
@@ -682,22 +694,32 @@ function buildNextCommandDispatchState({ dispatchState, command, now }) {
 function buildTrainerCommandKey(command) {
     const controlMode = command.controlMode ?? command.mode ?? "unknown";
     const targetGradePercent = command.targetGradePercent ?? command.payload?.gradePercent ?? "";
+    const windSpeedMps = command.payload?.windSpeedMps ?? "";
+    const crr = command.payload?.crr ?? "";
+    const cda = command.payload?.cda ?? "";
     const targetPowerWatts = command.targetPowerWatts ?? command.payload?.targetPowerWatts ?? "";
     const targetResistanceLevel = command.targetResistanceLevel ?? command.payload?.resistanceLevel ?? "";
     const requireConfirmation = command.requireConfirmation === true ? "confirm" : "best-effort";
-    return `${controlMode}:${targetGradePercent}:${targetPowerWatts}:${targetResistanceLevel}:${requireConfirmation}`;
+    return `${controlMode}:${targetGradePercent}:${windSpeedMps}:${crr}:${cda}:${targetPowerWatts}:${targetResistanceLevel}:${requireConfirmation}`;
 }
 
 async function dispatchTrainerCommand({
     deviceService,
     controlMode,
     targetGradePercent,
+    windSpeedMps,
+    crr,
+    cda,
     targetPowerWatts,
     targetResistanceLevel,
     requiresConfirmation
 }) {
     if (controlMode === TRAINER_CONTROL_MODES.SIM && targetGradePercent !== undefined) {
-        await deviceService.setTrainerGrade(targetGradePercent);
+        await deviceService.setTrainerGrade(targetGradePercent, {
+            windSpeedMps,
+            crr,
+            cda
+        });
         return;
     }
 

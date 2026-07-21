@@ -10,6 +10,7 @@ import { suite as googleMapsConfigServiceSuite } from "./unit/google-maps-config
 import { suite as routeServiceElevationSuite } from "./unit/route-service-elevation.test.js";
 import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
+import { suite as ftmsSimulationSuite } from "./unit/ftms-simulation.test.js";
 import { suite as heartRateModelSuite } from "./unit/heart-rate-model.test.js";
 import { suite as initialStateSuite } from "./unit/initial-state.test.js";
 import { suite as appStoreSuite } from "./unit/app-store.test.js";
@@ -68,6 +69,7 @@ const suites = [
     routeServiceElevationSuite,
     gpxSuite,
     physicsSuite,
+    ftmsSimulationSuite,
     heartRateModelSuite,
     initialStateSuite,
     appStoreSuite,

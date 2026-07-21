@@ -226,7 +226,7 @@ export function createDeviceService({ store }) {
         }
     }
 
-    async function setTrainerGrade(gradePercent) {
+    async function setTrainerGrade(gradePercent, simulationConfig) {
         if (!controllableTrainer.isConnected) {
             const message = "坡度模拟未下发：智能骑行台控制未连接。";
             store.setState((state) => ({
@@ -242,12 +242,15 @@ export function createDeviceService({ store }) {
 
         try {
             await controllableTrainer.activateControl("sim");
-            const result = await controllableTrainer.setTargetGrade(gradePercent);
+            const result = await controllableTrainer.setTargetGrade(gradePercent, simulationConfig);
+            const windSpeedMps = result.windSpeedMps ?? simulationConfig?.windSpeedMps ?? 0;
             store.setState((state) => ({
                 ...state,
                 liveRide: {
                     ...state.liveRide,
-                    statusMeta: `坡度模拟已写入骑行台：${Number(gradePercent).toFixed(1)}%。`
+                    statusMeta: result.path === "0x11"
+                        ? `坡度模拟已写入骑行台：${Number(gradePercent).toFixed(1)}%，风速 ${Number(windSpeedMps).toFixed(1)} m/s。`
+                        : `坡度模拟已写入骑行台：${Number(gradePercent).toFixed(1)}%。原生风阻模拟未生效，已回退为仅坡度。`
                 }
             }));
             return result;

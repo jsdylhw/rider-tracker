@@ -57,6 +57,14 @@ export function buildNextRideSessionState({
             previousTargetGradePercent: state.liveRide.commandDispatch?.lastSentGradePercent
                 ?? state.workout.runtime.targetTrainerGradePercent
                 ?? 0,
+            previousTargetWindSpeedMps: state.liveRide.commandDispatch?.lastSentWindSpeedMps ?? 0,
+            previousTargetCrr: state.liveRide.commandDispatch?.lastSentCrr ?? null,
+            previousTargetCda: state.liveRide.commandDispatch?.lastSentCda ?? null,
+            simulation: {
+                windSpeedMps: state.settings.windSpeed,
+                crr: state.settings.crr,
+                cda: state.settings.cda
+            },
             config: state.workout.gradeSimulation,
             active: true,
             rideId,

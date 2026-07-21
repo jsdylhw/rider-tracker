@@ -109,6 +109,42 @@ export const suite = {
 
                 assertEqual(result.targetTrainerGradePercent, config.maxDownhillPercent);
             }
+        },
+        {
+            name: "buildGradeSimulationState dispatches when wind changes without a grade change",
+            run() {
+                const baseline = buildGradeSimulationState({
+                    route: createGradeRoute(),
+                    distanceMeters: 80,
+                    config,
+                    simulation: {
+                        windSpeedMps: 0,
+                        crr: 0.004,
+                        cda: 0.35
+                    }
+                });
+                const result = buildGradeSimulationState({
+                    route: createGradeRoute(),
+                    distanceMeters: 80,
+                    previousTargetGradePercent: baseline.targetTrainerGradePercent,
+                    previousTargetWindSpeedMps: 0,
+                    previousTargetCrr: 0.004,
+                    previousTargetCda: 0.35,
+                    simulation: {
+                        windSpeedMps: 3,
+                        crr: 0.004,
+                        cda: 0.35
+                    },
+                    config,
+                    active: true,
+                    rideId: "ride-wind",
+                    commandSequence: 9
+                });
+
+                assertEqual(result.pendingTrainerCommand.payload.windSpeedMps, 3);
+                assertEqual(result.pendingTrainerCommand.payload.crr, 0.004);
+                assertEqual(result.pendingTrainerCommand.payload.cda, 0.35);
+            }
         }
     ]
 };

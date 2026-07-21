@@ -144,6 +144,9 @@ function createInitialLiveRideState() {
             lastAttemptedAtMs: null,
             lastSentControlMode: null,
             lastSentGradePercent: 0,
+            lastSentWindSpeedMps: 0,
+            lastSentCrr: null,
+            lastSentCda: null,
             lastSentPowerWatts: null,
             lastSentResistanceLevel: null,
             inFlightCommandKey: null
