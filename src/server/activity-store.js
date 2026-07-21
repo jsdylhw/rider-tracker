@@ -7,8 +7,12 @@ const DEFAULT_DB_PATH = path.resolve(process.cwd(), "data", "rider-tracker.db");
 
 export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH || DEFAULT_DB_PATH) {
     const dbPath = path.resolve(filePath);
+    let initialized = false;
 
     function initialize() {
+        if (initialized) {
+            return;
+        }
         fs.mkdirSync(path.dirname(dbPath), { recursive: true });
         runSql(`
             PRAGMA journal_mode = WAL;
@@ -43,6 +47,7 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
             { name: "fit_file_size_bytes", definition: "INTEGER" },
             { name: "fit_file_created_at", definition: "TEXT" }
         ]);
+        initialized = true;
     }
 
     function saveRiderSession(session, options = {}) {
@@ -105,9 +110,11 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         return getActivity(activity.id);
     }
 
-    function listActivities({ limit = 50 } = {}) {
+    function listActivities({ limit = 50, offset = 0, sportType, source } = {}) {
         initialize();
         const safeLimit = clampInteger(limit, 1, 200, 50);
+        const safeOffset = clampInteger(offset, 0, 1_000_000, 0);
+        const whereClause = buildActivityFilterSql({ sportType, source });
         return queryJson(`
             SELECT
                 id,
@@ -130,9 +137,37 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
                 created_at AS createdAt,
                 updated_at AS updatedAt
             FROM activities
+            ${whereClause}
             ORDER BY COALESCE(started_at, created_at) DESC
-            LIMIT ${safeLimit};
+            LIMIT ${safeLimit}
+            OFFSET ${safeOffset};
         `).map(normalizeActivityRow);
+    }
+
+    function countActivities({ sportType, source } = {}) {
+        initialize();
+        const whereClause = buildActivityFilterSql({ sportType, source });
+        const rows = queryJson(`
+            SELECT COUNT(*) AS activityCount
+            FROM activities
+            ${whereClause};
+        `);
+        return finiteOrNull(rows[0]?.activityCount) ?? 0;
+    }
+
+    function getActivityHistory({ limit = 50, offset = 0, sportType, source } = {}) {
+        initialize();
+        const safeLimit = clampInteger(limit, 1, 200, 50);
+        const safeOffset = clampInteger(offset, 0, 1_000_000, 0);
+        const whereClause = buildActivityFilterSql({ sportType, source });
+        return withDatabase((db) => {
+            const activities = db.prepare(buildActivityListSql({ whereClause, safeLimit, safeOffset }))
+                .all()
+                .map(normalizeActivityRow);
+            const total = finiteOrNull(db.prepare(`SELECT COUNT(*) AS activityCount FROM activities ${whereClause};`).get()?.activityCount) ?? 0;
+            const summary = db.prepare(buildActivitySummarySql()).get() ?? emptyActivitySummary();
+            return { activities, total, summary };
+        });
     }
 
     function getActivity(id) {
@@ -271,22 +306,8 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
 
     function getSummary() {
         initialize();
-        const rows = queryJson(`
-            SELECT
-                COUNT(*) AS activityCount,
-                COALESCE(SUM(distance_km), 0) AS totalDistanceKm,
-                COALESCE(SUM(ascent_meters), 0) AS totalAscentMeters,
-                COALESCE(SUM(elapsed_seconds), 0) AS totalElapsedSeconds,
-                COALESCE(SUM(estimated_tss), 0) AS totalEstimatedTss
-            FROM activities;
-        `);
-        return rows[0] ?? {
-            activityCount: 0,
-            totalDistanceKm: 0,
-            totalAscentMeters: 0,
-            totalElapsedSeconds: 0,
-            totalEstimatedTss: 0
-        };
+        const rows = queryJson(buildActivitySummarySql());
+        return rows[0] ?? emptyActivitySummary();
     }
 
     function runSql(sql) {
@@ -322,6 +343,8 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         initialize,
         saveRiderSession,
         listActivities,
+        countActivities,
+        getActivityHistory,
         getActivity,
         getActivityDetail,
         updateActivityName,
@@ -329,6 +352,71 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         deleteActivity,
         getSummary
     };
+}
+
+function buildActivityListSql({ whereClause, safeLimit, safeOffset }) {
+    return `
+        SELECT
+            id,
+            source,
+            sport_type AS sportType,
+            name,
+            started_at AS startedAt,
+            finished_at AS finishedAt,
+            elapsed_seconds AS elapsedSeconds,
+            distance_km AS distanceKm,
+            ascent_meters AS ascentMeters,
+            average_power AS averagePower,
+            normalized_power AS normalizedPower,
+            average_hr AS averageHr,
+            estimated_tss AS estimatedTss,
+            has_gps_track AS hasGpsTrack,
+            fit_file_path AS fitFilePath,
+            fit_file_size_bytes AS fitFileSizeBytes,
+            fit_file_created_at AS fitFileCreatedAt,
+            created_at AS createdAt,
+            updated_at AS updatedAt
+        FROM activities
+        ${whereClause}
+        ORDER BY COALESCE(started_at, created_at) DESC
+        LIMIT ${safeLimit}
+        OFFSET ${safeOffset};
+    `;
+}
+
+function buildActivitySummarySql() {
+    return `
+        SELECT
+            COUNT(*) AS activityCount,
+            COALESCE(SUM(distance_km), 0) AS totalDistanceKm,
+            COALESCE(SUM(ascent_meters), 0) AS totalAscentMeters,
+            COALESCE(SUM(elapsed_seconds), 0) AS totalElapsedSeconds,
+            COALESCE(SUM(estimated_tss), 0) AS totalEstimatedTss
+        FROM activities;
+    `;
+}
+
+function emptyActivitySummary() {
+    return {
+        activityCount: 0,
+        totalDistanceKm: 0,
+        totalAscentMeters: 0,
+        totalElapsedSeconds: 0,
+        totalEstimatedTss: 0
+    };
+}
+
+function buildActivityFilterSql({ sportType, source } = {}) {
+    const clauses = [];
+    const normalizedSportType = normalizeFilterText(sportType);
+    const normalizedSource = normalizeFilterText(source);
+    if (normalizedSportType) {
+        clauses.push(`sport_type = ${sqlValue(normalizedSportType)}`);
+    }
+    if (normalizedSource) {
+        clauses.push(`source = ${sqlValue(normalizedSource)}`);
+    }
+    return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 }
 
 function parseRawSession(rawJson) {
@@ -452,4 +540,8 @@ function clampInteger(value, min, max, fallback) {
 function normalizeText(value, fallback, maxLength) {
     const text = typeof value === "string" ? value.trim() : "";
     return (text || fallback).slice(0, maxLength);
+}
+
+function normalizeFilterText(value) {
+    return typeof value === "string" ? value.trim().slice(0, 120) : "";
 }

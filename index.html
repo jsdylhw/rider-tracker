@@ -16,39 +16,12 @@
                     <p class="hero-kicker">让室内骑行更轻量、更自由</p>
                     <div class="controls mode-controls">
                         <button id="goToLiveBtn" class="btn secondary">进入骑行设置</button>
-                    </div>
-                </div>
-                <div class="hero-metrics">
-                    <div class="metric-chip">
-                        <span>累计距离</span>
-                        <strong id="homeTotalDistanceChip">0.00 km</strong>
-                    </div>
-                    <div class="metric-chip">
-                        <span>累计爬升</span>
-                        <strong id="homeTotalAscentChip">0 m</strong>
+                        <button id="openProfileSettingsBtn" class="btn ghost" type="button">骑行设置</button>
                     </div>
                 </div>
             </section>
 
             <section class="layout-grid">
-                <div class="column">
-                    <div id="homeProfileCard" class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>个人基础数据</h2>
-                            </div>
-                        </div>
-                        <form id="personalSettingsForm" class="form-grid">
-                            <label class="field"><span>骑手总质量 kg</span><input id="massInput" name="mass" type="number" min="40" max="150" step="1"></label>
-                            <label class="field"><span>FTP W</span><input id="ftpInput" name="ftp" type="number" min="100" max="450" step="5"></label>
-                            <label class="field"><span>静息心率 bpm</span><input id="restingHrInput" name="restingHr" type="number" min="40" max="100" step="1"></label>
-                            <label class="field"><span>最高心率 bpm</span><input id="maxHrInput" name="maxHr" type="number" min="120" max="220" step="1"></label>
-                            <label class="field"><span>空气阻力 CdA</span><input id="cdaInput" name="cda" type="number" min="0.2" max="0.8" step="0.01"></label>
-                            <label class="field"><span>滚阻 Crr</span><input id="crrInput" name="crr" type="number" min="0.001" max="0.02" step="0.001"></label>
-                            <label class="field"><span>风速 m/s</span><input id="windSpeedInput" name="windSpeed" type="number" min="-10" max="10" step="0.5"></label>
-                        </form>
-                    </div>
-                </div>
                 <div class="column">
                     <div id="homeHistoryCard" class="card">
                         <div class="section-title-row">
@@ -58,6 +31,24 @@
                             <div class="inline-actions">
                                 <input id="homeImportFitInput" type="file" accept=".fit,application/vnd.ant.fit" hidden>
                                 <button id="homeImportFitBtn" class="btn secondary compact-btn" type="button">导入 FIT</button>
+                            </div>
+                        </div>
+                        <div id="homeActivityOverview" class="home-activity-overview" aria-label="本地活动概览">
+                            <div class="home-activity-overview-item is-activities">
+                                <span class="home-activity-overview-icon" aria-hidden="true">活动</span>
+                                <div><strong id="homeActivityCount">0</strong><span>累计记录</span></div>
+                            </div>
+                            <div class="home-activity-overview-item is-distance">
+                                <span class="home-activity-overview-icon" aria-hidden="true">km</span>
+                                <div><strong id="homeActivityDistance">0.0</strong><span>累计距离</span></div>
+                            </div>
+                            <div class="home-activity-overview-item is-time">
+                                <span class="home-activity-overview-icon" aria-hidden="true">h</span>
+                                <div><strong id="homeActivityDuration">0 h</strong><span>骑行时长</span></div>
+                            </div>
+                            <div class="home-activity-overview-item is-load">
+                                <span class="home-activity-overview-icon" aria-hidden="true">TSS</span>
+                                <div><strong id="homeActivityTss">0</strong><span>训练负荷</span></div>
                             </div>
                         </div>
                         <div id="historyContainer" class="activity-history-panel">
@@ -383,6 +374,24 @@
             <div class="modal-actions">
                 <button id="confirmGoogleMapsServiceBtn" class="btn power-btn" type="button">继续</button>
                 <button id="cancelGoogleMapsServiceBtn" class="btn secondary" type="button">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay profile-settings-overlay" id="profileSettingsOverlay" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="profileSettingsTitle">
+            <h3 id="profileSettingsTitle">骑行设置</h3>
+            <form id="personalSettingsForm" class="form-grid profile-settings-form">
+                <label class="field"><span class="field-label">骑手总质量 kg <span class="setting-help" tabindex="0" data-tooltip="用于计算爬坡、滚阻和加速所需功率；数值越大，爬坡速度通常越低。" aria-label="骑手总质量说明">?</span></span><input id="massInput" name="mass" type="number" min="40" max="150" step="1"></label>
+                <label class="field"><span class="field-label">FTP W <span class="setting-help" tabindex="0" data-tooltip="用于功率区间、IF、TSS 和训练目标百分比计算，不会直接改变物理速度模型。" aria-label="FTP 说明">?</span></span><input id="ftpInput" name="ftp" type="number" min="100" max="450" step="5"></label>
+                <label class="field"><span class="field-label">静息心率 bpm <span class="setting-help" tabindex="0" data-tooltip="与最高心率一起确定心率储备区间，用于骑后分析与训练强度判断。" aria-label="静息心率说明">?</span></span><input id="restingHrInput" name="restingHr" type="number" min="40" max="100" step="1"></label>
+                <label class="field"><span class="field-label">最高心率 bpm <span class="setting-help" tabindex="0" data-tooltip="用于计算心率区间；应填写稳定测试或长期记录中的可信最大值。" aria-label="最高心率说明">?</span></span><input id="maxHrInput" name="maxHr" type="number" min="120" max="220" step="1"></label>
+                <label class="field"><span class="field-label">空气阻力 CdA <span class="setting-help" tabindex="0" data-tooltip="CdA 越大，空气阻力越高；平路和高速下，同样功率会得到更低的速度。" aria-label="空气阻力说明">?</span></span><input id="cdaInput" name="cda" type="number" min="0.2" max="0.8" step="0.01"></label>
+                <label class="field"><span class="field-label">滚阻 Crr <span class="setting-help" tabindex="0" data-tooltip="Crr 越大，轮胎滚动阻力越高；它会在各种速度下持续降低可达到的速度。" aria-label="滚阻说明">?</span></span><input id="crrInput" name="crr" type="number" min="0.001" max="0.02" step="0.001"></label>
+                <label class="field"><span class="field-label">风速 m/s <span class="setting-help" tabindex="0" data-tooltip="正值按逆风处理，会提高空气阻力；负值按顺风处理，会提高相同功率下的速度。" aria-label="风速说明">?</span></span><input id="windSpeedInput" name="windSpeed" type="number" min="-10" max="10" step="0.5"></label>
+            </form>
+            <div class="modal-actions">
+                <button id="closeProfileSettingsBtn" class="btn secondary" type="button">完成</button>
             </div>
         </div>
     </div>

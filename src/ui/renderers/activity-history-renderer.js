@@ -2,7 +2,7 @@ import { deleteActivity, fetchActivityHistory, getActivity, renameActivity } fro
 import { formatDuration, formatNumber } from "../../shared/format.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
 
-const DEFAULT_LIMIT = 12;
+const DEFAULT_LIMIT = 20;
 
 export function createActivityHistoryRenderer({
     containers = [],
@@ -15,7 +15,11 @@ export function createActivityHistoryRenderer({
     let activities = [];
     let loading = false;
     let statusText = "";
+    let page = { total: 0, hasMore: false };
+    let filters = { sportType: "", source: "" };
     let bound = false;
+    let requestGeneration = 0;
+    let queuedRefresh = false;
 
     function bindEvents() {
         if (bound) return;
@@ -25,19 +29,26 @@ export function createActivityHistoryRenderer({
             container.addEventListener("click", (event) => {
                 const actionTarget = event.target?.closest?.("[data-activity-action]");
                 const action = actionTarget?.dataset?.activityAction;
-                const activityId = actionTarget?.dataset?.activityId;
-                if (!action || !activityId) {
+                if (action === "load-more") {
+                    void loadMore();
                     return;
                 }
-                if (action === "rename") {
-                    void handleRename(activityId);
+
+                const activityId = actionTarget?.dataset?.activityId;
+                if (!action || !activityId) return;
+                if (action === "rename") void handleRename(activityId);
+                if (action === "delete") void handleDelete(activityId);
+                if (action === "details") void handleDetails(activityId);
+            });
+
+            container.addEventListener("change", (event) => {
+                const filterTarget = event.target?.closest?.("[data-activity-filter]");
+                const filterKey = filterTarget?.dataset?.activityFilter;
+                if (!filterKey || !(filterKey in filters)) {
+                    return;
                 }
-                if (action === "delete") {
-                    void handleDelete(activityId);
-                }
-                if (action === "details") {
-                    void handleDetails(activityId);
-                }
+                filters = { ...filters, [filterKey]: filterTarget.value ?? "" };
+                void refresh();
             });
         });
 
@@ -47,34 +58,70 @@ export function createActivityHistoryRenderer({
     }
 
     async function refresh() {
-        if (!mountedContainers.length || loading) {
+        requestGeneration += 1;
+        if (loading) {
+            queuedRefresh = true;
+            statusText = "正在更新活动列表...";
+            render();
+            return;
+        }
+        return loadPage({ reset: true, generation: requestGeneration });
+    }
+
+    async function loadMore() {
+        if (loading || !page.hasMore) {
+            return;
+        }
+        requestGeneration += 1;
+        return loadPage({ reset: false, generation: requestGeneration });
+    }
+
+    async function loadPage({ reset, generation }) {
+        if (!mountedContainers.length || loading || generation !== requestGeneration) {
             return;
         }
 
         loading = true;
-        statusText = "正在读取历史记录...";
+        const requestFilters = { ...filters };
+        const requestOffset = reset ? 0 : activities.length;
+        if (reset) {
+            statusText = activities.length ? "正在更新活动列表..." : "正在读取历史记录...";
+        }
         render();
 
         try {
-            const history = await fetchActivityHistory({ limit });
-            activities = history.activities;
+            const history = await fetchActivityHistory({
+                limit,
+                offset: requestOffset,
+                ...requestFilters
+            });
+            if (generation !== requestGeneration) {
+                return;
+            }
+            activities = reset
+                ? history.activities
+                : appendUniqueActivities(activities, history.activities);
+            page = history.page ?? { total: activities.length, hasMore: false };
             onSummary(history.summary);
-            statusText = activities.length ? "" : "暂无历史记录。";
+            statusText = activities.length ? "" : "暂无符合条件的活动记录。";
         } catch (error) {
-            statusText = `历史记录读取失败：${extractErrorMessage(error)}`;
+            if (generation === requestGeneration) {
+                statusText = `历史记录读取失败：${extractErrorMessage(error)}`;
+            }
         } finally {
             loading = false;
-            render();
+            if (queuedRefresh) {
+                queuedRefresh = false;
+                void loadPage({ reset: true, generation: requestGeneration });
+            } else if (generation === requestGeneration) {
+                render();
+            }
         }
     }
 
     function render() {
         mountedContainers.forEach((container) => {
-            container.innerHTML = buildHistoryHtml({
-                activities,
-                statusText,
-                loading
-            });
+            container.innerHTML = buildHistoryHtml({ activities, statusText, loading, page, filters });
         });
     }
 
@@ -97,9 +144,7 @@ export function createActivityHistoryRenderer({
     async function handleRename(activityId) {
         const activity = activities.find((candidate) => candidate.id === activityId);
         const nextName = window.prompt("修改活动名称", activity?.name ?? "");
-        if (nextName === null) {
-            return;
-        }
+        if (nextName === null) return;
 
         const normalizedName = nextName.trim();
         if (!normalizedName) {
@@ -119,9 +164,7 @@ export function createActivityHistoryRenderer({
     async function handleDelete(activityId) {
         const activity = activities.find((candidate) => candidate.id === activityId);
         const confirmed = window.confirm(`删除活动「${activity?.name ?? activityId}」？`);
-        if (!confirmed) {
-            return;
-        }
+        if (!confirmed) return;
 
         try {
             await deleteActivity(activityId);
@@ -135,19 +178,13 @@ export function createActivityHistoryRenderer({
     bindEvents();
     render();
 
-    return {
-        refresh,
-        render
-    };
+    return { refresh, loadMore, render };
 }
 
-function buildHistoryHtml({ activities, statusText, loading }) {
-    if (loading) {
-        return `<div class="activity-history-empty">正在读取历史记录...</div>`;
-    }
-
+function buildHistoryHtml({ activities, statusText, loading, page, filters }) {
+    const filtersHtml = buildHistoryFiltersHtml(filters, page, activities.length);
     if (!activities.length) {
-        return `<div class="activity-history-empty">${escapeHtml(statusText || "暂无历史记录。")}</div>`;
+        return `${filtersHtml}<div class="activity-history-empty">${escapeHtml(statusText || "暂无历史记录。")}</div>`;
     }
 
     const rows = activities.map((activity) => {
@@ -184,17 +221,54 @@ function buildHistoryHtml({ activities, statusText, loading }) {
     }).join("");
 
     const statusHtml = statusText ? `<div class="activity-history-empty">${escapeHtml(statusText)}</div>` : "";
-    return `${statusHtml}<div class="activity-history-list">${rows}</div>`;
+    const loadMoreHtml = page?.hasMore
+        ? `<div class="activity-history-more"><button class="btn secondary compact-btn" data-activity-action="load-more" type="button" ${loading ? "disabled" : ""}>${loading ? "正在加载..." : "加载更多"}</button></div>`
+        : "";
+    return `${filtersHtml}${statusHtml}<div class="activity-history-list">${rows}</div>${loadMoreHtml}`;
+}
+
+function buildHistoryFiltersHtml(filters, page, loadedCount) {
+    const total = Number.isFinite(page?.total) ? page.total : loadedCount;
+    const countText = total > loadedCount ? `已显示 ${loadedCount} / ${total} 条` : `共 ${total} 条`;
+    return `
+        <div class="activity-history-toolbar">
+            <div class="activity-history-filters">
+                <label>
+                    <span>类型</span>
+                    <select data-activity-filter="sportType">
+                        ${buildFilterOption("", "全部", filters?.sportType)}
+                        ${buildFilterOption("VirtualRide", "虚拟骑行", filters?.sportType)}
+                        ${buildFilterOption("Ride", "户外骑行", filters?.sportType)}
+                    </select>
+                </label>
+                <label>
+                    <span>来源</span>
+                    <select data-activity-filter="source">
+                        ${buildFilterOption("", "全部", filters?.source)}
+                        ${buildFilterOption("rider-tracker", "Rider Tracker", filters?.source)}
+                        ${buildFilterOption("fit-import", "FIT 导入", filters?.source)}
+                        ${buildFilterOption("beacon", "后台保存", filters?.source)}
+                    </select>
+                </label>
+            </div>
+            <span class="activity-history-count">${escapeHtml(countText)}</span>
+        </div>
+    `;
+}
+
+function buildFilterOption(value, label, selectedValue) {
+    return `<option value="${escapeHtml(value)}"${value === selectedValue ? " selected" : ""}>${escapeHtml(label)}</option>`;
+}
+
+function appendUniqueActivities(existing, incoming) {
+    const seenIds = new Set(existing.map((activity) => activity.id));
+    return [...existing, ...(incoming ?? []).filter((activity) => !seenIds.has(activity.id))];
 }
 
 function formatActivityDate(value) {
-    if (!value) {
-        return "未知时间";
-    }
+    if (!value) return "未知时间";
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return String(value);
-    }
+    if (Number.isNaN(date.getTime())) return String(value);
     return date.toLocaleString("zh-CN", {
         month: "2-digit",
         day: "2-digit",

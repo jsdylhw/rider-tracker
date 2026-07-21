@@ -37,14 +37,20 @@ export async function listActivities({
 
 export async function fetchActivityHistory({
     serverUrl = globalThis.location?.origin || "",
-    limit = 50
+    limit = 50,
+    offset = 0,
+    sportType = "",
+    source = ""
 } = {}) {
     if (!serverUrl) {
-        return { activities: [], summary: {} };
+        return { activities: [], summary: {}, page: { total: 0, offset: 0, limit, hasMore: false } };
     }
 
     const url = new URL(`${serverUrl}/api/activities`);
     url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
+    if (sportType) url.searchParams.set("sportType", sportType);
+    if (source) url.searchParams.set("source", source);
     const response = await fetch(url);
     const body = await response.json().catch(() => ({}));
     if (!response.ok || body?.ok === false) {
@@ -53,7 +59,8 @@ export async function fetchActivityHistory({
 
     return {
         activities: body.activities ?? [],
-        summary: body.summary ?? {}
+        summary: body.summary ?? {},
+        page: body.page ?? { total: body.activities?.length ?? 0, offset, limit, hasMore: false }
     };
 }
 

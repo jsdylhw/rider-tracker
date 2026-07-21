@@ -10,14 +10,25 @@ export function createActivityRoutes({ activityStore, upload, fitFileDir, projec
 
     router.get("/api/activities", (req, res) => {
         try {
-            const activities = activityStore.listActivities({
-                limit: req.query.limit
-            });
+            const filters = {
+                sportType: req.query.sportType,
+                source: req.query.source
+            };
+            const limit = req.query.limit;
+            const offset = req.query.offset;
+            const history = activityStore.getActivityHistory({ ...filters, limit, offset });
+            const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
             return res.json({
                 ok: true,
                 dbPath: activityStore.filePath,
-                summary: activityStore.getSummary(),
-                activities
+                summary: history.summary,
+                activities: history.activities,
+                page: {
+                    total: history.total,
+                    offset: safeOffset,
+                    limit: Number.parseInt(limit, 10) || 50,
+                    hasMore: safeOffset + history.activities.length < history.total
+                }
             });
         } catch (err) {
             return res.status(500).json({
