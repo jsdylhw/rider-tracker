@@ -312,11 +312,13 @@ body.immersive-street-view-active {
     height: 100%;
 }
 
-@media (max-width: 900px) {
+/* Keep the desktop HUD arrangement on compact laptop windows, but reserve the
+ * bottom-right corner for the route map so it never covers the elevation card. */
+@media (max-width: 1200px) {
     .ride-dashboard.immersive-street-view #rideDashboardMap {
         right: 12px !important;
         bottom: 12px !important;
-        width: min(34vw, 204px) !important;
+        width: 204px !important;
         height: auto !important;
         aspect-ratio: 264 / 180;
     }
@@ -324,15 +326,15 @@ body.immersive-street-view-active {
     .ride-dashboard.immersive-street-view #immersiveMetricsCard {
         top: 6px;
         left: 6px;
-        width: min(42vw, 180px);
+        width: 172px;
     }
 
     .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display {
-        font-size: clamp(25px, 4.5vw, 32px);
+        font-size: 30px;
     }
 
     .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display .unit {
-        font-size: clamp(14px, 3.2vw, 18px);
+        font-size: 18px;
     }
 
     .ride-dashboard.immersive-street-view .exploration-turn-controls {
@@ -341,12 +343,42 @@ body.immersive-street-view-active {
     }
 
     .ride-dashboard.immersive-street-view #liveElevationCard {
+        left: 12px;
+        right: auto;
+        transform: none;
         bottom: 10px;
-        width: min(calc(100vw - 24px), 760px);
+        width: min(calc(100vw - 240px), 760px);
     }
 
     .ride-dashboard.immersive-street-view #liveElevationCard .ride-elevation-chart-shell {
         width: 100%;
+    }
+}
+
+@media (max-width: 900px) {
+    .ride-dashboard.immersive-street-view #rideDashboardMap {
+        width: 172px !important;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard {
+        width: 158px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-item {
+        min-height: 58px;
+        padding: 7px 10px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display {
+        font-size: 27px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display .unit {
+        font-size: 16px;
+    }
+
+    .ride-dashboard.immersive-street-view #liveElevationCard {
+        width: min(calc(100vw - 204px), 640px);
     }
 }
 
@@ -372,7 +404,7 @@ body.immersive-street-view-active {
     }
 
     .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display {
-        font-size: clamp(22px, 7vw, 30px);
+        font-size: 24px;
     }
 
     .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display .unit {
@@ -380,7 +412,7 @@ body.immersive-street-view-active {
     }
 
     .ride-dashboard.immersive-street-view #rideDashboardMap {
-        width: min(34vw, 148px) !important;
+        width: 136px !important;
         bottom: 10px !important;
         right: 10px !important;
     }
@@ -417,8 +449,8 @@ body.immersive-street-view-active {
 
     .ride-dashboard.immersive-street-view #liveElevationCard {
         left: 10px;
-        right: 10px;
-        width: auto;
+        right: auto;
+        width: calc(100vw - 164px);
         transform: none;
         padding: 3px 4px;
     }
