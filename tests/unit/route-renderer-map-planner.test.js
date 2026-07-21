@@ -35,7 +35,6 @@ export const suite = {
                 const renderer = createRouteRenderer({
                     elements,
                     mapController: {
-                        setMapProvider() {},
                         syncRoute() {},
                     syncPlannerSelection(selection) { plannerSelections.push({ ...selection }); },
                         setPlannerMode(mode) {
@@ -124,7 +123,6 @@ export const suite = {
                         syncPlannerSelection() {},
                         setPlannerMode() {},
                         setPlannerClickHandler() {},
-                        setMapProvider() {}
                     },
                     onAddSegment() {},
                     onResetRoute() {},
@@ -178,7 +176,6 @@ export const suite = {
                         syncPlannerSelection() {},
                         setPlannerMode() {},
                         setPlannerClickHandler() {},
-                        setMapProvider() {}
                     },
                     onAddSegment() {},
                     onResetRoute() {},

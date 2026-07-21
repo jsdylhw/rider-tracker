@@ -20,7 +20,6 @@ export function createRouteRenderer({
     onRemoveRouteSegment
 }) {
     const visuals = rideVisuals ?? {
-        setMapProvider: (providerKey) => mapController?.setMapProvider?.(providerKey),
         syncRoute: (route) => mapController?.syncRoute?.(route),
         setPlannerClickHandler: (handler) => mapController?.setPlannerClickHandler?.(handler),
         setPlannerMode: (mode) => mapController?.setPlannerMode?.(mode),
@@ -57,12 +56,6 @@ export function createRouteRenderer({
                     // 无论导入成功或失败，都清空，避免下次同名同文件不触发
                     event.target.value = "";
                 }
-            });
-        }
-        if (elements.mapProviderSelect) {
-            visuals.setMapProvider(elements.mapProviderSelect.value);
-            elements.mapProviderSelect.addEventListener("change", (e) => {
-                visuals.setMapProvider(e.target.value);
             });
         }
         if (elements.clearMapRouteSelectionBtn) {

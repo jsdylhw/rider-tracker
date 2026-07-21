@@ -147,11 +147,18 @@
     margin-bottom: 16px;
 }
 
-.map-route-planner .route-map-shell {
-    height: min(62vh, 560px);
-    min-height: 420px;
+.route-map-exploration-shell {
+    height: clamp(440px, 66vh, 760px);
+    min-height: 440px;
     margin-bottom: 0;
     padding: 8px;
+}
+
+@media (max-width: 720px) {
+    .route-map-exploration-shell {
+        height: min(62dvh, 560px);
+        min-height: 360px;
+    }
 }
 
 #routeMapPreview {

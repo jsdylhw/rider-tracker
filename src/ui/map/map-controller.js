@@ -2,26 +2,13 @@ export const MAP_PROVIDERS = {
     osm: {
         url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         attribution: '&copy; OpenStreetMap'
-    },
-    amap: {
-        url: "https://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}",
-        attribution: '&copy; 高德地图'
-    },
-    amap_satellite: {
-        url: "https://webst01.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
-        attribution: '&copy; 高德卫星'
     }
 };
 
-export function createMapController({ previewElement, dashboardElement, initialProviderKey = "amap" }) {
-    let currentProviderKey = MAP_PROVIDERS[initialProviderKey] ? initialProviderKey : "amap";
+export function createMapController({ previewElement, dashboardElement }) {
     let latestRoute = null;
     let latestDashboardRecord = null;
     
-    // Store tile layers references so we can update them later
-    let previewTileLayer = null;
-    let dashboardTileLayer = null;
-
     function createMap(element, options) {
         if (!element || !window.L) {
             return null;
@@ -33,7 +20,7 @@ export function createMapController({ previewElement, dashboardElement, initialP
             ...options
         });
 
-        const provider = MAP_PROVIDERS[currentProviderKey];
+        const provider = MAP_PROVIDERS.osm;
         const tileLayer = window.L.tileLayer(provider.url, {
             maxZoom: 19,
             attribution: provider.attribution
@@ -48,10 +35,7 @@ export function createMapController({ previewElement, dashboardElement, initialP
     const dashboardData = createMap(dashboardElement, { zoomControl: true });
 
     const previewMap = previewData?.map;
-    previewTileLayer = previewData?.tileLayer;
-    
     const dashboardMap = dashboardData?.map;
-    dashboardTileLayer = dashboardData?.tileLayer;
 
     const previewLayers = createLayerSet(previewMap);
     const dashboardLayers = createLayerSet(dashboardMap);
@@ -71,27 +55,6 @@ export function createMapController({ previewElement, dashboardElement, initialP
                 }
             });
         });
-    }
-
-    function setMapProvider(providerKey) {
-        if (!MAP_PROVIDERS[providerKey] || providerKey === currentProviderKey) {
-            return;
-        }
-        currentProviderKey = providerKey;
-        const provider = MAP_PROVIDERS[currentProviderKey];
-
-        if (previewTileLayer) {
-            previewTileLayer.setUrl(provider.url);
-            previewMap.attributionControl.removeAttribution(previewTileLayer.options.attribution);
-            previewTileLayer.options.attribution = provider.attribution;
-            previewMap.attributionControl.addAttribution(provider.attribution);
-        }
-        if (dashboardTileLayer) {
-            dashboardTileLayer.setUrl(provider.url);
-            dashboardMap.attributionControl.removeAttribution(dashboardTileLayer.options.attribution);
-            dashboardTileLayer.options.attribution = provider.attribution;
-            dashboardMap.attributionControl.addAttribution(provider.attribution);
-        }
     }
 
     function syncRoute(route) {
@@ -134,7 +97,6 @@ export function createMapController({ previewElement, dashboardElement, initialP
     return {
         syncRoute,
         syncRide,
-        setMapProvider,
         setPlannerClickHandler,
         setPlannerMode,
         syncPlannerSelection,

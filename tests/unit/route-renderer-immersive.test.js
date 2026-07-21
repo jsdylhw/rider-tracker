@@ -38,7 +38,7 @@ export const suite = {
                 const route = makeRoute();
                 const renderer = createRouteRenderer({
                     elements,
-                    mapController: { syncRoute() {}, setMapProvider() {} },
+                    mapController: { syncRoute() {} },
                     onAddSegment() {},
                     onResetRoute() {},
                     onImportGpx() {},
@@ -60,7 +60,7 @@ export const suite = {
                 const route = makeRoute();
                 const renderer = createRouteRenderer({
                     elements,
-                    mapController: { syncRoute() {}, setMapProvider() {} },
+                    mapController: { syncRoute() {} },
                     onAddSegment() {},
                     onResetRoute() {},
                     onImportGpx() {},
@@ -81,7 +81,7 @@ export const suite = {
                 const elements = makeElements(true);
                 const renderer = createRouteRenderer({
                     elements,
-                    mapController: { syncRoute() {}, setMapProvider() {} },
+                    mapController: { syncRoute() {} },
                     onAddSegment() {},
                     onResetRoute() {},
                     onImportGpx() {},
@@ -103,7 +103,7 @@ export const suite = {
                 const noElevRoute = { source: "gpx", name: "flat", points: [{ latitude: 0, longitude: 0 }], hasElevationData: false };
                 const renderer = createRouteRenderer({
                     elements,
-                    mapController: { syncRoute() {}, setMapProvider() {} },
+                    mapController: { syncRoute() {} },
                     onAddSegment() {},
                     onResetRoute() {},
                     onImportGpx() {},
