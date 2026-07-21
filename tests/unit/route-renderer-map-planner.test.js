@@ -21,6 +21,8 @@ export const suite = {
                     manualRoutePanel: createFakeElement(),
                     mapRoutePanel: createFakeElement(),
                     routeMapShell: createFakeElement({ hidden: true }),
+                    setupElevationChartShell: createFakeElement({ hidden: true }),
+                    routeCurrentSourceRow: createFakeElement({ hidden: true }),
                     routeTableShell: createFakeElement(),
                     clearMapRouteSelectionBtn: createFakeElement(),
                     planMapRouteBtn: createFakeElement(),
@@ -66,6 +68,7 @@ export const suite = {
                 assertEqual(elements.routeModeMapBtn.classList.contains("active"), true);
                 assert(elements.routeSummary.innerHTML.includes("地图探索"), "地图模式不应展示默认手工路线摘要");
                 assertEqual(elements.routeSourceLabel.textContent, "地图探索（待生成）");
+                assertEqual(elements.setupElevationChartShell.hidden, true);
                 plannerClickHandler({ mode: "select", point: { lat: 37.1, lng: -122.1 } });
                 plannerClickHandler({ mode: "select", point: { lat: 37.2, lng: -122.2 } });
                 elements.planMapRouteBtn.dispatch("click");
@@ -98,6 +101,7 @@ export const suite = {
                 const latestSelection = plannerSelections.at(-1);
                 assertEqual(latestSelection.start.lat, 37.1);
                 assertEqual(latestSelection.destination.lng, -122.2);
+                assertEqual(elements.setupElevationChartShell.hidden, false);
             }
         },
         {
@@ -111,6 +115,8 @@ export const suite = {
                     manualRoutePanel: createFakeElement(),
                     mapRoutePanel: createFakeElement(),
                     routeMapShell: createFakeElement({ hidden: true }),
+                    setupElevationChartShell: createFakeElement({ hidden: true }),
+                    routeCurrentSourceRow: createFakeElement({ hidden: true }),
                     routeSummary: createFakeElement(),
                     routeSourceLabel: createFakeElement(),
                     addSegmentBtn: createFakeElement()
@@ -145,11 +151,17 @@ export const suite = {
                 };
 
                 elements.routeModeGpxBtn.dispatch("click");
+                renderer.render({
+                    route: { source: "manual", points: [], segments: [] },
+                    routeSegments: []
+                });
+                assertEqual(elements.setupElevationChartShell.hidden, true);
                 renderer.render({ route, routeSegments: [] });
 
                 assertEqual(elements.gpxRoutePanel.hidden, false);
                 assertEqual(elements.mapRoutePanel.hidden, true);
                 assertEqual(elements.routeMapShell.hidden, false);
+                assertEqual(elements.setupElevationChartShell.hidden, false);
                 assertEqual(syncedRoute, route);
             }
         },

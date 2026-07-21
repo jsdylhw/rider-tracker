@@ -147,9 +147,12 @@ export function createRouteRenderer({
         const isGpx = route.source === "gpx";
         const isExploration = route.source === "osm-exploration";
         const isPendingMapExploration = routeInputMode === "map" && !isExploration;
+        const isPendingGpxImport = routeInputMode === "gpx" && !isGpx;
         if (elements.routeSourceLabel) {
             elements.routeSourceLabel.textContent = isPendingMapExploration
                 ? "地图探索（待生成）"
+                : isPendingGpxImport
+                    ? "GPX（待导入）"
                 : isExploration
                     ? "OSM 街景探索"
                     : isGpx
@@ -164,6 +167,13 @@ export function createRouteRenderer({
                 elements.routeSummary.innerHTML = `
                     <strong>地图探索</strong><br>
                     请在地图上选择起点和起步目标。系统会请求周边 OSM 路网，生成初始探索路线。
+                `;
+                return;
+            }
+            if (isPendingGpxImport) {
+                elements.routeSummary.innerHTML = `
+                    <strong>GPX 导入</strong><br>
+                    选择 GPX 文件后显示路线距离、海拔和坡度图。
                 `;
                 return;
             }
@@ -219,11 +229,16 @@ export function createRouteRenderer({
 
     function renderRouteModePanels() {
         if (!hasRouteModeControls) return;
-        const shouldShowRouteMap = routeInputMode === "map" || hasCoordinateRoute(lastRenderedState?.route);
+        const route = lastRenderedState?.route;
+        const hasActiveRouteForMode = matchesRouteInputMode(route, routeInputMode);
+        const shouldShowRouteMap = routeInputMode === "map"
+            || (hasActiveRouteForMode && hasCoordinateRoute(route));
         setPanelVisible(elements.gpxRoutePanel, routeInputMode === "gpx");
         setPanelVisible(elements.manualRoutePanel, routeInputMode === "manual");
         setPanelVisible(elements.mapRoutePanel, routeInputMode === "map");
         setPanelVisible(elements.routeMapShell, shouldShowRouteMap);
+        setPanelVisible(elements.setupElevationChartShell, hasActiveRouteForMode);
+        setPanelVisible(elements.routeCurrentSourceRow, hasActiveRouteForMode);
         setModeButtonActive(elements.routeModeGpxBtn, routeInputMode === "gpx");
         setModeButtonActive(elements.routeModeManualBtn, routeInputMode === "manual");
         setModeButtonActive(elements.routeModeMapBtn, routeInputMode === "map");
@@ -310,6 +325,16 @@ export function createRouteRenderer({
 function buildMapRouteSignature(route) {
     const geometry = collectRouteMapLatLngs(route);
     return `${route?.networkSource ?? "default"}:${buildRouteGeometryKey(route, geometry)}`;
+}
+
+function matchesRouteInputMode(route, inputMode) {
+    if (inputMode === "map") {
+        return route?.source === "osm-exploration";
+    }
+    if (inputMode === "gpx") {
+        return route?.source === "gpx";
+    }
+    return route?.source === "manual";
 }
 
 function hasCoordinateRoute(route) {
