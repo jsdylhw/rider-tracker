@@ -193,7 +193,7 @@ export function createRouteRenderer({
             const sourceText = isExploration ? "OSM 地图探索" : isGpx ? "GPX 导入" : "手工输入";
             const segmentsText = isGpx ? "" : `，共 ${route.segments.length} 段`;
             const elevationWarning = route.hasElevationData === false
-                ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : "GPX"}尚无海拔数据，坡度按 0 处理；可在骑行界面请求路线海拔。</span>`
+                ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : "GPX"}尚无海拔数据，坡度按 0 处理。${isExploration ? "可在骑行界面主动请求海拔。" : ""}</span>`
                 : "";
             
             elements.routeSummary.innerHTML = `

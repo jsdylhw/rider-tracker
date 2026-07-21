@@ -158,9 +158,9 @@ export function createRouteService({
                     sampleSpacingMeters: EXPLORATION_ELEVATION_SAMPLE_SPACING_METERS
                 });
             }
-            let points = planned.points;
+            const points = planned.points;
             let hasElevationData = false;
-            const requestElevation = Boolean(googleMapsConfig?.getApiKey?.());
+            const requestElevation = false;
 
             const exploration = {
                 graph,
@@ -192,15 +192,11 @@ export function createRouteService({
                 statusText: buildMapRouteStatus(route, {
                     hasGoogleElevation: false,
                     elevationSummary: null,
-                    elevationPending: requestElevation,
                     networkSource,
                     networkFailure
                 })
             }));
             activeExploration = exploration;
-            if (requestElevation) {
-                void enrichInitialExplorationRoute({ exploration, route });
-            }
         } catch (error) {
             if (requestId !== null && !isCurrentMapRouteRequest(requestId)) return;
             console.error("街景探索起步路线生成失败", error);
@@ -278,15 +274,6 @@ export function createRouteService({
             pendingIntent: intent,
             statusText: `${getExplorationIntentLabel(intent)}已输入，将在当前探索段终点执行。`
         });
-    }
-
-    async function enrichInitialExplorationRoute({ exploration, route }) {
-        try {
-            await enrichExplorationRoute({ exploration, route, statusPrefix: "探索起步路线海拔已更新" });
-        } catch (error) {
-            console.warn("探索起步路线海拔请求失败", error);
-            updateExplorationElevationFailure({ exploration, route, error });
-        }
     }
 
     async function enrichExplorationExtension({ exploration }) {
@@ -531,15 +518,11 @@ function validateMapRoutePoint(point, label) {
     }
 }
 
-function buildMapRouteStatus(route, { hasGoogleElevation, elevationSummary, elevationPending = false, networkSource, networkFailure }) {
+function buildMapRouteStatus(route, { hasGoogleElevation, elevationSummary, networkSource, networkFailure }) {
     const distanceText = formatNumber(route.totalDistanceMeters / 1000, 2);
     const routePrefix = networkSource === "synthetic"
         ? `已生成备用网格探索路线：${distanceText} km。实时 OSM 路网不可用，当前线路不代表真实道路。失败摘要：${networkFailure}`
         : `已生成 OSM 街景探索起步路线：${distanceText} km。`;
-
-    if (elevationPending) {
-        return `${routePrefix}正在请求 Google 海拔，路线将自动更新。`;
-    }
 
     if (!hasGoogleElevation) {
         return `${routePrefix}当前没有海拔，可在骑行界面点“请求路线海拔”。`;

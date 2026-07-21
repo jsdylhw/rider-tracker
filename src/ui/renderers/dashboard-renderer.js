@@ -496,11 +496,21 @@ export function createDashboardRenderer({
                 : debugStreetViewFallback ? "重新加载街景" : "加载街景";
         }
 
-        const canRequestElevation = hasCoordinates && route?.hasElevationData !== true;
+        const isExplorationRoute = route?.source === "osm-exploration";
+        const hasElevationData = route?.hasElevationData === true;
+        const canRequestElevation = isExplorationRoute && hasCoordinates && !hasElevationData;
         if (elements.requestRouteElevationBtn) {
-            elements.requestRouteElevationBtn.hidden = !canRequestElevation;
-            elements.requestRouteElevationBtn.disabled = googleMapsAction.elevationLoading || ride.isActive;
-            elements.requestRouteElevationBtn.textContent = googleMapsAction.elevationLoading ? "正在请求海拔..." : "请求路线海拔";
+            elements.requestRouteElevationBtn.hidden = !isExplorationRoute || !hasCoordinates;
+            elements.requestRouteElevationBtn.disabled = !canRequestElevation
+                || googleMapsAction.elevationLoading
+                || ride.isActive;
+            elements.requestRouteElevationBtn.textContent = hasElevationData
+                ? "探索路线海拔已加载"
+                : googleMapsAction.elevationLoading
+                    ? "正在请求海拔..."
+                    : ride.isActive
+                        ? "骑行中不可请求海拔"
+                        : "请求探索路线海拔";
         }
     }
 

@@ -90,7 +90,7 @@ export const suite = {
             }
         },
         {
-            name: "automatically enriches the initial exploration route with dense elevation samples when Google is configured",
+            name: "keeps initial exploration elevation opt-in while retaining dense samples",
             async run() {
                 const store = createStore({
                     route: null,
@@ -126,14 +126,18 @@ export const suite = {
                     start: { lat: 37.0, lng: -122.0 },
                     destination: { lat: 37.001, lng: -121.999 }
                 });
-                await new Promise((resolve) => setTimeout(resolve, 0));
+                const initialRoute = store.getState().route;
 
+                assertEqual(loadedKey, "");
+                assertEqual(initialRoute.hasElevationData, false);
+                assert(initialRoute.points[1].distanceMeters <= 20, "探索海拔采样应使用 20m 间隔");
+
+                await service.requestCurrentRouteElevation();
                 const route = store.getState().route;
                 assertEqual(loadedKey, "test-key");
                 assertEqual(route.hasElevationData, true);
                 assertGreaterThan(elevationRequestPoints.length, 2);
-                assert(route.points[1].distanceMeters <= 20, "探索海拔采样应使用 20m 间隔");
-                assert(store.getState().statusText.includes("起步路线海拔已更新"));
+                assert(store.getState().statusText.includes("路线海拔已更新"));
             }
         },
         {

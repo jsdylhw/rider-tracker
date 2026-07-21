@@ -316,6 +316,7 @@ export const suite = {
             async run() {
                 const elements = createElements();
                 const state = createBaseState();
+                state.route.source = "osm-exploration";
                 state.liveRide.isActive = true;
                 const store = createStore(state);
                 let requestedKeyFor = "";
@@ -337,6 +338,7 @@ export const suite = {
                 assertEqual(elements.loadStreetViewBtn.hidden, false);
                 assertEqual(elements.requestRouteElevationBtn.hidden, false);
                 assertEqual(elements.requestRouteElevationBtn.disabled, true);
+                assertEqual(elements.requestRouteElevationBtn.textContent, "骑行中不可请求海拔");
 
                 state.liveRide.isActive = false;
                 store.setState(() => state);
@@ -346,6 +348,49 @@ export const suite = {
 
                 assertEqual(elevationRequests, 1);
                 assertEqual(requestedKeyFor, "请求路线海拔");
+            }
+        },
+        {
+            name: "已加载海拔的探索路线伝达明确状态而不隐藏按钮",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.route.source = "osm-exploration";
+                state.route.hasElevationData = true;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        syncMap() {},
+                        syncStreetView() {}
+                    }
+                });
+
+                renderer.render(state);
+
+                assertEqual(elements.requestRouteElevationBtn.hidden, false);
+                assertEqual(elements.requestRouteElevationBtn.disabled, true);
+                assertEqual(elements.requestRouteElevationBtn.textContent, "探索路线海拔已加载");
+            }
+        },
+        {
+            name: "其他带坐标路线默认不显示海拔请求入口",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.route.source = "gpx";
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        syncMap() {},
+                        syncStreetView() {}
+                    }
+                });
+
+                renderer.render(state);
+
+                assertEqual(elements.requestRouteElevationBtn.hidden, true);
             }
         },
         {
