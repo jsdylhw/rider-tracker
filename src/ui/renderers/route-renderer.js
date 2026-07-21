@@ -30,6 +30,7 @@ export function createRouteRenderer({
     let routeInputMode = hasRouteModeControls ? "map" : "manual";
     let lastRenderedState = null;
     let lastRenderedMapRouteSignature = "";
+    let isEditingMapRoute = false;
     const mapRouteSelection = { mode: null, start: null, destination: null };
 
     function bindEvents() {
@@ -63,14 +64,17 @@ export function createRouteRenderer({
         }
         if (elements.planMapRouteBtn) {
             elements.planMapRouteBtn.addEventListener("click", () => {
+                isEditingMapRoute = false;
                 onPlanMapRoute?.({
                     start: mapRouteSelection.start,
                     destination: mapRouteSelection.destination
                 });
+                renderMapRoutePlanner();
             });
         }
         visuals.setPlannerClickHandler(({ mode, point }) => {
             if (routeInputMode !== "map") return;
+            isEditingMapRoute = true;
             const selectionMode = mode === "start" || mode === "destination"
                 ? mode
                 : (!mapRouteSelection.start || mapRouteSelection.destination ? "start" : "destination");
@@ -201,7 +205,7 @@ export function createRouteRenderer({
             }
             visuals.syncRoute(state.route);
             lastRenderedMapRouteSignature = routeSignature;
-            visuals.syncPlannerSelection(mapRouteSelection);
+            visuals.syncPlannerSelection(getVisiblePlannerSelection());
         } catch (error) {
             console.warn("路线地图渲染失败，不影响距离/海拔预览。", error);
         }
@@ -247,13 +251,14 @@ export function createRouteRenderer({
             scheduleMapPreviewRefresh(() => {
                 visuals.invalidatePreviewSize();
                 if (lastRenderedState?.route) visuals.syncRoute(lastRenderedState.route);
-                visuals.syncPlannerSelection(mapRouteSelection);
+                visuals.syncPlannerSelection(getVisiblePlannerSelection());
             });
         }
     }
 
     function clearMapRouteSelection() {
         onInvalidateMapRoute?.();
+        isEditingMapRoute = true;
         mapRouteSelection.mode = null;
         mapRouteSelection.start = null;
         mapRouteSelection.destination = null;
@@ -273,7 +278,14 @@ export function createRouteRenderer({
         if (elements.planMapRouteBtn) {
             elements.planMapRouteBtn.disabled = routeInputMode !== "map" || !mapRouteSelection.start || !mapRouteSelection.destination;
         }
-        visuals.syncPlannerSelection(mapRouteSelection);
+        visuals.syncPlannerSelection(getVisiblePlannerSelection());
+    }
+
+    function getVisiblePlannerSelection() {
+        if (lastRenderedState?.route?.source === "osm-exploration" && !isEditingMapRoute) {
+            return null;
+        }
+        return mapRouteSelection;
     }
 
     function renderElevationChart(route, currentRecord) {

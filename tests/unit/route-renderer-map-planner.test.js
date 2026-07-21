@@ -38,7 +38,7 @@ export const suite = {
                     elements,
                     mapController: {
                         syncRoute() {},
-                    syncPlannerSelection(selection) { plannerSelections.push({ ...selection }); },
+                        syncPlannerSelection(selection) { plannerSelections.push(selection ? { ...selection } : null); },
                         setPlannerMode(mode) {
                             plannerModes.push(mode);
                         },
@@ -99,8 +99,7 @@ export const suite = {
                     routeSegments: []
                 });
                 const latestSelection = plannerSelections.at(-1);
-                assertEqual(latestSelection.start.lat, 37.1);
-                assertEqual(latestSelection.destination.lng, -122.2);
+                assertEqual(latestSelection, null);
                 assertEqual(elements.setupElevationChartShell.hidden, false);
             }
         },

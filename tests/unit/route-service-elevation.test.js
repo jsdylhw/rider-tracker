@@ -90,6 +90,53 @@ export const suite = {
             }
         },
         {
+            name: "automatically enriches the initial exploration route with dense elevation samples when Google is configured",
+            async run() {
+                const store = createStore({
+                    route: null,
+                    routeSegments: [],
+                    liveRide: { isActive: false, session: null }
+                });
+                let loadedKey = "";
+                let elevationRequestPoints = [];
+                const service = createRouteService({
+                    store,
+                    googleMapsConfig: {
+                        getApiKey: () => "test-key",
+                        lockApiKey() {}
+                    },
+                    fetchRoadNetwork: async (bounds) => buildSyntheticGridRoadNetwork(bounds, { lineCount: 5 }),
+                    loadGoogleMaps: async (key) => { loadedKey = key; },
+                    enrichElevation: async (points) => {
+                        elevationRequestPoints = points;
+                        return {
+                            points: points.map((point, index) => ({
+                                ...point,
+                                elevationMeters: 30 + index,
+                                gradePercent: index === 0 ? 0 : 1.2,
+                                elevationLoaded: true
+                            })),
+                            hasElevationData: true,
+                            summary: { requests: 1, requestedPoints: points.length, cacheHits: 0, skippedByQuota: false }
+                        };
+                    }
+                });
+
+                await service.planMapRoute({
+                    start: { lat: 37.0, lng: -122.0 },
+                    destination: { lat: 37.001, lng: -121.999 }
+                });
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const route = store.getState().route;
+                assertEqual(loadedKey, "test-key");
+                assertEqual(route.hasElevationData, true);
+                assertGreaterThan(elevationRequestPoints.length, 2);
+                assert(route.points[1].distanceMeters <= 20, "探索海拔采样应使用 20m 间隔");
+                assert(store.getState().statusText.includes("起步路线海拔已更新"));
+            }
+        },
+        {
             name: "consumes a queued exploration turn when the current segment reaches its end",
             async run() {
                 const store = createStore({
