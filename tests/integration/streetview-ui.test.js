@@ -209,13 +209,15 @@ export const suite = {
                 const elements = createElements();
                 const store = createStore(createBaseState());
                 let streetViewResizeCount = 0;
+                let dashboardMapResizeCount = 0;
                 const renderer = createDashboardRenderer({
                     elements,
                     rideVisuals: {
                         hasStreetView: () => true,
                         syncMap() {},
                         syncStreetView() {},
-                        invalidateStreetViewSize() { streetViewResizeCount += 1; }
+                        invalidateStreetViewSize() { streetViewResizeCount += 1; },
+                        invalidateDashboardSize() { dashboardMapResizeCount += 1; }
                     },
                     streetViewDebugEnabled: true
                 });
@@ -226,9 +228,11 @@ export const suite = {
                 await Promise.resolve();
 
                 assertEqual(streetViewResizeCount, 1);
+                const dashboardMapResizeBeforeExit = dashboardMapResizeCount;
                 elements.immersiveBackBtn.dispatch("click");
                 await Promise.resolve();
                 assertEqual(streetViewResizeCount, 2);
+                assertEqual(dashboardMapResizeCount, dashboardMapResizeBeforeExit + 1);
             }
         },
         {

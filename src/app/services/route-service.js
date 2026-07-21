@@ -142,6 +142,7 @@ export function createRouteService({
                     destination,
                     sampleSpacingMeters: EXPLORATION_ELEVATION_SAMPLE_SPACING_METERS
                 });
+                planned = extendInitialExplorationRoute(graph, planned);
             } catch (error) {
                 if (networkSource === "synthetic") {
                     throw error;
@@ -157,6 +158,7 @@ export function createRouteService({
                     destination,
                     sampleSpacingMeters: EXPLORATION_ELEVATION_SAMPLE_SPACING_METERS
                 });
+                planned = extendInitialExplorationRoute(graph, planned);
             }
             const points = planned.points;
             let hasElevationData = false;
@@ -455,6 +457,24 @@ function rebuildRouteWithElevation(route, points, hasElevationData) {
         hasElevationData
     });
     return { ...route, ...rebuilt };
+}
+
+function extendInitialExplorationRoute(graph, planned) {
+    try {
+        const extension = extendOsmRoute({
+            graph,
+            rawNodes: planned.rawNodes,
+            intent: "straight",
+            intersectionCount: 1,
+            stopAtFirstReachedIntersection: true,
+            sampleSpacingMeters: EXPLORATION_ELEVATION_SAMPLE_SPACING_METERS
+        });
+        return extension.intersectionsPassed >= 1 ? extension : planned;
+    } catch {
+        // A dead end or a sparse graph is still a valid initial route; only
+        // extend when we can actually reach a later decision intersection.
+        return planned;
+    }
 }
 
 function hasCoordinateRoute(route) {

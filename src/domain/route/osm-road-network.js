@@ -201,6 +201,7 @@ export function extendOsmRoute({
     rawNodes,
     intent = "straight",
     intersectionCount = 2,
+    stopAtFirstReachedIntersection = false,
     sampleSpacingMeters = OSM_ROUTE_SAMPLE_SPACING_METERS
 }) {
     if (!graph?.nodes?.size || !Array.isArray(rawNodes) || rawNodes.length < 2) {
@@ -216,6 +217,13 @@ export function extendOsmRoute({
 
     if (nextRawNodes.at(-1)?.nodeId !== endNodeId) {
         appendRouteNode(nextRawNodes, endNode, nextRawNodes.at(-1)?.edgeId ?? null);
+        if (stopAtFirstReachedIntersection && (endNode.edges.length ?? 0) >= 3) {
+            return {
+                ...buildOsmRouteFromRawNodes(nextRawNodes, sampleSpacingMeters),
+                intersectionsPassed: 1,
+                edgesAdded: 1
+            };
+        }
     }
 
     let currentNodeId = endNodeId;
@@ -284,7 +292,7 @@ function buildRawRouteNodes({ graph, snappedStart, snappedDestination, directedS
                     lat: snappedDestination.point.lat,
                     lng: snappedDestination.point.lng,
                     nodeId: null,
-                    continueNodeId: directedDestinationEdge.from,
+                    continueNodeId: directedDestinationEdge.to,
                     distanceMeters: round(haversineDistanceMeters(startPoint, snappedDestination.point), 1),
                     edgeId: directedDestinationEdge.id
                 }
@@ -309,7 +317,7 @@ function buildRawRouteNodes({ graph, snappedStart, snappedDestination, directedS
         lat: snappedDestination.point.lat,
         lng: snappedDestination.point.lng,
         nodeId: null,
-        continueNodeId: directedDestinationEdge.from,
+        continueNodeId: directedDestinationEdge.to,
         distanceMeters: round(previous.distanceMeters + haversineDistanceMeters(previous, snappedDestination.point), 1),
         edgeId: directedDestinationEdge.id
     });
