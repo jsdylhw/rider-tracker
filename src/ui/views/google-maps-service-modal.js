@@ -1,4 +1,4 @@
-export function createGoogleMapsServiceModal({ elements, googleMapsConfig }) {
+export function createGoogleMapsServiceModal({ elements, googleMapsConfig, reloadPage = reloadBrowserPage }) {
     let pendingResolve = null;
 
     function requestApiKey({ featureLabel, force = false }) {
@@ -11,9 +11,15 @@ export function createGoogleMapsServiceModal({ elements, googleMapsConfig }) {
         }
 
         elements.googleMapsServiceTitle.textContent = `${featureLabel}需要 Google Maps API Key`;
-        elements.googleMapsServiceDescription.textContent = "Key 仅保存在当前浏览器会话中，用于本次请求；刷新页面后可以更换。";
+        const isApiKeyLocked = config?.apiKeyLocked === true;
+        elements.googleMapsServiceDescription.textContent = isApiKeyLocked
+            ? "Google Maps 已使用当前 Key 初始化。输入新 Key 后将自动刷新页面以生效。"
+            : "Key 仅保存在当前浏览器会话中，用于本次请求。";
         elements.googleMapsServiceStatus.textContent = "";
         elements.googleMapsServiceApiKeyInput.value = config?.apiKey ?? "";
+        if (elements.confirmGoogleMapsServiceBtn) {
+            elements.confirmGoogleMapsServiceBtn.textContent = isApiKeyLocked ? "更换 Key 并刷新" : "继续";
+        }
         elements.googleMapsServiceOverlay.classList.add("open");
         elements.googleMapsServiceOverlay.setAttribute("aria-hidden", "false");
         elements.googleMapsServiceApiKeyInput.focus();
@@ -39,6 +45,13 @@ export function createGoogleMapsServiceModal({ elements, googleMapsConfig }) {
             return;
         }
         try {
+            const config = googleMapsConfig?.getConfig?.();
+            if (config?.apiKeyLocked && apiKey !== config.apiKey) {
+                googleMapsConfig?.saveApiKeyForReload?.(apiKey);
+                close();
+                reloadPage();
+                return;
+            }
             googleMapsConfig?.updateConfig?.({ apiKey });
             close(apiKey);
         } catch (error) {
@@ -71,4 +84,8 @@ export function createGoogleMapsServiceModal({ elements, googleMapsConfig }) {
             elements.googleMapsServiceApiKeyInput?.removeEventListener("keydown", onKeyDown);
         }
     };
+}
+
+function reloadBrowserPage() {
+    globalThis.location?.reload?.();
 }

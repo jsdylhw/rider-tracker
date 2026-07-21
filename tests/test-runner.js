@@ -7,6 +7,7 @@ import { suite as overpassClientSuite } from "./unit/overpass-client.test.js";
 import { suite as streetViewTargetSuite } from "./unit/street-view-target.test.js";
 import { suite as googleElevationClientSuite } from "./unit/google-elevation-client.test.js";
 import { suite as googleMapsConfigServiceSuite } from "./unit/google-maps-config-service.test.js";
+import { suite as googleMapsServiceModalSuite } from "./unit/google-maps-service-modal.test.js";
 import { suite as routeServiceElevationSuite } from "./unit/route-service-elevation.test.js";
 import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
@@ -65,6 +66,7 @@ const suites = [
     streetViewTargetSuite,
     googleElevationClientSuite,
     googleMapsConfigServiceSuite,
+    googleMapsServiceModalSuite,
     routeServiceElevationSuite,
     gpxSuite,
     physicsSuite,
