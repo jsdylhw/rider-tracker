@@ -1,6 +1,6 @@
 import { formatDuration, formatNumber } from "../../shared/format.js";
 import { buildRideSeriesChartSvg } from "./svg/ride-series-chart.js";
-import { buildRouteMapSvg } from "./svg/route-map-chart.js";
+import { hasActivityRouteMap } from "../map/activity-route-map-controller.js";
 
 export const POWER_ZONES = [
     { key: "recovery", label: "恢复", min: 0, max: 0.55 },
@@ -46,6 +46,7 @@ export function buildActivityDetailHtml(activity, {
     const intensityFactor = numberOrNull(power.intensityFactor) ?? (
         Number.isFinite(ftp) && ftp > 0 && normalizedPower !== null ? normalizedPower / ftp : null
     );
+    const hasRouteMap = hasActivityRouteMap(activity);
 
     return `
         <section class="activity-detail-panel">
@@ -73,7 +74,7 @@ export function buildActivityDetailHtml(activity, {
                 ${escapeHtml(buildPlainSummary({ activity, records, ftp, averagePower, normalizedPower, intensityFactor }))}
             </div>
             ${actionsHtml}
-            <div class="activity-detail-analysis-layout">
+            <div class="activity-detail-analysis-layout${hasRouteMap ? " has-route-map" : ""}">
                 <div class="activity-detail-card activity-series-panel">
                     <div class="activity-detail-card-title">图表数据</div>
                     <div class="activity-series-stack">
@@ -94,15 +95,7 @@ export function buildActivityDetailHtml(activity, {
                         })}
                     </div>
                 </div>
-                <div class="activity-detail-card activity-map-panel">
-                    <div class="activity-detail-card-title activity-map-title-row">
-                        <span>路线平面图</span>
-                        <button class="btn ghost compact-btn activity-map-toggle" data-activity-map-toggle type="button">隐藏</button>
-                    </div>
-                    <div class="activity-map-body">
-                        ${buildActivityRouteMapSvg(session, records)}
-                    </div>
-                </div>
+                ${hasRouteMap ? buildActivityRouteMapHtml() : ""}
             </div>
             <div class="activity-detail-grid">
                 <div class="activity-detail-card">
@@ -118,15 +111,14 @@ export function buildActivityDetailHtml(activity, {
     `;
 }
 
-function buildActivityRouteMapSvg(session, records) {
+function buildActivityRouteMapHtml() {
     return `
-        <svg class="activity-detail-chart activity-detail-route-map" viewBox="0 0 640 260" preserveAspectRatio="xMidYMid meet" data-activity-route-map>
-            ${buildRouteMapSvg({
-                route: session.route,
-                records,
-                currentRecord: records.at(-1) ?? null
-            })}
-        </svg>
+        <div class="activity-detail-card activity-map-panel">
+            <div class="activity-detail-card-title">路线地图</div>
+            <div class="activity-map-body">
+                <div class="activity-detail-route-map map-canvas" data-activity-route-map></div>
+            </div>
+        </div>
     `;
 }
 
@@ -199,11 +191,13 @@ function buildActivityActionsHtml(activity) {
     return `
         <div class="activity-action-panel">
             <div>
-                <p class="eyebrow">Sync</p>
-                <h4>活动文件与上传</h4>
+                <p class="eyebrow">Export & Sync</p>
+                <h4>活动文件、导出与上传</h4>
                 <p class="section-subtitle">${escapeHtml(fitStatus)}${escapeHtml(fitSize)}</p>
             </div>
             <div class="activity-action-buttons">
+                <button class="btn secondary compact-btn" data-activity-page-action="download-json">导出 JSON</button>
+                <button class="btn secondary compact-btn" data-activity-page-action="download-fit">导出 FIT</button>
                 <button class="btn secondary compact-btn" data-activity-page-action="connect-strava">连接 Strava</button>
                 <button class="btn primary compact-btn" data-activity-page-action="upload-strava" data-activity-id="${escapeHtml(activity.id)}">上传 Strava</button>
             </div>

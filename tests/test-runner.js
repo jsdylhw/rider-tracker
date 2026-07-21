@@ -1,6 +1,13 @@
 import { runSuites, renderResults } from "./helpers/test-harness.js";
 import { installDomParserPolyfill } from "./helpers/dom-parser-polyfill.js";
 import { suite as routeSuite } from "./unit/route-builder.test.js";
+import { suite as osmRoadNetworkSuite } from "./unit/osm-road-network.test.js";
+import { suite as mapControllerSuite } from "./unit/map-controller.test.js";
+import { suite as overpassClientSuite } from "./unit/overpass-client.test.js";
+import { suite as streetViewTargetSuite } from "./unit/street-view-target.test.js";
+import { suite as googleElevationClientSuite } from "./unit/google-elevation-client.test.js";
+import { suite as googleMapsConfigServiceSuite } from "./unit/google-maps-config-service.test.js";
+import { suite as routeServiceElevationSuite } from "./unit/route-service-elevation.test.js";
 import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
 import { suite as heartRateModelSuite } from "./unit/heart-rate-model.test.js";
@@ -27,10 +34,12 @@ import { suite as rideRegressionSuite } from "./integration/ride-regression.test
 import { suite as virtualRideDebugFlowSuite } from "./integration/virtual-ride-debug-flow.test.js";
 import { suite as streetviewUiSuite } from "./integration/streetview-ui.test.js";
 import { suite as routeRendererImportSuite } from "./unit/route-renderer-import.test.js";
+import { suite as routeRendererMapPlannerSuite } from "./unit/route-renderer-map-planner.test.js";
 import { suite as routeRendererImmersiveSuite } from "./unit/route-renderer-immersive.test.js";
 import { suite as routeChartSvgSuite } from "./unit/route-chart-svg.test.js";
 import { suite as exportViewSuite } from "./unit/export-view.test.js";
 import { suite as liveRideViewModelSuite } from "./unit/live-ride-view-model.test.js";
+import { suite as liveViewSuite } from "./unit/live-view.test.js";
 import { suite as liveMetricsSuite } from "./unit/live-metrics.test.js";
 import { suite as pipChartsSuite } from "./unit/pip-charts.test.js";
 import { suite as pipElevationChartSuite } from "./unit/pip-elevation-chart.test.js";
@@ -38,6 +47,8 @@ import { suite as pipPreferencesSuite } from "./unit/pip-preferences.test.js";
 import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js";
 import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
 import { suite as activityDetailRendererSuite } from "./unit/activity-detail-renderer.test.js";
+import { suite as activityDetailViewSuite } from "./unit/activity-detail-view.test.js";
+import { suite as activityRouteMapControllerSuite } from "./unit/activity-route-map-controller.test.js";
 import { suite as fitBeaconClientSuite } from "./unit/fit-beacon-client.test.js";
 import { suite as incrementalPowerMetricsSuite } from "./unit/incremental-power-metrics.test.js";
 import { suite as tokenStoreSuite } from "./unit/token-store.test.js";
@@ -47,6 +58,13 @@ const app = typeof document !== 'undefined' ? document.getElementById("app") : n
 installDomParserPolyfill();
 const suites = [
     routeSuite,
+    osmRoadNetworkSuite,
+    mapControllerSuite,
+    overpassClientSuite,
+    streetViewTargetSuite,
+    googleElevationClientSuite,
+    googleMapsConfigServiceSuite,
+    routeServiceElevationSuite,
     gpxSuite,
     physicsSuite,
     heartRateModelSuite,
@@ -73,10 +91,12 @@ const suites = [
     virtualRideDebugFlowSuite,
     streetviewUiSuite,
     routeRendererImportSuite,
+    routeRendererMapPlannerSuite,
     routeRendererImmersiveSuite,
     routeChartSvgSuite,
     exportViewSuite,
     liveRideViewModelSuite,
+    liveViewSuite,
     liveMetricsSuite,
     pipChartsSuite,
     pipElevationChartSuite,
@@ -84,6 +104,8 @@ const suites = [
     rideSeriesChartSuite,
     activityStoreSuite,
     activityDetailRendererSuite,
+    activityDetailViewSuite,
+    activityRouteMapControllerSuite,
     fitBeaconClientSuite,
     incrementalPowerMetricsSuite,
     tokenStoreSuite,

@@ -80,7 +80,7 @@ export function getSegmentAtDistance(route, distanceMeters) {
     return current ?? route.segments.at(-1) ?? null;
 }
 
-export function buildRouteFromTrackPoints({ name, points, segments, hasElevationData = true }) {
+export function buildRouteFromTrackPoints({ name, points, segments, hasElevationData = true, source = "gpx" }) {
     const basePoints = points.map((point, index) => ({
         latitude: point.latitude,
         longitude: point.longitude,
@@ -108,8 +108,8 @@ export function buildRouteFromTrackPoints({ name, points, segments, hasElevation
     const totalDescentMeters = safeSegments.reduce((sum, segment) => sum + Math.max(0, -segment.elevationDelta), 0);
 
     return createRouteObject({
-        source: "gpx",
-        name: name || "GPX 路线",
+        source,
+        name: name || (source === "gpx" ? "GPX 路线" : "地图路线"),
         segments: safeSegments,
         totalDistanceMeters,
         totalElevationGainMeters,

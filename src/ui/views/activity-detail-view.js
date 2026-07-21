@@ -4,13 +4,15 @@ import {
     findNearestRideSeriesPointInGeometry,
     getRideSeriesValueAtChartX
 } from "../renderers/svg/ride-series-chart.js";
-import { buildRouteMapGeometry, buildRouteMapMarkerSvg } from "../renderers/svg/route-map-chart.js";
+import { createActivityRouteMapController } from "../map/activity-route-map-controller.js";
 import { openUploadModal } from "./export-view.js";
 
 export function createActivityDetailView({
     onSetUiMode,
     onConnectStrava,
     onUploadActivityFit,
+    onDownloadActivitySession,
+    onDownloadActivityFit,
     onUpdateExportMetadata,
     getExportMetadata
 }) {
@@ -23,6 +25,9 @@ export function createActivityDetailView({
     let activeHoverIndex = null;
     let pendingSeriesPointer = null;
     let pendingSeriesFrame = null;
+    const activityRouteMap = createActivityRouteMapController({
+        getProviderKey: () => document.getElementById("mapProviderSelect")?.value ?? "osm"
+    });
 
     bind(elements.activityDetailBackBtn, "click", () => onSetUiMode("home"));
     bind(elements.activityDetailContent, "click", (event) => {
@@ -48,17 +53,12 @@ export function createActivityDetailView({
                 initialValues: { activityName: initialName }
             });
         }
-    });
-    bind(elements.activityDetailContent, "click", (event) => {
-        const button = event.target?.closest?.("[data-activity-map-toggle]");
-        if (!button || !elements.activityDetailContent?.contains(button)) {
-            return;
+        if (action === "download-json") {
+            onDownloadActivitySession?.(currentActivity);
         }
-
-        const layout = button.closest(".activity-detail-analysis-layout");
-        const isHidden = !layout?.classList.contains("is-map-hidden");
-        layout?.classList.toggle("is-map-hidden", isHidden);
-        button.textContent = isHidden ? "显示" : "隐藏";
+        if (action === "download-fit") {
+            void onDownloadActivityFit?.(currentActivity);
+        }
     });
     bind(elements.activityDetailContent, "pointermove", (event) => {
         const chart = event.target?.closest?.("[data-activity-series-chart]");
@@ -77,6 +77,7 @@ export function createActivityDetailView({
                         activity: currentActivity,
                         event: pointer,
                         activeHoverIndex,
+                        activityRouteMap,
                         onHoverIndexChange(index) {
                             activeHoverIndex = index;
                         }
@@ -103,7 +104,7 @@ export function createActivityDetailView({
         }
         hideChartTooltip(elements.activityDetailContent);
         activeHoverIndex = null;
-        renderHoverRecord(elements.activityDetailContent, currentActivity, null);
+        renderHoverRecord(elements.activityDetailContent, currentActivity, null, activityRouteMap);
     });
 
     return {
@@ -111,11 +112,21 @@ export function createActivityDetailView({
         setActivity(activity) {
             currentActivity = activity ?? null;
             activeHoverIndex = null;
+            activityRouteMap.render(
+                currentActivity,
+                elements.activityDetailContent?.querySelector?.("[data-activity-route-map]")
+            );
+        },
+        invalidateMapSize() {
+            activityRouteMap.invalidateSize();
+        },
+        destroy() {
+            activityRouteMap.destroy();
         }
     };
 }
 
-function handleSeriesPointerMove({ root, activity, event, activeHoverIndex, onHoverIndexChange }) {
+function handleSeriesPointerMove({ root, activity, event, activeHoverIndex, activityRouteMap, onHoverIndexChange }) {
     const chart = event.target?.closest?.("[data-activity-series-chart]");
     if (!chart || !root?.contains(chart) || !activity) {
         return false;
@@ -139,16 +150,15 @@ function handleSeriesPointerMove({ root, activity, event, activeHoverIndex, onHo
     }
 
     if (nearest.index !== activeHoverIndex) {
-        renderHoverRecord(root, activity, nearest.record);
+        renderHoverRecord(root, activity, nearest.record, activityRouteMap);
         onHoverIndexChange(nearest.index);
     }
     hideChartTooltip(root);
     return true;
 }
 
-function renderHoverRecord(root, activity, hoverRecord) {
+function renderHoverRecord(root, activity, hoverRecord, activityRouteMap) {
     const records = getActivityRecords(activity);
-    const route = activity?.rawSession?.route ?? null;
     if (!root || records.length < 2) {
         return;
     }
@@ -174,21 +184,7 @@ function renderHoverRecord(root, activity, hoverRecord) {
         });
     });
 
-    const routeMap = root.querySelector("[data-activity-route-map]");
-    if (routeMap) {
-        const markerLayer = routeMap.querySelector("[data-role='route-map-marker-layer']");
-        if (!markerLayer) {
-            return;
-        }
-        markerLayer.innerHTML = buildRouteMapMarkerSvg({
-            route,
-            records,
-            currentRecord: hoverRecord ?? records.at(-1) ?? null,
-            width: routeMap.viewBox?.baseVal?.width || 640,
-            height: routeMap.viewBox?.baseVal?.height || 260,
-            geometry: getCachedRouteMapGeometry(routeMap, route, records)
-        });
-    }
+    activityRouteMap?.setCurrentRecord(hoverRecord ?? records.at(-1) ?? null);
 }
 
 function getSvgChartX(svg, event) {
@@ -256,30 +252,6 @@ function getCachedSeriesGeometry(chart, records) {
         yKey,
         height,
         xDomain,
-        geometry
-    };
-    return geometry;
-}
-
-function getCachedRouteMapGeometry(routeMap, route, records) {
-    const width = routeMap?.viewBox?.baseVal?.width || 640;
-    const height = routeMap?.viewBox?.baseVal?.height || 260;
-    const cache = routeMap?._routeMapGeometryCache;
-    if (cache && cache.route === route && cache.records === records && cache.width === width && cache.height === height) {
-        return cache.geometry;
-    }
-
-    const geometry = buildRouteMapGeometry({
-        route,
-        records,
-        width,
-        height
-    });
-    routeMap._routeMapGeometryCache = {
-        route,
-        records,
-        width,
-        height,
         geometry
     };
     return geometry;

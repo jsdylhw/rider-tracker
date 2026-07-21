@@ -216,6 +216,44 @@ export const suite = {
                     windowHarness.restore();
                 }
             }
+        },
+        {
+            name: "探索路线在开始和骑行过程中持续请求前方缓冲",
+            run() {
+                const windowHarness = installWindow({ debugEnabled: true });
+                const requestedDistances = [];
+                try {
+                    const store = createStore(createState({
+                        route: {
+                            ...createState().route,
+                            source: "osm-exploration"
+                        }
+                    }));
+                    const service = createRideService({
+                        store,
+                        deviceService: createDeviceService({ grade: [], power: [], resistance: [] }),
+                        exportService: {},
+                        routeService: {
+                            ensureExplorationRouteAhead({ distanceMeters }) {
+                                requestedDistances.push(distanceMeters);
+                            }
+                        }
+                    });
+
+                    service.updateRideInput({
+                        powerSource: "virtual",
+                        virtualPowerWatts: 260,
+                        virtualCadenceRpm: 90
+                    });
+                    service.startRide();
+                    windowHarness.timerCallbacks[0]();
+
+                    assertEqual(requestedDistances[0], 0);
+                    assertGreaterThan(requestedDistances.length, 1);
+                } finally {
+                    windowHarness.restore();
+                }
+            }
         }
     ]
 };

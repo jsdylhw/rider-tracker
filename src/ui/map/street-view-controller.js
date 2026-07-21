@@ -1,73 +1,30 @@
-import { STREET_VIEW_UPDATE_INTERVAL_MS } from "../../app/store/initial-state.js";
+import { loadGoogleMapsApi } from "../../adapters/maps/google-maps-loader.js";
 
-const GOOGLE_CALLBACK_NAME = "__riderTrackerStreetViewInit";
-let googleMapsLoadPromise = null;
+const GPS_LOOKUP_INTERVAL_MS = 1000;
+const GPS_LOOKUP_DISTANCE_METERS = 18;
+const GPS_CATCH_UP_DISTANCE_METERS = 28;
+const GPS_CATCH_UP_INTERVAL_MS = 900;
+const NATIVE_PANO_ROUTE_LEAD_METERS = 2;
+const USER_INTERACTION_PAUSE_MS = 3000;
+const PANO_READY_TIMEOUT_MS = 1200;
+const MAX_NATIVE_LINK_HEADING_DELTA_DEGREES = 75;
+const NATIVE_LOOKAHEAD_MAX_HOPS = 3;
+const TWO_HOP_LOOKAHEAD_SPEED_KPH = 18;
+const THREE_HOP_LOOKAHEAD_SPEED_KPH = 32;
+const PANO_POV_TRANSITION_MIN_MS = 180;
+const PANO_POV_TRANSITION_MAX_MS = 360;
 
 export function loadGoogleMapsForStreetView(apiKey) {
-    if (!apiKey) {
-        return Promise.reject(new Error("缺少 Google Maps API Key"));
-    }
-
-    if (window.google?.maps?.StreetViewPanorama && window.google?.maps?.geometry) {
-        return Promise.resolve();
-    }
-
-    if (googleMapsLoadPromise) {
-        return googleMapsLoadPromise;
-    }
-
-    googleMapsLoadPromise = new Promise((resolve, reject) => {
-        const previousAuthFailure = window.gm_authFailure;
-
-        window.gm_authFailure = () => {
-            cleanup();
-            reject(new Error("API Key 验证失败，请检查 Key 与配额设置。"));
-        };
-
-        window[GOOGLE_CALLBACK_NAME] = () => {
-            cleanup();
-            resolve();
-        };
-
-        const script = document.createElement("script");
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=${GOOGLE_CALLBACK_NAME}`;
-        script.async = true;
-        script.defer = true;
-        script.onerror = () => {
-            cleanup();
-            reject(new Error("Google Maps API 加载失败，请检查网络连接或 API Key。"));
-        };
-
-        function cleanup() {
-            if (window[GOOGLE_CALLBACK_NAME]) {
-                delete window[GOOGLE_CALLBACK_NAME];
-            }
-            if (previousAuthFailure) {
-                window.gm_authFailure = previousAuthFailure;
-            } else if (window.gm_authFailure) {
-                delete window.gm_authFailure;
-            }
-        }
-
-        document.body.appendChild(script);
-    }).catch((error) => {
-        // 失败后允许下次重新触发加载
-        googleMapsLoadPromise = null;
-        throw error;
-    });
-
-    return googleMapsLoadPromise;
+    return loadGoogleMapsApi(apiKey);
 }
 
-export function createStreetViewController({ container1, container2 }) {
-    const svService = new window.google.maps.StreetViewService();
+export function createStreetViewController({ container1, container2, onTrace } = {}) {
+    const streetViewService = new window.google.maps.StreetViewService();
     const googleEvent = window.google.maps.event;
     const listeners = [];
     const cleanupFns = [];
-    const pendingPanoramaCleanups = [];
-    let requestInFlightTimeoutId = null;
-
-    const commonOptions = {
+    const nativeLinkCache = new Map();
+    const panorama = new window.google.maps.StreetViewPanorama(container1, {
         zoom: 1,
         addressControl: false,
         showRoadLabels: false,
@@ -78,212 +35,458 @@ export function createStreetViewController({ container1, container2 }) {
         motionTrackingControl: false,
         clickToGo: false,
         disableDefaultUI: true
-    };
+    });
 
-    const pano1 = new window.google.maps.StreetViewPanorama(container1, { ...commonOptions });
-    const pano2 = new window.google.maps.StreetViewPanorama(container2, { ...commonOptions });
+    if (container2) {
+        container2.style.display = "none";
+    }
 
-    let activeIndex = 1;
-    let lastDistance = -1;
+    let activePanoId = "";
+    let previousNativePanoId = "";
+    let latestTarget = null;
     let pauseAutoUntil = 0;
-    let applyingProgrammaticPov = false;
-    let panoramaRequestInFlight = false;
+    let lastGpsLookupDistance = -1;
+    let lastGpsLookupTime = 0;
+    let lastCatchUpTime = 0;
+    let gpsLookupGeneration = 0;
+    let panoLoad = null;
+    let cancelReadyWait = null;
+    let povAnimationFrame = null;
 
-    const USER_INTERACTION_PAUSE_MS = 3000;
-    const UPDATE_INTERVAL_MS = STREET_VIEW_UPDATE_INTERVAL_MS;
-    let lastUpdateTime = 0;
+    bindUserInteractionPause(container1);
 
-    function pauseAutoUpdateForUserInteraction() {
-        pauseAutoUntil = Date.now() + USER_INTERACTION_PAUSE_MS;
+    function update(target) {
+        if (!isStreetViewTarget(target)) return { navigation: "waiting" };
+        latestTarget = target;
+
+        if (Date.now() < pauseAutoUntil) {
+            return { navigation: "user-paused" };
+        }
+
+        if (isPanoLoading()) {
+            return { navigation: "pano-loading", pano: panoLoad.pano };
+        }
+
+        const route = target.route;
+        const currentDistanceMeters = target.distanceMeters;
+        const hasRouteContext = hasRoute(route) && Number.isFinite(currentDistanceMeters);
+        const forwardLink = hasRouteContext
+            ? findRouteAlignedNativeLink(target.heading)
+            : null;
+
+        if (forwardLink) {
+            if (forwardLink.pending) {
+                return { navigation: "pano-waiting" };
+            }
+            const nativeMove = moveToNativeLinkWhenRouteCatchesUp(forwardLink, target);
+            if (nativeMove) return nativeMove;
+            return { navigation: "pano-waiting" };
+        }
+
+        const activePosition = readLatLng(panorama.getPosition?.());
+        if (hasRouteContext
+            && shouldGpsCatchUp(activePosition, target, Date.now())) {
+            lastCatchUpTime = Date.now();
+            lookupGpsPanorama(target, "gps-catch-up");
+            return { navigation: "gps-catch-up" };
+        }
+
+        if (shouldLookupGps(target, Date.now())) {
+            lookupGpsPanorama(target, activePanoId ? "gps-fallback" : "gps-initial");
+            return { navigation: "gps-lookup" };
+        }
+
+        // Do not steer within a panorama. The next successful pano handoff owns
+        // the one-time POV update, so route sampling cannot make the view sway.
+        return { navigation: "pano-waiting" };
     }
 
-    function isAutoUpdatePaused() {
-        return Date.now() < pauseAutoUntil;
-    }
-
-    function setProgrammaticPov(panorama, pov) {
-        applyingProgrammaticPov = true;
-        panorama.setPov(pov);
-        queueMicrotask(() => {
-            applyingProgrammaticPov = false;
+    function bindUserInteractionPause(container) {
+        if (!container) return;
+        const pause = () => {
+            pauseAutoUntil = Date.now() + USER_INTERACTION_PAUSE_MS;
+            cancelPovAnimation();
+            trace("user-pause", "用户交互后暂缓自动更新");
+        };
+        container.addEventListener("pointerdown", pause);
+        container.addEventListener("wheel", pause, { passive: true });
+        container.addEventListener("touchstart", pause, { passive: true });
+        cleanupFns.push(() => {
+            container.removeEventListener("pointerdown", pause);
+            container.removeEventListener("wheel", pause);
+            container.removeEventListener("touchstart", pause);
         });
     }
 
-    function bindUserInteractionPause(container, panorama) {
-        if (container) {
-            const onPointerDown = () => pauseAutoUpdateForUserInteraction();
-            const onWheel = () => pauseAutoUpdateForUserInteraction();
-            const onTouchStart = () => pauseAutoUpdateForUserInteraction();
-
-            container.addEventListener("pointerdown", onPointerDown);
-            container.addEventListener("wheel", onWheel, { passive: true });
-            container.addEventListener("touchstart", onTouchStart, { passive: true });
-
-            cleanupFns.push(() => {
-                container.removeEventListener("pointerdown", onPointerDown);
-                container.removeEventListener("wheel", onWheel);
-                container.removeEventListener("touchstart", onTouchStart);
-            });
-        }
-
-        listeners.push(
-            googleEvent.addListener(panorama, "pov_changed", () => {
-                if (!applyingProgrammaticPov) {
-                    pauseAutoUpdateForUserInteraction();
-                }
-            })
+    function findRouteAlignedNativeLink(routeHeading) {
+        const currentPanoId = panorama.getPano?.() || activePanoId;
+        if (!currentPanoId) return null;
+        const link = chooseRouteAlignedLink(
+            panorama.getLinks?.() ?? [],
+            routeHeading,
+            currentPanoId,
+            previousNativePanoId ? [previousNativePanoId] : []
         );
+        if (!link) return null;
+
+        const cached = nativeLinkCache.get(link.pano);
+        if (cached?.position) return { ...link, position: cached.position };
+        if (!cached?.pending) {
+            preloadNativePano(link.pano, routeHeading, previousNativePanoId, getNativeLookaheadHopCount(latestTarget?.speedKph));
+        }
+        return { pending: true };
     }
 
-    bindUserInteractionPause(container1, pano1);
-    bindUserInteractionPause(container2, pano2);
+    function preloadNativePano(panoId, routeHeading, blockedPanoId, remainingHops) {
+        const existing = nativeLinkCache.get(panoId);
+        if (existing?.pending || existing?.position) return;
 
-    function getTargetStateAtDistance(route, distanceMeters) {
-        if (!route || !route.points || route.points.length === 0) return null;
-        const points = route.points;
-        if (distanceMeters <= 0) return { lat: points[0].latitude, lng: points[0].longitude, grade: points[0].gradePercent };
-        if (distanceMeters >= route.totalDistanceMeters) return { lat: points[points.length - 1].latitude, lng: points[points.length - 1].longitude, grade: points[points.length - 1].gradePercent };
-
-        let low = 0;
-        let high = points.length - 1;
-        while (low < high) {
-            const mid = Math.floor((low + high) / 2);
-            if (points[mid].distanceMeters < distanceMeters) {
-                low = mid + 1;
-            } else {
-                high = mid;
+        nativeLinkCache.set(panoId, { pending: true });
+        requestPanorama({ pano: panoId }, (data, status) => {
+            if (status !== window.google.maps.StreetViewStatus.OK || !data?.location?.latLng) {
+                nativeLinkCache.delete(panoId);
+                return;
             }
-        }
-        const idx = Math.max(0, low - 1);
-        const p1 = points[idx];
-        const p2 = points[idx + 1];
-        if (!p2) return { lat: p1.latitude, lng: p1.longitude, grade: p1.gradePercent };
+            const entry = {
+                position: readLatLng(data.location.latLng),
+                links: data.links ?? []
+            };
+            nativeLinkCache.set(panoId, entry);
+            trace("native-link-ready", `已解析前方 pano ${panoId}`, { remainingHops });
 
-        const segmentDist = p2.distanceMeters - p1.distanceMeters;
-        const ratio = segmentDist === 0 ? 0 : (distanceMeters - p1.distanceMeters) / segmentDist;
-
-        return {
-            lat: p1.latitude + (p2.latitude - p1.latitude) * ratio,
-            lng: p1.longitude + (p2.longitude - p1.longitude) * ratio,
-            grade: p1.gradePercent + (p2.gradePercent - p1.gradePercent) * ratio
-        };
+            if (remainingHops <= 1) return;
+            const nextLink = chooseRouteAlignedLink(entry.links, routeHeading, panoId, blockedPanoId ? [blockedPanoId] : []);
+            if (nextLink) {
+                preloadNativePano(nextLink.pano, routeHeading, panoId, remainingHops - 1);
+            }
+        });
     }
 
-    function update(route, currentRecord) {
-        if (!route || !currentRecord || isAutoUpdatePaused() || panoramaRequestInFlight) return;
-
-        const now = Date.now();
-        const currentDistanceMeters = currentRecord.distanceKm * 1000;
-
-        if (lastDistance !== -1 && now - lastUpdateTime <= UPDATE_INTERVAL_MS) {
-            return;
+    function moveToNativeLinkWhenRouteCatchesUp(link, target) {
+        const targetDistanceMeters = getRouteDistanceAtPosition(target.route, link.position);
+        if (!Number.isFinite(targetDistanceMeters)
+            || targetDistanceMeters > target.distanceMeters + NATIVE_PANO_ROUTE_LEAD_METERS) {
+            trace("native-wait", "等待模拟位置追上前方 pano", {
+                pano: link.pano,
+                routeDistanceMeters: Math.round(target.distanceMeters),
+                targetRouteDistanceMeters: Number.isFinite(targetDistanceMeters)
+                    ? Math.round(targetDistanceMeters)
+                    : null
+            });
+            return null;
         }
 
-        lastUpdateTime = now;
-        lastDistance = currentDistanceMeters;
+        const currentPanoId = panorama.getPano?.() || activePanoId;
+        previousNativePanoId = currentPanoId;
+        activePanoId = link.pano;
+        gpsLookupGeneration += 1;
+        beginPanoLoad(link.pano, "native-link", getNativeLinkPovTarget(link, target));
+        panorama.setPano(link.pano);
+        waitForPanoReady(link.pano);
+        trace("native-link", `原生 link 切换到 ${link.pano}`, {
+            routeDistanceMeters: Math.round(target.distanceMeters),
+            targetRouteDistanceMeters: Math.round(targetDistanceMeters)
+        });
+        return { navigation: "native-link" };
+    }
 
-        const state = getTargetStateAtDistance(route, currentDistanceMeters);
-        if (!state) return;
+    function lookupGpsPanorama(target, reason) {
+        const lookupGeneration = ++gpsLookupGeneration;
+        const startedAt = Date.now();
+        lastGpsLookupDistance = target.distanceMeters;
+        lastGpsLookupTime = startedAt;
+        trace("gps-request", `GPS 查找 pano (${reason})`, { reason });
 
-        const nextState = getTargetStateAtDistance(route, currentDistanceMeters + 5);
-        let heading = 0;
-        if (nextState) {
-            heading = window.google.maps.geometry.spherical.computeHeading(
-                new window.google.maps.LatLng(state.lat, state.lng),
-                new window.google.maps.LatLng(nextState.lat, nextState.lng)
-            );
-        }
-        const pitch = Math.atan(state.grade / 100) * (180 / Math.PI);
-
-        const activePanorama = activeIndex === 1 ? pano1 : pano2;
-        const nextPanorama = activeIndex === 1 ? pano2 : pano1;
-        const activeEl = container1.parentElement?.querySelector(`#svPano${activeIndex}`);
-        const nextEl = container1.parentElement?.querySelector(`#svPano${activeIndex === 1 ? 2 : 1}`);
-
-        if (requestInFlightTimeoutId !== null) {
-            window.clearTimeout(requestInFlightTimeoutId);
-        }
-        panoramaRequestInFlight = true;
-        requestInFlightTimeoutId = window.setTimeout(() => {
-            panoramaRequestInFlight = false;
-            requestInFlightTimeoutId = null;
-        }, 10000);
-
-        svService.getPanorama({ location: new window.google.maps.LatLng(state.lat, state.lng), radius: 50 }, (data, status) => {
-            panoramaRequestInFlight = false;
-            if (requestInFlightTimeoutId !== null) {
-                window.clearTimeout(requestInFlightTimeoutId);
-                requestInFlightTimeoutId = null;
+        requestPanorama({
+            location: new window.google.maps.LatLng(target.latitude, target.longitude),
+            radius: 50
+        }, (data, status) => {
+            if (lookupGeneration !== gpsLookupGeneration) {
+                trace("gps-stale", "忽略已过期的 GPS 查找结果", { reason });
+                return;
             }
-            if (status !== window.google.maps.StreetViewStatus.OK || !data.location?.pano) return;
-
-            const targetPanoId = data.location.pano;
-            const currentPanoId = activePanorama.getPano();
-
-            if (targetPanoId === currentPanoId) {
-                setProgrammaticPov(activePanorama, { heading, pitch });
+            if (status !== window.google.maps.StreetViewStatus.OK || !data?.location?.pano) {
+                trace("gps-failed", `GPS 查找失败: ${status}`, { reason, durationMs: Date.now() - startedAt });
                 return;
             }
 
-            nextPanorama.setPano(targetPanoId);
-            setProgrammaticPov(nextPanorama, { heading, pitch });
+            const panoId = data.location.pano;
+            if (panoId === activePanoId || panoId === panorama.getPano?.()) {
+                activePanoId = panoId;
+                return;
+            }
 
-            let statusListener = null;
-            let statusTimeoutId = null;
-            const cleanupStatusListener = () => {
-                const idx = pendingPanoramaCleanups.indexOf(cleanupStatusListener);
-                if (idx !== -1) pendingPanoramaCleanups.splice(idx, 1);
-                if (statusListener) {
-                    googleEvent.removeListener(statusListener);
-                    statusListener = null;
-                }
-                if (statusTimeoutId !== null) {
-                    window.clearTimeout(statusTimeoutId);
-                    statusTimeoutId = null;
-                }
-            };
-            pendingPanoramaCleanups.push(cleanupStatusListener);
-            statusListener = googleEvent.addListener(nextPanorama, "status_changed", () => {
-                if (nextPanorama.getStatus() !== "OK") return;
+            activePanoId = panoId;
+            beginPanoLoad(panoId, reason, latestTarget ?? target);
+            panorama.setPano(panoId);
+            waitForPanoReady(panoId);
+            trace("gps-ready", `GPS 查找到 pano ${panoId}`, { reason, durationMs: Date.now() - startedAt });
+        });
+    }
 
-                cleanupStatusListener();
-                if (nextEl && activeEl) {
-                    nextEl.style.opacity = "1";
-                    nextEl.style.zIndex = "2";
-                    activeEl.style.opacity = "0";
-                    activeEl.style.zIndex = "1";
-                }
-                activeIndex = activeIndex === 1 ? 2 : 1;
-            });
-            statusTimeoutId = window.setTimeout(cleanupStatusListener, UPDATE_INTERVAL_MS);
+    function requestPanorama(request, callback) {
+        streetViewService.getPanorama(request, callback);
+    }
 
-            // Preload next update window
-            const speedMps = (currentRecord.speedKph || 25) / 3.6;
-            const futureState = getTargetStateAtDistance(route, currentDistanceMeters + speedMps * (UPDATE_INTERVAL_MS / 1000));
-            if (futureState) {
-                svService.getPanorama({ location: new window.google.maps.LatLng(futureState.lat, futureState.lng), radius: 50 }, () => {});
+    function beginPanoLoad(pano, reason, handoffTarget = null) {
+        cancelReadyWait?.();
+        cancelReadyWait = null;
+        panoLoad = { pano, reason, handoffTarget, startedAt: Date.now() };
+    }
+
+    function waitForPanoReady(expectedPanoId) {
+        const finish = (source) => {
+            if (!panoLoad || panoLoad.pano !== expectedPanoId) return;
+            const durationMs = Date.now() - panoLoad.startedAt;
+            const readyTarget = panoLoad.handoffTarget ?? latestTarget;
+            const reason = panoLoad.reason;
+            panoLoad = null;
+            cancelReadyWait?.();
+            cancelReadyWait = null;
+            if (reason === "native-link") {
+                easeProgrammaticPov(readyTarget);
+            } else {
+                setProgrammaticPov(readyTarget);
+            }
+            trace("pano-ready", `pano ${expectedPanoId} 已就绪`, { source, durationMs });
+        };
+        const listener = googleEvent.addListener(panorama, "status_changed", () => {
+            if (panorama.getPano?.() === expectedPanoId && panorama.getStatus?.() === "OK") {
+                finish("status");
             }
         });
+        const timeoutId = window.setTimeout(() => finish("timeout"), PANO_READY_TIMEOUT_MS);
+        cancelReadyWait = () => {
+            googleEvent.removeListener(listener);
+            window.clearTimeout(timeoutId);
+        };
+    }
+
+    function setProgrammaticPov(target) {
+        if (!target) return;
+        cancelPovAnimation();
+        panorama.setPov(toProgrammaticPov(target));
+    }
+
+    function easeProgrammaticPov(target) {
+        if (!target) return;
+        cancelPovAnimation();
+        const to = toProgrammaticPov(target);
+        const from = panorama.getPov?.() ?? to;
+        const fromHeading = Number.isFinite(from.heading) ? from.heading : to.heading;
+        const fromPitch = Number.isFinite(from.pitch) ? from.pitch : to.pitch;
+        const durationMs = getPovTransitionDuration(fromHeading, to.heading);
+        const startedAt = performance.now();
+
+        const step = (now) => {
+            const progress = Math.min(1, (now - startedAt) / durationMs);
+            const eased = 1 - (1 - progress) **3;
+            panorama.setPov({
+                heading: interpolateHeading(fromHeading, to.heading, eased),
+                pitch: fromPitch + (to.pitch - fromPitch) * eased
+            });
+            if (progress < 1) {
+                povAnimationFrame = window.requestAnimationFrame(step);
+            } else {
+                povAnimationFrame = null;
+            }
+        };
+        povAnimationFrame = window.requestAnimationFrame(step);
+    }
+
+    function getPovTransitionDuration(fromHeading, toHeading) {
+        const headingDelta = angularDistanceDegrees(fromHeading, toHeading);
+        return Math.max(
+            PANO_POV_TRANSITION_MIN_MS,
+            Math.min(PANO_POV_TRANSITION_MAX_MS, PANO_POV_TRANSITION_MIN_MS + headingDelta * 2)
+        );
+    }
+
+    function getNativeLinkPovTarget(link, target) {
+        return {
+            ...target,
+            heading: normalizeHeading(link.heading ?? target.heading)
+        };
+    }
+
+    function cancelPovAnimation() {
+        if (povAnimationFrame !== null) {
+            window.cancelAnimationFrame(povAnimationFrame);
+            povAnimationFrame = null;
+        }
+    }
+
+    function isPanoLoading() {
+        return panoLoad !== null;
+    }
+
+    function shouldLookupGps(target, now) {
+        return lastGpsLookupDistance === -1
+            || Math.abs((target.distanceMeters ?? 0) - lastGpsLookupDistance) >= GPS_LOOKUP_DISTANCE_METERS
+            || now - lastGpsLookupTime >= GPS_LOOKUP_INTERVAL_MS;
+    }
+
+    function shouldGpsCatchUp(panoramaPosition, target, now) {
+        if (!panoramaPosition || now - lastCatchUpTime < GPS_CATCH_UP_INTERVAL_MS) return false;
+        return distanceBetweenMeters(panoramaPosition, {
+            lat: target.latitude,
+            lng: target.longitude
+        }) >= GPS_CATCH_UP_DISTANCE_METERS;
     }
 
     function destroy() {
-        if (requestInFlightTimeoutId !== null) {
-            window.clearTimeout(requestInFlightTimeoutId);
-            requestInFlightTimeoutId = null;
-        }
-        panoramaRequestInFlight = false;
-        while (pendingPanoramaCleanups.length) {
-            pendingPanoramaCleanups.pop()();
-        }
-        listeners.forEach((listener) => {
-            try {
-                googleEvent.removeListener(listener);
-            } catch {
-                // ignore cleanup failure
-            }
-        });
-        cleanupFns.forEach((fn) => fn());
+        cancelReadyWait?.();
+        cancelPovAnimation();
+        listeners.forEach((listener) => googleEvent.removeListener(listener));
+        cleanupFns.forEach((cleanup) => cleanup());
+        nativeLinkCache.clear();
+        nativeLinkCache.clear();
+    }
+
+    function trace(event, message, data = {}) {
+        onTrace?.({ event, message, at: Date.now(), ...data });
     }
 
     return { update, destroy };
+}
+
+export function buildStreetViewTargetFromRoute(route, currentRecord) {
+    if (!route || !currentRecord || !Number.isFinite(currentRecord.distanceKm)) return null;
+    const distanceMeters = currentRecord.distanceKm * 1000;
+    const state = getRouteStateAtDistance(route, distanceMeters);
+    const speedKph = Number.isFinite(currentRecord.speedKph) ? currentRecord.speedKph : 25;
+    const nextState = getRouteStateAtDistance(route, distanceMeters + 5);
+    if (!state || !nextState) return null;
+
+    return {
+        route,
+        distanceMeters,
+        latitude: state.latitude,
+        longitude: state.longitude,
+        heading: bearingDegrees(state, nextState),
+        gradePercent: state.gradePercent,
+        speedKph
+    };
+}
+
+function getRouteStateAtDistance(route, distanceMeters) {
+    const points = route?.points ?? [];
+    if (!points.length) return null;
+    if (distanceMeters <= 0) return toRouteState(points[0]);
+    if (distanceMeters >= route.totalDistanceMeters) return toRouteState(points.at(-1));
+    const upperIndex = points.findIndex((point) => point.distanceMeters >= distanceMeters);
+    const upper = points[Math.max(1, upperIndex)];
+    const lower = points[Math.max(0, upperIndex - 1)];
+    const ratio = (distanceMeters - lower.distanceMeters) / Math.max(1, upper.distanceMeters - lower.distanceMeters);
+    return {
+        latitude: lower.latitude + (upper.latitude - lower.latitude) * ratio,
+        longitude: lower.longitude + (upper.longitude - lower.longitude) * ratio,
+        gradePercent: (lower.gradePercent ?? 0) + ((upper.gradePercent ?? 0) - (lower.gradePercent ?? 0)) * ratio
+    };
+}
+
+export function chooseRouteAlignedLink(links, routeHeading, currentPanoId = "", excludedPanoIds = []) {
+    const excluded = new Set([currentPanoId, ...excludedPanoIds]);
+    return (links ?? [])
+        .filter((link) => link?.pano && !excluded.has(link.pano))
+        .map((link) => ({ ...link, headingDelta: angularDistanceDegrees(routeHeading, link.heading ?? routeHeading) }))
+        .filter((link) => link.headingDelta <= MAX_NATIVE_LINK_HEADING_DELTA_DEGREES)
+        .sort((left, right) => left.headingDelta - right.headingDelta)[0] ?? null;
+}
+
+export function getRouteDistanceAtPosition(route, position) {
+    const target = readLatLng(position);
+    const points = route?.points ?? [];
+    if (!target || !points.length) return null;
+    let best = { distanceSquared: Number.POSITIVE_INFINITY, routeDistanceMeters: null };
+    for (let index = 1; index < points.length; index += 1) {
+        const start = toLocalMeters(points[index - 1], target);
+        const end = toLocalMeters(points[index], target);
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const ratio = Math.max(0, Math.min(1, -(start.x * dx + start.y * dy) / Math.max(1e-9, dx * dx + dy * dy)));
+        const x = start.x + dx * ratio;
+        const y = start.y + dy * ratio;
+        const distanceSquared = x * x + y * y;
+        if (distanceSquared < best.distanceSquared) {
+            best = {
+                distanceSquared,
+                routeDistanceMeters: points[index - 1].distanceMeters
+                    + (points[index].distanceMeters - points[index - 1].distanceMeters) * ratio
+            };
+        }
+    }
+    return best.routeDistanceMeters;
+}
+
+export function getNativeLookaheadHopCount(speedKph) {
+    const speed = Math.max(0, Number(speedKph) || 0);
+    if (speed >= THREE_HOP_LOOKAHEAD_SPEED_KPH) return NATIVE_LOOKAHEAD_MAX_HOPS;
+    if (speed >= TWO_HOP_LOOKAHEAD_SPEED_KPH) return 2;
+    return 1;
+}
+
+export function interpolateHeading(fromHeading, toHeading, progress) {
+    const delta = ((toHeading - fromHeading + 540) % 360) - 180;
+    return normalizeHeading(fromHeading + delta * Math.max(0, Math.min(1, progress)));
+}
+
+function hasRoute(route) {
+    return Array.isArray(route?.points) && route.points.length > 1;
+}
+
+function isStreetViewTarget(target) {
+    return Number.isFinite(target?.latitude)
+        && Number.isFinite(target?.longitude)
+        && Number.isFinite(target?.heading);
+}
+
+function toRouteState(point) {
+    return Number.isFinite(point?.latitude) && Number.isFinite(point?.longitude)
+        ? { latitude: point.latitude, longitude: point.longitude, gradePercent: point.gradePercent ?? 0 }
+        : null;
+}
+
+function readLatLng(value) {
+    if (!value) return null;
+    const lat = typeof value.lat === "function" ? value.lat() : value.lat;
+    const lng = typeof value.lng === "function" ? value.lng() : value.lng;
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+function toLocalMeters(point, origin) {
+    const lat = point.latitude ?? point.lat;
+    const lng = point.longitude ?? point.lng;
+    const metersPerDegreeLat = 111320;
+    const metersPerDegreeLng = metersPerDegreeLat * Math.cos(origin.lat * Math.PI / 180);
+    return { x: (lng - origin.lng) * metersPerDegreeLng, y: (lat - origin.lat) * metersPerDegreeLat };
+}
+
+function distanceBetweenMeters(left, right) {
+    const a = toLocalMeters(left, right);
+    return Math.hypot(a.x, a.y);
+}
+
+function bearingDegrees(from, to) {
+    const lat1 = from.latitude * Math.PI / 180;
+    const lat2 = to.latitude * Math.PI / 180;
+    const deltaLng = (to.longitude - from.longitude) * Math.PI / 180;
+    const y = Math.sin(deltaLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+    return normalizeHeading(Math.atan2(y, x) * 180 / Math.PI);
+}
+
+function angularDistanceDegrees(left, right) {
+    return Math.abs(((left - right + 540) % 360) - 180);
+}
+
+function normalizeHeading(value) {
+    return ((value % 360) + 360) % 360;
+}
+
+function toProgrammaticPov(target) {
+    return {
+        heading: normalizeHeading(target.heading),
+        pitch: Math.atan((target.gradePercent ?? 0) / 100) * 180 / Math.PI
+    };
 }

@@ -1,7 +1,11 @@
 import { createMapController } from "./map-controller.js";
-import { createStreetViewController, loadGoogleMapsForStreetView } from "./street-view-controller.js";
+import {
+    buildStreetViewTargetFromRoute,
+    createStreetViewController,
+    loadGoogleMapsForStreetView
+} from "./street-view-controller.js";
 
-export function createRideVisualsController({ elements }) {
+export function createRideVisualsController({ elements, googleMapsConfig = null }) {
     const mapController = createMapController({
         previewElement: elements.routeMapPreview,
         dashboardElement: elements.rideDashboardMap,
@@ -11,12 +15,28 @@ export function createRideVisualsController({ elements }) {
 
     async function enableStreetView({ apiKey, container1, container2 }) {
         await loadGoogleMapsForStreetView(apiKey);
+        googleMapsConfig?.lockApiKey?.(apiKey);
         streetViewController?.destroy();
         streetViewController = createStreetViewController({ container1, container2 });
     }
 
+    async function enableConfiguredStreetView({ container1, container2 }) {
+        const apiKey = googleMapsConfig?.getApiKey?.() ?? "";
+        if (!apiKey) {
+            return { enabled: false, reason: "missing-key" };
+        }
+        if (!streetViewController) {
+            await enableStreetView({ apiKey, container1, container2 });
+        }
+        return { enabled: true };
+    }
+
     function hasStreetView() {
         return streetViewController !== null;
+    }
+
+    function getGoogleMapsConfig() {
+        return googleMapsConfig?.getConfig?.() ?? null;
     }
 
     function syncRoute(route) {
@@ -28,11 +48,34 @@ export function createRideVisualsController({ elements }) {
     }
 
     function syncStreetView(route, currentRecord) {
-        streetViewController?.update(route, currentRecord);
+        const target = buildStreetViewTargetFromRoute(route, currentRecord);
+        if (target) {
+            streetViewController?.update(target);
+        }
     }
 
     function setMapProvider(providerKey) {
         mapController.setMapProvider(providerKey);
+    }
+
+    function setPlannerClickHandler(handler) {
+        mapController.setPlannerClickHandler(handler);
+    }
+
+    function setPlannerMode(mode) {
+        mapController.setPlannerMode(mode);
+    }
+
+    function syncPlannerSelection(selection) {
+        mapController.syncPlannerSelection(selection);
+    }
+
+    function invalidatePreviewSize() {
+        mapController.invalidatePreviewSize();
+    }
+
+    function invalidateDashboardSize() {
+        mapController.invalidateDashboardSize();
     }
 
     function destroy() {
@@ -42,11 +85,18 @@ export function createRideVisualsController({ elements }) {
 
     return {
         enableStreetView,
+        enableConfiguredStreetView,
         hasStreetView,
+        getGoogleMapsConfig,
         syncRoute,
         syncMap,
         syncStreetView,
         setMapProvider,
+        setPlannerClickHandler,
+        setPlannerMode,
+        syncPlannerSelection,
+        invalidatePreviewSize,
+        invalidateDashboardSize,
         destroy
     };
 }

@@ -295,6 +295,9 @@ function hydrateActivityDetailFromFit({ activity, projectRoot }) {
         ...activity,
         rawSession: {
             ...session,
+            route: hasRouteGeometry(activity.rawSession?.route)
+                ? activity.rawSession.route
+                : session.route,
             activityId: activity.id,
             exportMetadata: {
                 ...session.exportMetadata,
@@ -302,6 +305,15 @@ function hydrateActivityDetailFromFit({ activity, projectRoot }) {
             }
         }
     };
+}
+
+function hasRouteGeometry(route) {
+    const points = route?.mapGeometry?.length >= 2 ? route.mapGeometry : route?.points;
+    return (points ?? []).filter((point) => {
+        const latitude = point?.latitude ?? point?.lat;
+        const longitude = point?.longitude ?? point?.lng;
+        return Number.isFinite(latitude) && Number.isFinite(longitude);
+    }).length >= 2;
 }
 
 function deleteFitFileIfLocal({ activity, projectRoot }) {

@@ -1,7 +1,7 @@
 import { formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
+import { buildStreetViewTargetFromRoute } from "../map/street-view-controller.js";
 import { buildDashboardViewModel } from "../../app/view-models/live-ride-view-model.js";
-import { buildTrajectoryOverviewSvg } from "./svg/dashboard-charts.js";
 import { buildImmersiveElevationGradeSvg } from "./svg/route-charts.js";
 import { createDashboardMetricsRenderer } from "./dashboard-metrics-renderer.js";
 import { createWorkoutRuntimeRenderer } from "./workout-runtime-renderer.js";
@@ -15,6 +15,7 @@ import {
 
 const LIVE_VISUAL_UPDATE_INTERVAL_MS = 1000;
 const STREET_VIEW_SYNC_INTERVAL_MS = 500;
+const IMMERSIVE_MINI_MAP_UPDATE_INTERVAL_MS = 1000;
 
 export function createDashboardRenderer({
     elements,
@@ -23,16 +24,27 @@ export function createDashboardRenderer({
     mapController,
     streetViewControllerRef,
     onEnableStreetView,
+    onQueueExplorationTurn = () => {},
+    onRequestRouteElevation = async () => {},
+    requestGoogleMapsApiKey = async () => "",
     streetViewDebugEnabled = isStreetViewDebugEnabled()
 }) {
     const visuals = rideVisuals ?? {
         hasStreetView: () => streetViewControllerRef?.current != null,
         enableStreetView: onEnableStreetView,
+        enableConfiguredStreetView: async () => ({ enabled: false, reason: "missing-config" }),
+        getGoogleMapsConfig: () => null,
         syncMap(route, currentRecord) {
             mapController?.syncRide(route, currentRecord);
         },
+        invalidateDashboardSize() {
+            mapController?.invalidateDashboardSize?.();
+        },
         syncStreetView(route, currentRecord) {
-            streetViewControllerRef?.current?.update(route, currentRecord);
+            const target = buildStreetViewTargetFromRoute(route, currentRecord);
+            if (target) {
+                streetViewControllerRef?.current?.update(target);
+            }
         }
     };
 
@@ -49,12 +61,14 @@ export function createDashboardRenderer({
     };
     let immersiveStreetViewMode = false;
     let immersiveUiHidden = false;
+    let debugStreetViewFallback = false;
     let previousImmersiveStreetViewMode = false;
     let previousDashboardOpen = false;
+    let boundStore = null;
+    let googleMapsAction = { streetViewLoading: false, elevationLoading: false, forceKeyPrompt: false };
     const visualRenderState = {
         map: createVisualRenderSlot(),
         streetView: createVisualRenderSlot(),
-        trajectory: createVisualRenderSlot(),
         gradeChart: createVisualRenderSlot(),
         workoutRuntime: createVisualRenderSlot()
     };
@@ -82,6 +96,22 @@ export function createDashboardRenderer({
         if (elements.immersiveStreetViewBtn) {
             elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
         }
+
+    }
+
+    function hasStreetViewPresentation() {
+        return isStreetViewLoaded() || (streetViewDebugEnabled && debugStreetViewFallback);
+    }
+
+    function enterImmersiveStreetView(store) {
+        immersiveStreetViewMode = true;
+        resetVisualRenderState();
+        if (elements.metricsCustomizer) {
+            elements.metricsCustomizer.hidden = true;
+        }
+        elements.rideDashboard?.classList.toggle("immersive-street-view", true);
+        elements.immersiveStreetViewBtn.textContent = "退出沉浸模式";
+        render(store.getState());
     }
 
     function showRideAlert(message) {
@@ -107,6 +137,7 @@ export function createDashboardRenderer({
     }
 
     function bindEvents(store) {
+        boundStore = store;
         if (elements.customizeMetricsBtn) {
             elements.customizeMetricsBtn.addEventListener("click", () => {
                 if (elements.metricsCustomizer) {
@@ -115,42 +146,24 @@ export function createDashboardRenderer({
             });
         }
 
-        if (elements.loadStreetViewBtn) {
-            elements.loadStreetViewBtn.addEventListener("click", async () => {
-                const apiKey = elements.streetViewApiKey?.value?.trim();
-                if (!apiKey) {
-                    alert("请输入 Google Maps API Key");
-                    return;
-                }
-                
-                if (elements.loadStreetViewBtn.disabled) return;
-                elements.loadStreetViewBtn.disabled = true;
-                elements.loadStreetViewBtn.textContent = "加载中...";
-                try {
-                    await visuals.enableStreetView({
-                        apiKey,
-                        container1: elements.svPano1,
-                        container2: elements.svPano2
-                    });
-                    elements.loadStreetViewBtn.textContent = "街景已开启";
-                    elements.streetViewContainer.style.display = "block";
-                    syncImmersiveStreetViewButton(store);
-                } catch (error) {
-                    alert(error?.message ?? "街景加载失败，请检查网络连接或 API Key。");
-                    elements.loadStreetViewBtn.disabled = false;
-                    elements.loadStreetViewBtn.textContent = "加载街景";
-                    if (elements.immersiveStreetViewBtn) {
-                        elements.immersiveStreetViewBtn.hidden = true;
-                    }
-                    setImmersiveUiHidden(false);
-                }
-            });
-        }
+        elements.loadStreetViewBtn?.addEventListener("click", () => {
+            void requestStreetView(store);
+        });
+        elements.requestRouteElevationBtn?.addEventListener("click", () => {
+            void requestRouteElevation(store);
+        });
+        [
+            [elements.explorationTurnLeftBtn, "left"],
+            [elements.explorationTurnStraightBtn, "straight"],
+            [elements.explorationTurnRightBtn, "right"]
+        ].forEach(([button, intent]) => {
+            button?.addEventListener("click", () => onQueueExplorationTurn(intent));
+        });
 
         if (elements.immersiveStreetViewBtn) {
             elements.immersiveStreetViewBtn.addEventListener("click", () => {
-                if (!isStreetViewLoaded()) {
-                    alert("请先输入 API Key 并点击“加载街景”。");
+                if (!hasStreetViewPresentation()) {
+                    alert("请先点击“加载街景”并完成 Google Maps API Key 配置。");
                     return;
                 }
                 const liveRide = store?.getState?.().liveRide ?? {};
@@ -158,17 +171,12 @@ export function createDashboardRenderer({
                     alert("请先开始骑行，或使用 ?debugStreetView=1 打开街景调试模式。");
                     return;
                 }
-                immersiveStreetViewMode = !immersiveStreetViewMode;
-                resetVisualRenderState();
-                if (immersiveStreetViewMode && elements.metricsCustomizer) {
-                    elements.metricsCustomizer.hidden = true;
+                if (immersiveStreetViewMode) {
+                    exitImmersiveStreetView();
+                    render(store.getState());
+                    return;
                 }
-                if (!immersiveStreetViewMode) {
-                    setImmersiveUiHidden(false);
-                }
-                elements.rideDashboard?.classList.toggle("immersive-street-view", immersiveStreetViewMode);
-                elements.immersiveStreetViewBtn.textContent = immersiveStreetViewMode ? "退出沉浸模式" : "进入沉浸街景";
-                render(store.getState());
+                enterImmersiveStreetView(store);
             });
         }
 
@@ -272,7 +280,7 @@ export function createDashboardRenderer({
             state,
             customMetricsState,
             immersiveStreetViewMode,
-            streetViewLoaded: isStreetViewLoaded(),
+            streetViewLoaded: hasStreetViewPresentation(),
             streetViewDebugEnabled
         });
         const { ride, training, metricsData, enabledMetricKeys } = viewModel;
@@ -295,6 +303,9 @@ export function createDashboardRenderer({
         } else {
             document.body.classList.remove('dashboard-open');
         }
+        if (dashboardOpenChanged && ride.dashboardOpen) {
+            scheduleAfterLayout(() => visuals.invalidateDashboardSize?.());
+        }
         
         if (elements.stopRideDashboardBtn) {
             elements.stopRideDashboardBtn.disabled = !ride.isActive;
@@ -309,6 +320,8 @@ export function createDashboardRenderer({
             elements.rideDashboard.classList.toggle("immersive-street-view", immersiveStreetViewMode);
             elements.rideDashboard.classList.toggle("immersive-ui-hidden", immersiveUiHidden);
         }
+        renderRouteContext(route, currentRecord);
+        renderExplorationTurnControls(route, ride);
         syncElevationChartCopy();
         document.body.classList.toggle("immersive-street-view-active", immersiveStreetViewMode && ride.dashboardOpen);
         if (elements.immersiveStreetViewBtn) {
@@ -326,13 +339,17 @@ export function createDashboardRenderer({
             return;
         }
 
+        syncGoogleMapsActionButtons({ route, ride });
+
         if (!session) {
             alertStates.halfway = false;
             alertStates.last3k = false;
             if (elements.rideDashboardTitle) elements.rideDashboardTitle.textContent = "实时骑行界面";
             if (elements.rideDashboardSubtitle) {
-                elements.rideDashboardSubtitle.textContent = streetViewDebugEnabled && isStreetViewLoaded()
-                    ? "街景调试模式：未开始骑行时也可以进入沉浸街景预览。"
+                elements.rideDashboardSubtitle.textContent = streetViewDebugEnabled && hasStreetViewPresentation()
+                    ? debugStreetViewFallback
+                        ? "街景调试模式：Google 街景未加载，正在显示黑屏占位与完整骑行 UI。"
+                        : "街景调试模式：未开始骑行时也可以进入沉浸街景预览。"
                     : "";
             }
             if (elements.rideProgressHeadline) elements.rideProgressHeadline.textContent = "0%";
@@ -406,14 +423,172 @@ export function createDashboardRenderer({
         });
     }
 
+    function renderExplorationTurnControls(route, ride) {
+        const isExplorationRide = route?.source === "osm-exploration" && ride.isActive;
+        if (elements.explorationTurnControls) {
+            elements.explorationTurnControls.hidden = !isExplorationRide;
+        }
+        if (!isExplorationRide) {
+            return;
+        }
+
+        const pendingIntent = route.exploration?.pendingIntent ?? "straight";
+        if (elements.explorationTurnStatus) {
+            elements.explorationTurnStatus.textContent = pendingIntent === "left"
+                ? "下一路口：左拐"
+                : pendingIntent === "right"
+                    ? "下一路口：右拐"
+                    : "下一路口：默认直行";
+        }
+        [
+            [elements.explorationTurnLeftBtn, "left"],
+            [elements.explorationTurnStraightBtn, "straight"],
+            [elements.explorationTurnRightBtn, "right"]
+        ].forEach(([button, intent]) => {
+            if (!button) return;
+            button.classList.toggle("is-selected", pendingIntent === intent);
+            button.setAttribute("aria-pressed", String(pendingIntent === intent));
+        });
+    }
+
+    function renderRouteContext(route, currentRecord) {
+        const routeName = route?.source === "osm-exploration"
+            ? "OSM 自由探索"
+            : route?.name ?? "--";
+        const position = formatRoutePosition(route, currentRecord);
+        if (elements.rideRouteContext) {
+            elements.rideRouteContext.textContent = `当前路线：${routeName} · 当前位置：${position}`;
+        }
+
+        const hasMappableRoute = ["gpx", "osm-map", "osm-exploration"].includes(route?.source);
+        const showRouteMiniMap = !immersiveStreetViewMode || hasMappableRoute;
+        const hideRouteMiniMap = !showRouteMiniMap;
+        if (elements.rideDashboardMap && Boolean(elements.rideDashboardMap.hidden) !== hideRouteMiniMap) {
+            elements.rideDashboardMap.hidden = hideRouteMiniMap;
+            if (showRouteMiniMap) {
+                scheduleAfterLayout(() => visuals.invalidateDashboardSize?.());
+            }
+        }
+    }
+
     function syncImmersiveStreetViewButton(store, canShowOverride = null) {
         if (!elements.immersiveStreetViewBtn) return;
         const liveRide = store?.getState?.().liveRide ?? {};
-        const canShow = canShowOverride ?? (isStreetViewLoaded() && (liveRide.isActive || streetViewDebugEnabled));
+        const canShow = canShowOverride ?? (hasStreetViewPresentation() && (liveRide.isActive || streetViewDebugEnabled));
         elements.immersiveStreetViewBtn.hidden = !canShow;
         if (canShow && !immersiveStreetViewMode) {
             elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
         }
+    }
+
+    function syncGoogleMapsActionButtons({ route, ride }) {
+        const hasCoordinates = hasCoordinateRoute(route);
+        const canLoadStreetView = hasCoordinates
+            && !isStreetViewLoaded()
+            && (ride.isActive || streetViewDebugEnabled);
+        if (elements.loadStreetViewBtn) {
+            elements.loadStreetViewBtn.hidden = !canLoadStreetView;
+            elements.loadStreetViewBtn.disabled = googleMapsAction.streetViewLoading;
+            elements.loadStreetViewBtn.textContent = googleMapsAction.streetViewLoading
+                ? "正在加载街景..."
+                : debugStreetViewFallback ? "重新加载街景" : "加载街景";
+        }
+
+        const canRequestElevation = hasCoordinates && route?.hasElevationData !== true;
+        if (elements.requestRouteElevationBtn) {
+            elements.requestRouteElevationBtn.hidden = !canRequestElevation;
+            elements.requestRouteElevationBtn.disabled = googleMapsAction.elevationLoading || ride.isActive;
+            elements.requestRouteElevationBtn.textContent = googleMapsAction.elevationLoading ? "正在请求海拔..." : "请求路线海拔";
+        }
+    }
+
+    async function requestStreetView(store) {
+        const state = store.getState();
+        if (!hasCoordinateRoute(state.route)) return;
+        if (!state.liveRide.isActive && !streetViewDebugEnabled) {
+            alert("请先开始骑行，或使用 ?debugStreetView=1 打开街景调试模式。");
+            return;
+        }
+        if (googleMapsAction.streetViewLoading) return;
+
+        const apiKey = await resolveGoogleMapsApiKey("加载街景");
+        if (!apiKey) return;
+        googleMapsAction = { ...googleMapsAction, streetViewLoading: true };
+        render(store.getState());
+        try {
+            elements.svPano1.style.display = "";
+            const result = await visuals.enableConfiguredStreetView({
+                container1: elements.svPano1,
+                container2: elements.svPano2
+            });
+            if (!result?.enabled) {
+                throw new Error("街景服务未能初始化。");
+            }
+            debugStreetViewFallback = false;
+            elements.streetViewContainer.classList.remove("streetview-debug-empty");
+            elements.streetViewContainer.style.display = "block";
+            syncImmersiveStreetViewButton(store);
+            setStatus(store, "街景已加载，可以进入沉浸街景。");
+        } catch (error) {
+            console.warn("街景加载失败，继续使用地图骑行模式。", error);
+            googleMapsAction = { ...googleMapsAction, forceKeyPrompt: true };
+            if (streetViewDebugEnabled) {
+                debugStreetViewFallback = true;
+                elements.svPano1.style.display = "none";
+                elements.streetViewContainer.classList.add("streetview-debug-empty");
+                elements.streetViewContainer.style.display = "block";
+                setStatus(store, `街景调试：Google 街景未加载（${error?.message ?? "API Key 或网络错误"}），已进入黑屏预览。`);
+                enterImmersiveStreetView(store);
+                return;
+            }
+            setStatus(store, `街景加载失败：${error?.message ?? "请检查 Google Maps API Key 与网络。"}`);
+            setImmersiveUiHidden(false);
+        } finally {
+            googleMapsAction = { ...googleMapsAction, streetViewLoading: false };
+            render(store.getState());
+        }
+    }
+
+    async function requestRouteElevation(store) {
+        const state = store.getState();
+        if (!hasCoordinateRoute(state.route) || state.route.hasElevationData || state.liveRide.isActive || googleMapsAction.elevationLoading) {
+            return;
+        }
+
+        const apiKey = await resolveGoogleMapsApiKey("请求路线海拔");
+        if (!apiKey) return;
+        googleMapsAction = { ...googleMapsAction, elevationLoading: true };
+        render(store.getState());
+        try {
+            await onRequestRouteElevation();
+        } catch (error) {
+            console.warn("路线海拔请求失败", error);
+            googleMapsAction = { ...googleMapsAction, forceKeyPrompt: true };
+        } finally {
+            googleMapsAction = { ...googleMapsAction, elevationLoading: false };
+            render(store.getState());
+        }
+    }
+
+    async function resolveGoogleMapsApiKey(featureLabel) {
+        const apiKey = visuals.getGoogleMapsConfig?.()?.apiKey ?? "";
+        const shouldPrompt = googleMapsAction.forceKeyPrompt
+            || (streetViewDebugEnabled && featureLabel === "加载街景");
+        if (apiKey && !shouldPrompt) {
+            return apiKey;
+        }
+        const confirmedKey = await requestGoogleMapsApiKey({
+            featureLabel,
+            force: shouldPrompt
+        });
+        if (confirmedKey) {
+            googleMapsAction = { ...googleMapsAction, forceKeyPrompt: false };
+        }
+        return confirmedKey;
+    }
+
+    function setStatus(store, statusText) {
+        store?.setState?.((state) => ({ ...state, statusText }));
     }
 
     function renderHeavyVisuals({
@@ -438,10 +613,6 @@ export function createDashboardRenderer({
             Math.round((training?.runtime?.customWorkoutTargetProgress ?? 0) * 100)
         ].join(":");
 
-        if (shouldRenderVisual(visualRenderState.trajectory, positionSignature, now, LIVE_VISUAL_UPDATE_INTERVAL_MS, force)) {
-            renderTrajectoryOverview(route, currentRecord, isGradeSimulation);
-        }
-
         if (shouldRenderVisual(visualRenderState.gradeChart, positionSignature, now, LIVE_VISUAL_UPDATE_INTERVAL_MS, force)) {
             renderImmersiveGradeChart(route, currentRecord, isGradeSimulation);
         }
@@ -457,25 +628,6 @@ export function createDashboardRenderer({
             now,
             force
         });
-    }
-
-    function renderTrajectoryOverview(route, currentRecord, isGradeSimulation) {
-        if (elements.trajectoryCard) {
-            elements.trajectoryCard.hidden = !isGradeSimulation;
-        }
-        if (!elements.streetViewTrajectorySvg) return;
-        if (!isGradeSimulation) {
-            elements.streetViewTrajectorySvg.innerHTML = "";
-            return;
-        }
-        elements.streetViewTrajectorySvg.innerHTML = buildTrajectoryOverviewSvg(
-            route,
-            currentRecord,
-            {
-                title: "路线平面图",
-                theme: immersiveStreetViewMode ? "immersive" : "default"
-            }
-        );
     }
 
     function renderImmersiveGradeChart(route, currentRecord, isGradeSimulation) {
@@ -507,8 +659,16 @@ export function createDashboardRenderer({
     }
 
     function syncRideVisuals({ route, currentRecord, positionSignature, now, force }) {
-        const shouldSyncMap = !immersiveStreetViewMode
-            && shouldRenderVisual(visualRenderState.map, positionSignature, now, LIVE_VISUAL_UPDATE_INTERVAL_MS, force);
+        const mapUpdateIntervalMs = immersiveStreetViewMode
+            ? IMMERSIVE_MINI_MAP_UPDATE_INTERVAL_MS
+            : LIVE_VISUAL_UPDATE_INTERVAL_MS;
+        const shouldSyncMap = shouldRenderVisual(
+            visualRenderState.map,
+            positionSignature,
+            now,
+            mapUpdateIntervalMs,
+            force
+        );
         const shouldSyncStreetView = isStreetViewLoaded()
             && shouldRenderVisual(visualRenderState.streetView, positionSignature, now, STREET_VIEW_SYNC_INTERVAL_MS, force);
 
@@ -526,11 +686,31 @@ export function createDashboardRenderer({
     };
 }
 
+function formatRoutePosition(route, currentRecord) {
+    const latitude = currentRecord?.positionLat;
+    const longitude = currentRecord?.positionLong;
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    }
+    const target = buildStreetViewTargetFromRoute(route, currentRecord);
+    return target
+        ? `${target.latitude.toFixed(5)}, ${target.longitude.toFixed(5)}`
+        : "--";
+}
+
 function createVisualRenderSlot() {
     return {
         lastRenderedAt: 0,
         lastSignature: ""
     };
+}
+
+function scheduleAfterLayout(callback) {
+    if (typeof globalThis.requestAnimationFrame === "function") {
+        globalThis.requestAnimationFrame(callback);
+        return;
+    }
+    queueMicrotask(callback);
 }
 
 function shouldRenderVisual(slot, signature, now, intervalMs, force = false) {
@@ -564,6 +744,11 @@ function buildRouteSignature(route) {
         route.totalDistanceMeters ?? 0,
         route.points?.length ?? 0
     ].join(":");
+}
+
+function hasCoordinateRoute(route) {
+    return Array.isArray(route?.points)
+        && route.points.some((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
 }
 
 function buildDebugStreetViewRecord(route) {

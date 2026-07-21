@@ -64,6 +64,14 @@ body {
     align-items: start;
 }
 
+#view-simulation .layout-grid {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+#view-simulation #sim-route-col {
+    display: none;
+}
+
 .view-header {
     display: flex;
     align-items: center;
@@ -210,12 +218,17 @@ body {
     margin-top: 6px;
 }
 
-.live-setup-grid {
-    grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+.live-setup-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    align-items: stretch;
 }
 
 .live-setup-full {
-    grid-column: 1 / -1;
     width: 100%;
 }
 
+#view-live .live-setup-stack > .column {
+    width: 100%;
+}

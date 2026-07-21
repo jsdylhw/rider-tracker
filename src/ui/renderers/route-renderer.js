@@ -13,13 +13,23 @@ export function createRouteRenderer({
     onAddSegment,
     onResetRoute,
     onImportGpx,
+    onInvalidateMapRoute,
+    onPlanMapRoute,
     onUpdateRouteSegment,
     onRemoveRouteSegment
 }) {
     const visuals = rideVisuals ?? {
-        setMapProvider: (providerKey) => mapController?.setMapProvider(providerKey),
-        syncRoute: (route) => mapController?.syncRoute(route)
+        setMapProvider: (providerKey) => mapController?.setMapProvider?.(providerKey),
+        syncRoute: (route) => mapController?.syncRoute?.(route),
+        setPlannerClickHandler: (handler) => mapController?.setPlannerClickHandler?.(handler),
+        setPlannerMode: (mode) => mapController?.setPlannerMode?.(mode),
+        syncPlannerSelection: (selection) => mapController?.syncPlannerSelection?.(selection),
+        invalidatePreviewSize: () => mapController?.invalidatePreviewSize?.()
     };
+    const hasRouteModeControls = Boolean(elements.routeModeMapBtn || elements.mapRoutePanel);
+    let routeInputMode = hasRouteModeControls ? "map" : "manual";
+    let lastRenderedState = null;
+    const mapRouteSelection = { mode: null, start: null, destination: null };
 
     function bindEvents() {
         if (elements.addSegmentBtn) {
@@ -28,6 +38,9 @@ export function createRouteRenderer({
         if (elements.resetRouteBtn) {
             elements.resetRouteBtn.addEventListener("click", onResetRoute);
         }
+        bindRouteModeButton(elements.routeModeGpxBtn, "gpx");
+        bindRouteModeButton(elements.routeModeManualBtn, "manual");
+        bindRouteModeButton(elements.routeModeMapBtn, "map");
         if (elements.gpxFileInput) {
             elements.gpxFileInput.addEventListener("click", (event) => {
                 // 允许重复选择同一个文件时依然触发 change
@@ -50,22 +63,54 @@ export function createRouteRenderer({
                 visuals.setMapProvider(e.target.value);
             });
         }
+        if (elements.clearMapRouteSelectionBtn) {
+            elements.clearMapRouteSelectionBtn.addEventListener("click", clearMapRouteSelection);
+        }
+        if (elements.planMapRouteBtn) {
+            elements.planMapRouteBtn.addEventListener("click", () => {
+                onPlanMapRoute?.({
+                    start: mapRouteSelection.start,
+                    destination: mapRouteSelection.destination
+                });
+            });
+        }
+        visuals.setPlannerClickHandler(({ mode, point }) => {
+            if (routeInputMode !== "map") return;
+            const selectionMode = mode === "start" || mode === "destination"
+                ? mode
+                : (!mapRouteSelection.start || mapRouteSelection.destination ? "start" : "destination");
+            onInvalidateMapRoute?.();
+            if (selectionMode === "start") mapRouteSelection.destination = null;
+            mapRouteSelection[selectionMode] = point;
+            mapRouteSelection.mode = null;
+            visuals.setPlannerMode("select");
+            renderMapRoutePlanner();
+        });
+        if (routeInputMode === "map") {
+            visuals.setPlannerMode("select");
+        }
     }
 
     function render(state) {
+        lastRenderedState = state;
         renderRouteTable(state);
         renderRouteSummary(state);
         renderRouteMap(state);
+        renderRouteModePanels();
+        renderMapRoutePlanner();
     }
 
     function renderRouteTable(state) {
         const isGpx = state.route.source === "gpx";
+        const isEditable = !hasRouteModeControls
+            ? !isGpx
+            : routeInputMode === "manual" && state.route.source === "manual";
         
         if (elements.routeTableShell) {
-            elements.routeTableShell.hidden = isGpx;
+            elements.routeTableShell.hidden = !isEditable;
         }
 
-        if (isGpx) {
+        if (!isEditable) {
             return;
         }
 
@@ -105,15 +150,33 @@ export function createRouteRenderer({
     function renderRouteSummary(state) {
         const route = state.route;
         const isGpx = route.source === "gpx";
-        if (elements.routeSourceLabel) elements.routeSourceLabel.textContent = isGpx ? `GPX：${route.name}` : "手工路线";
-        if (elements.addSegmentBtn) elements.addSegmentBtn.disabled = isGpx;
+        const isExploration = route.source === "osm-exploration";
+        const isPendingMapExploration = routeInputMode === "map" && !isExploration;
+        if (elements.routeSourceLabel) {
+            elements.routeSourceLabel.textContent = isPendingMapExploration
+                ? "地图探索（待生成）"
+                : isExploration
+                    ? "OSM 街景探索"
+                    : isGpx
+                        ? `GPX：${route.name}`
+                        : "手工路线";
+        }
+        if (elements.addSegmentBtn) elements.addSegmentBtn.disabled = routeInputMode !== "manual" || isGpx;
         if (elements.routeDistanceChip) elements.routeDistanceChip.textContent = `${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
         if (elements.routeElevationChip) elements.routeElevationChip.textContent = `${Math.round(route.totalElevationGainMeters)} m`;
         if (elements.routeSummary) {
-            const sourceText = isGpx ? "GPX 导入" : "手工输入";
+            if (isPendingMapExploration) {
+                elements.routeSummary.innerHTML = `
+                    <strong>地图探索</strong><br>
+                    请在地图上选择起点和起步目标。系统会请求周边 OSM 路网，生成初始探索路线。
+                `;
+                return;
+            }
+
+            const sourceText = isExploration ? "OSM 地图探索" : isGpx ? "GPX 导入" : "手工输入";
             const segmentsText = isGpx ? "" : `，共 ${route.segments.length} 段`;
-            const elevationWarning = isGpx && route.hasElevationData === false
-                ? "<br><span style=\"color: var(--danger);\">提示：当前 GPX 不含海拔数据，系统不会计算有效坡度，爬升与坡度图按 0 处理。</span>"
+            const elevationWarning = route.hasElevationData === false
+                ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : "GPX"}尚无海拔数据，坡度按 0 处理；可在骑行界面请求路线海拔。</span>`
                 : "";
             
             elements.routeSummary.innerHTML = `
@@ -128,9 +191,74 @@ export function createRouteRenderer({
     function renderRouteMap(state) {
         try {
             visuals.syncRoute(state.route);
+            visuals.syncPlannerSelection(mapRouteSelection);
         } catch (error) {
             console.warn("路线地图渲染失败，不影响距离/海拔预览。", error);
         }
+    }
+
+    function bindRouteModeButton(button, mode) {
+        button?.addEventListener("click", () => setRouteInputMode(mode));
+    }
+
+    function setRouteInputMode(mode) {
+        routeInputMode = mode;
+        if (mode === "map") {
+            visuals.setPlannerMode("select");
+        } else {
+            mapRouteSelection.mode = null;
+            visuals.setPlannerMode(null);
+        }
+        renderRouteModePanels();
+        if (lastRenderedState) {
+            renderRouteTable(lastRenderedState);
+            renderRouteSummary(lastRenderedState);
+        }
+        renderMapRoutePlanner();
+    }
+
+    function renderRouteModePanels() {
+        if (!hasRouteModeControls) return;
+        const shouldShowRouteMap = routeInputMode === "map" || hasCoordinateRoute(lastRenderedState?.route);
+        setPanelVisible(elements.gpxRoutePanel, routeInputMode === "gpx");
+        setPanelVisible(elements.manualRoutePanel, routeInputMode === "manual");
+        setPanelVisible(elements.mapRoutePanel, routeInputMode === "map");
+        setPanelVisible(elements.routeMapShell, shouldShowRouteMap);
+        setModeButtonActive(elements.routeModeGpxBtn, routeInputMode === "gpx");
+        setModeButtonActive(elements.routeModeManualBtn, routeInputMode === "manual");
+        setModeButtonActive(elements.routeModeMapBtn, routeInputMode === "map");
+
+        if (shouldShowRouteMap) {
+            scheduleMapPreviewRefresh(() => {
+                visuals.invalidatePreviewSize();
+                if (lastRenderedState?.route) visuals.syncRoute(lastRenderedState.route);
+                visuals.syncPlannerSelection(mapRouteSelection);
+            });
+        }
+    }
+
+    function clearMapRouteSelection() {
+        onInvalidateMapRoute?.();
+        mapRouteSelection.mode = null;
+        mapRouteSelection.start = null;
+        mapRouteSelection.destination = null;
+        visuals.setPlannerMode("select");
+        renderMapRoutePlanner();
+    }
+
+    function renderMapRoutePlanner() {
+        if (!hasRouteModeControls) return;
+        if (elements.mapRouteSelectionStatus) {
+            elements.mapRouteSelectionStatus.textContent = mapRouteSelection.start && mapRouteSelection.destination
+                ? "起点和起步目标已选择，可生成起步路线"
+                : mapRouteSelection.start ? "已选择起点，点击地图选择起步目标" : "点击地图选择起点";
+        }
+        if (elements.mapRouteStartText) elements.mapRouteStartText.textContent = formatPoint(mapRouteSelection.start);
+        if (elements.mapRouteDestinationText) elements.mapRouteDestinationText.textContent = formatPoint(mapRouteSelection.destination);
+        if (elements.planMapRouteBtn) {
+            elements.planMapRouteBtn.disabled = routeInputMode !== "map" || !mapRouteSelection.start || !mapRouteSelection.destination;
+        }
+        visuals.syncPlannerSelection(mapRouteSelection);
     }
 
     function renderElevationChart(route, currentRecord) {
@@ -177,6 +305,33 @@ export function createRouteRenderer({
         render,
         renderElevationChart // Expose for dashboard to use with currentRecord
     };
+}
+
+function hasCoordinateRoute(route) {
+    return Array.isArray(route?.points)
+        && route.points.some((point) => Number.isFinite(point?.latitude) && Number.isFinite(point?.longitude));
+}
+
+function setPanelVisible(panel, visible) {
+    if (panel) panel.hidden = !visible;
+}
+
+function setModeButtonActive(button, active) {
+    button?.classList?.toggle("active", active);
+    button?.setAttribute?.("aria-selected", active ? "true" : "false");
+}
+
+function scheduleMapPreviewRefresh(callback) {
+    if (typeof globalThis.requestAnimationFrame === "function") {
+        globalThis.requestAnimationFrame(callback);
+        return;
+    }
+    queueMicrotask(callback);
+}
+
+function formatPoint(point) {
+    if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lng)) return "未选择";
+    return `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}`;
 }
 
 function escapeHtml(value) {

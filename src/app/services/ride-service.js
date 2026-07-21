@@ -31,12 +31,14 @@ const STREET_VIEW_DEBUG_POWER_WATTS = 180;
 const STREET_VIEW_DEBUG_CADENCE_RPM = 85;
 const STREET_VIEW_DEBUG_HEART_RATE_BPM = 130;
 
-export function createRideService({ store, deviceService, exportService }) {
+export function createRideService({ store, deviceService, exportService, routeService = null }) {
     let liveRideTimerId = null;
     let liveRideTickIntervalMs = DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS;
 
     function startRide() {
-        const state = store.getState();
+        let state = store.getState();
+        routeService?.ensureExplorationRouteAhead?.({ distanceMeters: 0 });
+        state = store.getState();
         const streetViewDebugEnabled = isStreetViewDebugEnabled();
         const virtualRideEnabled = streetViewDebugEnabled && state.rideInput?.powerSource === "virtual";
         if ((!state.liveRide.canStart && !virtualRideEnabled && !streetViewDebugEnabled) || state.liveRide.isActive) {
@@ -255,11 +257,16 @@ export function createRideService({ store, deviceService, exportService }) {
     }
 
     function tickLiveRide() {
-        const state = store.getState();
+        let state = store.getState();
         if (!state.liveRide.isActive || !state.liveRide.session) {
             stopLiveRideLoop();
             return;
         }
+
+        routeService?.ensureExplorationRouteAhead?.({
+            distanceMeters: state.liveRide.session.physicsState.distanceMeters
+        });
+        state = store.getState();
 
         const currentTickIntervalMs = liveRideTickIntervalMs;
         const sampledSensors = resolveStartRideSensorSnapshot({

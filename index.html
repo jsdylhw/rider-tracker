@@ -93,62 +93,86 @@
                         <div id="routeCard" class="card">
                             <div class="section-title-row">
                                 <div><h2>路线轨迹设置</h2></div>
-                                <div class="inline-actions">
-                                    <button id="addSegmentBtn" class="btn secondary">新增路段</button>
-                                    <button id="resetRouteBtn" class="btn ghost">恢复默认</button>
-                                </div>
                             </div>
                             <div class="import-panel">
-                                <label class="field field-wide">
-                                    <span>导入 GPX 文件</span>
-                                    <input id="gpxFileInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
-                                </label>
+                                <div class="route-mode-tabs" role="tablist" aria-label="路线来源">
+                                    <button id="routeModeGpxBtn" class="route-mode-tab" type="button" data-route-mode="gpx">GPX 导入</button>
+                                    <button id="routeModeManualBtn" class="route-mode-tab" type="button" data-route-mode="manual">自定义线路</button>
+                                    <button id="routeModeMapBtn" class="route-mode-tab" type="button" data-route-mode="map">地图探索</button>
+                                </div>
+
+                                <div id="gpxRoutePanel" class="route-mode-panel">
+                                    <label class="field field-wide">
+                                        <span>导入 GPX 文件</span>
+                                        <input id="gpxFileInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
+                                    </label>
+                                </div>
+
+                                <div id="manualRoutePanel" class="route-mode-panel">
+                                    <div class="route-panel-head">
+                                        <div>
+                                            <strong>自定义坡度线路</strong>
+                                            <span>手动编辑距离和坡度，用于快速构造训练路线。</span>
+                                        </div>
+                                        <div class="inline-actions">
+                                            <button id="addSegmentBtn" class="btn secondary" type="button">新增路段</button>
+                                            <button id="resetRouteBtn" class="btn ghost" type="button">恢复默认</button>
+                                        </div>
+                                    </div>
+                                    <div id="routeTableShell" class="table-shell">
+                                        <table class="route-table">
+                                            <thead><tr><th>名称</th><th>距离 km</th><th>坡度 %</th><th>操作</th></tr></thead>
+                                            <tbody id="routeTableBody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div id="mapRoutePanel" class="route-mode-panel map-route-planner">
+                                    <div class="map-route-planner-head">
+                                        <div>
+                                            <span>街景探索选点</span>
+                                            <strong id="mapRouteSelectionStatus">点击地图选择起点</strong>
+                                        </div>
+                                        <div class="map-route-actions">
+                                            <button id="clearMapRouteSelectionBtn" class="btn ghost" type="button">清空</button>
+                                            <button id="planMapRouteBtn" class="btn primary" type="button">生成起步路线</button>
+                                        </div>
+                                    </div>
+                                    <div class="map-route-selection-grid">
+                                        <div class="map-route-selection-card start">
+                                            <span>起点</span>
+                                            <strong id="mapRouteStartText">未选择</strong>
+                                        </div>
+                                        <div class="map-route-selection-card destination">
+                                            <span>起步目标</span>
+                                            <strong id="mapRouteDestinationText">未选择</strong>
+                                        </div>
+                                    </div>
+                                    <div class="map-route-settings">
+                                        <label class="field">
+                                            <span>地图源</span>
+                                            <select id="mapProviderSelect">
+                                                <option value="osm">OpenStreetMap</option>
+                                                <option value="amap">高德底图</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <div id="mapRoutePlanStatus" class="map-route-plan-status" hidden aria-live="polite"></div>
+                                </div>
+
+                                <div id="routeMapShell" class="chart-shell route-map-shell" hidden>
+                                    <div id="routeMapPreview" class="map-canvas"></div>
+                                </div>
+
                                 <div id="setupElevationChartShell" class="chart-shell" style="margin-top: 0;">
                                     <svg id="setupElevationChart" viewBox="0 0 640 180" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block;"></svg>
                                 </div>
-                                <div class="route-source-row">
+                                <div id="routeCurrentSourceRow" class="route-source-row">
                                     <span>当前路线来源</span>
                                     <strong id="routeSourceLabel">手工路线</strong>
                                 </div>
-                                <label class="field">
-                                    <span>地图源</span>
-                                    <select id="mapProviderSelect">
-                                        <option value="osm">OpenStreetMap</option>
-                                        <option value="amap">高德底图</option>
-                                    </select>
-                                </label>
-                            </div>
-                            <div id="routeMapShell" class="chart-shell route-map-shell"><div id="routeMapPreview" class="map-canvas"></div></div>
-                            <div id="routeTableShell" class="table-shell">
-                                <table class="route-table">
-                                    <thead><tr><th>名称</th><th>距离 km</th><th>坡度 %</th><th>操作</th></tr></thead>
-                                    <tbody id="routeTableBody"></tbody>
-                                </table>
                             </div>
                             <div id="routeSummary" class="route-summary">路线概览待生成。</div>
-                        </div>
-                    </div>
-                    <div id="exportCardContainer"></div>
-                    <div class="card">
-                        <div class="section-title-row"><div><h2>最近骑行摘要</h2></div></div>
-                        <div class="data-grid">
-                            <div class="data-item"><div class="data-label">平均速度</div><div class="data-display" id="avgSpeedDisplay">0.0 <span class="unit">km/h</span></div></div>
-                            <div class="data-item"><div class="data-label">总距离</div><div class="data-display" id="distanceDisplay">0.00 <span class="unit">km</span></div></div>
-                            <div class="data-item"><div class="data-label">平均心率</div><div class="data-display" id="heartRateDisplay">0 <span class="unit">bpm</span></div></div>
-                            <div class="data-item"><div class="data-label">累计爬升</div><div class="data-display" id="elevationDisplay">0 <span class="unit">m</span></div></div>
-                        </div>
-                        <div class="summary-grid">
-                            <div class="summary-card"><span>总用时</span><strong id="elapsedTimeValue">00:00</strong></div>
-                            <div class="summary-card"><span>路线进度</span><strong id="routeProgressValue">0%</strong></div>
-                            <div class="summary-card"><span>当前坡度</span><strong id="currentGradeValue">0.0%</strong></div>
-                            <div class="summary-card"><span>记录数</span><strong id="recordCountValue">0</strong></div>
-                        </div>
-                        <div class="chart-shell"><svg id="distanceChart" viewBox="0 0 640 280" preserveAspectRatio="none"></svg></div>
-                        <div class="table-shell">
-                            <table class="route-table">
-                                <thead><tr><th>路线</th><th>时长</th><th>距离</th><th>均速</th><th>均功率</th><th>均心率</th></tr></thead>
-                                <tbody id="recordsTableBody"><tr><td class="empty-state" colspan="6">开始骑行后将在这里显示记录。</td></tr></tbody>
-                            </table>
                         </div>
                     </div>
                     <div id="postRideReportCard" class="card" hidden>
@@ -314,68 +338,6 @@
         </div>
     </template>
 
-    <template id="export-card-template">
-        <div id="sharedExportCard" class="card">
-            <div class="section-title-row">
-                <div>
-                    <h2>会话导出</h2>
-                </div>
-            </div>
-            <div class="controls">
-                <button id="downloadSessionBtn" class="btn power-btn" disabled>导出 JSON</button>
-                <button id="downloadFitBtn" class="btn secondary" disabled>导出 FIT</button>
-                <input id="importFitInput" type="file" accept=".fit,application/vnd.ant.fit" hidden>
-                <button id="importFitBtn" class="btn secondary" type="button">导入 FIT</button>
-                <button id="connectStravaBtn" class="btn secondary" disabled>连接 Strava</button>
-                <button id="uploadFitBtn" class="btn primary" disabled>上传 FIT</button>
-            </div>
-            <form id="fitExportForm" class="form-grid">
-                <label class="field">
-                    <span>活动标题</span>
-                    <input name="activityName" type="text" maxlength="48">
-                </label>
-                <label class="field">
-                    <span>FIT 类型</span>
-                    <label class="export-toggle">
-                        <input name="markVirtualActivity" type="checkbox" checked>
-                        <span class="export-toggle-track" aria-hidden="true"></span>
-                        <span class="export-toggle-label">
-                            <span class="export-toggle-title">
-                                <span class="when-checked">模拟骑行</span>
-                                <span class="when-unchecked">普通骑行</span>
-                            </span>
-                            <span class="export-toggle-subtitle">
-                                <span class="when-checked">写入 virtualActivity</span>
-                                <span class="when-unchecked">不写入 virtualActivity</span>
-                            </span>
-                        </span>
-                    </label>
-                </label>
-                <label class="field">
-                    <span>仓库地址</span>
-                    <input name="repositoryUrl" type="url">
-                </label>
-                <details class="advanced-settings field-wide">
-                    <summary>高级设置</summary>
-                    <div class="advanced-settings-grid">
-                        <label class="field">
-                            <span>Strava Server</span>
-                            <input name="stravaServerUrl" type="url" placeholder="http://localhost:8787">
-                        </label>
-                        <label class="field">
-                            <span>Strava User ID</span>
-                            <input name="stravaUserId" type="text" maxlength="64" placeholder="default">
-                        </label>
-                    </div>
-                </details>
-                <label class="field field-wide">
-                    <span>说明信息</span>
-                    <textarea name="fitDescription" rows="3" maxlength="180"></textarea>
-                </label>
-            </form>
-        </div>
-    </template>
-
     <template id="upload-confirm-template">
         <div class="modal-overlay" id="uploadConfirmOverlay">
             <div class="modal-card">
@@ -409,6 +371,22 @@
         </div>
     </template>
 
+    <div class="modal-overlay" id="googleMapsServiceOverlay" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="googleMapsServiceTitle">
+            <h3 id="googleMapsServiceTitle">使用 Google Maps 服务</h3>
+            <p id="googleMapsServiceDescription" class="muted">请输入本次浏览器会话使用的 Google Maps API Key。</p>
+            <label class="field">
+                <span>Google Maps API Key</span>
+                <input id="googleMapsServiceApiKeyInput" type="password" autocomplete="off" placeholder="AIza...">
+            </label>
+            <div id="googleMapsServiceStatus" class="route-summary" aria-live="polite"></div>
+            <div class="modal-actions">
+                <button id="confirmGoogleMapsServiceBtn" class="btn power-btn" type="button">继续</button>
+                <button id="cancelGoogleMapsServiceBtn" class="btn secondary" type="button">取消</button>
+            </div>
+        </div>
+    </div>
+
     <section id="rideDashboard" class="ride-dashboard" hidden>
         <div class="ride-dashboard-inner">
             <div class="ride-dashboard-header">
@@ -417,9 +395,9 @@
                     <h2 id="rideDashboardTitle">实时骑行界面</h2>
                 </div>
                 <div class="inline-actions">
+                    <button id="requestRouteElevationBtn" class="btn secondary" hidden>请求路线海拔</button>
+                    <button id="loadStreetViewBtn" class="btn secondary" hidden>加载街景</button>
                     <button id="customizeMetricsBtn" class="btn secondary">自定义面板</button>
-                    <input type="password" id="streetViewApiKey" placeholder="Google Maps API Key" class="streetview-key-input">
-                    <button id="loadStreetViewBtn" class="btn secondary">加载街景</button>
                     <button id="immersiveStreetViewBtn" class="btn secondary" hidden>进入沉浸街景</button>
                     <button id="pipBtn" class="btn secondary">开启悬浮窗</button>
                     <details class="pip-config-popover">
@@ -597,6 +575,7 @@
                     <div class="section-title-row">
                         <div>
                             <h2>实时位置与街景主视图</h2>
+                            <p id="rideRouteContext" class="ride-route-context">当前路线：-- · 当前位置：--</p>
                         </div>
                     </div>
                     <div class="chart-shell ride-map-large" style="position: relative;">
@@ -609,6 +588,15 @@
                             <div id="svPano2" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; transition: opacity 0.8s ease-in-out; opacity: 0; z-index: 1;"></div>
                         </div>
 
+                        <div id="explorationTurnControls" class="exploration-turn-controls" hidden>
+                            <span id="explorationTurnStatus">默认直行</span>
+                            <div class="exploration-turn-actions" role="group" aria-label="下一路口方向">
+                                <button id="explorationTurnLeftBtn" class="btn ghost" type="button">左拐</button>
+                                <button id="explorationTurnStraightBtn" class="btn ghost" type="button">直行</button>
+                                <button id="explorationTurnRightBtn" class="btn ghost" type="button">右拐</button>
+                            </div>
+                        </div>
+
                         <div id="streetViewHud" class="streetview-hud">
                             <button id="immersiveBackBtn" class="btn ghost">返回页面</button>
                             <button id="immersiveUiToggleBtn" class="btn ghost">隐藏 UI</button>
@@ -619,12 +607,6 @@
                             <div id="workoutTargetHudCard" class="streetview-hud-card">
                                 <h3>训练目标</h3>
                                 <div id="workoutTargetHudGrid" class="data-grid"></div>
-                            </div>
-                            <div id="trajectoryCard" class="streetview-hud-card">
-                                <h3>路线平面图</h3>
-                                <div class="chart-shell" style="height: 180px; position: relative;">
-                                    <svg id="streetViewTrajectorySvg" viewBox="0 0 300 180" preserveAspectRatio="xMidYMid meet" style="width: 100%; height: 100%;"></svg>
-                                </div>
                             </div>
                         </div>
                     </div>

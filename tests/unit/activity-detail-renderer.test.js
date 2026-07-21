@@ -25,7 +25,6 @@ export const suite = {
                 assert(html.includes("速度"), "speed chart section should render");
                 assert(html.includes("activity-detail-analysis-layout"), "detail should render side-by-side chart/map layout");
                 assert(html.includes("activity-series-stack"), "series charts should be grouped in one left-side stack");
-                assert(html.includes("data-activity-map-toggle"), "route map should be hideable");
                 assert(html.includes("data-activity-series-chart"), "series charts should expose interaction anchors");
                 assert(html.includes('data-y-key="speedKph"'), "speed chart should expose its y field");
                 assert(html.includes('data-role="series-interaction-layer"'), "series charts should expose a replaceable interaction layer");
@@ -35,9 +34,9 @@ export const suite = {
                 assert(html.includes("时间 (分:秒)"), "series charts should label the x axis with units");
                 assert(html.includes("速度 (km/h)"), "speed chart should label the y axis with units");
                 assert(!html.includes("x 轴: 时间 / y 轴: 速度"), "series charts should not render redundant axis prose");
-                assert(html.includes("路线平面图"), "route map section should render");
+                assert(html.includes("路线地图"), "route map section should render");
                 assert(html.includes("data-activity-route-map"), "route map should expose an interaction anchor");
-                assert(html.includes('data-role="route-map-line"'), "route map should render a base route line");
+                assert(!html.includes('data-role="route-map-line"'), "detail should not render the retired SVG route map");
                 assert(html.includes('fill="#f8fafc"'), "activity detail charts should use a light analysis plot background");
                 assert(html.includes("功率区间"), "power zone section should render");
                 assert(html.includes("心率区间"), "heart-rate zone section should render");
@@ -46,7 +45,18 @@ export const suite = {
             }
         },
         {
-            name: "renders standalone detail page upload actions without download action",
+            name: "hides the map card for manual activity routes",
+            run() {
+                const activity = buildActivity();
+                activity.rawSession.route.source = "manual";
+
+                const html = buildActivityDetailHtml(activity);
+
+                assert(!html.includes("data-activity-route-map"), "manual routes should not render a map card");
+            }
+        },
+        {
+            name: "renders standalone detail page export and upload actions",
             run() {
                 const html = buildActivityDetailPageHtml({
                     ...buildActivity(),
@@ -56,7 +66,8 @@ export const suite = {
 
                 assert(html.includes("上传 Strava"), "standalone detail should expose Strava upload");
                 assert(html.includes("FIT 已保存"), "standalone detail should show archived FIT status");
-                assert(!html.includes("导出 FIT"), "standalone detail should not expose browser FIT download");
+                assert(html.includes("导出 JSON"), "standalone detail should expose JSON export");
+                assert(html.includes("导出 FIT"), "standalone detail should expose browser FIT export");
             }
         },
         {
