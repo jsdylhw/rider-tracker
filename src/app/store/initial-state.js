@@ -34,13 +34,11 @@ export const defaultExportMetadata = {
 export const STREET_VIEW_UPDATE_INTERVAL_MS = 3000;
 
 export function createInitialState(session, options = {}) {
-    const routeSegments = sanitizeSegments(defaultRouteSegments);
-    const route = buildRoute(routeSegments);
+    const route = buildRoute(sanitizeSegments(defaultRouteSegments));
     const pipPreferences = options.pipPreferences ?? {};
 
     return {
         uiMode: "home",
-        routeSegments,
         route,
         settings: { ...defaultSettings },
         rideInput: {

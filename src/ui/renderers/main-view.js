@@ -117,7 +117,7 @@ export function createMainView({ store, pipController, actions }) {
             layoutCoordinator.render(state);
         }
         if (initialRender || state.settings !== previousState.settings) renderSettings(state);
-        if (initialRender || state.route !== previousState.route || state.routeSegments !== previousState.routeSegments || state.uiMode !== previousState.uiMode) {
+        if (initialRender || state.route !== previousState.route || state.uiMode !== previousState.uiMode) {
             routeRenderer.render(state);
         }
         if (initialRender || state.workout !== previousState.workout || state.ble !== previousState.ble) {

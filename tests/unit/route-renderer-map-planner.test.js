@@ -61,7 +61,7 @@ export const suite = {
 
                 assertEqual(plannerModes.at(-1), "select");
 
-                renderer.render({ route: { source: "manual", points: [], segments: [] }, routeSegments: [] });
+                renderer.render({ route: { source: "manual", points: [], segments: [] } });
 
                 assertEqual(elements.mapRoutePanel.hidden, false);
                 assertEqual(elements.manualRoutePanel.hidden, true);
@@ -96,7 +96,6 @@ export const suite = {
                         ],
                         segments: []
                     },
-                    routeSegments: []
                 });
                 const latestSelection = plannerSelections.at(-1);
                 assertEqual(latestSelection, null);
@@ -160,10 +159,9 @@ export const suite = {
                 elements.routeModeGpxBtn.dispatch("click");
                 renderer.render({
                     route: { source: "manual", points: [], segments: [] },
-                    routeSegments: []
                 });
                 assertEqual(elements.setupElevationChartShell.hidden, true);
-                renderer.render({ route, routeSegments: [] });
+                renderer.render({ route });
 
                 assertEqual(elements.gpxRoutePanel.hidden, false);
                 assertEqual(elements.mapRoutePanel.hidden, true);
@@ -217,13 +215,12 @@ export const suite = {
                     segments: []
                 };
 
-                renderer.render({ route, routeSegments: [] });
+                renderer.render({ route });
                 renderer.render({
                     route: {
                         ...route,
                         exploration: { pendingIntent: "left" }
                     },
-                    routeSegments: []
                 });
 
                 assertEqual(mapRouteSyncCount, 1);
