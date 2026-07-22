@@ -111,7 +111,11 @@ export const suite = {
                 try {
                     const viewModel = buildDashboardViewModel({
                         state: {
-                            route: null,
+                            route: {
+                                totalDistanceMeters: 1000,
+                                points: [],
+                                segments: []
+                            },
                             settings: { power: 220, mass: 75, ftp: 250 },
                             ble: {
                                 heartRate: { value: null },

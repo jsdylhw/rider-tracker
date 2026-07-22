@@ -155,6 +155,21 @@ export const suite = {
                 assertEqual(sample.longitude, null);
                 assertApprox(sample.gradePercent, 4, 0.001);
             }
+        },
+        {
+            name: "manual route includes the origin so the first segment renders and samples correctly",
+            run() {
+                const route = buildRoute([
+                    { name: "Start climb", distanceKm: 1, gradePercent: 4 },
+                    { name: "Descent", distanceKm: 1, gradePercent: -3 }
+                ]);
+
+                assertEqual(route.points[0].distanceMeters, 0);
+                assertEqual(route.points[0].elevationMeters, 0);
+                assertEqual(route.points[1].distanceMeters, 1000);
+                assertApprox(getRouteSampleAtDistance(route, 100).gradePercent, 4, 0.001);
+                assertApprox(getRouteSampleAtDistance(route, 1500).gradePercent, -3, 0.01);
+            }
         }
     ]
 };

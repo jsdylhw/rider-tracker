@@ -65,6 +65,7 @@ export function createDashboardRenderer({
     let previousImmersiveStreetViewMode = false;
     let previousDashboardOpen = false;
     let boundStore = null;
+    let dashboardMapRefreshScheduled = false;
     let googleMapsAction = { streetViewLoading: false, elevationLoading: false, forceKeyPrompt: false };
     const visualRenderState = {
         map: createVisualRenderSlot(),
@@ -88,15 +89,24 @@ export function createDashboardRenderer({
         }
     }
 
+    function scheduleDashboardMapRefresh() {
+        if (dashboardMapRefreshScheduled) {
+            return;
+        }
+        dashboardMapRefreshScheduled = true;
+        scheduleAfterLayout(() => {
+            dashboardMapRefreshScheduled = false;
+            visuals.invalidateDashboardSize?.();
+        });
+    }
+
     function exitImmersiveStreetView() {
         immersiveStreetViewMode = false;
         setImmersiveUiHidden(false);
         elements.rideDashboard?.classList.remove("immersive-street-view");
         document.body.classList.remove("immersive-street-view-active");
-        scheduleAfterLayout(() => {
-            visuals.invalidateStreetViewSize?.();
-            visuals.invalidateDashboardSize?.();
-        });
+        scheduleAfterLayout(() => visuals.invalidateStreetViewSize?.());
+        scheduleDashboardMapRefresh();
         if (elements.immersiveStreetViewBtn) {
             elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
         }
@@ -117,6 +127,9 @@ export function createDashboardRenderer({
         elements.immersiveStreetViewBtn.textContent = "退出沉浸模式";
         render(store.getState());
         scheduleAfterLayout(() => visuals.invalidateStreetViewSize?.());
+        // The mini map keeps its live-ride viewport unless the newly visible
+        // immersive layout explicitly refits the current route.
+        scheduleDashboardMapRefresh();
     }
 
     function showRideAlert(message) {
@@ -309,7 +322,7 @@ export function createDashboardRenderer({
             document.body.classList.remove('dashboard-open');
         }
         if (dashboardOpenChanged && ride.dashboardOpen) {
-            scheduleAfterLayout(() => visuals.invalidateDashboardSize?.());
+            scheduleDashboardMapRefresh();
         }
         
         if (elements.stopRideDashboardBtn) {
@@ -357,11 +370,6 @@ export function createDashboardRenderer({
                         : "街景调试模式：未开始骑行时也可以进入沉浸街景预览。"
                     : "";
             }
-            if (elements.rideProgressHeadline) elements.rideProgressHeadline.textContent = "0%";
-            if (elements.rideProgressBar) elements.rideProgressBar.style.width = "0%";
-            if (elements.rideProgressDistance) elements.rideProgressDistance.textContent = "0.00 / 0.00 km";
-            if (elements.rideProgressSegment) elements.rideProgressSegment.textContent = "等待开始";
-
             dashboardMetricsRenderer.render({
                 metricsData,
                 enabledMetricKeys,
@@ -404,11 +412,6 @@ export function createDashboardRenderer({
         if (elements.rideDashboardSubtitle) elements.rideDashboardSubtitle.textContent = ride.isActive
             ? "骑行界面已开启，正在按实时功率推进路线。"
             : "骑行已结束，可在这里回看本次路线进度和核心指标。";
-        if (elements.rideProgressHeadline) elements.rideProgressHeadline.textContent = `${progressPercent}%`;
-        if (elements.rideProgressBar) elements.rideProgressBar.style.width = `${progressPercent}%`;
-        if (elements.rideProgressDistance) elements.rideProgressDistance.textContent = `${formatNumber(distanceKm ?? 0, 2)} / ${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
-        if (elements.rideProgressSegment) elements.rideProgressSegment.textContent = currentRecord?.segmentName ?? "等待开始";
-
         dashboardMetricsRenderer.render({
             metricsData,
             enabledMetricKeys,
@@ -471,7 +474,7 @@ export function createDashboardRenderer({
         if (elements.rideDashboardMap && Boolean(elements.rideDashboardMap.hidden) !== hideRouteMiniMap) {
             elements.rideDashboardMap.hidden = hideRouteMiniMap;
             if (showRouteMiniMap) {
-                scheduleAfterLayout(() => visuals.invalidateDashboardSize?.());
+                scheduleDashboardMapRefresh();
             }
         }
     }
@@ -501,7 +504,8 @@ export function createDashboardRenderer({
 
         const isExplorationRoute = route?.source === "osm-exploration";
         const hasElevationData = route?.hasElevationData === true;
-        const canRequestElevation = isExplorationRoute && hasCoordinates && !hasElevationData;
+        const routeLoading = route?.isLoading === true;
+        const canRequestElevation = isExplorationRoute && hasCoordinates && !hasElevationData && !routeLoading;
         if (elements.requestRouteElevationBtn) {
             elements.requestRouteElevationBtn.hidden = !isExplorationRoute || !hasCoordinates;
             elements.requestRouteElevationBtn.disabled = !canRequestElevation
@@ -511,6 +515,8 @@ export function createDashboardRenderer({
                 ? "探索路线海拔已加载"
                 : googleMapsAction.elevationLoading
                     ? "正在请求海拔..."
+                    : routeLoading
+                        ? "路线处理中"
                     : ride.isActive
                         ? "骑行中不可请求海拔"
                         : "请求探索路线海拔";
@@ -566,7 +572,11 @@ export function createDashboardRenderer({
 
     async function requestRouteElevation(store) {
         const state = store.getState();
-        if (!hasCoordinateRoute(state.route) || state.route.hasElevationData || state.liveRide.isActive || googleMapsAction.elevationLoading) {
+        if (!hasCoordinateRoute(state.route)
+            || state.route.hasElevationData
+            || state.route.isLoading
+            || state.liveRide.isActive
+            || googleMapsAction.elevationLoading) {
             return;
         }
 

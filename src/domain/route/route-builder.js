@@ -54,6 +54,37 @@ export function buildRoute(segments) {
         };
     });
 
+    let elevationMeters = 0;
+    const points = routeSegments.length > 0 ? [{
+        distanceMeters: 0,
+        elevationMeters,
+        gradePercent: routeSegments[0].gradePercent,
+        latitude: null,
+        longitude: null,
+        name: "起点"
+    }] : [];
+    routeSegments.forEach((segment, index) => {
+        if (index > 0) {
+            points.push({
+                distanceMeters: segment.startDistanceMeters,
+                elevationMeters,
+                gradePercent: segment.gradePercent,
+                latitude: null,
+                longitude: null,
+                name: segment.name
+            });
+        }
+        elevationMeters += segment.elevationDelta;
+        points.push({
+            distanceMeters: segment.endDistanceMeters,
+            elevationMeters,
+            gradePercent: segment.gradePercent,
+            latitude: null,
+            longitude: null,
+            name: segment.name
+        });
+    });
+
     return createRouteObject({
         source: "manual",
         name: "手工路线",
@@ -61,17 +92,14 @@ export function buildRoute(segments) {
         totalDistanceMeters,
         totalElevationGainMeters,
         totalDescentMeters,
-        points: routeSegments.map((segment) => ({
-            distanceMeters: segment.endDistanceMeters,
-            elevationMeters: Math.max(0, routeSegments
-                .slice(0, routeSegments.indexOf(segment) + 1)
-                .reduce((sum, item) => sum + item.elevationDelta, 0)),
-            gradePercent: segment.gradePercent,
-            latitude: null,
-            longitude: null,
-            name: segment.name
-        }))
+        points
     });
+}
+
+export function isRouteReadyForRide(route) {
+    return Number.isFinite(route?.totalDistanceMeters)
+        && route.totalDistanceMeters > 0
+        && route?.isLoading !== true;
 }
 
 export function getSegmentAtDistance(route, distanceMeters) {

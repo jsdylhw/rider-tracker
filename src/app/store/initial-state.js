@@ -8,20 +8,7 @@ import { DEFAULT_PIP_CHART_SELECTION, DEFAULT_PIP_METRIC_SELECTION } from "../..
 
 const DEFAULT_STRAVA_SERVER_URL = globalThis.location?.origin || "http://localhost:8787";
 
-export const defaultRouteSegments = [
-    { name: "平路 0%", distanceKm: 0.1, gradePercent: 0 },
-    { name: "爬坡 1%", distanceKm: 0.1, gradePercent: 1 },
-    { name: "爬坡 2%", distanceKm: 0.1, gradePercent: 2 },
-    { name: "爬坡 3%", distanceKm: 0.1, gradePercent: 3 },
-    { name: "爬坡 4%", distanceKm: 0.1, gradePercent: 4 },
-    { name: "爬坡 5%", distanceKm: 0.1, gradePercent: 5 },
-    { name: "缓降 4%", distanceKm: 0.1, gradePercent: -4 },
-    { name: "缓降 3%", distanceKm: 0.1, gradePercent: -3 },
-    { name: "缓降 2%", distanceKm: 0.1, gradePercent: -2 },
-    { name: "缓降 1%", distanceKm: 0.1, gradePercent: -1 },
-    { name: "平路 0%", distanceKm: 0.1, gradePercent: 0 },
-    { name: "下坡 -1%", distanceKm: 0.1, gradePercent: -1 }
-];
+export const defaultRouteSegments = [];
 
 export const defaultSettings = {
     power: 220,

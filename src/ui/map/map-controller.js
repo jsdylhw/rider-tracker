@@ -91,7 +91,7 @@ export function createMapController({ previewElement, dashboardElement }) {
     }
 
     function invalidateDashboardSize() {
-        refreshMapAfterVisibility(dashboardMap, dashboardLayers, latestRoute);
+        refreshMapAfterVisibility(dashboardMap, dashboardLayers, latestRoute, latestDashboardRecord);
     }
 
     return {
@@ -106,7 +106,7 @@ export function createMapController({ previewElement, dashboardElement }) {
     };
 }
 
-function refreshMapAfterVisibility(map, layers, route) {
+function refreshMapAfterVisibility(map, layers, route, currentRecord = null) {
     if (!map || !layers) {
         return;
     }
@@ -115,7 +115,7 @@ function refreshMapAfterVisibility(map, layers, route) {
     // A route may have arrived while this map was inside a hidden route tab or dashboard.
     // Refit only after the container becomes measurable.
     if (route) {
-        renderRoute(map, layers, route, null, { forceFocus: true });
+        renderRoute(map, layers, route, currentRecord, { forceFocus: true });
     }
 }
 

@@ -1,4 +1,4 @@
-import { defaultSettings, sanitizeSettings } from "../../src/app/store/initial-state.js";
+import { createInitialState, defaultSettings, sanitizeSettings } from "../../src/app/store/initial-state.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
@@ -20,6 +20,15 @@ export const suite = {
             run() {
                 assertEqual(sanitizeSettings({ ...defaultSettings, power: -5 }).power, 0);
                 assertEqual(sanitizeSettings({ ...defaultSettings, power: 9999 }).power, 600);
+            }
+        },
+        {
+            name: "初始状态不再预置可直接开始的手工路线",
+            run() {
+                const state = createInitialState(null);
+
+                assertEqual(state.routeSegments.length, 0);
+                assertEqual(state.route.totalDistanceMeters, 0);
             }
         }
     ]

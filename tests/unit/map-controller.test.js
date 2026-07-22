@@ -114,7 +114,7 @@ export const suite = {
                         this.setLatLngsCount = (this.setLatLngsCount ?? 0) + 1;
                         return this;
                     },
-                    setStyle() { return this; },
+                    setStyle(style) { this.lastStyle = style; return this; },
                     bringToFront() {
                         this.bringToFrontCount = (this.bringToFrontCount ?? 0) + 1;
                         return this;
@@ -193,9 +193,11 @@ export const suite = {
                     assert(polylineCalls.some((layer) => layer.points[0]?.[0] === 35.1),
                         "dashboard-only route updates should populate the dashboard route layer");
                     assertEqual(lastBounds.points[0][0], 35.1);
-                    assert(circleMarkerCalls.some((layer) => (
-                        layer.options.fillColor === "#3742fa" && layer.bringToFrontCount > 0
-                    )), "current-position marker should remain above the route line");
+                    const currentMarker = circleMarkerCalls
+                        .filter((layer) => layer.options.fillColor === "#3742fa")
+                        .at(-1);
+                    assert(currentMarker?.bringToFrontCount > 0, "current-position marker should remain above the route line");
+                    assertEqual(currentMarker?.lastStyle?.opacity, 1);
                 } finally {
                     globalThis.window = originalWindow;
                     globalThis.requestAnimationFrame = originalAnimationFrame;

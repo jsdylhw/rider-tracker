@@ -141,6 +141,44 @@ export const suite = {
             }
         },
         {
+            name: "重选路线会清空当前路线并复用范围内已加载的 OSM 路网",
+            async run() {
+                const store = createStore({
+                    route: null,
+                    routeSegments: [],
+                    liveRide: { isActive: false, session: null }
+                });
+                let fetchCount = 0;
+                const service = createRouteService({
+                    store,
+                    fetchRoadNetwork: async (bounds) => {
+                        fetchCount += 1;
+                        const fallback = buildSyntheticGridRoadNetwork(bounds, { lineCount: 5 });
+                        return { elements: fallback.elements };
+                    }
+                });
+
+                await service.planMapRoute({
+                    start: { lat: 37.0, lng: -122.0 },
+                    destination: { lat: 37.001, lng: -121.999 }
+                });
+                assertEqual(fetchCount, 1);
+
+                service.invalidatePendingMapRoute();
+                assertEqual(store.getState().route.source, "manual");
+                assertEqual(store.getState().route.totalDistanceMeters, 0);
+
+                await service.planMapRoute({
+                    start: { lat: 37.002, lng: -122.001 },
+                    destination: { lat: 37.003, lng: -121.998 }
+                });
+
+                assertEqual(fetchCount, 1);
+                assertEqual(store.getState().route.source, "osm-exploration");
+                assert(store.getState().statusText.includes("已复用已加载的 OSM 路网"));
+            }
+        },
+        {
             name: "consumes a queued exploration turn when the current segment reaches its end",
             async run() {
                 const store = createStore({
@@ -166,6 +204,121 @@ export const suite = {
 
                 assertGreaterThan(extendedRoute.totalDistanceMeters, initialRoute.totalDistanceMeters);
                 assertEqual(extendedRoute.exploration.pendingIntent, null);
+            }
+        },
+        {
+            name: "does not replace the active ride route while planning a map route",
+            async run() {
+                const route = createCoordinateRoute();
+                const session = { route };
+                const store = createStore({
+                    route,
+                    routeSegments: route.segments,
+                    liveRide: { isActive: true, session }
+                });
+                const initialRoute = store.getState().route;
+                const initialSession = store.getState().liveRide.session;
+                let fetchCount = 0;
+                const service = createRouteService({
+                    store,
+                    fetchRoadNetwork: async () => {
+                        fetchCount += 1;
+                        return { elements: [] };
+                    }
+                });
+
+                await service.planMapRoute({
+                    start: { lat: 37.0, lng: -122.0 },
+                    destination: { lat: 37.001, lng: -121.999 }
+                });
+
+                assertEqual(fetchCount, 0);
+                assertEqual(store.getState().route, initialRoute);
+                assertEqual(store.getState().liveRide.session, initialSession);
+                assert(store.getState().statusText.includes("路线已锁定"));
+            }
+        },
+        {
+            name: "地图路线请求在骑行开始后返回时不会覆盖会话路线",
+            async run() {
+                const route = createCoordinateRoute();
+                let resolveNetwork;
+                const networkPromise = new Promise((resolve) => { resolveNetwork = resolve; });
+                const session = { route };
+                const store = createStore({
+                    route,
+                    routeSegments: route.segments,
+                    liveRide: { isActive: false, session: null }
+                });
+                const service = createRouteService({
+                    store,
+                    fetchRoadNetwork: () => networkPromise
+                });
+
+                const planning = service.planMapRoute({
+                    start: { lat: 37.0, lng: -122.0 },
+                    destination: { lat: 37.001, lng: -121.999 }
+                });
+                assertEqual(store.getState().route.isLoading, true);
+                store.setState((state) => ({
+                    ...state,
+                    liveRide: { ...state.liveRide, isActive: true, session }
+                }));
+                resolveNetwork(buildSyntheticGridRoadNetwork({
+                    minLat: 36.999,
+                    maxLat: 37.002,
+                    minLng: -122.001,
+                    maxLng: -121.998
+                }));
+                await planning;
+
+                assertEqual(store.getState().route.source, "gpx");
+                assertEqual(store.getState().route.isLoading, false);
+                assertEqual(store.getState().liveRide.session.route, route);
+                assert(store.getState().statusText.includes("已忽略未完成的地图路线"));
+            }
+        },
+        {
+            name: "海拔请求在骑行开始后返回时不会替换路线",
+            async run() {
+                const route = createCoordinateRoute();
+                let resolveElevation;
+                const elevationPromise = new Promise((resolve) => { resolveElevation = resolve; });
+                const session = { route };
+                const store = createStore({
+                    route,
+                    routeSegments: route.segments,
+                    liveRide: { isActive: false, session: null }
+                });
+                const service = createRouteService({
+                    store,
+                    googleMapsConfig: {
+                        getApiKey: () => "test-key",
+                        lockApiKey() {}
+                    },
+                    loadGoogleMaps: async () => {},
+                    enrichElevation: () => elevationPromise
+                });
+
+                const updating = service.requestCurrentRouteElevation();
+                assertEqual(store.getState().route.isLoading, true);
+                store.setState((state) => ({
+                    ...state,
+                    liveRide: { ...state.liveRide, isActive: true, session }
+                }));
+                resolveElevation({
+                    points: route.points.map((point) => ({ ...point, elevationMeters: 50, elevationLoaded: true })),
+                    hasElevationData: true,
+                    summary: { requests: 1, requestedPoints: route.points.length, cacheHits: 0, skippedByQuota: false }
+                });
+                const result = await updating;
+
+                assertEqual(result.updated, false);
+                assertEqual(result.reason, "ride-active");
+                assertEqual(store.getState().route.hasElevationData, false);
+                assertEqual(store.getState().route.isLoading, false);
+                assertEqual(store.getState().liveRide.session.route, route);
+                assert(store.getState().statusText.includes("已忽略未完成的路线海拔请求"));
             }
         }
     ]

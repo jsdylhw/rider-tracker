@@ -37,6 +37,10 @@ function createState() {
             summary: null,
             statusMeta: ""
         },
+        route: {
+            totalDistanceMeters: 1000,
+            isLoading: false
+        },
         workout: { runtime: {} },
         settings: { ftp: 250 }
     };

@@ -27,16 +27,107 @@ export function createRouteService({
     let latestMapRouteRequestId = 0;
     let latestElevationRequestId = 0;
     let activeExploration = null;
+    let roadNetworkCache = null;
 
     function invalidatePendingMapRoute() {
+        if (!ensureRouteEditingAllowed()) {
+            return null;
+        }
+        const requestId = invalidateRouteRequests();
+        store.setState((state) => buildStateWithRoute(
+            state,
+            [],
+            "已清空探索路线，请重新选择起点和起步目标。"
+        ));
+        return requestId;
+    }
+
+    function invalidateRouteRequests() {
         latestMapRouteRequestId += 1;
         latestElevationRequestId += 1;
         activeExploration = null;
         return latestMapRouteRequestId;
     }
 
+    function ensureRouteEditingAllowed() {
+        if (!store.getState().liveRide?.isActive) {
+            return true;
+        }
+        store.setState((state) => ({
+            ...state,
+            statusText: "骑行进行中，路线已锁定。请先结束本次骑行后再修改。"
+        }));
+        return false;
+    }
+
     function isCurrentMapRouteRequest(requestId) {
         return requestId === latestMapRouteRequestId;
+    }
+
+    function markCurrentRouteLoading(statusText) {
+        let loadingRoute = null;
+        store.setState((state) => {
+            if (!state.route) {
+                return {
+                    ...state,
+                    statusText
+                };
+            }
+            loadingRoute = {
+                ...state.route,
+                isLoading: true
+            };
+            return {
+                ...state,
+                route: loadingRoute,
+                statusText
+            };
+        });
+        return loadingRoute;
+    }
+
+    function clearRouteLoading(statusText = null) {
+        store.setState((state) => {
+            if (state.route?.isLoading !== true) {
+                return statusText === null ? state : { ...state, statusText };
+            }
+            return {
+                ...state,
+                route: {
+                    ...state.route,
+                    isLoading: false
+                },
+                ...(statusText === null ? {} : { statusText })
+            };
+        });
+    }
+
+    function discardRouteUpdateAfterRideStart(statusText) {
+        if (!store.getState().liveRide?.isActive) {
+            return false;
+        }
+        clearRouteLoading(statusText);
+        return true;
+    }
+
+    function cacheRoadNetwork(exploration) {
+        if (exploration?.networkSource !== "overpass" || exploration.graph?.synthetic === true || !exploration.bounds) {
+            return;
+        }
+        roadNetworkCache = {
+            graph: exploration.graph,
+            bounds: exploration.bounds
+        };
+    }
+
+    function getReusableRoadNetwork(start, destination) {
+        if (!roadNetworkCache) {
+            return null;
+        }
+        return isPointInsideBounds(start, roadNetworkCache.bounds)
+            && isPointInsideBounds(destination, roadNetworkCache.bounds)
+            ? roadNetworkCache
+            : null;
     }
 
     function buildStateWithRoute(state, routeSegments, statusText) {
@@ -49,7 +140,8 @@ export function createRouteService({
     }
 
     function addSegment() {
-        invalidatePendingMapRoute();
+        if (!ensureRouteEditingAllowed()) return;
+        invalidateRouteRequests();
         store.setState((state) => {
             const routeSegments = sanitizeSegments([
                 ...state.routeSegments,
@@ -60,12 +152,14 @@ export function createRouteService({
     }
 
     function resetRoute() {
-        invalidatePendingMapRoute();
-        store.setState((state) => buildStateWithRoute(state, sanitizeSegments(defaultRouteSegments), "已恢复默认手工路线。"));
+        if (!ensureRouteEditingAllowed()) return;
+        invalidateRouteRequests();
+        store.setState((state) => buildStateWithRoute(state, sanitizeSegments(defaultRouteSegments), "已清空手工路线。"));
     }
 
     function updateRouteSegment(segmentId, field, value) {
-        invalidatePendingMapRoute();
+        if (!ensureRouteEditingAllowed()) return;
+        invalidateRouteRequests();
         store.setState((state) => {
             const routeSegments = sanitizeSegments(
                 state.routeSegments.map((segment) => (
@@ -77,18 +171,23 @@ export function createRouteService({
     }
 
     function removeRouteSegment(segmentId) {
-        invalidatePendingMapRoute();
+        if (!ensureRouteEditingAllowed()) return;
+        invalidateRouteRequests();
         store.setState((state) => {
             const nextSegments = state.routeSegments.filter((segment) => segment.id !== segmentId);
-            const routeSegments = sanitizeSegments(nextSegments.length > 0 ? nextSegments : defaultRouteSegments.slice(0, 1));
-            return buildStateWithRoute(state, routeSegments, "已移除选中路段。");
+            const routeSegments = sanitizeSegments(nextSegments);
+            return buildStateWithRoute(state, routeSegments, routeSegments.length > 0 ? "已移除选中路段。" : "已清空手工路线。");
         });
     }
 
     async function importGpx(file) {
-        invalidatePendingMapRoute();
+        if (!ensureRouteEditingAllowed()) return;
+        const requestId = invalidateRouteRequests();
+        markCurrentRouteLoading("正在导入 GPX 路线...");
         try {
             const xmlText = await file.text();
+            if (!isCurrentMapRouteRequest(requestId)) return;
+            if (discardRouteUpdateAfterRideStart("骑行已开始，已忽略未完成的 GPX 导入。")) return;
             const route = parseGpx(xmlText);
 
             store.setState((state) => ({
@@ -98,67 +197,66 @@ export function createRouteService({
                 statusText: `已导入 GPX：${route.name}，距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km`
             }));
         } catch (error) {
+            if (!isCurrentMapRouteRequest(requestId)) return;
             console.error("GPX 导入失败", error);
-            store.setState((state) => ({
-                ...state,
-                statusText: `GPX 导入失败：${extractErrorMessage(error)}`
-            }));
+            clearRouteLoading(`GPX 导入失败：${extractErrorMessage(error)}`);
         }
     }
 
     async function planMapRoute({ start, destination }) {
         let requestId = null;
         try {
+            if (!ensureRouteEditingAllowed()) return;
             validateMapRoutePoint(start, "起点");
             validateMapRoutePoint(destination, "起步目标");
-            requestId = invalidatePendingMapRoute();
-
-            store.setState((state) => ({
-                ...state,
-                statusText: "正在请求 OSM 路网并生成街景探索起步路线..."
-            }));
-
+            requestId = invalidateRouteRequests();
             const bounds = buildBoundsAroundRoute(start, destination);
+            const reusableNetwork = getReusableRoadNetwork(start, destination);
+            let graph = reusableNetwork?.graph ?? null;
+            let planned = null;
+            let reusedNetwork = false;
             let networkSource = "overpass";
             let networkFailure = null;
-            let overpassData;
+            markCurrentRouteLoading(reusableNetwork
+                ? "正在复用已加载的 OSM 路网生成街景探索起步路线..."
+                : "正在请求 OSM 路网并生成街景探索起步路线...");
 
-            try {
-                overpassData = await fetchRoadNetwork(bounds);
-            } catch (error) {
-                networkSource = "synthetic";
-                networkFailure = summarizeOverpassFailure(error);
-                overpassData = buildSyntheticGridRoadNetwork(bounds);
-                console.warn("实时 OSM 路网不可用，改用本地备用网格。", error);
-            }
-            if (!isCurrentMapRouteRequest(requestId)) return;
-            let graph;
-            let planned;
-            try {
-                graph = buildRoadGraph(overpassData);
-                planned = planOsmRoute({
-                    graph,
-                    start,
-                    destination,
-                    sampleSpacingMeters: EXPLORATION_ELEVATION_SAMPLE_SPACING_METERS
-                });
-                planned = extendInitialExplorationRoute(graph, planned);
-            } catch (error) {
-                if (networkSource === "synthetic") {
-                    throw error;
+            if (graph) {
+                try {
+                    planned = planExplorationRoute(graph, start, destination, EXPLORATION_ELEVATION_SAMPLE_SPACING_METERS);
+                    reusedNetwork = true;
+                } catch (error) {
+                    graph = null;
+                    console.warn("已缓存 OSM 路网不适用于新选点，改为请求最新路网。", error);
                 }
+            }
 
-                networkSource = "synthetic";
-                networkFailure = summarizeOverpassFailure(error);
-                console.warn("实时 OSM 路网无法生成可骑行路线，改用本地备用网格。", error);
-                graph = buildRoadGraph(buildSyntheticGridRoadNetwork(bounds));
-                planned = planOsmRoute({
-                    graph,
-                    start,
-                    destination,
-                    sampleSpacingMeters: EXPLORATION_ELEVATION_SAMPLE_SPACING_METERS
-                });
-                planned = extendInitialExplorationRoute(graph, planned);
+            if (!planned) {
+                let overpassData;
+                try {
+                    overpassData = await fetchRoadNetwork(bounds);
+                } catch (error) {
+                    networkSource = "synthetic";
+                    networkFailure = summarizeOverpassFailure(error);
+                    overpassData = buildSyntheticGridRoadNetwork(bounds);
+                    console.warn("实时 OSM 路网不可用，改用本地备用网格。", error);
+                }
+                if (!isCurrentMapRouteRequest(requestId)) return;
+                if (discardRouteUpdateAfterRideStart("骑行已开始，已忽略未完成的地图路线。")) return;
+                try {
+                    graph = buildRoadGraph(overpassData);
+                    planned = planExplorationRoute(graph, start, destination, EXPLORATION_ELEVATION_SAMPLE_SPACING_METERS);
+                } catch (error) {
+                    if (networkSource === "synthetic") {
+                        throw error;
+                    }
+
+                    networkSource = "synthetic";
+                    networkFailure = summarizeOverpassFailure(error);
+                    console.warn("实时 OSM 路网无法生成可骑行路线，改用本地备用网格。", error);
+                    graph = buildRoadGraph(buildSyntheticGridRoadNetwork(bounds));
+                    planned = planExplorationRoute(graph, start, destination, EXPLORATION_ELEVATION_SAMPLE_SPACING_METERS);
+                }
             }
             const points = planned.points;
             let hasElevationData = false;
@@ -170,6 +268,7 @@ export function createRouteService({
                 requestElevation,
                 networkSource,
                 networkFailure,
+                bounds,
                 extensionCount: 0,
                 pendingIntent: null
             };
@@ -186,6 +285,7 @@ export function createRouteService({
             });
 
             if (!isCurrentMapRouteRequest(requestId)) return;
+            if (discardRouteUpdateAfterRideStart("骑行已开始，已忽略未完成的地图路线。")) return;
 
             store.setState((state) => ({
                 ...state,
@@ -195,17 +295,17 @@ export function createRouteService({
                     hasGoogleElevation: false,
                     elevationSummary: null,
                     networkSource,
-                    networkFailure
+                    networkFailure,
+                    reusedNetwork
                 })
             }));
             activeExploration = exploration;
+            cacheRoadNetwork(exploration);
         } catch (error) {
             if (requestId !== null && !isCurrentMapRouteRequest(requestId)) return;
             console.error("街景探索起步路线生成失败", error);
-            store.setState((state) => ({
-                ...state,
-                statusText: `街景探索起步路线生成失败：${extractErrorMessage(error)}`
-            }));
+            if (discardRouteUpdateAfterRideStart("骑行已开始，已忽略未完成的地图路线。")) return;
+            clearRouteLoading(`街景探索起步路线生成失败：${extractErrorMessage(error)}`);
         }
     }
 
@@ -253,7 +353,10 @@ export function createRouteService({
             pendingIntent: exploration.pendingIntent
         });
         const intentLabel = getExplorationIntentLabel(intent);
-        applyExplorationRoute(extendedRoute, `${intentLabel}已执行，探索路线已延伸至下一个路口。`);
+        const statusText = extension.returnedAtDeadEnd
+            ? "前方为死路，已自动回头并延伸至下一个路口。"
+            : `${intentLabel}已执行，探索路线已延伸至下一个路口。`;
+        applyExplorationRoute(extendedRoute, statusText);
 
         if (exploration.requestElevation) {
             void enrichExplorationExtension({ exploration });
@@ -323,9 +426,12 @@ export function createRouteService({
 
     async function requestCurrentRouteElevation() {
         const initialState = store.getState();
-        const route = initialState.route;
+        let route = initialState.route;
         if (initialState.liveRide.isActive) {
             throw new Error("骑行开始后不能替换路线海拔，请先结束当前骑行。");
+        }
+        if (route?.isLoading) {
+            throw new Error("当前路线仍在处理中，请等待完成后再请求海拔。");
         }
         if (!hasCoordinateRoute(route)) {
             throw new Error("当前路线没有坐标，无法请求 Google 海拔。");
@@ -340,10 +446,7 @@ export function createRouteService({
         }
 
         const requestId = ++latestElevationRequestId;
-        store.setState((state) => ({
-            ...state,
-            statusText: `正在请求 Google 海拔：${route.points.length} 个采样点...`
-        }));
+        route = markCurrentRouteLoading(`正在请求 Google 海拔：${route.points.length} 个采样点...`);
 
         try {
             await loadGoogleMaps(apiKey);
@@ -351,10 +454,16 @@ export function createRouteService({
             if (requestId !== latestElevationRequestId || store.getState().route !== route) {
                 return { updated: false, reason: "stale" };
             }
+            if (discardRouteUpdateAfterRideStart("骑行已开始，已忽略未完成的路线海拔请求。")) {
+                return { updated: false, reason: "ride-active" };
+            }
 
             const elevationResult = await enrichElevation(route.points);
             if (requestId !== latestElevationRequestId || store.getState().route !== route) {
                 return { updated: false, reason: "stale" };
+            }
+            if (discardRouteUpdateAfterRideStart("骑行已开始，已忽略未完成的路线海拔请求。")) {
+                return { updated: false, reason: "ride-active" };
             }
 
             const elevatedRoute = rebuildRouteWithElevation(route, elevationResult.points, elevationResult.hasElevationData);
@@ -370,10 +479,7 @@ export function createRouteService({
             return { updated: true, summary: elevationResult.summary };
         } catch (error) {
             if (requestId === latestElevationRequestId && store.getState().route === route) {
-                store.setState((state) => ({
-                    ...state,
-                    statusText: `Google 海拔请求失败：${extractErrorMessage(error)}`
-                }));
+                clearRouteLoading(`Google 海拔请求失败：${extractErrorMessage(error)}`);
             }
             throw error;
         }
@@ -456,7 +562,29 @@ function rebuildRouteWithElevation(route, points, hasElevationData) {
         }),
         hasElevationData
     });
-    return { ...route, ...rebuilt };
+    return { ...route, ...rebuilt, isLoading: false };
+}
+
+function planExplorationRoute(graph, start, destination, sampleSpacingMeters) {
+    const planned = planOsmRoute({
+        graph,
+        start,
+        destination,
+        sampleSpacingMeters
+    });
+    return extendInitialExplorationRoute(graph, planned);
+}
+
+function isPointInsideBounds(point, bounds) {
+    if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lng) || !bounds) {
+        return false;
+    }
+    if (point.lat < bounds.south || point.lat > bounds.north) {
+        return false;
+    }
+    return bounds.west <= bounds.east
+        ? point.lng >= bounds.west && point.lng <= bounds.east
+        : point.lng >= bounds.west || point.lng <= bounds.east;
 }
 
 function extendInitialExplorationRoute(graph, planned) {
@@ -538,11 +666,13 @@ function validateMapRoutePoint(point, label) {
     }
 }
 
-function buildMapRouteStatus(route, { hasGoogleElevation, elevationSummary, networkSource, networkFailure }) {
+function buildMapRouteStatus(route, { hasGoogleElevation, elevationSummary, networkSource, networkFailure, reusedNetwork = false }) {
     const distanceText = formatNumber(route.totalDistanceMeters / 1000, 2);
     const routePrefix = networkSource === "synthetic"
         ? `已生成备用网格探索路线：${distanceText} km。实时 OSM 路网不可用，当前线路不代表真实道路。失败摘要：${networkFailure}`
-        : `已生成 OSM 街景探索起步路线：${distanceText} km。`;
+        : reusedNetwork
+            ? `已复用已加载的 OSM 路网，生成街景探索起步路线：${distanceText} km。`
+            : `已生成 OSM 街景探索起步路线：${distanceText} km。`;
 
     if (!hasGoogleElevation) {
         return `${routePrefix}当前没有海拔，可在骑行界面点“请求路线海拔”。`;

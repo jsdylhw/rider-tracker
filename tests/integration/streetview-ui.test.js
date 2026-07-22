@@ -228,6 +228,7 @@ export const suite = {
                 await Promise.resolve();
 
                 assertEqual(streetViewResizeCount, 1);
+                assertEqual(dashboardMapResizeCount, 1);
                 const dashboardMapResizeBeforeExit = dashboardMapResizeCount;
                 elements.immersiveBackBtn.dispatch("click");
                 await Promise.resolve();
@@ -375,6 +376,39 @@ export const suite = {
                 assertEqual(elements.requestRouteElevationBtn.hidden, false);
                 assertEqual(elements.requestRouteElevationBtn.disabled, true);
                 assertEqual(elements.requestRouteElevationBtn.textContent, "探索路线海拔已加载");
+            }
+        },
+        {
+            name: "路线处理中不会允许请求探索海拔",
+            async run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.route.source = "osm-exploration";
+                state.route.isLoading = true;
+                let requestedKeyCount = 0;
+                let elevationRequests = 0;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        syncMap() {},
+                        syncStreetView() {}
+                    },
+                    requestGoogleMapsApiKey: async () => {
+                        requestedKeyCount += 1;
+                        return "test-key";
+                    },
+                    onRequestRouteElevation: async () => { elevationRequests += 1; }
+                });
+
+                renderer.render(state);
+                elements.requestRouteElevationBtn.dispatch("click");
+                await waitForUiAction();
+
+                assertEqual(elements.requestRouteElevationBtn.disabled, true);
+                assertEqual(elements.requestRouteElevationBtn.textContent, "路线处理中");
+                assertEqual(requestedKeyCount, 0);
+                assertEqual(elevationRequests, 0);
             }
         },
         {

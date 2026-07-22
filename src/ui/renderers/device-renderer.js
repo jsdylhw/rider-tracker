@@ -1,6 +1,7 @@
 import { formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
+import { isRouteReadyForRide } from "../../domain/route/route-builder.js";
 
 export function createDeviceRenderer({
     elements,
@@ -67,7 +68,8 @@ export function createDeviceRenderer({
         }
         const streetViewDebugEnabled = isStreetViewDebugEnabled();
         const isVirtualPower = streetViewDebugEnabled && state.rideInput?.powerSource === "virtual";
-        const canStartRide = liveRide.canStart || isVirtualPower || streetViewDebugEnabled;
+        const canStartRide = (liveRide.canStart || isVirtualPower || streetViewDebugEnabled)
+            && isRouteReadyForRide(state.route);
         if (elements.rideInputCard) {
             elements.rideInputCard.hidden = !streetViewDebugEnabled;
         }
