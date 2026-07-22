@@ -107,7 +107,7 @@
                                         </div>
                                         <div class="inline-actions">
                                             <button id="addSegmentBtn" class="btn secondary" type="button">新增路段</button>
-                                            <button id="resetRouteBtn" class="btn ghost" type="button">恢复默认</button>
+                                            <button id="resetRouteBtn" class="btn ghost" type="button">清空路线</button>
                                         </div>
                                     </div>
                                     <div id="routeTableShell" class="table-shell">
@@ -139,19 +139,10 @@
                                             <strong id="mapRouteDestinationText">未选择</strong>
                                         </div>
                                     </div>
-                                    <div class="map-route-settings">
-                                        <label class="field">
-                                            <span>地图源</span>
-                                            <select id="mapProviderSelect">
-                                                <option value="osm">OpenStreetMap</option>
-                                                <option value="amap">高德底图</option>
-                                            </select>
-                                        </label>
-                                    </div>
                                     <div id="mapRoutePlanStatus" class="map-route-plan-status" hidden aria-live="polite"></div>
                                 </div>
 
-                                <div id="routeMapShell" class="chart-shell route-map-shell" hidden>
+                                <div id="routeMapShell" class="chart-shell route-map-shell route-map-exploration-shell" hidden>
                                     <div id="routeMapPreview" class="map-canvas"></div>
                                 </div>
 
@@ -364,7 +355,10 @@
 
     <div class="modal-overlay" id="googleMapsServiceOverlay" aria-hidden="true">
         <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="googleMapsServiceTitle">
-            <h3 id="googleMapsServiceTitle">使用 Google Maps 服务</h3>
+            <div class="modal-title-row">
+                <h3 id="googleMapsServiceTitle">使用 Google Maps 服务</h3>
+                <button id="closeGoogleMapsServiceBtn" class="modal-close-btn" type="button" aria-label="关闭">&times;</button>
+            </div>
             <p id="googleMapsServiceDescription" class="muted">请输入本次浏览器会话使用的 Google Maps API Key。</p>
             <label class="field">
                 <span>Google Maps API Key</span>
@@ -562,20 +556,6 @@
                             <div class="data-display" id="liveDistanceDisplay"></div>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <div class="ride-progress-card">
-                <div class="ride-progress-labels">
-                    <span>骑行进度</span>
-                    <strong id="rideProgressHeadline">0%</strong>
-                </div>
-                <div class="ride-progress-track">
-                    <div id="rideProgressBar" class="ride-progress-bar"></div>
-                </div>
-                <div class="ride-progress-meta">
-                    <span id="rideProgressDistance">0.00 / 0.00 km</span>
-                    <span id="rideProgressSegment">等待开始</span>
                 </div>
             </div>
 

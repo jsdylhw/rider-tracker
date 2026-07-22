@@ -709,6 +709,39 @@ tbody tr:last-child td {
     color: #0f172a;
 }
 
+.modal-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.modal-title-row h3 {
+    margin-bottom: 16px;
+}
+
+.modal-close-btn {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 auto;
+    margin: -8px -8px 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #64748b;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.modal-close-btn:hover,
+.modal-close-btn:focus-visible {
+    background: #f1f5f9;
+    color: #0f172a;
+    outline: none;
+}
+
 .modal-card .field {
     margin-bottom: 14px;
 }

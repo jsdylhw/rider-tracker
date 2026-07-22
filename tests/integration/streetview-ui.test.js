@@ -204,6 +204,39 @@ export const suite = {
             }
         },
         {
+            name: "沉浸切换后会刷新街景主视图尺寸",
+            async run() {
+                const elements = createElements();
+                const store = createStore(createBaseState());
+                let streetViewResizeCount = 0;
+                let dashboardMapResizeCount = 0;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => true,
+                        syncMap() {},
+                        syncStreetView() {},
+                        invalidateStreetViewSize() { streetViewResizeCount += 1; },
+                        invalidateDashboardSize() { dashboardMapResizeCount += 1; }
+                    },
+                    streetViewDebugEnabled: true
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                elements.immersiveStreetViewBtn.dispatch("click");
+                await Promise.resolve();
+
+                assertEqual(streetViewResizeCount, 1);
+                assertEqual(dashboardMapResizeCount, 1);
+                const dashboardMapResizeBeforeExit = dashboardMapResizeCount;
+                elements.immersiveBackBtn.dispatch("click");
+                await Promise.resolve();
+                assertEqual(streetViewResizeCount, 2);
+                assertEqual(dashboardMapResizeCount, dashboardMapResizeBeforeExit + 1);
+            }
+        },
+        {
             name: "手工路线进入沉浸街景时不显示路线小地图",
             run() {
                 const elements = createElements();
@@ -288,6 +321,7 @@ export const suite = {
             async run() {
                 const elements = createElements();
                 const state = createBaseState();
+                state.route.source = "osm-exploration";
                 state.liveRide.isActive = true;
                 const store = createStore(state);
                 let requestedKeyFor = "";
@@ -309,6 +343,7 @@ export const suite = {
                 assertEqual(elements.loadStreetViewBtn.hidden, false);
                 assertEqual(elements.requestRouteElevationBtn.hidden, false);
                 assertEqual(elements.requestRouteElevationBtn.disabled, true);
+                assertEqual(elements.requestRouteElevationBtn.textContent, "骑行中不可请求海拔");
 
                 state.liveRide.isActive = false;
                 store.setState(() => state);
@@ -318,6 +353,82 @@ export const suite = {
 
                 assertEqual(elevationRequests, 1);
                 assertEqual(requestedKeyFor, "请求路线海拔");
+            }
+        },
+        {
+            name: "已加载海拔的探索路线伝达明确状态而不隐藏按钮",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.route.source = "osm-exploration";
+                state.route.hasElevationData = true;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        syncMap() {},
+                        syncStreetView() {}
+                    }
+                });
+
+                renderer.render(state);
+
+                assertEqual(elements.requestRouteElevationBtn.hidden, false);
+                assertEqual(elements.requestRouteElevationBtn.disabled, true);
+                assertEqual(elements.requestRouteElevationBtn.textContent, "探索路线海拔已加载");
+            }
+        },
+        {
+            name: "路线处理中不会允许请求探索海拔",
+            async run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.route.source = "osm-exploration";
+                state.route.isLoading = true;
+                let requestedKeyCount = 0;
+                let elevationRequests = 0;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        syncMap() {},
+                        syncStreetView() {}
+                    },
+                    requestGoogleMapsApiKey: async () => {
+                        requestedKeyCount += 1;
+                        return "test-key";
+                    },
+                    onRequestRouteElevation: async () => { elevationRequests += 1; }
+                });
+
+                renderer.render(state);
+                elements.requestRouteElevationBtn.dispatch("click");
+                await waitForUiAction();
+
+                assertEqual(elements.requestRouteElevationBtn.disabled, true);
+                assertEqual(elements.requestRouteElevationBtn.textContent, "路线处理中");
+                assertEqual(requestedKeyCount, 0);
+                assertEqual(elevationRequests, 0);
+            }
+        },
+        {
+            name: "其他带坐标路线默认不显示海拔请求入口",
+            run() {
+                const elements = createElements();
+                const state = createBaseState();
+                state.route.source = "gpx";
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        syncMap() {},
+                        syncStreetView() {}
+                    }
+                });
+
+                renderer.render(state);
+
+                assertEqual(elements.requestRouteElevationBtn.hidden, true);
             }
         },
         {

@@ -21,6 +21,8 @@ export const suite = {
                     manualRoutePanel: createFakeElement(),
                     mapRoutePanel: createFakeElement(),
                     routeMapShell: createFakeElement({ hidden: true }),
+                    setupElevationChartShell: createFakeElement({ hidden: true }),
+                    routeCurrentSourceRow: createFakeElement({ hidden: true }),
                     routeTableShell: createFakeElement(),
                     clearMapRouteSelectionBtn: createFakeElement(),
                     planMapRouteBtn: createFakeElement(),
@@ -35,9 +37,8 @@ export const suite = {
                 const renderer = createRouteRenderer({
                     elements,
                     mapController: {
-                        setMapProvider() {},
                         syncRoute() {},
-                    syncPlannerSelection(selection) { plannerSelections.push({ ...selection }); },
+                        syncPlannerSelection(selection) { plannerSelections.push(selection ? { ...selection } : null); },
                         setPlannerMode(mode) {
                             plannerModes.push(mode);
                         },
@@ -67,6 +68,7 @@ export const suite = {
                 assertEqual(elements.routeModeMapBtn.classList.contains("active"), true);
                 assert(elements.routeSummary.innerHTML.includes("地图探索"), "地图模式不应展示默认手工路线摘要");
                 assertEqual(elements.routeSourceLabel.textContent, "地图探索（待生成）");
+                assertEqual(elements.setupElevationChartShell.hidden, true);
                 plannerClickHandler({ mode: "select", point: { lat: 37.1, lng: -122.1 } });
                 plannerClickHandler({ mode: "select", point: { lat: 37.2, lng: -122.2 } });
                 elements.planMapRouteBtn.dispatch("click");
@@ -97,8 +99,16 @@ export const suite = {
                     routeSegments: []
                 });
                 const latestSelection = plannerSelections.at(-1);
-                assertEqual(latestSelection.start.lat, 37.1);
-                assertEqual(latestSelection.destination.lng, -122.2);
+                assertEqual(latestSelection, null);
+                assertEqual(elements.setupElevationChartShell.hidden, false);
+                assertEqual(elements.mapRouteSelectionStatus.textContent, "起步路线已生成，可开始骑行或重新选点");
+                assertEqual(elements.planMapRouteBtn.hidden, true);
+                assertEqual(elements.clearMapRouteSelectionBtn.textContent, "重选路线");
+
+                elements.clearMapRouteSelectionBtn.dispatch("click");
+                assertEqual(elements.mapRouteSelectionStatus.textContent, "点击地图选择起点");
+                assertEqual(elements.planMapRouteBtn.hidden, false);
+                assertEqual(elements.clearMapRouteSelectionBtn.textContent, "清空");
             }
         },
         {
@@ -112,6 +122,8 @@ export const suite = {
                     manualRoutePanel: createFakeElement(),
                     mapRoutePanel: createFakeElement(),
                     routeMapShell: createFakeElement({ hidden: true }),
+                    setupElevationChartShell: createFakeElement({ hidden: true }),
+                    routeCurrentSourceRow: createFakeElement({ hidden: true }),
                     routeSummary: createFakeElement(),
                     routeSourceLabel: createFakeElement(),
                     addSegmentBtn: createFakeElement()
@@ -124,7 +136,6 @@ export const suite = {
                         syncPlannerSelection() {},
                         setPlannerMode() {},
                         setPlannerClickHandler() {},
-                        setMapProvider() {}
                     },
                     onAddSegment() {},
                     onResetRoute() {},
@@ -147,12 +158,75 @@ export const suite = {
                 };
 
                 elements.routeModeGpxBtn.dispatch("click");
+                renderer.render({
+                    route: { source: "manual", points: [], segments: [] },
+                    routeSegments: []
+                });
+                assertEqual(elements.setupElevationChartShell.hidden, true);
                 renderer.render({ route, routeSegments: [] });
 
                 assertEqual(elements.gpxRoutePanel.hidden, false);
                 assertEqual(elements.mapRoutePanel.hidden, true);
                 assertEqual(elements.routeMapShell.hidden, false);
+                assertEqual(elements.setupElevationChartShell.hidden, false);
                 assertEqual(syncedRoute, route);
+            }
+        },
+        {
+            name: "does not redraw map geometry when only exploration turn intent changes",
+            run() {
+                const elements = {
+                    routeModeGpxBtn: createFakeElement(),
+                    routeModeManualBtn: createFakeElement(),
+                    routeModeMapBtn: createFakeElement(),
+                    gpxRoutePanel: createFakeElement(),
+                    manualRoutePanel: createFakeElement(),
+                    mapRoutePanel: createFakeElement(),
+                    routeMapShell: createFakeElement({ hidden: true }),
+                    routeSummary: createFakeElement(),
+                    routeSourceLabel: createFakeElement(),
+                    addSegmentBtn: createFakeElement()
+                };
+                let mapRouteSyncCount = 0;
+                const renderer = createRouteRenderer({
+                    elements,
+                    mapController: {
+                        syncRoute() { mapRouteSyncCount += 1; },
+                        syncPlannerSelection() {},
+                        setPlannerMode() {},
+                        setPlannerClickHandler() {},
+                    },
+                    onAddSegment() {},
+                    onResetRoute() {},
+                    onImportGpx() {},
+                    onUpdateRouteSegment() {},
+                    onRemoveRouteSegment() {}
+                });
+                const route = {
+                    source: "osm-exploration",
+                    networkSource: "overpass",
+                    totalDistanceMeters: 1400,
+                    totalElevationGainMeters: 0,
+                    totalDescentMeters: 0,
+                    hasElevationData: false,
+                    exploration: { pendingIntent: "straight" },
+                    points: [
+                        { latitude: 31.2, longitude: 121.4 },
+                        { latitude: 31.21, longitude: 121.41 }
+                    ],
+                    segments: []
+                };
+
+                renderer.render({ route, routeSegments: [] });
+                renderer.render({
+                    route: {
+                        ...route,
+                        exploration: { pendingIntent: "left" }
+                    },
+                    routeSegments: []
+                });
+
+                assertEqual(mapRouteSyncCount, 1);
             }
         }
     ]

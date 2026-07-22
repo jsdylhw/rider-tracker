@@ -8,8 +8,7 @@ import {
 export function createRideVisualsController({ elements, googleMapsConfig = null }) {
     const mapController = createMapController({
         previewElement: elements.routeMapPreview,
-        dashboardElement: elements.rideDashboardMap,
-        initialProviderKey: elements.mapProviderSelect?.value
+        dashboardElement: elements.rideDashboardMap
     });
     let streetViewController = null;
 
@@ -54,10 +53,6 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         }
     }
 
-    function setMapProvider(providerKey) {
-        mapController.setMapProvider(providerKey);
-    }
-
     function setPlannerClickHandler(handler) {
         mapController.setPlannerClickHandler(handler);
     }
@@ -78,6 +73,10 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         mapController.invalidateDashboardSize();
     }
 
+    function invalidateStreetViewSize() {
+        streetViewController?.invalidateSize?.();
+    }
+
     function destroy() {
         streetViewController?.destroy();
         streetViewController = null;
@@ -91,12 +90,12 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         syncRoute,
         syncMap,
         syncStreetView,
-        setMapProvider,
         setPlannerClickHandler,
         setPlannerMode,
         syncPlannerSelection,
         invalidatePreviewSize,
         invalidateDashboardSize,
+        invalidateStreetViewSize,
         destroy
     };
 }

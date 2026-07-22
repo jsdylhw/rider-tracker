@@ -23,6 +23,7 @@ import { sanitizeSessionExportMetadata } from "../store/initial-state.js";
 import { encodeFitSync } from "../../adapters/export/fit-exporter.js";
 import { sendFitBeacon } from "../../adapters/upload/fit-beacon-client.js";
 import { loadFitSdk } from "../../adapters/fit/fit-sdk-loader.js";
+import { isRouteReadyForRide } from "../../domain/route/route-builder.js";
 
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
@@ -37,8 +38,20 @@ export function createRideService({ store, deviceService, exportService, routeSe
 
     function startRide() {
         let state = store.getState();
+        if (!isRouteReadyForRide(state.route)) {
+            store.setState((currentState) => ({
+                ...currentState,
+                statusText: currentState.route?.isLoading
+                    ? "路线仍在处理中，请等待完成后再开始骑行。"
+                    : "请先设置一条有效路线后再开始骑行。"
+            }));
+            return;
+        }
         routeService?.ensureExplorationRouteAhead?.({ distanceMeters: 0 });
         state = store.getState();
+        if (!isRouteReadyForRide(state.route)) {
+            return;
+        }
         const streetViewDebugEnabled = isStreetViewDebugEnabled();
         const virtualRideEnabled = streetViewDebugEnabled && state.rideInput?.powerSource === "virtual";
         if ((!state.liveRide.canStart && !virtualRideEnabled && !streetViewDebugEnabled) || state.liveRide.isActive) {

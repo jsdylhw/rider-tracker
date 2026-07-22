@@ -1,4 +1,5 @@
 import { formatNumber } from "../../shared/format.js";
+import { buildRouteGeometryKey, collectRouteMapLatLngs } from "../map/map-controller.js";
 import {
     buildElevationProfileSvg,
     buildGradeChartSvg,
@@ -19,7 +20,6 @@ export function createRouteRenderer({
     onRemoveRouteSegment
 }) {
     const visuals = rideVisuals ?? {
-        setMapProvider: (providerKey) => mapController?.setMapProvider?.(providerKey),
         syncRoute: (route) => mapController?.syncRoute?.(route),
         setPlannerClickHandler: (handler) => mapController?.setPlannerClickHandler?.(handler),
         setPlannerMode: (mode) => mapController?.setPlannerMode?.(mode),
@@ -29,14 +29,21 @@ export function createRouteRenderer({
     const hasRouteModeControls = Boolean(elements.routeModeMapBtn || elements.mapRoutePanel);
     let routeInputMode = hasRouteModeControls ? "map" : "manual";
     let lastRenderedState = null;
+    let lastRenderedMapRouteSignature = "";
+    let isEditingMapRoute = false;
+    let isPlanningMapRoute = false;
     const mapRouteSelection = { mode: null, start: null, destination: null };
 
     function bindEvents() {
         if (elements.addSegmentBtn) {
-            elements.addSegmentBtn.addEventListener("click", onAddSegment);
+            elements.addSegmentBtn.addEventListener("click", () => {
+                if (!isRouteEditingLocked() && !isRouteLoading()) onAddSegment();
+            });
         }
         if (elements.resetRouteBtn) {
-            elements.resetRouteBtn.addEventListener("click", onResetRoute);
+            elements.resetRouteBtn.addEventListener("click", () => {
+                if (!isRouteEditingLocked() && !isRouteLoading()) onResetRoute();
+            });
         }
         bindRouteModeButton(elements.routeModeGpxBtn, "gpx");
         bindRouteModeButton(elements.routeModeManualBtn, "manual");
@@ -48,7 +55,7 @@ export function createRouteRenderer({
             });
             elements.gpxFileInput.addEventListener("change", async (event) => {
                 const [file] = event.target.files ?? [];
-                if (!file) return;
+                if (!file || isRouteEditingLocked() || isRouteLoading()) return;
                 try {
                     await onImportGpx(file);
                 } finally {
@@ -57,25 +64,30 @@ export function createRouteRenderer({
                 }
             });
         }
-        if (elements.mapProviderSelect) {
-            visuals.setMapProvider(elements.mapProviderSelect.value);
-            elements.mapProviderSelect.addEventListener("change", (e) => {
-                visuals.setMapProvider(e.target.value);
-            });
-        }
         if (elements.clearMapRouteSelectionBtn) {
             elements.clearMapRouteSelectionBtn.addEventListener("click", clearMapRouteSelection);
         }
         if (elements.planMapRouteBtn) {
-            elements.planMapRouteBtn.addEventListener("click", () => {
-                onPlanMapRoute?.({
-                    start: mapRouteSelection.start,
-                    destination: mapRouteSelection.destination
-                });
+            elements.planMapRouteBtn.addEventListener("click", async () => {
+                if (isRouteEditingLocked() || isRouteLoading()) return;
+                isEditingMapRoute = false;
+                isPlanningMapRoute = true;
+                renderMapRoutePlanner();
+                try {
+                    await onPlanMapRoute?.({
+                        start: mapRouteSelection.start,
+                        destination: mapRouteSelection.destination
+                    });
+                } finally {
+                    isPlanningMapRoute = false;
+                    renderMapRoutePlanner();
+                }
             });
         }
         visuals.setPlannerClickHandler(({ mode, point }) => {
-            if (routeInputMode !== "map") return;
+            if (routeInputMode !== "map" || isRouteEditingLocked() || isRouteLoading()) return;
+            isEditingMapRoute = true;
+            isPlanningMapRoute = false;
             const selectionMode = mode === "start" || mode === "destination"
                 ? mode
                 : (!mapRouteSelection.start || mapRouteSelection.destination ? "start" : "destination");
@@ -102,6 +114,7 @@ export function createRouteRenderer({
 
     function renderRouteTable(state) {
         const isGpx = state.route.source === "gpx";
+        const routeEditingLocked = state.liveRide?.isActive === true;
         const isEditable = !hasRouteModeControls
             ? !isGpx
             : routeInputMode === "manual" && state.route.source === "manual";
@@ -118,30 +131,41 @@ export function createRouteRenderer({
             elements.routeTableBody.innerHTML = state.routeSegments.map((segment) => `
                 <tr data-segment-id="${segment.id}">
                     <td>
-                        <input data-field="name" value="${escapeHtml(segment.name)}">
+                        <input data-field="name" value="${escapeHtml(segment.name)}" ${routeEditingLocked ? "disabled" : ""}>
                     </td>
                     <td>
-                        <input data-field="distanceKm" type="number" min="0.1" max="200" step="0.1" value="${segment.distanceKm}">
+                        <input data-field="distanceKm" type="number" min="0.1" max="200" step="0.1" value="${segment.distanceKm}" ${routeEditingLocked ? "disabled" : ""}>
                     </td>
                     <td>
-                        <input data-field="gradePercent" type="number" min="-15" max="20" step="0.1" value="${segment.gradePercent}">
+                        <input data-field="gradePercent" type="number" min="-15" max="20" step="0.1" value="${segment.gradePercent}" ${routeEditingLocked ? "disabled" : ""}>
                     </td>
                     <td class="action-cell">
-                        <button class="remove-segment-btn" data-remove-segment="${segment.id}" ${state.routeSegments.length === 1 ? "disabled" : ""}>×</button>
+                        <button class="remove-segment-btn" data-remove-segment="${segment.id}" ${state.routeSegments.length === 1 || routeEditingLocked ? "disabled" : ""}>×</button>
                     </td>
                 </tr>
             `).join("");
 
             [...elements.routeTableBody.querySelectorAll("input[data-field]")].forEach((input) => {
-                input.addEventListener("input", (event) => {
+                const commitSegmentField = (event) => {
                     const row = event.target.closest("tr");
-                    onUpdateRouteSegment(row.dataset.segmentId, event.target.dataset.field, event.target.value);
+                    if (!isRouteEditingLocked()) {
+                        onUpdateRouteSegment(row.dataset.segmentId, event.target.dataset.field, event.target.value);
+                    }
+                };
+                input.addEventListener("change", commitSegmentField);
+                input.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.target.blur?.();
+                    }
                 });
             });
 
             [...elements.routeTableBody.querySelectorAll("[data-remove-segment]")].forEach((button) => {
                 button.addEventListener("click", () => {
-                    onRemoveRouteSegment(button.dataset.removeSegment);
+                    if (!isRouteEditingLocked()) {
+                        onRemoveRouteSegment(button.dataset.removeSegment);
+                    }
                 });
             });
         }
@@ -149,22 +173,39 @@ export function createRouteRenderer({
 
     function renderRouteSummary(state) {
         const route = state.route;
+        const isRouteLoading = route?.isLoading === true;
         const isGpx = route.source === "gpx";
         const isExploration = route.source === "osm-exploration";
+        const hasUsableRoute = Number.isFinite(route.totalDistanceMeters) && route.totalDistanceMeters > 0;
         const isPendingMapExploration = routeInputMode === "map" && !isExploration;
+        const isPendingGpxImport = routeInputMode === "gpx" && !isGpx;
         if (elements.routeSourceLabel) {
-            elements.routeSourceLabel.textContent = isPendingMapExploration
+            elements.routeSourceLabel.textContent = isRouteLoading
+                ? "路线处理中"
+                : isPendingMapExploration
                 ? "地图探索（待生成）"
+                : isPendingGpxImport
+                    ? "GPX（待导入）"
                 : isExploration
                     ? "OSM 街景探索"
                     : isGpx
                         ? `GPX：${route.name}`
                         : "手工路线";
         }
-        if (elements.addSegmentBtn) elements.addSegmentBtn.disabled = routeInputMode !== "manual" || isGpx;
+        const routeEditingLocked = state.liveRide?.isActive === true;
+        if (elements.addSegmentBtn) elements.addSegmentBtn.disabled = routeInputMode !== "manual" || isGpx || routeEditingLocked || isRouteLoading;
+        if (elements.resetRouteBtn) elements.resetRouteBtn.disabled = routeEditingLocked || isRouteLoading;
+        if (elements.gpxFileInput) elements.gpxFileInput.disabled = routeEditingLocked || isRouteLoading;
         if (elements.routeDistanceChip) elements.routeDistanceChip.textContent = `${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
         if (elements.routeElevationChip) elements.routeElevationChip.textContent = `${Math.round(route.totalElevationGainMeters)} m`;
         if (elements.routeSummary) {
+            if (isRouteLoading) {
+                elements.routeSummary.innerHTML = `
+                    <strong>路线处理中</strong><br>
+                    正在完成路线导入、路网规划或海拔请求；完成前不能开始骑行。
+                `;
+                return;
+            }
             if (isPendingMapExploration) {
                 elements.routeSummary.innerHTML = `
                     <strong>地图探索</strong><br>
@@ -172,11 +213,25 @@ export function createRouteRenderer({
                 `;
                 return;
             }
+            if (isPendingGpxImport) {
+                elements.routeSummary.innerHTML = `
+                    <strong>GPX 导入</strong><br>
+                    选择 GPX 文件后显示路线距离、海拔和坡度图。
+                `;
+                return;
+            }
+            if (!hasUsableRoute) {
+                elements.routeSummary.innerHTML = `
+                    <strong>尚未设置路线</strong><br>
+                    可新增自定义路段、导入 GPX，或在地图上生成探索路线；设置完成后才能开始骑行。
+                `;
+                return;
+            }
 
             const sourceText = isExploration ? "OSM 地图探索" : isGpx ? "GPX 导入" : "手工输入";
             const segmentsText = isGpx ? "" : `，共 ${route.segments.length} 段`;
             const elevationWarning = route.hasElevationData === false
-                ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : "GPX"}尚无海拔数据，坡度按 0 处理；可在骑行界面请求路线海拔。</span>`
+                ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : "GPX"}尚无海拔数据，坡度按 0 处理。${isExploration ? "可在骑行界面主动请求海拔。" : ""}</span>`
                 : "";
             
             elements.routeSummary.innerHTML = `
@@ -190,8 +245,13 @@ export function createRouteRenderer({
 
     function renderRouteMap(state) {
         try {
+            const routeSignature = buildMapRouteSignature(state.route);
+            if (routeSignature === lastRenderedMapRouteSignature) {
+                return;
+            }
             visuals.syncRoute(state.route);
-            visuals.syncPlannerSelection(mapRouteSelection);
+            lastRenderedMapRouteSignature = routeSignature;
+            visuals.syncPlannerSelection(getVisiblePlannerSelection());
         } catch (error) {
             console.warn("路线地图渲染失败，不影响距离/海拔预览。", error);
         }
@@ -219,11 +279,16 @@ export function createRouteRenderer({
 
     function renderRouteModePanels() {
         if (!hasRouteModeControls) return;
-        const shouldShowRouteMap = routeInputMode === "map" || hasCoordinateRoute(lastRenderedState?.route);
+        const route = lastRenderedState?.route;
+        const hasActiveRouteForMode = matchesRouteInputMode(route, routeInputMode);
+        const shouldShowRouteMap = routeInputMode === "map"
+            || (hasActiveRouteForMode && hasCoordinateRoute(route));
         setPanelVisible(elements.gpxRoutePanel, routeInputMode === "gpx");
         setPanelVisible(elements.manualRoutePanel, routeInputMode === "manual");
         setPanelVisible(elements.mapRoutePanel, routeInputMode === "map");
         setPanelVisible(elements.routeMapShell, shouldShowRouteMap);
+        setPanelVisible(elements.setupElevationChartShell, hasActiveRouteForMode);
+        setPanelVisible(elements.routeCurrentSourceRow, hasActiveRouteForMode);
         setModeButtonActive(elements.routeModeGpxBtn, routeInputMode === "gpx");
         setModeButtonActive(elements.routeModeManualBtn, routeInputMode === "manual");
         setModeButtonActive(elements.routeModeMapBtn, routeInputMode === "map");
@@ -232,13 +297,16 @@ export function createRouteRenderer({
             scheduleMapPreviewRefresh(() => {
                 visuals.invalidatePreviewSize();
                 if (lastRenderedState?.route) visuals.syncRoute(lastRenderedState.route);
-                visuals.syncPlannerSelection(mapRouteSelection);
+                visuals.syncPlannerSelection(getVisiblePlannerSelection());
             });
         }
     }
 
     function clearMapRouteSelection() {
+        if (isRouteEditingLocked()) return;
         onInvalidateMapRoute?.();
+        isEditingMapRoute = true;
+        isPlanningMapRoute = false;
         mapRouteSelection.mode = null;
         mapRouteSelection.start = null;
         mapRouteSelection.destination = null;
@@ -248,17 +316,59 @@ export function createRouteRenderer({
 
     function renderMapRoutePlanner() {
         if (!hasRouteModeControls) return;
+        const hasGeneratedRoute = hasGeneratedMapRoute();
+        const routeEditingLocked = isRouteEditingLocked();
+        const routeLoading = isRouteLoading();
         if (elements.mapRouteSelectionStatus) {
-            elements.mapRouteSelectionStatus.textContent = mapRouteSelection.start && mapRouteSelection.destination
-                ? "起点和起步目标已选择，可生成起步路线"
-                : mapRouteSelection.start ? "已选择起点，点击地图选择起步目标" : "点击地图选择起点";
+            elements.mapRouteSelectionStatus.textContent = routeEditingLocked
+                ? "骑行中路线已锁定，结束骑行后可重新选点"
+                : routeLoading
+                    ? "正在处理路线，完成前不能开始骑行"
+                : hasGeneratedRoute
+                ? "起步路线已生成，可开始骑行或重新选点"
+                : isPlanningMapRoute
+                    ? "正在请求路网并生成起步路线..."
+                    : mapRouteSelection.start && mapRouteSelection.destination
+                        ? "起点和起步目标已选择，可生成起步路线"
+                        : mapRouteSelection.start ? "已选择起点，点击地图选择起步目标" : "点击地图选择起点";
         }
         if (elements.mapRouteStartText) elements.mapRouteStartText.textContent = formatPoint(mapRouteSelection.start);
         if (elements.mapRouteDestinationText) elements.mapRouteDestinationText.textContent = formatPoint(mapRouteSelection.destination);
-        if (elements.planMapRouteBtn) {
-            elements.planMapRouteBtn.disabled = routeInputMode !== "map" || !mapRouteSelection.start || !mapRouteSelection.destination;
+        if (elements.clearMapRouteSelectionBtn) {
+            elements.clearMapRouteSelectionBtn.textContent = hasGeneratedRoute ? "重选路线" : "清空";
+            elements.clearMapRouteSelectionBtn.disabled = routeEditingLocked;
         }
-        visuals.syncPlannerSelection(mapRouteSelection);
+        if (elements.planMapRouteBtn) {
+            elements.planMapRouteBtn.hidden = hasGeneratedRoute;
+            elements.planMapRouteBtn.disabled = isPlanningMapRoute
+                || routeLoading
+                || routeEditingLocked
+                || routeInputMode !== "map"
+                || !mapRouteSelection.start
+                || !mapRouteSelection.destination;
+        }
+        visuals.syncPlannerSelection(getVisiblePlannerSelection());
+    }
+
+    function hasGeneratedMapRoute() {
+        return routeInputMode === "map"
+            && lastRenderedState?.route?.source === "osm-exploration"
+            && !isEditingMapRoute;
+    }
+
+    function isRouteEditingLocked() {
+        return lastRenderedState?.liveRide?.isActive === true;
+    }
+
+    function isRouteLoading() {
+        return lastRenderedState?.route?.isLoading === true;
+    }
+
+    function getVisiblePlannerSelection() {
+        if (lastRenderedState?.route?.source === "osm-exploration" && !isEditingMapRoute) {
+            return null;
+        }
+        return mapRouteSelection;
     }
 
     function renderElevationChart(route, currentRecord) {
@@ -305,6 +415,21 @@ export function createRouteRenderer({
         render,
         renderElevationChart // Expose for dashboard to use with currentRecord
     };
+}
+
+function buildMapRouteSignature(route) {
+    const geometry = collectRouteMapLatLngs(route);
+    return `${route?.networkSource ?? "default"}:${buildRouteGeometryKey(route, geometry)}`;
+}
+
+function matchesRouteInputMode(route, inputMode) {
+    if (inputMode === "map") {
+        return route?.source === "osm-exploration";
+    }
+    if (inputMode === "gpx") {
+        return route?.source === "gpx";
+    }
+    return route?.source === "manual";
 }
 
 function hasCoordinateRoute(route) {

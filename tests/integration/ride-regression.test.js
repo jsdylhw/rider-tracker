@@ -1,7 +1,7 @@
 import { createStore } from "../../src/app/store/app-store.js";
 import { createRideService } from "../../src/app/services/ride-service.js";
 import { WORKOUT_MODES } from "../../src/domain/workout/workout-mode.js";
-import { assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
+import { assert, assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
 
 function createState() {
     return {
@@ -83,6 +83,43 @@ function createState() {
 export const suite = {
     name: "ride-regression",
     tests: [
+        {
+            name: "startRide 会拒绝空路线，即使街景调试已开启",
+            run() {
+                const state = createState();
+                state.route = {
+                    source: "manual",
+                    totalDistanceMeters: 0,
+                    points: [],
+                    segments: []
+                };
+                state.liveRide.canStart = false;
+                const store = createStore(state);
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    location: { search: "?debugStreetView=1" },
+                    localStorage: { getItem() { return null; } },
+                    setInterval() { throw new Error("空路线不应启动定时器"); },
+                    clearInterval() {}
+                };
+
+                try {
+                    const service = createRideService({
+                        store,
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: { downloadFit() {} }
+                    });
+                    service.startRide();
+
+                    assertEqual(store.getState().liveRide.isActive, false);
+                    assert(store.getState().statusText.includes("请先设置一条有效路线"));
+                } finally {
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
         {
             name: "startRide 会打开骑行面板并启动实时会话",
             run() {

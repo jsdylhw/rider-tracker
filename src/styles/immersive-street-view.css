@@ -269,7 +269,7 @@
     position: fixed;
     inset: 0;
     width: 100%;
-    height: 100%;
+    height: 100dvh;
     margin: 0;
     padding: 0;
     overflow: hidden;
@@ -310,4 +310,148 @@ body.immersive-street-view-active {
     display: block;
     width: 100%;
     height: 100%;
+}
+
+/* Keep the desktop HUD arrangement on compact laptop windows, but reserve the
+ * bottom-right corner for the route map so it never covers the elevation card. */
+@media (max-width: 1200px) {
+    .ride-dashboard.immersive-street-view #rideDashboardMap {
+        right: 12px !important;
+        bottom: 12px !important;
+        width: 204px !important;
+        height: auto !important;
+        aspect-ratio: 264 / 180;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard {
+        top: 6px;
+        left: 6px;
+        width: 172px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display {
+        font-size: 30px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display .unit {
+        font-size: 18px;
+    }
+
+    .ride-dashboard.immersive-street-view .exploration-turn-controls {
+        top: 58px;
+        right: 12px;
+    }
+
+    .ride-dashboard.immersive-street-view #liveElevationCard {
+        left: 12px;
+        right: auto;
+        transform: none;
+        bottom: 10px;
+        width: min(calc(100vw - 240px), 760px);
+    }
+
+    .ride-dashboard.immersive-street-view #liveElevationCard .ride-elevation-chart-shell {
+        width: 100%;
+    }
+}
+
+@media (max-width: 900px) {
+    .ride-dashboard.immersive-street-view #rideDashboardMap {
+        width: 172px !important;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard {
+        width: 158px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-item {
+        min-height: 58px;
+        padding: 7px 10px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display {
+        font-size: 27px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display .unit {
+        font-size: 16px;
+    }
+
+    .ride-dashboard.immersive-street-view #liveElevationCard {
+        width: min(calc(100vw - 204px), 640px);
+    }
+}
+
+@media (max-width: 640px) {
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard {
+        width: min(38vw, 148px);
+        padding: 0;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsGrid {
+        grid-template-columns: 1fr;
+        gap: 5px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-item {
+        min-height: 0;
+        padding: 6px 8px;
+        border-radius: 8px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-label {
+        font-size: 9px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display {
+        font-size: 24px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-display .unit {
+        font-size: 13px;
+    }
+
+    .ride-dashboard.immersive-street-view #rideDashboardMap {
+        width: 136px !important;
+        bottom: 10px !important;
+        right: 10px !important;
+    }
+
+    .ride-dashboard.immersive-street-view .exploration-turn-controls {
+        top: 52px;
+        bottom: auto;
+        right: 8px;
+        max-width: calc(100vw - min(38vw, 148px) - 20px);
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveStreetViewBtn {
+        top: 10px;
+        right: 96px;
+        padding: 7px 8px;
+        font-size: 12px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveBackBtn {
+        top: 10px;
+        right: 10px;
+        padding: 7px 8px;
+        font-size: 12px;
+    }
+
+    .ride-dashboard.immersive-street-view #immersiveUiToggleBtn {
+        left: 10px;
+        right: auto;
+        top: auto;
+        bottom: 10px;
+        padding: 7px 8px;
+        font-size: 12px;
+    }
+
+    .ride-dashboard.immersive-street-view #liveElevationCard {
+        left: 10px;
+        right: auto;
+        width: calc(100vw - 164px);
+        transform: none;
+        padding: 3px 4px;
+    }
 }

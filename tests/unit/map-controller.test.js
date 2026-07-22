@@ -93,12 +93,13 @@ export const suite = {
                 const polylineCalls = [];
                 const circleMarkerCalls = [];
                 let fitBoundsCount = 0;
+                let invalidateSizeCount = 0;
                 let lastBounds = null;
                 const map = {
                     attributionControl: { removeAttribution() {}, addAttribution() {} },
                     on() {},
                     setView() {},
-                    invalidateSize() {},
+                    invalidateSize() { invalidateSizeCount += 1; },
                     fitBounds(bounds) { fitBoundsCount += 1; lastBounds = bounds; },
                     panTo() {}
                 };
@@ -108,8 +109,12 @@ export const suite = {
                     addTo() { return this; },
                     bindTooltip() {},
                     setLatLng() { return this; },
-                    setLatLngs(points) { this.points = points; return this; },
-                    setStyle() { return this; },
+                    setLatLngs(points) {
+                        this.points = points;
+                        this.setLatLngsCount = (this.setLatLngsCount ?? 0) + 1;
+                        return this;
+                    },
+                    setStyle(style) { this.lastStyle = style; return this; },
                     bringToFront() {
                         this.bringToFrontCount = (this.bringToFrontCount ?? 0) + 1;
                         return this;
@@ -154,6 +159,20 @@ export const suite = {
                     assertEqual(routeLayer.points[2][0], 31.22);
                     assertEqual(routeLayer.points[2][1], 121.42);
 
+                    const routeLayerRenderCount = routeLayer.setLatLngsCount;
+                    const initialInvalidateSizeCount = invalidateSizeCount;
+                    controller.syncRoute({
+                        source: "gpx",
+                        exploration: { pendingIntent: "left" },
+                        points: [
+                            { latitude: 31.2, longitude: 121.4 },
+                            { latitude: 31.21, longitude: 121.41 },
+                            { latitude: 31.22, longitude: 121.42 }
+                        ]
+                    });
+                    assertEqual(routeLayer.setLatLngsCount, routeLayerRenderCount);
+                    assertEqual(invalidateSizeCount, initialInvalidateSizeCount);
+
                     controller.invalidatePreviewSize();
                     assert(fitBoundsCount >= 3, "preview refresh should refit the GPX route after it becomes visible");
 
@@ -174,9 +193,11 @@ export const suite = {
                     assert(polylineCalls.some((layer) => layer.points[0]?.[0] === 35.1),
                         "dashboard-only route updates should populate the dashboard route layer");
                     assertEqual(lastBounds.points[0][0], 35.1);
-                    assert(circleMarkerCalls.some((layer) => (
-                        layer.options.fillColor === "#3742fa" && layer.bringToFrontCount > 0
-                    )), "current-position marker should remain above the route line");
+                    const currentMarker = circleMarkerCalls
+                        .filter((layer) => layer.options.fillColor === "#3742fa")
+                        .at(-1);
+                    assert(currentMarker?.bringToFrontCount > 0, "current-position marker should remain above the route line");
+                    assertEqual(currentMarker?.lastStyle?.opacity, 1);
                 } finally {
                     globalThis.window = originalWindow;
                     globalThis.requestAnimationFrame = originalAnimationFrame;

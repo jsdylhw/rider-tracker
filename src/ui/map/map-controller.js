@@ -2,25 +2,13 @@ export const MAP_PROVIDERS = {
     osm: {
         url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         attribution: '&copy; OpenStreetMap'
-    },
-    amap: {
-        url: "https://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}",
-        attribution: '&copy; 高德地图'
-    },
-    amap_satellite: {
-        url: "https://webst01.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
-        attribution: '&copy; 高德卫星'
     }
 };
 
-export function createMapController({ previewElement, dashboardElement, initialProviderKey = "amap" }) {
-    let currentProviderKey = MAP_PROVIDERS[initialProviderKey] ? initialProviderKey : "amap";
+export function createMapController({ previewElement, dashboardElement }) {
     let latestRoute = null;
+    let latestDashboardRecord = null;
     
-    // Store tile layers references so we can update them later
-    let previewTileLayer = null;
-    let dashboardTileLayer = null;
-
     function createMap(element, options) {
         if (!element || !window.L) {
             return null;
@@ -32,7 +20,7 @@ export function createMapController({ previewElement, dashboardElement, initialP
             ...options
         });
 
-        const provider = MAP_PROVIDERS[currentProviderKey];
+        const provider = MAP_PROVIDERS.osm;
         const tileLayer = window.L.tileLayer(provider.url, {
             maxZoom: 19,
             attribution: provider.attribution
@@ -47,10 +35,7 @@ export function createMapController({ previewElement, dashboardElement, initialP
     const dashboardData = createMap(dashboardElement, { zoomControl: true });
 
     const previewMap = previewData?.map;
-    previewTileLayer = previewData?.tileLayer;
-    
     const dashboardMap = dashboardData?.map;
-    dashboardTileLayer = dashboardData?.tileLayer;
 
     const previewLayers = createLayerSet(previewMap);
     const dashboardLayers = createLayerSet(dashboardMap);
@@ -72,35 +57,17 @@ export function createMapController({ previewElement, dashboardElement, initialP
         });
     }
 
-    function setMapProvider(providerKey) {
-        if (!MAP_PROVIDERS[providerKey] || providerKey === currentProviderKey) {
-            return;
-        }
-        currentProviderKey = providerKey;
-        const provider = MAP_PROVIDERS[currentProviderKey];
-
-        if (previewTileLayer) {
-            previewTileLayer.setUrl(provider.url);
-            previewMap.attributionControl.removeAttribution(previewTileLayer.options.attribution);
-            previewTileLayer.options.attribution = provider.attribution;
-            previewMap.attributionControl.addAttribution(provider.attribution);
-        }
-        if (dashboardTileLayer) {
-            dashboardTileLayer.setUrl(provider.url);
-            dashboardMap.attributionControl.removeAttribution(dashboardTileLayer.options.attribution);
-            dashboardTileLayer.options.attribution = provider.attribution;
-            dashboardMap.attributionControl.addAttribution(provider.attribution);
-        }
-    }
-
     function syncRoute(route) {
         latestRoute = route;
         renderRoute(previewMap, previewLayers, route, null);
-        renderRoute(dashboardMap, dashboardLayers, route, null);
+        renderRoute(dashboardMap, dashboardLayers, route, latestDashboardRecord, {
+            preserveCurrentPosition: Boolean(latestDashboardRecord)
+        });
     }
 
     function syncRide(route, currentRecord) {
         latestRoute = route;
+        latestDashboardRecord = currentRecord ?? null;
         renderRoute(dashboardMap, dashboardLayers, route, currentRecord);
     }
 
@@ -124,13 +91,12 @@ export function createMapController({ previewElement, dashboardElement, initialP
     }
 
     function invalidateDashboardSize() {
-        refreshMapAfterVisibility(dashboardMap, dashboardLayers, latestRoute);
+        refreshMapAfterVisibility(dashboardMap, dashboardLayers, latestRoute, latestDashboardRecord);
     }
 
     return {
         syncRoute,
         syncRide,
-        setMapProvider,
         setPlannerClickHandler,
         setPlannerMode,
         syncPlannerSelection,
@@ -140,7 +106,7 @@ export function createMapController({ previewElement, dashboardElement, initialP
     };
 }
 
-function refreshMapAfterVisibility(map, layers, route) {
+function refreshMapAfterVisibility(map, layers, route, currentRecord = null) {
     if (!map || !layers) {
         return;
     }
@@ -149,7 +115,7 @@ function refreshMapAfterVisibility(map, layers, route) {
     // A route may have arrived while this map was inside a hidden route tab or dashboard.
     // Refit only after the container becomes measurable.
     if (route) {
-        renderRoute(map, layers, route, null, { forceFocus: true });
+        renderRoute(map, layers, route, currentRecord, { forceFocus: true });
     }
 }
 
@@ -232,7 +198,10 @@ function createLayerSet(map) {
     return layers;
 }
 
-function renderRoute(map, layers, route, currentRecord, { forceFocus = false } = {}) {
+function renderRoute(map, layers, route, currentRecord, {
+    forceFocus = false,
+    preserveCurrentPosition = false
+} = {}) {
     if (!map || !layers) {
         return;
     }
@@ -251,20 +220,25 @@ function renderRoute(map, layers, route, currentRecord, { forceFocus = false } =
         return;
     }
 
-    map.invalidateSize({ pan: false });
     const routeLineStyle = resolveRouteLineStyle(route);
     layers.routeLineOpacity = routeLineStyle.opacity;
     const routeChanged = layers.lastRouteKey !== routeKey;
-    layers.routeLine.setStyle(routeLineStyle);
-    layers.routeLine.setLatLngs(geoPoints);
-    layers.routeLine.bringToFront?.();
-    layers.startMarker.setLatLng(geoPoints[0]).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
-    layers.endMarker.setLatLng(geoPoints.at(-1)).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
-    layers.hasVisibleRoute = true;
+    const shouldRenderStaticRoute = routeChanged || forceFocus || !layers.hasVisibleRoute;
 
-    if (routeChanged || forceFocus) {
+    if (shouldRenderStaticRoute) {
+        map.invalidateSize({ pan: false });
+        layers.routeLine.setStyle(routeLineStyle);
+        layers.routeLine.setLatLngs(geoPoints);
+        layers.routeLine.bringToFront?.();
+        layers.startMarker.setLatLng(geoPoints[0]).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
+        layers.endMarker.setLatLng(geoPoints.at(-1)).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
+        layers.hasVisibleRoute = true;
         layers.lastRouteKey = routeKey;
         focusRouteAfterLayout(map, layers, geoPoints, routeKey);
+    }
+
+    if (preserveCurrentPosition) {
+        return;
     }
 
     if (!currentRecord || typeof currentRecord.positionLat !== "number" || typeof currentRecord.positionLong !== "number") {

@@ -4,6 +4,7 @@ import { buildEffectiveSensorSnapshot } from "../realtime/sensor-sampling.js";
 import { formatDuration, formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
+import { isRouteReadyForRide } from "../../domain/route/route-builder.js";
 import {
     DEFAULT_PIP_CHART_SELECTION,
     DEFAULT_PIP_METRIC_SELECTION,
@@ -52,7 +53,7 @@ export function buildRideSnapshot(state) {
     return {
         dashboardOpen: Boolean(liveRide.dashboardOpen),
         isActive: Boolean(liveRide.isActive),
-        canStart: Boolean(liveRide.canStart || streetViewDebugEnabled),
+        canStart: Boolean((liveRide.canStart || streetViewDebugEnabled) && isRouteReadyForRide(route)),
         session,
         route,
         summary,

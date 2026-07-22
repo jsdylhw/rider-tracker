@@ -201,6 +201,7 @@ export function extendOsmRoute({
     rawNodes,
     intent = "straight",
     intersectionCount = 2,
+    stopAtFirstReachedIntersection = false,
     sampleSpacingMeters = OSM_ROUTE_SAMPLE_SPACING_METERS
 }) {
     if (!graph?.nodes?.size || !Array.isArray(rawNodes) || rawNodes.length < 2) {
@@ -216,17 +217,29 @@ export function extendOsmRoute({
 
     if (nextRawNodes.at(-1)?.nodeId !== endNodeId) {
         appendRouteNode(nextRawNodes, endNode, nextRawNodes.at(-1)?.edgeId ?? null);
+        if (stopAtFirstReachedIntersection && (endNode.edges.length ?? 0) >= 3) {
+            return {
+                ...buildOsmRouteFromRawNodes(nextRawNodes, sampleSpacingMeters),
+                intersectionsPassed: 1,
+                edgesAdded: 1
+            };
+        }
     }
 
     let currentNodeId = endNodeId;
     let incomingHeading = getIncomingHeading(nextRawNodes);
     let intersectionsPassed = 0;
     let edgesAdded = 0;
+    let returnedAtDeadEnd = false;
     let nextIntent = normalizeExplorationIntent(intent);
     const maxEdges = Math.max(20, Math.max(1, intersectionCount) * 40);
 
     while (intersectionsPassed < intersectionCount && edgesAdded < maxEdges) {
-        const edge = chooseExplorationEdge(graph, currentNodeId, incomingHeading, nextIntent);
+        let edge = chooseExplorationEdge(graph, currentNodeId, incomingHeading, nextIntent);
+        if (!edge && !chooseExplorationEdge(graph, currentNodeId, incomingHeading, "straight")) {
+            edge = chooseReverseExplorationEdge(graph, currentNodeId, incomingHeading);
+            returnedAtDeadEnd = Boolean(edge);
+        }
         if (!edge) break;
 
         const nextNode = graph.nodes.get(edge.to);
@@ -249,7 +262,8 @@ export function extendOsmRoute({
     return {
         ...buildOsmRouteFromRawNodes(nextRawNodes, sampleSpacingMeters),
         intersectionsPassed,
-        edgesAdded
+        edgesAdded,
+        returnedAtDeadEnd
     };
 }
 
@@ -284,7 +298,7 @@ function buildRawRouteNodes({ graph, snappedStart, snappedDestination, directedS
                     lat: snappedDestination.point.lat,
                     lng: snappedDestination.point.lng,
                     nodeId: null,
-                    continueNodeId: directedDestinationEdge.from,
+                    continueNodeId: directedDestinationEdge.to,
                     distanceMeters: round(haversineDistanceMeters(startPoint, snappedDestination.point), 1),
                     edgeId: directedDestinationEdge.id
                 }
@@ -309,7 +323,7 @@ function buildRawRouteNodes({ graph, snappedStart, snappedDestination, directedS
         lat: snappedDestination.point.lat,
         lng: snappedDestination.point.lng,
         nodeId: null,
-        continueNodeId: directedDestinationEdge.from,
+        continueNodeId: directedDestinationEdge.to,
         distanceMeters: round(previous.distanceMeters + haversineDistanceMeters(previous, snappedDestination.point), 1),
         edgeId: directedDestinationEdge.id
     });
@@ -544,6 +558,16 @@ export function chooseExplorationEdge(graph, nodeId, incomingHeading, intent = "
 
     return candidates
         .sort((left, right) => Math.abs(left.turnAngle) - Math.abs(right.turnAngle))[0]?.edge ?? null;
+}
+
+function chooseReverseExplorationEdge(graph, nodeId, incomingHeading) {
+    return (graph.nodes.get(nodeId)?.edges ?? [])
+        .map((edge) => ({
+            edge,
+            turnAngle: Math.abs(Math.abs(signedHeadingAngle(incomingHeading, edge.heading)) - 180)
+        }))
+        .filter(({ turnAngle }) => turnAngle <= 35)
+        .sort((left, right) => left.turnAngle - right.turnAngle)[0]?.edge ?? null;
 }
 
 function normalizeExplorationIntent(intent) {

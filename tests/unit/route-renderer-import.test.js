@@ -9,7 +9,6 @@ function createRenderer({ onImportGpx }) {
             gpxFileInput
         },
         mapController: {
-            setMapProvider() {},
             syncRoute() {}
         },
         onAddSegment() {},

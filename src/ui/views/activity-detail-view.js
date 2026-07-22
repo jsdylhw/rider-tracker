@@ -26,7 +26,7 @@ export function createActivityDetailView({
     let pendingSeriesPointer = null;
     let pendingSeriesFrame = null;
     const activityRouteMap = createActivityRouteMapController({
-        getProviderKey: () => document.getElementById("mapProviderSelect")?.value ?? "osm"
+        getProviderKey: () => "osm"
     });
 
     bind(elements.activityDetailBackBtn, "click", () => onSetUiMode("home"));

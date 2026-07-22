@@ -149,6 +149,39 @@ export const suite = {
             }
         },
         {
+            name: "continues a midpoint destination in the forward road direction",
+            run() {
+                const graph = buildRoadGraph({
+                    elements: [
+                        { type: "node", id: 1, lat: 37.0, lon: -122.0 },
+                        { type: "node", id: 2, lat: 37.001, lon: -122.0 },
+                        { type: "node", id: 3, lat: 37.002, lon: -122.0 },
+                        { type: "node", id: 4, lat: 37.001, lon: -122.001 },
+                        { type: "node", id: 5, lat: 37.001, lon: -121.999 },
+                        { type: "way", id: 10, tags: { highway: "residential" }, nodes: [1, 2, 3] },
+                        { type: "way", id: 11, tags: { highway: "residential" }, nodes: [4, 2, 5] }
+                    ]
+                });
+                const initialRoute = planOsmRoute({
+                    graph,
+                    start: { lat: 37.0001, lng: -122.0 },
+                    destination: { lat: 37.0007, lng: -122.0 }
+                });
+                const extendedRoute = extendOsmRoute({
+                    graph,
+                    rawNodes: initialRoute.rawNodes,
+                    intent: "straight",
+                    intersectionCount: 1,
+                    stopAtFirstReachedIntersection: true
+                });
+
+                assertEqual(initialRoute.rawNodes.at(-1).continueNodeId, 2);
+                assertEqual(extendedRoute.rawNodes.at(-1).nodeId, 2);
+                assert(!extendedRoute.rawNodes.slice(2).some((node) => node.nodeId === 1), "路线延伸不应折返到道路起点");
+                assertGreaterThan(extendedRoute.intersectionsPassed, 0);
+            }
+        },
+        {
             name: "selects the requested left, straight, or right edge at an exploration junction",
             run() {
                 const graph = buildRoadGraph({
@@ -166,6 +199,36 @@ export const suite = {
                 assertEqual(chooseExplorationEdge(graph, 2, 0, "left").to, 4);
                 assertEqual(chooseExplorationEdge(graph, 2, 0, "straight").to, 3);
                 assertEqual(chooseExplorationEdge(graph, 2, 0, "right").to, 5);
+            }
+        },
+        {
+            name: "automatically returns from a dead end when no forward route remains",
+            run() {
+                const graph = buildRoadGraph({
+                    elements: [
+                        { type: "node", id: 1, lat: 37.0, lon: -122.0 },
+                        { type: "node", id: 2, lat: 37.001, lon: -122.0 },
+                        { type: "node", id: 3, lat: 37.002, lon: -122.0 },
+                        { type: "node", id: 4, lat: 37.0, lon: -122.001 },
+                        { type: "node", id: 5, lat: 37.0, lon: -121.999 },
+                        { type: "way", id: 10, tags: { highway: "residential" }, nodes: [1, 2, 3] },
+                        { type: "way", id: 11, tags: { highway: "residential" }, nodes: [4, 1, 5] }
+                    ]
+                });
+                const routeToDeadEnd = planOsmRoute({
+                    graph,
+                    start: { lat: 37.0001, lng: -122.0 },
+                    destination: { lat: 37.002, lng: -122.0 }
+                });
+                const extendedRoute = extendOsmRoute({
+                    graph,
+                    rawNodes: routeToDeadEnd.rawNodes,
+                    intersectionCount: 1
+                });
+
+                assertEqual(extendedRoute.returnedAtDeadEnd, true);
+                assert(extendedRoute.rawNodes.some((node) => node.nodeId === 1));
+                assertGreaterThan(extendedRoute.totalDistanceMeters, routeToDeadEnd.totalDistanceMeters);
             }
         }
     ]
