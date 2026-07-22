@@ -268,7 +268,10 @@ export function createRouteService({
                 requestElevation,
                 networkSource,
                 networkFailure,
-                bounds,
+                // A reused graph only covers the bounds it was originally
+                // fetched for. Do not expand that cache entry to fit a new
+                // request range.
+                bounds: reusedNetwork ? reusableNetwork.bounds : bounds,
                 extensionCount: 0,
                 pendingIntent: null
             };

@@ -179,6 +179,42 @@ export const suite = {
             }
         },
         {
+            name: "复用路网不会将缓存范围扩大到新请求边界",
+            async run() {
+                const store = createStore({
+                    route: null,
+                    routeSegments: [],
+                    liveRide: { isActive: false, session: null }
+                });
+                let fetchCount = 0;
+                const service = createRouteService({
+                    store,
+                    fetchRoadNetwork: async (bounds) => {
+                        fetchCount += 1;
+                        const grid = buildSyntheticGridRoadNetwork(bounds, { lineCount: 13 });
+                        return { elements: grid.elements };
+                    }
+                });
+
+                await service.planMapRoute({
+                    start: { lat: 37.0, lng: -122.0 },
+                    destination: { lat: 37.001, lng: -121.999 }
+                });
+                await service.planMapRoute({
+                    start: { lat: 37.04, lng: -122.0 },
+                    destination: { lat: 37.041, lng: -121.999 }
+                });
+                assertEqual(fetchCount, 1);
+
+                await service.planMapRoute({
+                    start: { lat: 37.07, lng: -122.0 },
+                    destination: { lat: 37.071, lng: -121.999 }
+                });
+
+                assertEqual(fetchCount, 2);
+            }
+        },
+        {
             name: "consumes a queued exploration turn when the current segment reaches its end",
             async run() {
                 const store = createStore({
