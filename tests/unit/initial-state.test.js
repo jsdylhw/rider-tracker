@@ -27,7 +27,7 @@ export const suite = {
             run() {
                 const state = createInitialState(null);
 
-                assertEqual(state.routeSegments.length, 0);
+                assertEqual(Object.hasOwn(state, "routeSegments"), false);
                 assertEqual(state.route.totalDistanceMeters, 0);
             }
         }

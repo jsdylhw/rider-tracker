@@ -29,7 +29,6 @@ export const suite = {
                 const route = createCoordinateRoute();
                 const store = createStore({
                     route,
-                    routeSegments: route.segments,
                     liveRide: { isActive: false }
                 });
                 let loadedKey = "";
@@ -70,7 +69,6 @@ export const suite = {
             async run() {
                 const store = createStore({
                     route: null,
-                    routeSegments: [],
                     liveRide: { isActive: false, session: null }
                 });
                 const service = createRouteService({
@@ -94,7 +92,6 @@ export const suite = {
             async run() {
                 const store = createStore({
                     route: null,
-                    routeSegments: [],
                     liveRide: { isActive: false, session: null }
                 });
                 let loadedKey = "";
@@ -145,7 +142,6 @@ export const suite = {
             async run() {
                 const store = createStore({
                     route: null,
-                    routeSegments: [],
                     liveRide: { isActive: false, session: null }
                 });
                 let fetchCount = 0;
@@ -183,7 +179,6 @@ export const suite = {
             async run() {
                 const store = createStore({
                     route: null,
-                    routeSegments: [],
                     liveRide: { isActive: false, session: null }
                 });
                 let fetchCount = 0;
@@ -219,7 +214,6 @@ export const suite = {
             async run() {
                 const store = createStore({
                     route: null,
-                    routeSegments: [],
                     liveRide: { isActive: false, session: null }
                 });
                 const service = createRouteService({
@@ -249,7 +243,6 @@ export const suite = {
                 const session = { route };
                 const store = createStore({
                     route,
-                    routeSegments: route.segments,
                     liveRide: { isActive: true, session }
                 });
                 const initialRoute = store.getState().route;
@@ -283,7 +276,6 @@ export const suite = {
                 const session = { route };
                 const store = createStore({
                     route,
-                    routeSegments: route.segments,
                     liveRide: { isActive: false, session: null }
                 });
                 const service = createRouteService({
@@ -323,7 +315,6 @@ export const suite = {
                 const session = { route };
                 const store = createStore({
                     route,
-                    routeSegments: route.segments,
                     liveRide: { isActive: false, session: null }
                 });
                 const service = createRouteService({
