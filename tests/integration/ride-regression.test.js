@@ -324,6 +324,59 @@ export const suite = {
             }
         },
         {
+            name: "上一趟骑行归档完成后不会覆盖已经开始的新骑行",
+            async run() {
+                const store = createStore(createState());
+                const timerCallbacks = [];
+                const originalWindow = globalThis.window;
+                const originalLocalStorage = globalThis.localStorage;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval(callback) {
+                        timerCallbacks.push(callback);
+                        return timerCallbacks.length;
+                    },
+                    clearInterval() {}
+                };
+                globalThis.localStorage = {
+                    setItem() {},
+                    getItem() { return null; },
+                    removeItem() {}
+                };
+                let resolveArchive;
+                const archivePromise = new Promise((resolve) => { resolveArchive = resolve; });
+
+                try {
+                    const service = createRideService({
+                        store,
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: {
+                            archiveSessionAsFitActivity() {
+                                return archivePromise;
+                            }
+                        }
+                    });
+                    service.startRide();
+                    service.stopRide();
+                    service.startRide();
+
+                    resolveArchive({ id: "first-ride" });
+                    await flushPromises(6);
+
+                    const state = store.getState();
+                    assertEqual(state.liveRide.isActive, true);
+                    assertEqual(state.liveRide.dashboardOpen, true);
+                    assert(state.uiMode !== "activity-detail");
+                    assertEqual(state.selectedActivity, undefined);
+                } finally {
+                    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+                    else globalThis.localStorage = originalLocalStorage;
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
             name: "手工路线 ERG 结束骑行会保存到数据库",
             async run() {
                 const state = {

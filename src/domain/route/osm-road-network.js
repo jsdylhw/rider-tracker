@@ -23,7 +23,8 @@ export function normalizeLatLng(point) {
 
 export function buildBoundsAroundRoute(start, destination, {
     minSizeKm = DEFAULT_OSM_ROUTE_BOUNDS_SIZE_KM,
-    maxSizeKm = MAX_OSM_ROUTE_BOUNDS_SIZE_KM
+    maxSizeKm = MAX_OSM_ROUTE_BOUNDS_SIZE_KM,
+    routePaddingKm = 4
 } = {}) {
     const safeStart = normalizeLatLng(start);
     const safeDestination = normalizeLatLng(destination);
@@ -32,7 +33,7 @@ export function buildBoundsAroundRoute(start, destination, {
         lng: normalizeLongitude((safeStart.lng + safeDestination.lng) / 2)
     };
     const directDistanceKm = haversineDistanceMeters(safeStart, safeDestination) / 1000;
-    const sizeKm = clamp(Math.max(minSizeKm, directDistanceKm + 4), minSizeKm, maxSizeKm);
+    const sizeKm = clamp(Math.max(minSizeKm, directDistanceKm + routePaddingKm), minSizeKm, maxSizeKm);
     return buildBoundsAroundCenter(center, sizeKm);
 }
 
