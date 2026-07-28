@@ -1,11 +1,14 @@
 import {
     INTERSECTIONS_PER_SEGMENT,
+    INITIAL_ROUTE_NETWORK_SIZE_ATTEMPTS_KM,
+    INITIAL_ROUTE_NETWORK_SIZE_KM,
     NETWORK_SIZE_KM,
     SAN_FRANCISCO_ROAD_NETWORK_CACHE_URL,
     UJI_CENTER,
     UJI_ROAD_NETWORK_CACHE_URL,
     WEB_MERCATOR_MAX_LAT,
     buildBoundsAroundCenter,
+    buildBoundsAroundRoute,
     buildOverpassQuery,
     normalizeLatLng
 } from "./road-network-core.js";
@@ -54,6 +57,31 @@ const tests = [
             assertLessThan(bounds.east, 180);
             assert(bounds.south < 37.7749 && bounds.north > 37.7749, "bbox should contain center latitude");
             assert(bounds.west < -122.4194 && bounds.east > -122.4194, "bbox should contain center longitude");
+        }
+    },
+    {
+        name: "starts uncached route requests at 4km and includes 3km then 2km fallbacks",
+        run() {
+            const bounds = buildBoundsAroundCenter({ lat: 34.65804, lng: 135.49400 }, INITIAL_ROUTE_NETWORK_SIZE_KM);
+
+            assertEqual(INITIAL_ROUTE_NETWORK_SIZE_KM, 4);
+            assertEqual(INITIAL_ROUTE_NETWORK_SIZE_ATTEMPTS_KM.join(","), "4,3,2");
+            assertApprox(bounds.north - bounds.south, 4 / 111.32, 0.002);
+            assert(bounds.south < 34.65804 && bounds.north > 34.65804, "initial request bounds should contain the route center");
+        }
+    },
+    {
+        name: "expands the initial route bbox when two selected points need more than the minimum size",
+        run() {
+            const start = { lat: 34.65804, lng: 135.49400 };
+            const destination = { lat: 34.71000, lng: 135.54600 };
+            const bounds = buildBoundsAroundRoute(start, destination, { minSizeKm: INITIAL_ROUTE_NETWORK_SIZE_KM });
+
+            assert(bounds.sizeKm > INITIAL_ROUTE_NETWORK_SIZE_KM, "long diagonal selection should expand beyond the minimum bbox");
+            assert(bounds.south <= start.lat && bounds.north >= start.lat, "bbox should contain start latitude");
+            assert(bounds.south <= destination.lat && bounds.north >= destination.lat, "bbox should contain destination latitude");
+            assert(bounds.west <= start.lng && bounds.east >= start.lng, "bbox should contain start longitude");
+            assert(bounds.west <= destination.lng && bounds.east >= destination.lng, "bbox should contain destination longitude");
         }
     },
     {

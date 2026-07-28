@@ -88,6 +88,32 @@ export const suite = {
             }
         },
         {
+            name: "retries a smaller initial OSM network before using the synthetic fallback",
+            async run() {
+                const store = createStore({
+                    route: null,
+                    liveRide: { isActive: false, session: null }
+                });
+                const requestedSizes = [];
+                const service = createRouteService({
+                    store,
+                    fetchRoadNetwork: async (bounds) => {
+                        requestedSizes.push(bounds.sizeKm);
+                        if (bounds.sizeKm === 4) return { elements: [] };
+                        return buildSyntheticGridRoadNetwork(bounds, { lineCount: 5 });
+                    }
+                });
+
+                await service.planMapRoute({
+                    start: { lat: 37.0, lng: -122.0 },
+                    destination: { lat: 37.001, lng: -121.999 }
+                });
+
+                assertEqual(requestedSizes.join(","), "4,3");
+                assertEqual(store.getState().route.networkSource, "overpass");
+            }
+        },
+        {
             name: "keeps initial exploration elevation opt-in while retaining dense samples",
             async run() {
                 const store = createStore({
@@ -196,14 +222,14 @@ export const suite = {
                     destination: { lat: 37.001, lng: -121.999 }
                 });
                 await service.planMapRoute({
-                    start: { lat: 37.04, lng: -122.0 },
-                    destination: { lat: 37.041, lng: -121.999 }
+                    start: { lat: 37.01, lng: -122.0 },
+                    destination: { lat: 37.011, lng: -121.999 }
                 });
                 assertEqual(fetchCount, 1);
 
                 await service.planMapRoute({
-                    start: { lat: 37.07, lng: -122.0 },
-                    destination: { lat: 37.071, lng: -121.999 }
+                    start: { lat: 37.04, lng: -122.0 },
+                    destination: { lat: 37.041, lng: -121.999 }
                 });
 
                 assertEqual(fetchCount, 2);
@@ -234,6 +260,62 @@ export const suite = {
 
                 assertGreaterThan(extendedRoute.totalDistanceMeters, initialRoute.totalDistanceMeters);
                 assertEqual(extendedRoute.exploration.pendingIntent, null);
+            }
+        },
+        {
+            name: "extending an elevated exploration route retains grades already loaded before the new segment resolves",
+            async run() {
+                const store = createStore({
+                    route: null,
+                    liveRide: { isActive: false, session: null }
+                });
+                let enrichCallCount = 0;
+                let resolveExtensionElevation;
+                const extensionElevation = new Promise((resolve) => { resolveExtensionElevation = resolve; });
+                const service = createRouteService({
+                    store,
+                    googleMapsConfig: {
+                        getApiKey: () => "test-key",
+                        lockApiKey() {}
+                    },
+                    fetchRoadNetwork: async (bounds) => buildSyntheticGridRoadNetwork(bounds, { lineCount: 5 }),
+                    loadGoogleMaps: async () => {},
+                    enrichElevation: async (points) => {
+                        enrichCallCount += 1;
+                        if (enrichCallCount > 1) return extensionElevation;
+                        return {
+                            points: points.map((point, index) => ({
+                                ...point,
+                                elevationMeters: 100 + index * 4,
+                                gradePercent: index === 0 ? 0 : 2.5
+                            })),
+                            hasElevationData: true,
+                            summary: { requests: 1, requestedPoints: points.length, cacheHits: 0, skippedByQuota: false }
+                        };
+                    }
+                });
+
+                await service.planMapRoute({
+                    start: { lat: 37.0, lng: -122.0 },
+                    destination: { lat: 37.001, lng: -121.999 }
+                });
+                await service.requestCurrentRouteElevation();
+                const elevatedRoute = store.getState().route;
+                const preservedPoint = elevatedRoute.points.at(Math.min(2, elevatedRoute.points.length - 1));
+
+                service.ensureExplorationRouteAhead({ distanceMeters: elevatedRoute.totalDistanceMeters });
+                const extendedRoute = store.getState().route;
+                const retainedPoint = extendedRoute.points.find((point) => point.distanceMeters === preservedPoint.distanceMeters);
+
+                assertEqual(extendedRoute.hasElevationData, false);
+                assertGreaterThan(extendedRoute.totalDistanceMeters, elevatedRoute.totalDistanceMeters);
+                assertEqual(retainedPoint?.elevationMeters, preservedPoint.elevationMeters);
+                assertEqual(retainedPoint?.gradePercent, preservedPoint.gradePercent);
+                resolveExtensionElevation({
+                    points: extendedRoute.points,
+                    hasElevationData: true,
+                    summary: { requests: 1, requestedPoints: extendedRoute.points.length, cacheHits: 0, skippedByQuota: false }
+                });
             }
         },
         {

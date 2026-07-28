@@ -35,6 +35,7 @@ const STREET_VIEW_DEBUG_HEART_RATE_BPM = 130;
 export function createRideService({ store, deviceService, exportService, routeService = null }) {
     let liveRideTimerId = null;
     let liveRideTickIntervalMs = DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS;
+    let rideGeneration = 0;
 
     function startRide() {
         let state = store.getState();
@@ -47,7 +48,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
             }));
             return;
         }
-        routeService?.ensureExplorationRouteAhead?.({ distanceMeters: 0 });
+        routeService?.ensureExplorationRouteAhead?.({ distanceMeters: 0, speedMps: 0 });
         state = store.getState();
         if (!isRouteReadyForRide(state.route)) {
             return;
@@ -87,6 +88,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
             statusMeta: initialStatusMeta
         });
 
+        rideGeneration += 1;
         store.setState((currentState) => ({
             ...currentState,
             liveRide: {
@@ -116,6 +118,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
             return;
         }
 
+        const completedRideGeneration = rideGeneration;
         const completedSession = finalizeRideSync();
 
         if (completedSession) {
@@ -127,17 +130,22 @@ export function createRideService({ store, deviceService, exportService, routeSe
                         ...(activity ?? {}),
                         rawSession: completedSession
                     };
-                    store.setState((currentState) => ({
-                        ...currentState,
-                        uiMode: "activity-detail",
-                        selectedActivity: nextActivity,
-                        session: completedSession,
-                        liveRide: {
-                            ...currentState.liveRide,
-                            dashboardOpen: false
-                        },
-                        statusText: "骑行已结束，已打开骑后报告。"
-                    }));
+                    store.setState((currentState) => {
+                        if (completedRideGeneration !== rideGeneration || currentState.liveRide.isActive) {
+                            return currentState;
+                        }
+                        return {
+                            ...currentState,
+                            uiMode: "activity-detail",
+                            selectedActivity: nextActivity,
+                            session: completedSession,
+                            liveRide: {
+                                ...currentState.liveRide,
+                                dashboardOpen: false
+                            },
+                            statusText: "骑行已结束，已打开骑后报告。"
+                        };
+                    });
                 })
                 .catch((error) => {
                     console.warn("[RideService] 打开骑后报告失败:", error);
@@ -277,7 +285,8 @@ export function createRideService({ store, deviceService, exportService, routeSe
         }
 
         routeService?.ensureExplorationRouteAhead?.({
-            distanceMeters: state.liveRide.session.physicsState.distanceMeters
+            distanceMeters: state.liveRide.session.physicsState.distanceMeters,
+            speedMps: state.liveRide.session.physicsState.speed
         });
         state = store.getState();
 

@@ -1,5 +1,8 @@
 import {
     DEFAULT_CENTER,
+    EXPANSION_ROUTE_NETWORK_SIZE_KM,
+    INITIAL_ROUTE_NETWORK_SIZE_KM,
+    INITIAL_ROUTE_NETWORK_SIZE_ATTEMPTS_KM,
     INTERSECTIONS_PER_SEGMENT,
     NETWORK_SIZE_KM,
     OVERPASS_REQUEST_TIMEOUT_MS,
@@ -7,6 +10,7 @@ import {
     ROAD_NETWORK_PRESETS,
     WEB_MERCATOR_MAX_LAT,
     buildBoundsAroundCenter,
+    buildBoundsAroundRoute,
     buildOverpassQuery,
     isPointInsideBounds,
     normalizeLatLng
@@ -22,6 +26,16 @@ const OVERPASS_ENDPOINTS = [
 const SIM_TICK_MS = 250;
 const MAX_SEGMENT_EDGES = 80;
 const ROUTE_SAMPLE_SPACING_METERS = 25;
+const NETWORK_BOUNDARY_MARGIN_METERS = 220;
+const NETWORK_PREFETCH_MIN_MARGIN_METERS = 250;
+const NETWORK_PREFETCH_MAX_MARGIN_METERS = 500;
+const NETWORK_PREFETCH_LATENCY_BUFFER_MS = 3000;
+const INITIAL_NETWORK_ATTEMPT_TIMEOUT_MS = new Map([
+    [4, 8000],
+    [3, 10000],
+    [2, 16000]
+]);
+const INITIAL_ROUTE_NETWORK_PADDING_KM = 0.4;
 const MAP_WORLD_BOUNDS = [[-WEB_MERCATOR_MAX_LAT, -180], [WEB_MERCATOR_MAX_LAT, 180]];
 const ALLOWED_HIGHWAYS = new Set([
     "motorway", "trunk", "primary", "secondary", "tertiary",
@@ -79,8 +93,14 @@ const state = {
     preselectedDirection: null,
     bounds: null,
     graph: null,
+    networkData: null,
     networkSource: null,
     networkCachePreset: null,
+    networkExpansionCount: 0,
+    networkInitialSizeKm: null,
+    networkObservedLatencyMs: 8000,
+    networkGeneration: 0,
+    networkPrefetch: null,
     selectedStart: null,
     route: null,
     loadingNetwork: false,
@@ -107,7 +127,7 @@ bindEvents();
 render();
 
 function initMap() {
-    state.bounds = buildBoundsAroundCenter(state.selectedCenter, NETWORK_SIZE_KM);
+    state.bounds = buildBoundsAroundCenter(state.selectedCenter, INITIAL_ROUTE_NETWORK_SIZE_KM);
     state.map = L.map("map", {
         center: [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
         zoom: 12,
@@ -182,12 +202,16 @@ function selectTileRoutePoint(point) {
         state.preselectedStart = normalizedPoint;
         state.preselectedDirection = null;
         state.selectedCenter = state.preselectedStart;
-        state.bounds = buildBoundsAroundCenter(state.selectedCenter, NETWORK_SIZE_KM);
+        state.bounds = buildBoundsAroundCenter(state.selectedCenter, INITIAL_ROUTE_NETWORK_SIZE_KM);
         state.selectedStart = null;
         state.route = null;
         state.graph = null;
+        state.networkData = null;
         state.networkSource = null;
         state.networkCachePreset = null;
+        state.networkExpansionCount = 0;
+        state.networkInitialSizeKm = null;
+        invalidateNetworkPrefetch();
         if (state.roadLayer) {
             state.roadLayer.remove();
             state.roadLayer = null;
@@ -206,7 +230,7 @@ function selectTileRoutePoint(point) {
 
     state.preselectedDirection = normalizedPoint;
     state.selectedCenter = midpoint(state.preselectedStart, state.preselectedDirection);
-    state.bounds = buildBoundsAroundCenter(state.selectedCenter, NETWORK_SIZE_KM);
+    state.bounds = buildInitialRouteBounds(state.preselectedStart, state.preselectedDirection, INITIAL_ROUTE_NETWORK_SIZE_KM);
     drawCenterSelection({ fit: false });
     drawDirectionMarker(state.preselectedDirection);
     clearPreviewRouteLayer();
@@ -245,9 +269,12 @@ async function loadNetworkForPreviewRoute() {
         return;
     }
     state.loadingNetwork = true;
+    invalidateNetworkPrefetch();
     state.selectedCenter = midpoint(state.preselectedStart, state.preselectedDirection);
-    state.bounds = buildBoundsAroundCenter(state.selectedCenter, NETWORK_SIZE_KM);
-    setStatus(`正在加载路线附近 ${NETWORK_SIZE_KM}km 路网...`);
+    const initialBoundsCandidates = buildInitialRouteBoundsCandidates(state.preselectedStart, state.preselectedDirection);
+    state.bounds = initialBoundsCandidates[0]?.bounds
+        ?? buildInitialRouteBounds(state.preselectedStart, state.preselectedDirection, INITIAL_ROUTE_NETWORK_SIZE_KM);
+    setStatus(`正在加载路线附近 OSM 路网（依次尝试 ${INITIAL_ROUTE_NETWORK_SIZE_ATTEMPTS_KM.join("km -> ")}km）...`);
     render();
 
     try {
@@ -259,21 +286,32 @@ async function loadNetworkForPreviewRoute() {
             data = cached.data;
             networkSource = "cache";
             state.networkCachePreset = cached.preset;
+            state.bounds = cached.bounds;
+            drawCenterSelection({ fit: false });
             setStatus(`已加载${cached.preset.label}缓存路网，开始生成本地 graph。`, false, true);
         } else {
             state.networkCachePreset = null;
-            const query = buildOverpassQuery(state.bounds);
             try {
-                data = await fetchOverpassJson(query);
+                const loaded = await fetchInitialRoadNetwork(initialBoundsCandidates);
+                data = loaded.data;
+                state.bounds = loaded.bounds;
+                state.networkInitialSizeKm = loaded.sizeKm;
+                drawCenterSelection({ fit: false });
                 networkSource = "overpass";
             } catch (error) {
+                state.bounds = initialBoundsCandidates.at(-1)?.bounds
+                    ?? buildInitialRouteBounds(state.preselectedStart, state.preselectedDirection, EXPANSION_ROUTE_NETWORK_SIZE_KM);
+                state.networkInitialSizeKm = state.bounds.sizeKm;
+                drawCenterSelection({ fit: false });
                 data = buildSyntheticGridOverpassData(state.bounds);
                 networkSource = "synthetic";
                 setStatus(`Overpass 暂不可用，已加载内置网格路网用于测试：${getMessage(error)}`, true);
             }
         }
         state.graph = buildRoadGraph(data);
+        state.networkData = data;
         state.networkSource = networkSource;
+        state.networkExpansionCount = 0;
         drawRoadNetwork();
         buildPreselectedInitialRoute();
     } catch (error) {
@@ -282,6 +320,45 @@ async function loadNetworkForPreviewRoute() {
         state.loadingNetwork = false;
         render();
     }
+}
+
+async function fetchInitialRoadNetwork(candidates) {
+    const errors = [];
+    for (const { bounds, requestedSizeKm } of candidates) {
+        const sizeKm = bounds.sizeKm;
+        setStatus(`正在请求 ${sizeKm.toFixed(1)}km x ${sizeKm.toFixed(1)}km OSM 路网...`);
+        try {
+            const startedAt = performance.now();
+            const data = await fetchOverpassJson(buildOverpassQuery(bounds), {
+                totalTimeoutMs: INITIAL_NETWORK_ATTEMPT_TIMEOUT_MS.get(requestedSizeKm) ?? OVERPASS_TOTAL_TIMEOUT_MS
+            });
+            recordNetworkRequestDuration(performance.now() - startedAt);
+            return { data, bounds, sizeKm };
+        } catch (error) {
+            errors.push(`${sizeKm}km: ${getMessage(error)}`);
+        }
+    }
+    throw new Error(`初始路网请求均失败：${errors.join(" | ")}`);
+}
+
+function buildInitialRouteBoundsCandidates(start, destination) {
+    const candidates = [];
+    const seenBounds = new Set();
+    for (const requestedSizeKm of INITIAL_ROUTE_NETWORK_SIZE_ATTEMPTS_KM) {
+        const bounds = buildInitialRouteBounds(start, destination, requestedSizeKm);
+        const key = getBoundsKey(bounds);
+        if (seenBounds.has(key)) continue;
+        seenBounds.add(key);
+        candidates.push({ bounds, requestedSizeKm });
+    }
+    return candidates;
+}
+
+function buildInitialRouteBounds(start, destination, minSizeKm) {
+    return buildBoundsAroundRoute(start, destination, {
+        minSizeKm,
+        routePaddingKm: INITIAL_ROUTE_NETWORK_PADDING_KM
+    });
 }
 
 async function tryLoadCachedRoadNetwork() {
@@ -301,7 +378,7 @@ async function tryLoadCachedRoadNetwork() {
                 || !isPointInsideBounds(state.preselectedDirection, cacheBounds)) {
                 continue;
             }
-            return { data, preset };
+            return { data, preset, bounds: cacheBounds };
         } catch {
             // Try another preset or fall back to Overpass.
         }
@@ -309,15 +386,15 @@ async function tryLoadCachedRoadNetwork() {
     return null;
 }
 
-async function fetchOverpassJson(query) {
+async function fetchOverpassJson(query, { totalTimeoutMs = OVERPASS_TOTAL_TIMEOUT_MS } = {}) {
     const errors = [];
     const startedAt = performance.now();
     for (const endpoint of OVERPASS_ENDPOINTS) {
         for (const method of ["POST", "GET"]) {
             try {
-                const remainingMs = OVERPASS_TOTAL_TIMEOUT_MS - (performance.now() - startedAt);
+                const remainingMs = totalTimeoutMs - (performance.now() - startedAt);
                 if (remainingMs <= 0) {
-                    throw new Error(`Overpass total timeout after ${OVERPASS_TOTAL_TIMEOUT_MS}ms`);
+                    throw new Error(`Overpass total timeout after ${totalTimeoutMs}ms`);
                 }
                 const response = method === "POST"
                     ? await fetchWithTimeout(endpoint, {
@@ -512,7 +589,7 @@ function moveToPreset(presetId) {
         el.routeJsonOutput.value = "";
     }
     state.selectedCenter = preset.center;
-    state.bounds = buildBoundsAroundCenter(state.selectedCenter, NETWORK_SIZE_KM);
+    state.bounds = buildBoundsAroundCenter(state.selectedCenter, INITIAL_ROUTE_NETWORK_SIZE_KM);
     state.map.setView([preset.center.lat, preset.center.lng], 13);
     drawCenterSelection({ fit: false });
     if (!state.route) {
@@ -523,6 +600,7 @@ function moveToPreset(presetId) {
 
 function clearTileSelection() {
     if (state.sim.running) return;
+    invalidateNetworkPrefetch();
     state.preselectedStart = null;
     state.preselectedDirection = null;
     state.selectedStart = null;
@@ -588,6 +666,7 @@ function buildInitialRouteTowardPoint(point) {
     updateRiderMarker();
     requestRouteElevation("initial");
     syncStreetView();
+    prefetchRoadNetworkForUpcomingDecision();
     if (state.streetViewLoaded) {
         setStreetViewFocusMode(true);
     }
@@ -835,13 +914,14 @@ function simulationTick() {
     const now = performance.now();
     const deltaSeconds = Math.max(0, (now - state.sim.lastTickMs) / 1000);
     state.sim.lastTickMs = now;
-    const speedKph = clamp(Number(el.speedInput.value), 5, 60);
+    const speedKph = clamp(Number(el.speedInput.value), 5, 120);
     state.sim.distanceMeters = Math.min(
         state.route.totalDistanceMeters,
         state.sim.distanceMeters + (speedKph / 3.6) * deltaSeconds
     );
     updateRiderMarker();
     syncStreetView();
+    prefetchRoadNetworkForUpcomingDecision();
     renderSimulation();
     if (state.sim.distanceMeters >= state.route.totalDistanceMeters) {
         handleDecisionPoint();
@@ -925,7 +1005,7 @@ function syncStreetView() {
     const grade = Number.isFinite(routeSample?.gradePercent) ? routeSample.gradePercent : 0;
     const streetViewUpdate = state.streetViewController.update(state.route, {
         distanceKm: distanceMeters / 1000,
-        speedKph: clamp(Number(el.speedInput.value), 5, 60),
+        speedKph: clamp(Number(el.speedInput.value), 5, 120),
         positionLat: point.lat,
         positionLong: point.lng
     });
@@ -1081,29 +1161,32 @@ function handleDecisionPoint() {
     continueFromDecision("straight", { isDefault: true });
 }
 
-function continueFromDecision(intent, { isDefault = false } = {}) {
-    if (!state.route || !state.graph) return;
+async function continueFromDecision(intent, { isDefault = false } = {}) {
+    if (!state.route || !state.graph || state.loadingNetwork) return;
 
-    const routeNodes = state.route.rawNodes ?? [];
-    const endPoint = routeNodes.at(-1);
-    const continuationNodeId = endPoint?.nodeId ?? endPoint?.continueNodeId;
-    if (!continuationNodeId) {
+    const continuation = getRouteContinuationContext();
+    if (!continuation) {
         setStatus("当前路线终点不是 OSM 路口，无法继续延伸。", true);
         state.sim.waitingAtDecision = false;
         resetTurnState();
         return;
     }
-    const basePoints = buildContinuationBasePoints(routeNodes, continuationNodeId);
-    const continuationPoint = basePoints.at(-1);
-
-    const incomingHeading = endPoint?.nodeId
-        ? getRouteHeadingAtDistance(Math.max(0, state.route.totalDistanceMeters - 20))
-        : bearingDegrees(endPoint, continuationPoint);
-    const edge = chooseNextEdge(continuationNodeId, incomingHeading, intent);
+    const { basePoints, continuationNodeId, continuationPoint, incomingHeading } = continuation;
+    let edge = chooseNextEdge(continuationNodeId, incomingHeading, intent);
+    if (!edge && isNearNetworkBoundary(continuationPoint)) {
+        const expanded = await expandRoadNetworkAt(continuationPoint);
+        if (!expanded || !state.route || !state.graph) {
+            state.sim.waitingAtDecision = true;
+            state.sim.pendingIntent = null;
+            render();
+            return;
+        }
+        edge = chooseNextEdge(continuationNodeId, incomingHeading, intent);
+    }
     if (!edge) {
         setStatus(`${getIntentLabel(intent)}不可用，前方没有合适道路。`, true);
-        state.sim.waitingAtDecision = false;
-        resetTurnState();
+        state.sim.waitingAtDecision = true;
+        state.sim.pendingIntent = null;
         render();
         return;
     }
@@ -1126,10 +1209,178 @@ function continueFromDecision(intent, { isDefault = false } = {}) {
     updateRiderMarker();
     requestRouteElevation("incremental");
     syncStreetView();
+    prefetchRoadNetworkForUpcomingDecision();
     const actionLabel = isDefault ? `默认${getIntentLabel(intent)}` : getIntentLabel(intent);
     el.intentText.textContent = `${actionLabel}已执行`;
     setStatus(`${actionLabel}已执行，继续前进 ${INTERSECTIONS_PER_SEGMENT} 个路口。`, false, true);
     render();
+}
+
+async function expandRoadNetworkAt(point) {
+    if (state.loadingNetwork || state.networkSource === "synthetic" || !state.networkData) {
+        return false;
+    }
+
+    const expansionBounds = buildBoundsAroundCenter(point, EXPANSION_ROUTE_NETWORK_SIZE_KM);
+    const requestKey = getBoundsKey(expansionBounds);
+    const prefetch = state.networkPrefetch;
+    if (prefetch?.key === requestKey) {
+        if (prefetch.status === "ready") return true;
+        if (prefetch.status === "loading") {
+            setStatus("已到路网边缘，正在等待前方路网预读完成...", false, true);
+            render();
+            return prefetch.promise;
+        }
+    }
+
+    setStatus(`已到路网边缘，正在加载前方 ${EXPANSION_ROUTE_NETWORK_SIZE_KM}km OSM 路网...`);
+    render();
+    return requestRoadNetworkExpansion(expansionBounds, { isPrefetch: false });
+}
+
+function prefetchRoadNetworkForUpcomingDecision() {
+    if (!state.route || state.loadingNetwork || state.networkSource === "synthetic" || !state.networkData) return;
+    const continuation = getRouteContinuationContext();
+    const marginMeters = getNetworkPrefetchMarginMeters();
+    if (!continuation || !isNearNetworkBoundary(continuation.continuationPoint, state.bounds, marginMeters)) {
+        return;
+    }
+
+    const expansionBounds = buildBoundsAroundCenter(continuation.continuationPoint, EXPANSION_ROUTE_NETWORK_SIZE_KM);
+    const requestKey = getBoundsKey(expansionBounds);
+    const prefetch = state.networkPrefetch;
+    if (prefetch?.key === requestKey && (prefetch.status === "loading" || prefetch.status === "ready")) {
+        return;
+    }
+
+    setStatus(`正在预读前方 ${EXPANSION_ROUTE_NETWORK_SIZE_KM}km OSM 路网（距边界约 ${Math.round(marginMeters)}m），抵达路口时可直接继续。`, false, true);
+    void requestRoadNetworkExpansion(expansionBounds, { isPrefetch: true });
+}
+
+function requestRoadNetworkExpansion(expansionBounds, { isPrefetch }) {
+    const key = getBoundsKey(expansionBounds);
+    const generation = state.networkGeneration;
+    const startedAt = performance.now();
+    const request = fetchOverpassJson(buildOverpassQuery(expansionBounds))
+        .then((data) => {
+            if (generation !== state.networkGeneration || !state.networkData) {
+                return false;
+            }
+            recordNetworkRequestDuration(performance.now() - startedAt);
+            state.networkData = mergeOverpassData(state.networkData, data);
+            state.graph = buildRoadGraph(state.networkData);
+            state.bounds = mergeBounds(state.bounds, expansionBounds);
+            state.networkExpansionCount += 1;
+            if (state.networkSource === "cache" || state.networkSource === "cache+overpass") {
+                state.networkSource = "cache+overpass";
+            } else {
+                state.networkSource = "overpass";
+            }
+            state.networkPrefetch = { key, bounds: expansionBounds, status: "ready", promise: Promise.resolve(true) };
+            drawCenterSelection({ fit: false });
+            drawRoadNetwork();
+            setStatus(
+                isPrefetch
+                    ? `前方 ${EXPANSION_ROUTE_NETWORK_SIZE_KM}km 路网已预读，抵达路口可直接继续。`
+                    : `已扩展前方 ${EXPANSION_ROUTE_NETWORK_SIZE_KM}km 路网，继续执行${getIntentLabel(state.sim.pendingIntent ?? "straight")}。`,
+                false,
+                true
+            );
+            render();
+            return true;
+        })
+        .catch((error) => {
+            if (generation === state.networkGeneration) {
+                state.networkPrefetch = { key, bounds: expansionBounds, status: "failed", promise: Promise.resolve(false) };
+                setStatus(
+                    isPrefetch
+                        ? `前方路网预读失败，抵达边界时会重试：${getMessage(error)}`
+                        : `前方路网加载失败，已停在当前边界：${getMessage(error)}`,
+                    true
+                );
+                render();
+            }
+            return false;
+        });
+
+    state.networkPrefetch = { key, bounds: expansionBounds, status: "loading", promise: request };
+    return request;
+}
+
+function getRouteContinuationContext() {
+    const routeNodes = state.route?.rawNodes ?? [];
+    const endPoint = routeNodes.at(-1);
+    const continuationNodeId = endPoint?.nodeId ?? endPoint?.continueNodeId;
+    if (!continuationNodeId) return null;
+
+    const basePoints = buildContinuationBasePoints(routeNodes, continuationNodeId);
+    const continuationPoint = basePoints.at(-1);
+    if (!continuationPoint) return null;
+    const incomingHeading = endPoint?.nodeId
+        ? getRouteHeadingAtDistance(Math.max(0, state.route.totalDistanceMeters - 20))
+        : bearingDegrees(endPoint, continuationPoint);
+    return { basePoints, continuationNodeId, continuationPoint, incomingHeading };
+}
+
+function getBoundsKey(bounds) {
+    return [bounds.south, bounds.west, bounds.north, bounds.east]
+        .map((value) => value.toFixed(6))
+        .join(":");
+}
+
+function getNetworkPrefetchMarginMeters() {
+    const speedMetersPerSecond = clamp(Number(el.speedInput.value), 5, 120) / 3.6;
+    const predictedWaitSeconds = (state.networkObservedLatencyMs + NETWORK_PREFETCH_LATENCY_BUFFER_MS) / 1000;
+    return clamp(
+        speedMetersPerSecond * predictedWaitSeconds,
+        NETWORK_PREFETCH_MIN_MARGIN_METERS,
+        NETWORK_PREFETCH_MAX_MARGIN_METERS
+    );
+}
+
+function recordNetworkRequestDuration(durationMs) {
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return;
+    state.networkObservedLatencyMs = Math.round(
+        state.networkObservedLatencyMs * 0.6 + durationMs * 0.4
+    );
+}
+
+function invalidateNetworkPrefetch() {
+    state.networkGeneration += 1;
+    state.networkPrefetch = null;
+}
+
+function mergeOverpassData(currentData, nextData) {
+    const elementsById = new Map();
+    for (const element of currentData?.elements ?? []) {
+        elementsById.set(`${element.type}:${element.id}`, element);
+    }
+    for (const element of nextData?.elements ?? []) {
+        elementsById.set(`${element.type}:${element.id}`, element);
+    }
+    return { elements: [...elementsById.values()] };
+}
+
+function mergeBounds(first, second) {
+    return {
+        south: Math.min(first.south, second.south),
+        west: Math.min(first.west, second.west),
+        north: Math.max(first.north, second.north),
+        east: Math.max(first.east, second.east)
+    };
+}
+
+function isNearNetworkBoundary(point, bounds = state.bounds, marginMeters = NETWORK_BOUNDARY_MARGIN_METERS) {
+    if (!point || !bounds) return false;
+    const metersPerDegreeLat = 111320;
+    const metersPerDegreeLng = metersPerDegreeLat * Math.cos(toRadians(point.lat));
+    const distances = [
+        (point.lat - bounds.south) * metersPerDegreeLat,
+        (bounds.north - point.lat) * metersPerDegreeLat,
+        (point.lng - bounds.west) * metersPerDegreeLng,
+        (bounds.east - point.lng) * metersPerDegreeLng
+    ];
+    return Math.min(...distances) <= marginMeters;
 }
 
 function buildContinuationBasePoints(routeNodes, continuationNodeId) {
@@ -1366,12 +1617,16 @@ function resetAll() {
     state.preselectedDirection = null;
     state.selectedStart = null;
     state.graph = null;
+    state.networkData = null;
     state.networkSource = null;
     state.networkCachePreset = null;
+    state.networkExpansionCount = 0;
+    state.networkInitialSizeKm = null;
+    invalidateNetworkPrefetch();
     state.route = null;
     state.sim.distanceMeters = 0;
     state.selectedCenter = DEFAULT_CENTER;
-    state.bounds = buildBoundsAroundCenter(state.selectedCenter, NETWORK_SIZE_KM);
+    state.bounds = buildBoundsAroundCenter(state.selectedCenter, INITIAL_ROUTE_NETWORK_SIZE_KM);
     resetTurnState();
     if (state.startMarker) {
         state.startMarker.remove();
@@ -1483,9 +1738,11 @@ function setStreetViewFocusMode(enabled) {
 }
 
 function getNetworkSourceLabel() {
-    if (state.networkSource === "cache") return `${state.networkCachePreset?.label ?? "本地"}缓存路网`;
-    if (state.networkSource === "overpass") return "实时 OSM 路网";
-    if (state.networkSource === "synthetic" || state.graph?.synthetic) return "内置网格 fallback";
+    const expansionText = state.networkExpansionCount > 0 ? ` + ${state.networkExpansionCount} 次前方扩网` : "";
+    if (state.networkSource === "cache") return `${state.networkCachePreset?.label ?? "本地"}缓存路网（${NETWORK_SIZE_KM}km）`;
+    if (state.networkSource === "cache+overpass") return `${state.networkCachePreset?.label ?? "本地"}缓存 + 前方 OSM 扩网（${EXPANSION_ROUTE_NETWORK_SIZE_KM}km）`;
+    if (state.networkSource === "overpass") return `实时 OSM 路网（初始 ${state.networkInitialSizeKm ?? INITIAL_ROUTE_NETWORK_SIZE_KM}km${expansionText}）`;
+    if (state.networkSource === "synthetic" || state.graph?.synthetic) return `内置网格 fallback（${state.networkInitialSizeKm ?? EXPANSION_ROUTE_NETWORK_SIZE_KM}km）`;
     return "OSM 路网";
 }
 

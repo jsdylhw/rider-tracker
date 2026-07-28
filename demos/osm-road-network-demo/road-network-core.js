@@ -3,6 +3,9 @@ export const UJI_CENTER = { lat: 34.8898, lng: 135.8104 };
 export const DEFAULT_CENTER = SAN_FRANCISCO_CENTER;
 export const WEB_MERCATOR_MAX_LAT = 85.05112878;
 export const NETWORK_SIZE_KM = 10;
+export const INITIAL_ROUTE_NETWORK_SIZE_KM = 4;
+export const INITIAL_ROUTE_NETWORK_SIZE_ATTEMPTS_KM = [4, 3, 2];
+export const EXPANSION_ROUTE_NETWORK_SIZE_KM = 2;
 export const SAN_FRANCISCO_ROAD_NETWORK_CACHE_URL = "./fixtures/san-francisco-road-network.json";
 export const UJI_ROAD_NETWORK_CACHE_URL = "./fixtures/uji-road-network.json";
 export const ROAD_NETWORK_PRESETS = [
@@ -43,8 +46,27 @@ export function buildBoundsAroundCenter(center, sizeKm = NETWORK_SIZE_KM) {
         south: clamp(center.lat - halfMeters / metersPerDegreeLat, -WEB_MERCATOR_MAX_LAT, WEB_MERCATOR_MAX_LAT),
         west: clampLongitude(center.lng - halfMeters / metersPerDegreeLng),
         north: clamp(center.lat + halfMeters / metersPerDegreeLat, -WEB_MERCATOR_MAX_LAT, WEB_MERCATOR_MAX_LAT),
-        east: clampLongitude(center.lng + halfMeters / metersPerDegreeLng)
+        east: clampLongitude(center.lng + halfMeters / metersPerDegreeLng),
+        sizeKm
     };
+}
+
+export function buildBoundsAroundRoute(start, destination, {
+    minSizeKm = NETWORK_SIZE_KM,
+    routePaddingKm = 0.4
+} = {}) {
+    const safeStart = normalizeLatLng(start);
+    const safeDestination = normalizeLatLng(destination);
+    const center = {
+        lat: (safeStart.lat + safeDestination.lat) / 2,
+        lng: (safeStart.lng + safeDestination.lng) / 2
+    };
+    const metersPerDegreeLat = 111320;
+    const metersPerDegreeLng = Math.max(1, metersPerDegreeLat * Math.cos(toRadians(center.lat)));
+    const latitudeSpanKm = Math.abs(safeDestination.lat - safeStart.lat) * metersPerDegreeLat / 1000;
+    const longitudeSpanKm = Math.abs(safeDestination.lng - safeStart.lng) * metersPerDegreeLng / 1000;
+    const sizeKm = Math.max(minSizeKm, latitudeSpanKm + routePaddingKm, longitudeSpanKm + routePaddingKm);
+    return buildBoundsAroundCenter(center, sizeKm);
 }
 
 export function buildOverpassQuery(bounds) {
