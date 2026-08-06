@@ -1,3 +1,5 @@
+import { buildFtmsIndoorBikeSimulationPacket } from "../../domain/physics/ftms-simulation.js";
+
 const FTMS_SERVICE = "00001826-0000-1000-8000-00805f9b34fb";
 const FTMS_CONTROL_POINT = "00002ad9-0000-1000-8000-00805f9b34fb";
 const INDOOR_BIKE_DATA = "00002ad2-0000-1000-8000-00805f9b34fb";
@@ -26,7 +28,7 @@ const FTMS_RESPONSE_RESULT = {
 const DEFAULT_SIMULATION_CONFIG = {
     windSpeedMps: 0,
     crr: 0.004,
-    cw: 0.51
+    cda: 0.35
 };
 
 const ERG_CONFIRMATION_TIMEOUT_RETRIES = 1;
@@ -389,17 +391,22 @@ export function createTrainerFtms({ onStatus, onData }) {
      * 参数: Inclination (SINT16, 精度 0.1%)
      * 例如：5.5% -> 55 (0x0037)
      */
-    async function setTargetGrade(gradePercent) {
+    async function setTargetGrade(gradePercent, simulationConfig = {}) {
         await activateControl({ controlModeLabel: "坡度模拟" });
         const clampedGrade = Math.max(capabilities.minInclinePercent, Math.min(capabilities.maxInclinePercent, gradePercent));
+        const nextSimulation = {
+            ...DEFAULT_SIMULATION_CONFIG,
+            ...simulationConfig,
+            gradePercent: clampedGrade
+        };
 
         try {
-            await sendIndoorBikeSimulation(clampedGrade);
+            const simulation = await sendIndoorBikeSimulation(nextSimulation);
             return {
                 status: "written",
                 path: "0x11",
                 confirmed: false,
-                gradePercent: clampedGrade
+                ...simulation
             };
         } catch (simulationError) {
             console.warn("[FTMS] Indoor Bike Simulation write failed, trying inclination fallback.", simulationError);
@@ -504,22 +511,14 @@ export function createTrainerFtms({ onStatus, onData }) {
         };
     }
 
-    async function sendIndoorBikeSimulation(gradePercent) {
-        const gradeRaw = Math.round(gradePercent * 100); // 0.01%
-        const windRaw = Math.round(DEFAULT_SIMULATION_CONFIG.windSpeedMps * 1000); // 0.001 m/s
-        const crrRaw = Math.max(0, Math.min(255, Math.round(DEFAULT_SIMULATION_CONFIG.crr * 10000))); // 0.0001
-        const cwRaw = Math.max(0, Math.min(255, Math.round(DEFAULT_SIMULATION_CONFIG.cw * 100))); // 0.01 kg/m
-
-        const buffer = new ArrayBuffer(7);
-        const view = new DataView(buffer);
-        view.setUint8(0, FTMS_OPCODES.SET_INDOOR_BIKE_SIMULATION);
-        view.setInt16(1, windRaw, true);
-        view.setInt16(3, gradeRaw, true);
-        view.setUint8(5, crrRaw);
-        view.setUint8(6, cwRaw);
-
-        console.log(`[FTMS] Sending Simulation Grade: ${gradePercent}% (gradeRaw: ${gradeRaw})`);
-        await sendCommand(new Uint8Array(buffer));
+    async function sendIndoorBikeSimulation(config) {
+        const { packet, simulation } = buildFtmsIndoorBikeSimulationPacket(config);
+        console.log(
+            `[FTMS] Sending Simulation: grade ${simulation.gradePercent.toFixed(2)}%, `
+            + `wind ${simulation.windSpeedMps.toFixed(2)}m/s, Crr ${simulation.crr.toFixed(4)}, Cw ${simulation.cw.toFixed(3)}kg/m`
+        );
+        await sendCommand(packet);
+        return simulation;
     }
 
     function isFtmsConfirmationTimeout(error, expectedRequestOpcode) {

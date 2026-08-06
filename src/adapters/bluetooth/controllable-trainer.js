@@ -66,8 +66,8 @@ export function createControllableTrainer({
         await externalPowerMeter.toggle();
     }
 
-    async function setTargetGrade(gradePercent) {
-        return trainerFtms.setTargetGrade(gradePercent);
+    async function setTargetGrade(gradePercent, simulationConfig) {
+        return trainerFtms.setTargetGrade(gradePercent, simulationConfig);
     }
 
     async function activateControl(controlMode) {

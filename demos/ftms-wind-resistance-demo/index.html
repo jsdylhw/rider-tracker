@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTMS 风阻模拟验证</title>
+    <style>
+        :root { color-scheme: dark; --bg: #101827; --panel: #172033; --field: #202d45; --border: #34435e; --text: #eaf0fa; --muted: #aab8cf; --accent: #57d39b; --warn: #f4b860; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
+        main { width: min(1100px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 48px; }
+        h1, h2, p { margin-top: 0; }
+        h1 { font-size: 28px; margin-bottom: 8px; }
+        .hint, .status { color: var(--muted); }
+        .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-top: 16px; }
+        .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+        label { display: grid; gap: 6px; color: var(--muted); font-size: 14px; }
+        input, select, button { font: inherit; }
+        input, select { min-width: 0; padding: 9px 10px; color: var(--text); border: 1px solid var(--border); border-radius: 6px; background: var(--field); }
+        .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
+        button { padding: 9px 13px; border: 0; border-radius: 6px; color: var(--text); background: #31405c; cursor: pointer; }
+        button.primary { background: var(--accent); color: #0c251d; font-weight: 700; }
+        button:disabled { opacity: .5; cursor: not-allowed; }
+        .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+        .metric { padding: 13px; background: var(--field); border-radius: 7px; }
+        .metric strong { display: block; margin-top: 6px; font-size: 20px; color: var(--text); }
+        .packet { margin: 14px 0 0; padding: 12px; overflow-wrap: anywhere; border-radius: 7px; background: #0b1220; color: #9ee7c1; font-family: ui-monospace, monospace; }
+        .warning { color: var(--warn); }
+        textarea { width: 100%; min-height: 220px; resize: vertical; margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 7px; color: var(--text); background: #0b1220; font-family: ui-monospace, monospace; }
+        .consent { display: flex; gap: 8px; align-items: center; color: var(--warn); }
+        @media (max-width: 720px) { .grid, .metrics { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 440px) { main { width: min(100% - 24px, 1100px); padding-top: 20px; } .grid, .metrics { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>FTMS 风阻模拟验证</h1>
+        <p class="hint">离线预览 FTMS <code>0x11 Set Indoor Bike Simulation</code> 包；连接骑行台后可在明确确认下写入实机。风向表示“风从哪里吹来”。</p>
+
+        <section class="card">
+            <h2>模拟输入</h2>
+            <div class="grid">
+                <label>骑行方向（0° 北）<input id="riderHeading" type="number" min="0" max="359" value="0"></label>
+                <label>风从方向（0° 北）<input id="windFrom" type="number" min="0" max="359" value="0"></label>
+                <label>风速 m/s<input id="windSpeed" type="number" min="0" max="32" step="0.5" value="4"></label>
+                <label>坡度 %<input id="grade" type="number" min="-20" max="20" step="0.1" value="0"></label>
+                <label>CdA m²<input id="cda" type="number" min="0.2" max="0.8" step="0.01" value="0.35"></label>
+                <label>Crr<input id="crr" type="number" min="0.001" max="0.02" step="0.0001" value="0.004"></label>
+            </div>
+            <div class="controls">
+                <button type="button" data-preset="headwind">逆风</button>
+                <button type="button" data-preset="tailwind">顺风</button>
+                <button type="button" data-preset="crosswind">侧风</button>
+                <button id="connectButton" class="primary" type="button">连接骑行台</button>
+                <button id="disconnectButton" type="button" disabled>断开</button>
+            </div>
+            <p id="status" class="status">未连接。所有参数变化都只会更新离线预览。</p>
+        </section>
+
+        <section class="card">
+            <h2>FTMS 包预览</h2>
+            <div class="metrics">
+                <div class="metric"><span>纵向风速</span><strong id="longitudinalWind">--</strong></div>
+                <div class="metric"><span>效果</span><strong id="windEffect">--</strong></div>
+                <div class="metric"><span>FTMS Cw</span><strong id="cw">--</strong></div>
+                <div class="metric"><span>原始风速字段</span><strong id="windRaw">--</strong></div>
+            </div>
+            <div id="packet" class="packet">--</div>
+            <p class="hint">FTMS 没有侧风字段：此页面按骑行方向将任意风向投影成一个有符号的纵向风速。正值为逆风，负值为顺风，纯侧风约为 0。</p>
+        </section>
+
+        <section class="card">
+            <h2>写入实机</h2>
+            <label class="consent"><input id="allowWrite" type="checkbox"> 我确认要向已连接的骑行台写入模拟参数</label>
+            <div class="controls"><button id="sendButton" class="primary" type="button" disabled>请求控制并发送 0x11</button></div>
+            <p class="warning">请在安全状态下测试。设备可能接受包却忽略风速字段，或完全不支持 0x11；日志会记录控制点响应。</p>
+            <textarea id="log" readonly aria-label="FTMS 日志"></textarea>
+        </section>
+    </main>
+    <script type="module" src="./app.js"></script>
+</body>
+</html>

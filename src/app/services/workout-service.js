@@ -310,6 +310,14 @@ function deriveRuntime(state, mode, gradeSimulation, customWorkoutTarget) {
         route: state.liveRide.session?.route ?? state.route,
         distanceMeters: liveDistanceMeters,
         previousTargetGradePercent: state.workout.runtime.targetTrainerGradePercent ?? 0,
+        previousTargetWindSpeedMps: state.workout.runtime.targetWindSpeedMps ?? 0,
+        previousTargetCrr: state.workout.runtime.targetCrr ?? null,
+        previousTargetCda: state.workout.runtime.targetCda ?? null,
+        simulation: {
+            windSpeedMps: state.settings.windSpeed,
+            crr: state.settings.crr,
+            cda: state.settings.cda
+        },
         config: gradeSimulation,
         active: false
     });

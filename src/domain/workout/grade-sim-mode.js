@@ -11,6 +11,10 @@ export function buildGradeSimulationState({
     route,
     distanceMeters,
     previousTargetGradePercent = 0,
+    previousTargetWindSpeedMps = 0,
+    previousTargetCrr = null,
+    previousTargetCda = null,
+    simulation = {},
     config,
     active = false,
     rideId = null,
@@ -38,6 +42,19 @@ export function buildGradeSimulationState({
         config.maxDownhillPercent,
         config.maxUphillPercent
     );
+    const targetWindSpeedMps = normalizeNumber(simulation.windSpeedMps, 0);
+    const targetCrr = normalizeNumber(simulation.crr, 0.004);
+    const targetCda = normalizeNumber(simulation.cda, 0.35);
+    const shouldDispatch = hasSimulationTargetChanged({
+        targetTrainerGradePercent,
+        targetWindSpeedMps,
+        targetCrr,
+        targetCda,
+        previousTargetGradePercent,
+        previousTargetWindSpeedMps,
+        previousTargetCrr,
+        previousTargetCda
+    });
 
     return {
         available: true,
@@ -45,22 +62,28 @@ export function buildGradeSimulationState({
         currentGradePercent,
         lookaheadGradePercent,
         targetTrainerGradePercent,
+        targetWindSpeedMps,
+        targetCrr,
+        targetCda,
         targetErgPowerWatts: null,
         targetResistanceLevel: null,
-        pendingTrainerCommand: active && Math.abs(targetTrainerGradePercent - previousTargetGradePercent) >= 0.05
+        pendingTrainerCommand: active && shouldDispatch
             ? createTrainerCommand({
                 controlMode: TRAINER_CONTROL_MODES.SIM,
                 type: TRAINER_COMMAND_TYPES.SET_SIM_GRADE,
                 payload: {
-                    gradePercent: targetTrainerGradePercent
+                    gradePercent: targetTrainerGradePercent,
+                    windSpeedMps: targetWindSpeedMps,
+                    crr: targetCrr,
+                    cda: targetCda
                 },
                 rideId,
                 sequence: commandSequence
             })
             : null,
         controlStatus: active
-            ? `坡度模拟中：当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}（实时跟随当前坡度）。`
-            : `坡度模拟待命：当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，预估目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}（实时跟随当前坡度）。`
+            ? `坡度模拟中：当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}，风速 ${formatWindSpeed(targetWindSpeedMps)}。`
+            : `坡度模拟待命：当前坡度 ${formatSignedGrade(currentGradePercent)}，前方坡度 ${formatSignedGrade(lookaheadGradePercent)}，预估目标模拟坡度 ${formatSignedGrade(targetTrainerGradePercent)}，风速 ${formatWindSpeed(targetWindSpeedMps)}。`
     };
 }
 
@@ -97,6 +120,9 @@ function createUnavailableState(controlStatus) {
         currentGradePercent: 0,
         lookaheadGradePercent: 0,
         targetTrainerGradePercent: 0,
+        targetWindSpeedMps: 0,
+        targetCrr: 0.004,
+        targetCda: 0.35,
         targetErgPowerWatts: null,
         targetResistanceLevel: null,
         pendingTrainerCommand: null,
@@ -107,4 +133,31 @@ function createUnavailableState(controlStatus) {
 function formatSignedGrade(value) {
     const rounded = Math.round(value * 10) / 10;
     return `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)}%`;
+}
+
+function hasSimulationTargetChanged({
+    targetTrainerGradePercent,
+    targetWindSpeedMps,
+    targetCrr,
+    targetCda,
+    previousTargetGradePercent,
+    previousTargetWindSpeedMps,
+    previousTargetCrr,
+    previousTargetCda
+}) {
+    return Math.abs(targetTrainerGradePercent - previousTargetGradePercent) >= 0.05
+        || Math.abs(targetWindSpeedMps - previousTargetWindSpeedMps) >= 0.05
+        || previousTargetCrr == null
+        || Math.abs(targetCrr - previousTargetCrr) >= 0.00005
+        || previousTargetCda == null
+        || Math.abs(targetCda - previousTargetCda) >= 0.005;
+}
+
+function normalizeNumber(value, fallback) {
+    return Number.isFinite(Number(value)) ? Number(value) : fallback;
+}
+
+function formatWindSpeed(value) {
+    const rounded = Math.round(value * 10) / 10;
+    return `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)} m/s`;
 }
