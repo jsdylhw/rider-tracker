@@ -53,6 +53,7 @@ function createElements() {
         svPano2: createFakeElement(),
         immersiveStreetViewBtn: createFakeElement({ hidden: true }),
         loadStreetViewBtn: createFakeElement({ hidden: true }),
+        downloadStreetViewTraceBtn: createFakeElement({ hidden: true }),
         requestRouteElevationBtn: createFakeElement({ hidden: true }),
         explorationTurnControls: createFakeElement({ hidden: true }),
         explorationTurnStatus: createFakeElement(),
@@ -282,6 +283,7 @@ export const suite = {
 
                 assertEqual(elements.immersiveStreetViewBtn.hidden, false);
                 assertEqual(elements.immersiveStreetViewBtn.textContent, "进入沉浸街景");
+                assertEqual(elements.downloadStreetViewTraceBtn.hidden, false);
             }
         },
         {

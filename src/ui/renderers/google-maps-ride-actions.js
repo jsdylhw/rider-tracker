@@ -14,6 +14,7 @@ export function createGoogleMapsRideActions({
     function bindEvents(store) {
         elements.loadStreetViewBtn?.addEventListener("click", () => void requestStreetView(store));
         elements.requestRouteElevationBtn?.addEventListener("click", () => void requestRouteElevation(store));
+        elements.downloadStreetViewTraceBtn?.addEventListener("click", () => visuals.downloadStreetViewTrace?.());
     }
 
     function hasStreetViewPresentation() {
@@ -33,6 +34,9 @@ export function createGoogleMapsRideActions({
             elements.loadStreetViewBtn.textContent = actionState.streetViewLoading
                 ? "正在加载街景..."
                 : debugStreetViewFallback ? "重新加载街景" : "加载街景";
+        }
+        if (elements.downloadStreetViewTraceBtn) {
+            elements.downloadStreetViewTraceBtn.hidden = !visuals.hasStreetView();
         }
 
         const isExplorationRoute = route?.source === "osm-exploration";

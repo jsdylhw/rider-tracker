@@ -4,6 +4,8 @@ import {
     createStreetViewController,
     loadGoogleMapsForStreetView
 } from "./street-view-controller.js";
+import { createStreetViewRuntimeTrace } from "./street-view-runtime-trace.js";
+import { downloadJson } from "../../shared/format.js";
 
 export function createRideVisualsController({ elements, googleMapsConfig = null }) {
     const mapController = createMapController({
@@ -11,12 +13,23 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         dashboardElement: elements.rideDashboardMap
     });
     let streetViewController = null;
+    const streetViewTrace = createStreetViewRuntimeTrace();
 
     async function enableStreetView({ apiKey, container1, container2 }) {
         await loadGoogleMapsForStreetView(apiKey);
         googleMapsConfig?.lockApiKey?.(apiKey);
         streetViewController?.destroy();
-        streetViewController = createStreetViewController({ container1, container2 });
+        streetViewTrace.clear();
+        streetViewTrace.record({
+            event: "street-view-enable",
+            message: "街景服务初始化完成，准备创建 controller",
+            hasConfiguredApiKey: Boolean(apiKey)
+        });
+        streetViewController = createStreetViewController({
+            container1,
+            container2,
+            onTrace: streetViewTrace.record
+        });
     }
 
     async function enableConfiguredStreetView({ container1, container2 }) {
@@ -53,6 +66,11 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         }
     }
 
+    function downloadStreetViewTrace() {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        downloadJson(`rider-tracker-street-view-trace-${timestamp}.json`, streetViewTrace.snapshot());
+    }
+
     function setPlannerClickHandler(handler) {
         mapController.setPlannerClickHandler(handler);
     }
@@ -87,6 +105,7 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         enableConfiguredStreetView,
         hasStreetView,
         getGoogleMapsConfig,
+        downloadStreetViewTrace,
         syncRoute,
         syncMap,
         syncStreetView,

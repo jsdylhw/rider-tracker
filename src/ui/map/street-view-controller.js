@@ -54,8 +54,22 @@ export function createStreetViewController({ container1, container2, onTrace } =
     let povAnimationFrame = null;
 
     bindUserInteractionPause(container1);
+    trace("controller-ready", "Street View controller 已创建");
 
     function update(target) {
+        const result = updateNavigation(target);
+        trace("sync", "Street View 同步位置", {
+            navigation: result.navigation,
+            activePanoId: panorama.getPano?.() || activePanoId || null,
+            pendingPanoId: panoLoad?.pano ?? null,
+            distanceMeters: Number.isFinite(target?.distanceMeters) ? Math.round(target.distanceMeters) : null,
+            speedKph: Number.isFinite(target?.speedKph) ? Number(target.speedKph.toFixed(1)) : null,
+            heading: Number.isFinite(target?.heading) ? Math.round(target.heading) : null
+        });
+        return result;
+    }
+
+    function updateNavigation(target) {
         if (!isStreetViewTarget(target)) return { navigation: "waiting" };
         latestTarget = target;
 
@@ -232,6 +246,14 @@ export function createStreetViewController({ container1, container2, onTrace } =
         cancelReadyWait?.();
         cancelReadyWait = null;
         panoLoad = { pano, reason, handoffTarget, startedAt: Date.now() };
+        trace("pano-load-start", `开始加载 pano ${pano}`, {
+            pano,
+            reason,
+            previousPanoId: panorama.getPano?.() || activePanoId || null,
+            distanceMeters: Number.isFinite(handoffTarget?.distanceMeters)
+                ? Math.round(handoffTarget.distanceMeters)
+                : null
+        });
     }
 
     function waitForPanoReady(expectedPanoId) {
@@ -251,11 +273,26 @@ export function createStreetViewController({ container1, container2, onTrace } =
             trace("pano-ready", `pano ${expectedPanoId} 已就绪`, { source, durationMs });
         };
         const listener = googleEvent.addListener(panorama, "status_changed", () => {
-            if (panorama.getPano?.() === expectedPanoId && panorama.getStatus?.() === "OK") {
+            const currentPanoId = panorama.getPano?.();
+            const status = panorama.getStatus?.();
+            trace("pano-status", `pano ${expectedPanoId} 状态更新: ${status ?? "unknown"}`, {
+                expectedPanoId,
+                currentPanoId: currentPanoId ?? null,
+                status: status ?? null
+            });
+            if (currentPanoId === expectedPanoId && status === "OK") {
                 finish("status");
             }
         });
-        const timeoutId = window.setTimeout(() => finish("timeout"), PANO_READY_TIMEOUT_MS);
+        const timeoutId = window.setTimeout(() => {
+            trace("pano-ready-timeout", `pano ${expectedPanoId} 等待就绪超时`, {
+                expectedPanoId,
+                currentPanoId: panorama.getPano?.() ?? null,
+                status: panorama.getStatus?.() ?? null,
+                durationMs: Date.now() - (panoLoad?.startedAt ?? Date.now())
+            });
+            finish("timeout");
+        }, PANO_READY_TIMEOUT_MS);
         cancelReadyWait = () => {
             googleEvent.removeListener(listener);
             window.clearTimeout(timeoutId);
@@ -339,6 +376,10 @@ export function createStreetViewController({ container1, container2, onTrace } =
     }
 
     function destroy() {
+        trace("controller-destroy", "Street View controller 已销毁", {
+            activePanoId: panorama.getPano?.() || activePanoId || null,
+            pendingPanoId: panoLoad?.pano ?? null
+        });
         cancelReadyWait?.();
         cancelPovAnimation();
         listeners.forEach((listener) => googleEvent.removeListener(listener));

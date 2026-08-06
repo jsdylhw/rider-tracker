@@ -5,6 +5,7 @@ import { suite as osmRoadNetworkSuite } from "./unit/osm-road-network.test.js";
 import { suite as mapControllerSuite } from "./unit/map-controller.test.js";
 import { suite as overpassClientSuite } from "./unit/overpass-client.test.js";
 import { suite as streetViewTargetSuite } from "./unit/street-view-target.test.js";
+import { suite as streetViewRuntimeTraceSuite } from "./unit/street-view-runtime-trace.test.js";
 import { suite as googleElevationClientSuite } from "./unit/google-elevation-client.test.js";
 import { suite as googleMapsConfigServiceSuite } from "./unit/google-maps-config-service.test.js";
 import { suite as googleMapsServiceModalSuite } from "./unit/google-maps-service-modal.test.js";
@@ -65,6 +66,7 @@ const suites = [
     mapControllerSuite,
     overpassClientSuite,
     streetViewTargetSuite,
+    streetViewRuntimeTraceSuite,
     googleElevationClientSuite,
     googleMapsConfigServiceSuite,
     googleMapsServiceModalSuite,
