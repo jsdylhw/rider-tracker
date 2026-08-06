@@ -153,5 +153,13 @@ function sanitizeUserProfile(profile) {
         next[key] = Math.min(max, Math.max(min, value));
     }
 
+    if (profile.google_api !== undefined && profile.google_api !== null) {
+        if (typeof profile.google_api !== "string") {
+            throw new Error("Invalid user profile field: google_api");
+        }
+        const apiKey = profile.google_api.trim();
+        if (apiKey) next.google_api = apiKey;
+    }
+
     return next;
 }

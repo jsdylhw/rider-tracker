@@ -34,8 +34,8 @@ if (inferredInitialUiMode !== store.getState().uiMode) {
 }
 
 // 2. 创建业务服务 (Services)
-const userService = createUserService({ store });
 const googleMapsConfig = createGoogleMapsConfigService();
+const userService = createUserService({ store, googleMapsConfig });
 const routeService = createRouteService({ store, googleMapsConfig });
 const deviceService = createDeviceService({ store });
 const exportService = createExportService({ store });
@@ -65,6 +65,7 @@ const mainView = createMainView({
             addSegment: routeService.addSegment,
             resetRoute: routeService.resetRoute,
             importGpx: routeService.importGpx,
+            createMapDrawRoute: routeService.createMapDrawRoute,
             invalidatePendingMapRoute: routeService.invalidatePendingMapRoute,
             planMapRoute: routeService.planMapRoute,
             queueExplorationTurn: routeService.queueExplorationTurn,

@@ -55,18 +55,21 @@ export function createMainView({ store, pipController, actions }) {
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
     const rideVisuals = createRideVisualsController({ elements, googleMapsConfig: googleMaps });
+    const googleMapsServiceModal = createGoogleMapsServiceModal({ elements, googleMapsConfig: googleMaps });
     const routeRenderer = createRouteRenderer({
         elements,
         rideVisuals,
         onAddSegment: route.addSegment,
         onResetRoute: route.resetRoute,
         onImportGpx: route.importGpx,
+        onCreateMapDrawRoute: route.createMapDrawRoute,
         onInvalidateMapRoute: route.invalidatePendingMapRoute,
         onPlanMapRoute: route.planMapRoute,
+        onRequestRouteElevation: route.requestCurrentRouteElevation,
+        requestGoogleMapsApiKey: googleMapsServiceModal.requestApiKey,
         onUpdateRouteSegment: route.updateSegment,
         onRemoveRouteSegment: route.removeSegment
     });
-    const googleMapsServiceModal = createGoogleMapsServiceModal({ elements, googleMapsConfig: googleMaps });
     const dashboardRenderer = createDashboardRenderer({
         elements,
         rideVisuals,

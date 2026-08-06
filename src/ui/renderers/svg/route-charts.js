@@ -250,7 +250,7 @@ export function buildImmersiveElevationGradeSvg(route, currentRecord, { transpar
         ${currentRecord ? `<text x="${elevationChart.x - 8}" y="${currentAxisLabelY.toFixed(1)}" text-anchor="end" fill="${colors.current}" font-size="10.5" font-weight="700">${Math.round(currentPoint.elevationMeters ?? 0)}m</text>` : ""}
 
         <rect x="${gradeCard.x}" y="${gradeCard.y}" width="${gradeCard.width}" height="${gradeCard.height}" rx="14" fill="${colors.insetFill}" stroke="${colors.insetStroke}" stroke-width="1"></rect>
-        <text x="${gradeCard.x + 12}" y="${gradeCard.y + 16}" fill="${colors.currentText}" font-size="11" font-weight="700">当前位置附近坡度</text>
+        <text x="${gradeCard.x + 12}" y="${gradeCard.y + 16}" fill="${colors.currentText}" font-size="11" font-weight="700">当前位置附近坡度（约 300m）</text>
         <text x="${gradeCard.x + 12}" y="${gradeCard.y + 29}" fill="${colors.muted}" font-size="9.5">${currentRecord ? `${formatNumber(detailWindowStart / 1000, 1)} - ${formatNumber(detailWindowEnd / 1000, 1)} km` : `${formatNumber(totalDist / 1000, 1)} km`}</text>
         <line x1="${gradePlot.x}" y1="${mapValueToY(0, detailMinGrade, detailMaxGrade, gradePlot.y, gradePlot.height).toFixed(1)}" x2="${gradePlot.x + gradePlot.width}" y2="${mapValueToY(0, detailMinGrade, detailMaxGrade, gradePlot.y, gradePlot.height).toFixed(1)}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="3 4"></line>
         <path d="${buildAreaPath(gradePoints, gradePlot.y + gradePlot.height)}" fill="${colors.detailArea}"></path>

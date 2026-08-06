@@ -198,6 +198,21 @@ export const suite = {
                         .at(-1);
                     assert(currentMarker?.bringToFrontCount > 0, "current-position marker should remain above the route line");
                     assertEqual(currentMarker?.lastStyle?.opacity, 1);
+
+                    controller.syncRoute({
+                        source: "map-drawn",
+                        mapGeometry: [{ lat: 31.2, lng: 121.4 }, { lat: 31.21, lng: 121.41 }],
+                        waypointSnaps: [{
+                            index: 1,
+                            requested: { lat: 31.199, lng: 121.399 },
+                            snapped: { lat: 31.2, lng: 121.4 },
+                            offsetMeters: 150
+                        }]
+                    });
+                    assert(circleMarkerCalls.some((layer) => layer.options.color === "#f59e0b"),
+                        "map-drawn routes should retain an original-waypoint marker when Google snaps it to a road");
+                    assert(polylineCalls.some((layer) => layer.options.color === "#f59e0b" && layer.options.dashArray === "5 7"),
+                        "map-drawn routes should show a dashed connector to the snapped road point");
                 } finally {
                     globalThis.window = originalWindow;
                     globalThis.requestAnimationFrame = originalAnimationFrame;

@@ -1,5 +1,7 @@
 const SEGMENT_BUCKET_METERS = 500;
 const MAX_REASONABLE_GRADE_PERCENT = 20;
+const GRADE_WINDOW_METERS = 300;
+const ELEVATION_DENOISE_WINDOW_METERS = 120;
 
 export function buildSummarySegmentsFromTrackPoints(points, {
     hasElevationData = true,
@@ -62,48 +64,89 @@ export function buildSummarySegmentsFromTrackPoints(points, {
 }
 
 export function calculateWindowedGrades(points, {
-    windowMeters = 60,
+    windowMeters = GRADE_WINDOW_METERS,
+    elevationDenoiseWindowMeters = ELEVATION_DENOISE_WINDOW_METERS,
     maxGradePercent = MAX_REASONABLE_GRADE_PERCENT
 } = {}) {
-    return points.map((point) => {
-        const before = findPointNearDistance(points, point.distanceMeters - windowMeters / 2);
-        const after = findPointNearDistance(points, point.distanceMeters + windowMeters / 2);
+    const denoisedElevations = calculateMedianElevations(points, elevationDenoiseWindowMeters);
 
-        if (
-            !Number.isFinite(before?.elevationMeters)
-            || !Number.isFinite(after?.elevationMeters)
-            || !Number.isFinite(before?.distanceMeters)
-            || !Number.isFinite(after?.distanceMeters)
-            || after.distanceMeters <= before.distanceMeters
-        ) {
+    return points.map((point, index) => {
+        const [windowStart, windowEnd] = resolveGradeWindow(points, point.distanceMeters, windowMeters);
+        const samples = points
+            .map((candidate, candidateIndex) => ({
+                distanceMeters: candidate.distanceMeters,
+                elevationMeters: denoisedElevations[candidateIndex]
+            }))
+            .filter((candidate) => candidate.distanceMeters >= windowStart && candidate.distanceMeters <= windowEnd)
+            .filter((candidate) => Number.isFinite(candidate.distanceMeters) && Number.isFinite(candidate.elevationMeters));
+        const slope = calculateLinearSlope(samples);
+
+        if (!Number.isFinite(slope)) {
             return {
                 ...point,
                 gradePercent: 0
             };
         }
 
-        const grade = ((after.elevationMeters - before.elevationMeters) / (after.distanceMeters - before.distanceMeters)) * 100;
-
         return {
             ...point,
-            gradePercent: round(clamp(grade, -maxGradePercent, maxGradePercent), 2)
+            gradePercent: round(clamp(slope * 100, -maxGradePercent, maxGradePercent), 2)
         };
     });
 }
 
-function findPointNearDistance(points, targetDistanceMeters) {
-    let best = points[0] ?? null;
-    let bestDistance = best ? Math.abs(best.distanceMeters - targetDistanceMeters) : Infinity;
-
-    for (const point of points) {
-        const distance = Math.abs(point.distanceMeters - targetDistanceMeters);
-        if (distance < bestDistance) {
-            best = point;
-            bestDistance = distance;
-        }
+function calculateMedianElevations(points, windowMeters) {
+    const totalDistanceMeters = points.at(-1)?.distanceMeters ?? 0;
+    if (totalDistanceMeters <= windowMeters * 2) {
+        return points.map((point) => point.elevationMeters);
     }
 
-    return best;
+    return points.map((point) => {
+        const [windowStart, windowEnd] = resolveGradeWindow(points, point.distanceMeters, windowMeters);
+        const elevations = points
+            .filter((candidate) => candidate.distanceMeters >= windowStart && candidate.distanceMeters <= windowEnd)
+            .map((candidate) => candidate.elevationMeters)
+            .filter(Number.isFinite)
+            .sort((first, second) => first - second);
+        if (elevations.length === 0) return point.elevationMeters;
+
+        const middle = Math.floor(elevations.length / 2);
+        return elevations.length % 2 === 0
+            ? (elevations[middle - 1] + elevations[middle]) / 2
+            : elevations[middle];
+    });
+}
+
+function resolveGradeWindow(points, distanceMeters, windowMeters) {
+    const totalDistanceMeters = points.at(-1)?.distanceMeters ?? distanceMeters;
+    const halfWindow = Math.max(1, Number(windowMeters) || GRADE_WINDOW_METERS) / 2;
+    let start = distanceMeters - halfWindow;
+    let end = distanceMeters + halfWindow;
+
+    if (start < 0) {
+        end = Math.min(totalDistanceMeters, end - start);
+        start = 0;
+    }
+    if (end > totalDistanceMeters) {
+        start = Math.max(0, start - (end - totalDistanceMeters));
+        end = totalDistanceMeters;
+    }
+    return [start, end];
+}
+
+function calculateLinearSlope(samples) {
+    if (samples.length < 2) return null;
+    const averageDistance = samples.reduce((sum, sample) => sum + sample.distanceMeters, 0) / samples.length;
+    const averageElevation = samples.reduce((sum, sample) => sum + sample.elevationMeters, 0) / samples.length;
+    let covariance = 0;
+    let variance = 0;
+
+    for (const sample of samples) {
+        const distanceDelta = sample.distanceMeters - averageDistance;
+        covariance += distanceDelta * (sample.elevationMeters - averageElevation);
+        variance += distanceDelta * distanceDelta;
+    }
+    return variance > 0 ? covariance / variance : null;
 }
 
 function clampGrade(gradePercent) {

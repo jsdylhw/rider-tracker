@@ -1,6 +1,6 @@
 const STORAGE_KEY = "rider-tracker:google-maps-api-key";
 
-export function createGoogleMapsConfigService({ storage = getSessionStorage() } = {}) {
+export function createGoogleMapsConfigService({ storage = getLocalStorage() } = {}) {
     let config = {
         apiKey: readStoredApiKey(storage)
     };
@@ -21,6 +21,16 @@ export function createGoogleMapsConfigService({ storage = getSessionStorage() } 
             apiKey
         };
         persistApiKey(storage, apiKey);
+        notify();
+        return getConfig();
+    }
+
+    function applyProfileApiKey(apiKey) {
+        const normalizedApiKey = typeof apiKey === "string" ? apiKey.trim() : "";
+        if (!normalizedApiKey || activeApiKey) return getConfig();
+
+        config = { apiKey: normalizedApiKey };
+        persistApiKey(storage, normalizedApiKey);
         notify();
         return getConfig();
     }
@@ -52,12 +62,12 @@ export function createGoogleMapsConfigService({ storage = getSessionStorage() } 
         listeners.forEach((listener) => listener(snapshot));
     }
 
-    return { getConfig, getApiKey, lockApiKey, subscribe, updateConfig };
+    return { applyProfileApiKey, getConfig, getApiKey, lockApiKey, subscribe, updateConfig };
 }
 
-function getSessionStorage() {
+function getLocalStorage() {
     try {
-        return globalThis.sessionStorage ?? null;
+        return globalThis.localStorage ?? null;
     } catch {
         return null;
     }

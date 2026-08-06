@@ -89,7 +89,7 @@ tbody tr:last-child td {
 
 .route-mode-tabs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
     padding: 6px;
     border: 1px solid var(--border);
@@ -253,6 +253,10 @@ tbody tr:last-child td {
 }
 
 @media (max-width: 640px) {
+    .route-mode-tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .map-route-planner-head,
     .map-route-settings {
         grid-template-columns: 1fr;

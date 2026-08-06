@@ -14,7 +14,7 @@ export const suite = {
     name: "google-maps-config-service",
     tests: [
         {
-            name: "keeps one Google Key in session-only runtime config",
+            name: "keeps one Google Key in browser-local runtime config",
             run() {
                 const storage = createStorage();
                 const service = createGoogleMapsConfigService({ storage });
@@ -43,6 +43,19 @@ export const suite = {
                     error = caught;
                 }
                 assert(Boolean(error), "changing a loaded Google Maps key should require a page refresh");
+            }
+        },
+        {
+            name: "uses the profile key as the startup configuration source",
+            run() {
+                const storage = createStorage();
+                storage.setItem("rider-tracker:google-maps-api-key", "stale-browser-key");
+                const service = createGoogleMapsConfigService({ storage });
+
+                service.applyProfileApiKey(" profile-key ");
+
+                assertEqual(service.getApiKey(), "profile-key");
+                assertEqual(storage.getItem("rider-tracker:google-maps-api-key"), "profile-key");
             }
         }
     ]

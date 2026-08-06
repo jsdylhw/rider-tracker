@@ -97,8 +97,10 @@ export function createRouteDetailsRenderer({
         const isRouteLoading = route?.isLoading === true;
         const isGpx = route.source === "gpx";
         const isExploration = route.source === "osm-exploration";
+        const isMapDrawn = route.source === "map-drawn";
         const hasUsableRoute = Number.isFinite(route.totalDistanceMeters) && route.totalDistanceMeters > 0;
         const isPendingMapExploration = inputMode === "map" && !isExploration;
+        const isPendingMapDrawing = inputMode === "draw" && !isMapDrawn;
         const isPendingGpxImport = inputMode === "gpx" && !isGpx;
 
         if (elements.routeSourceLabel) {
@@ -106,10 +108,14 @@ export function createRouteDetailsRenderer({
                 ? "路线处理中"
                 : isPendingMapExploration
                     ? "地图探索（待生成）"
+                    : isPendingMapDrawing
+                        ? "地图选择路线（待生成）"
                     : isPendingGpxImport
                         ? "GPX（待导入）"
                         : isExploration
                             ? "OSM 街景探索"
+                            : isMapDrawn
+                                ? "Google 地图选择路线"
                             : isGpx
                                 ? `GPX：${route.name}`
                                 : "手工路线";
@@ -131,6 +137,10 @@ export function createRouteDetailsRenderer({
             elements.routeSummary.innerHTML = "<strong>地图探索</strong><br>请在地图上选择起点和起步目标。系统会请求周边 OSM 路网，生成初始探索路线。";
             return;
         }
+        if (isPendingMapDrawing) {
+            elements.routeSummary.innerHTML = "<strong>地图选择路线</strong><br>在 OSM 地图上依次点击起点、途经点和终点。系统会调用 Google Routes API 生成实际可骑行道路路线，再自动请求 Google 海拔。";
+            return;
+        }
         if (isPendingGpxImport) {
             elements.routeSummary.innerHTML = "<strong>GPX 导入</strong><br>选择 GPX 文件后显示路线距离、海拔和坡度图。";
             return;
@@ -140,16 +150,22 @@ export function createRouteDetailsRenderer({
             return;
         }
 
-        const sourceText = isExploration ? "OSM 地图探索" : isGpx ? "GPX 导入" : "手工输入";
+        const usedDrivingFallback = isMapDrawn && route.travelMode === "DRIVE";
+        const sourceText = isExploration ? "OSM 地图探索" : isMapDrawn ? usedDrivingFallback ? "Google 道路路线（驾车回退）" : "Google 骑行路线" : isGpx ? "GPX 导入" : "手工输入";
         const segmentsText = isGpx ? "" : `，共 ${route.segments.length} 段`;
         const elevationWarning = route.hasElevationData === false
-            ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : "GPX"}尚无海拔数据，坡度按 0 处理。${isExploration ? "可在骑行界面主动请求海拔。" : ""}</span>`
+            ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : isMapDrawn ? "骑行路线" : "GPX"}尚无海拔数据，坡度按 0 处理。${isExploration ? "可在骑行界面主动请求海拔。" : isMapDrawn ? "可在地图选择路线中请求海拔。" : ""}</span>`
+            : "";
+        const bicycleRouteWarning = usedDrivingFallback
+            ? "<br><span style=\"color: var(--danger);\">提示：当前区域没有可用的 Google 骑行路线，已按避开高速的普通道路生成；请确认自行车实际通行条件。</span>"
+            : isMapDrawn
+            ? "<br><span class=\"muted\">提示：Google 自行车路线仍可能缺少部分自行车道或通行限制信息，请结合当地实际道路判断。</span>"
             : "";
         elements.routeSummary.innerHTML = `
             <strong>路线概览</strong><br>
             来源：${sourceText}${segmentsText}，累计距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km，
             累计爬升 ${Math.round(route.totalElevationGainMeters)} m，
-            累计下降 ${Math.round(route.totalDescentMeters)} m。${elevationWarning}
+            累计下降 ${Math.round(route.totalDescentMeters)} m。${elevationWarning}${bicycleRouteWarning}
         `;
     }
 

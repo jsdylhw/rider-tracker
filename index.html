@@ -88,6 +88,7 @@
                                 <div class="route-mode-tabs" role="tablist" aria-label="路线来源">
                                     <button id="routeModeGpxBtn" class="route-mode-tab" type="button" data-route-mode="gpx">GPX 导入</button>
                                     <button id="routeModeManualBtn" class="route-mode-tab" type="button" data-route-mode="manual">自定义线路</button>
+                                    <button id="routeModeDrawBtn" class="route-mode-tab" type="button" data-route-mode="draw">地图选择路线</button>
                                     <button id="routeModeMapBtn" class="route-mode-tab" type="button" data-route-mode="map">地图探索</button>
                                 </div>
 
@@ -115,6 +116,26 @@
                                             <tbody id="routeTableBody"></tbody>
                                         </table>
                                     </div>
+                                </div>
+
+                                <div id="mapDrawRoutePanel" class="route-mode-panel map-route-planner" hidden>
+                                    <div class="map-route-planner-head">
+                                        <div>
+                                            <span>地图选择路线</span>
+                                            <strong id="mapDrawRouteStatus">点击地图依次添加起点、途经点和终点</strong>
+                                        </div>
+                                        <div class="map-route-actions">
+                                            <button id="undoMapDrawWaypointBtn" class="btn ghost" type="button">撤销上一个点</button>
+                                            <button id="clearMapDrawRouteBtn" class="btn ghost" type="button">清空</button>
+                                            <button id="createMapDrawRouteBtn" class="btn primary" type="button">生成路线</button>
+                                            <button id="requestMapDrawElevationBtn" class="btn secondary" type="button" hidden>请求海拔</button>
+                                        </div>
+                                    </div>
+                                    <div class="map-route-selection-card start">
+                                        <span>已选点位</span>
+                                        <strong id="mapDrawWaypointSummary">尚未选择</strong>
+                                    </div>
+                                    <div id="mapDrawRoutePlanStatus" class="map-route-plan-status" hidden aria-live="polite"></div>
                                 </div>
 
                                 <div id="mapRoutePanel" class="route-mode-panel map-route-planner">
@@ -358,7 +379,7 @@
                 <h3 id="googleMapsServiceTitle">使用 Google Maps 服务</h3>
                 <button id="closeGoogleMapsServiceBtn" class="modal-close-btn" type="button" aria-label="关闭">&times;</button>
             </div>
-            <p id="googleMapsServiceDescription" class="muted">请输入本次浏览器会话使用的 Google Maps API Key。</p>
+            <p id="googleMapsServiceDescription" class="muted">Key 仅保存在当前浏览器本地，用于街景和路线海拔请求。</p>
             <label class="field">
                 <span>Google Maps API Key</span>
                 <input id="googleMapsServiceApiKeyInput" type="password" autocomplete="off" placeholder="AIza...">

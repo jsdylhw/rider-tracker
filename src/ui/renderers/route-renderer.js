@@ -10,8 +10,11 @@ export function createRouteRenderer({
     onAddSegment,
     onResetRoute,
     onImportGpx,
+    onCreateMapDrawRoute,
     onInvalidateMapRoute,
     onPlanMapRoute,
+    onRequestRouteElevation,
+    requestGoogleMapsApiKey,
     onUpdateRouteSegment,
     onRemoveRouteSegment
 }) {
@@ -27,8 +30,11 @@ export function createRouteRenderer({
     const routeInputController = createRouteInputController({
         elements,
         visuals,
+        onCreateMapDrawRoute,
         onInvalidateMapRoute,
         onPlanMapRoute,
+        onRequestRouteElevation,
+        requestGoogleMapsApiKey,
         onInputModeChange: (state) => routeDetailsRenderer?.render(state)
     });
     routeDetailsRenderer = createRouteDetailsRenderer({

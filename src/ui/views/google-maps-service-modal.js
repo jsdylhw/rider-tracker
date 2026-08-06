@@ -11,7 +11,7 @@ export function createGoogleMapsServiceModal({ elements, googleMapsConfig }) {
         }
 
         elements.googleMapsServiceTitle.textContent = `${featureLabel}需要 Google Maps API Key`;
-        elements.googleMapsServiceDescription.textContent = "输入 Key 后才会发起请求。连接失败时，可直接更改 Key 后再次请求。";
+        elements.googleMapsServiceDescription.textContent = "输入 Key 后才会发起请求。启动时会读取 user-profile.json，也会保存在当前浏览器；连接失败时可更改后再次请求。";
         elements.googleMapsServiceStatus.textContent = "";
         elements.googleMapsServiceApiKeyInput.value = config?.apiKey ?? "";
         if (elements.confirmGoogleMapsServiceBtn) {
