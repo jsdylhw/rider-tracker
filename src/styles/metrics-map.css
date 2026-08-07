@@ -173,6 +173,27 @@
     overflow: hidden;
 }
 
+.map-unavailable {
+    display: grid;
+    place-items: center;
+    min-height: 160px;
+    background: #f8fafc;
+    border: 1px dashed var(--border);
+}
+
+.map-unavailable-message {
+    display: grid;
+    gap: 6px;
+    max-width: 280px;
+    padding: 18px;
+    text-align: center;
+    color: var(--muted);
+}
+
+.map-unavailable-message strong {
+    color: var(--text);
+}
+
 .leaflet-container {
     width: 100%;
     height: 100%;
