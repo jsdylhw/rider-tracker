@@ -82,7 +82,7 @@ export function createDashboardRenderer({
         onRefresh: () => {
             if (boundStore) render(boundStore.getState());
         },
-        onEnterDebugFallback: (store) => enterImmersiveStreetView(store),
+        onEnterDebugFallback: (store) => enterImmersiveStreetView(store, "moving"),
         onStreetViewFailure: () => setImmersiveUiHidden(false)
     });
 
@@ -120,6 +120,7 @@ export function createDashboardRenderer({
         document.body.classList.remove("immersive-street-view-active");
         scheduleAfterLayout(() => visuals.invalidateStreetViewSize?.());
         scheduleDashboardMapRefresh();
+        syncImmersiveStreetViewButtons();
         if (elements.immersiveStreetViewBtn) {
             elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
         }
@@ -130,14 +131,18 @@ export function createDashboardRenderer({
         return googleMapsRideActions.hasStreetViewPresentation();
     }
 
-    function enterImmersiveStreetView(store) {
+    function enterImmersiveStreetView(store, mode) {
+        visuals.setStreetViewMode?.(mode, {
+            container1: elements.svPano1,
+            container2: elements.svPano2
+        });
         immersiveStreetViewMode = true;
         resetVisualRenderState();
         if (elements.metricsCustomizer) {
             elements.metricsCustomizer.hidden = true;
         }
         elements.rideDashboard?.classList.toggle("immersive-street-view", true);
-        elements.immersiveStreetViewBtn.textContent = "退出沉浸模式";
+        syncImmersiveStreetViewButtons();
         render(store.getState());
         scheduleAfterLayout(() => visuals.invalidateStreetViewSize?.());
         // The mini map keeps its live-ride viewport unless the newly visible
@@ -186,8 +191,12 @@ export function createDashboardRenderer({
             button?.addEventListener("click", () => onQueueExplorationTurn(intent));
         });
 
-        if (elements.immersiveStreetViewBtn) {
-            elements.immersiveStreetViewBtn.addEventListener("click", () => {
+        [
+            [elements.immersiveMovingStreetViewBtn, "moving"],
+            [elements.immersiveStableStreetViewBtn, "stable"],
+            [elements.immersiveStreetViewBtn, "moving"]
+        ].forEach(([button, mode]) => {
+            button?.addEventListener("click", () => {
                 if (!hasStreetViewPresentation()) {
                     alert("请先点击“加载街景”并完成 Google Maps API Key 配置。");
                     return;
@@ -197,14 +206,9 @@ export function createDashboardRenderer({
                     alert("请先开始骑行，或使用 ?debugStreetView=1 打开街景调试模式。");
                     return;
                 }
-                if (immersiveStreetViewMode) {
-                    exitImmersiveStreetView();
-                    render(store.getState());
-                    return;
-                }
-                enterImmersiveStreetView(store);
+                enterImmersiveStreetView(store, mode);
             });
-        }
+        });
 
         if (elements.immersiveUiToggleBtn) {
             elements.immersiveUiToggleBtn.textContent = "隐藏 UI";
@@ -350,14 +354,11 @@ export function createDashboardRenderer({
         renderExplorationTurnControls(route, ride);
         syncElevationChartCopy();
         document.body.classList.toggle("immersive-street-view-active", immersiveStreetViewMode && ride.dashboardOpen);
-        if (elements.immersiveStreetViewBtn) {
+        if (elements.immersiveMovingStreetViewBtn || elements.immersiveStableStreetViewBtn || elements.immersiveStreetViewBtn) {
             const canShow = viewModel.canShowImmersiveStreetView;
-            syncImmersiveStreetViewButton(null, canShow);
+            syncImmersiveStreetViewButtons(null, canShow);
             if (!canShow && immersiveStreetViewMode) {
                 exitImmersiveStreetView();
-            }
-            if (!immersiveStreetViewMode) {
-                elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
             }
         }
 
@@ -487,13 +488,15 @@ export function createDashboardRenderer({
         }
     }
 
-    function syncImmersiveStreetViewButton(store, canShowOverride = null) {
-        if (!elements.immersiveStreetViewBtn) return;
+    function syncImmersiveStreetViewButtons(store, canShowOverride = null) {
         const liveRide = store?.getState?.().liveRide ?? {};
         const canShow = canShowOverride ?? (hasStreetViewPresentation() && (liveRide.isActive || streetViewDebugEnabled));
-        elements.immersiveStreetViewBtn.hidden = !canShow;
-        if (canShow && !immersiveStreetViewMode) {
-            elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
+        [elements.immersiveMovingStreetViewBtn, elements.immersiveStableStreetViewBtn]
+            .filter(Boolean)
+            .forEach((button) => { button.hidden = !canShow || immersiveStreetViewMode; });
+        if (elements.immersiveStreetViewBtn) {
+            elements.immersiveStreetViewBtn.hidden = !canShow;
+            if (!immersiveStreetViewMode) elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
         }
     }
 

@@ -3,7 +3,8 @@ import {
     chooseRouteAlignedLink,
     getNativeLookaheadHopCount,
     getRouteDistanceAtPosition,
-    interpolateHeading
+    interpolateHeading,
+    shouldThrottleNativePanoSwitch
 } from "../../src/ui/map/street-view-controller.js";
 import { assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
 
@@ -65,6 +66,26 @@ export const suite = {
                 assertEqual(getNativeLookaheadHopCount(12), 1);
                 assertEqual(getNativeLookaheadHopCount(22), 2);
                 assertEqual(getNativeLookaheadHopCount(36), 3);
+            }
+        },
+        {
+            name: "holds a native pano when a new handoff would be too soon or too close",
+            run() {
+                assertEqual(shouldThrottleNativePanoSwitch({
+                    currentDistanceMeters: 105,
+                    lastSwitchDistanceMeters: 100,
+                    elapsedSinceLastSwitchMs: 1200
+                }), true);
+                assertEqual(shouldThrottleNativePanoSwitch({
+                    currentDistanceMeters: 112,
+                    lastSwitchDistanceMeters: 100,
+                    elapsedSinceLastSwitchMs: 600
+                }), true);
+                assertEqual(shouldThrottleNativePanoSwitch({
+                    currentDistanceMeters: 112,
+                    lastSwitchDistanceMeters: 100,
+                    elapsedSinceLastSwitchMs: 1300
+                }), false);
             }
         },
         {
