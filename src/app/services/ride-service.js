@@ -23,7 +23,7 @@ import { sanitizeSessionExportMetadata } from "../store/initial-state.js";
 import { encodeFitSync } from "../../adapters/export/fit-exporter.js";
 import { sendFitBeacon } from "../../adapters/upload/fit-beacon-client.js";
 import { loadFitSdk } from "../../adapters/fit/fit-sdk-loader.js";
-import { isRouteReadyForRide } from "../../domain/route/route-builder.js";
+import { buildRoute, isRouteReadyForRide } from "../../domain/route/route-builder.js";
 
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
@@ -31,6 +31,7 @@ const TRAINER_COMMAND_MIN_INTERVAL_MS = 500;
 const STREET_VIEW_DEBUG_POWER_WATTS = 180;
 const STREET_VIEW_DEBUG_CADENCE_RPM = 85;
 const STREET_VIEW_DEBUG_HEART_RATE_BPM = 130;
+const DEFAULT_ACTIVITY_NAME = "Rider Tracker Virtual Ride";
 
 export function createRideService({ store, deviceService, exportService, routeService = null }) {
     let liveRideTimerId = null;
@@ -73,7 +74,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
             initialHeartRate: sampledSensors.heartRate
         });
 
-        baseSession.exportMetadata = sanitizeSessionExportMetadata(state.exportMetadata);
+        baseSession.exportMetadata = buildRideExportMetadata(state.exportMetadata, state.route);
 
         const initialStatusMeta = streetViewDebugEnabled && sampledSensors.powerSourceType === "street-view-debug"
             ? `街景调试骑行：使用 ${sampledSensors.power} W 模拟功率预览路线与 UI，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`
@@ -89,6 +90,9 @@ export function createRideService({ store, deviceService, exportService, routeSe
 
         store.setState((currentState) => ({
             ...currentState,
+            uiMode: "live",
+            session: null,
+            selectedActivity: null,
             liveRide: {
                 ...currentState.liveRide,
                 isActive: true,
@@ -119,28 +123,49 @@ export function createRideService({ store, deviceService, exportService, routeSe
         const completedSession = finalizeRideSync();
 
         if (completedSession) {
+            const completedRideId = completedSession.startedAt;
+            const pendingActivity = buildPendingActivity(completedSession);
+            store.setState((currentState) => ({
+                ...currentState,
+                uiMode: "activity-detail",
+                selectedActivity: pendingActivity,
+                session: completedSession,
+                statusText: "骑行已结束，正在生成 FIT 并保存本地活动。"
+            }));
             const activitySavePromise = archiveCompletedRideSession(completedSession, exportService);
 
             void activitySavePromise
-                .then(async (activity) => {
+                .then((activity) => {
+                    if (!activity?.id) {
+                        throw new Error("未能保存本地活动");
+                    }
                     const nextActivity = {
                         ...(activity ?? {}),
-                        rawSession: completedSession
+                        rawSession: completedSession,
+                        pendingRideId: completedRideId,
+                        isSaving: false
                     };
-                    store.setState((currentState) => ({
-                        ...currentState,
-                        uiMode: "activity-detail",
-                        selectedActivity: nextActivity,
-                        session: completedSession,
-                        liveRide: {
-                            ...currentState.liveRide,
-                            dashboardOpen: false
-                        },
-                        statusText: "骑行已结束，已打开骑后报告。"
-                    }));
+                    store.setState((currentState) => currentState.selectedActivity?.pendingRideId === completedRideId
+                        ? {
+                            ...currentState,
+                            selectedActivity: nextActivity,
+                            statusText: "骑行已结束，活动已保存。"
+                        }
+                        : currentState);
                 })
                 .catch((error) => {
-                    console.warn("[RideService] 打开骑后报告失败:", error);
+                    console.warn("[RideService] 保存骑后报告失败:", error);
+                    store.setState((currentState) => currentState.selectedActivity?.pendingRideId === completedRideId
+                        ? {
+                            ...currentState,
+                            selectedActivity: {
+                                ...currentState.selectedActivity,
+                                isSaving: false,
+                                saveError: "FIT 保存失败，骑行记录仍可导出为 JSON。"
+                            },
+                            statusText: "骑行已结束，但 FIT 保存失败。"
+                        }
+                        : currentState);
                 });
         }
     }
@@ -175,20 +200,15 @@ export function createRideService({ store, deviceService, exportService, routeSe
         const stoppedStatusMeta = completedSession
             ? `骑行结束：${formatNumber(completedMetrics?.ride.distanceKm ?? 0, 2)} km / 平均速度 ${formatNumber(completedMetrics?.speed.averageKph ?? 0, 1)} km/h`
             : "骑行已停止。";
-        const stoppedSession = completedSession
-            ? buildInitialRideSessionState({
-                session: completedSession,
-                sampledSensors: buildEffectiveSensorSnapshot(state.ble.sampling),
-                trainerControlMode,
-                customWorkoutTargetPlan: state.liveRide.session?.customWorkoutTargetPlan,
-                workoutRuntime: stoppedRuntime,
-                statusMeta: stoppedStatusMeta
-            }).session
-            : null;
+        routeService?.releaseRouteAfterRide?.();
+        void deviceService?.releaseTrainerControl?.().catch((error) => {
+            console.warn("[RideService] 结束骑行时释放骑行台控制失败:", error);
+        });
 
         store.setState((currentState) => ({
             ...currentState,
             session: completedSession ?? currentState.session,
+            route: buildRoute([]),
             hasPersistedSession: Boolean(completedSession) || currentState.hasPersistedSession,
             workout: {
                 ...currentState.workout,
@@ -198,9 +218,9 @@ export function createRideService({ store, deviceService, exportService, routeSe
                 ...currentState.liveRide,
                 isActive: false,
                 dashboardOpen: false,
-                session: stoppedSession,
-                records: completedSession?.records ?? currentState.liveRide.records,
-                summary: completedSession?.summary ?? currentState.liveRide.summary,
+                session: null,
+                records: [],
+                summary: null,
                 commandDispatch: createInitialCommandDispatchState(),
                 lastCompletedAt: new Date().toISOString(),
                 statusMeta: stoppedStatusMeta
@@ -326,29 +346,33 @@ export function createRideService({ store, deviceService, exportService, routeSe
             if (requiresConfirmation) {
                 void dispatchPromise
                     .then(() => {
-                        store.setState((currentState) => ({
-                            ...currentState,
-                            liveRide: {
-                                ...currentState.liveRide,
-                                commandDispatch: buildNextCommandDispatchState({
-                                    dispatchState: currentState.liveRide.commandDispatch,
-                                    command: cmd,
-                                    now: Date.now()
-                                })
+                        store.setState((currentState) => isCurrentRideCommand(currentState, cmd)
+                            ? {
+                                ...currentState,
+                                liveRide: {
+                                    ...currentState.liveRide,
+                                    commandDispatch: buildNextCommandDispatchState({
+                                        dispatchState: currentState.liveRide.commandDispatch,
+                                        command: cmd,
+                                        now: Date.now()
+                                    })
+                                }
                             }
-                        }));
+                            : currentState);
                     })
                     .catch((error) => {
                         console.error("[RideService] ERG 确认模式下发失败:", error);
-                        store.setState((currentState) => ({
-                            ...currentState,
-                            liveRide: {
-                                ...currentState.liveRide,
-                                commandDispatch: clearInFlightCommandDispatchState({
-                                    dispatchState: currentState.liveRide.commandDispatch
-                                })
+                        store.setState((currentState) => isCurrentRideCommand(currentState, cmd)
+                            ? {
+                                ...currentState,
+                                liveRide: {
+                                    ...currentState.liveRide,
+                                    commandDispatch: clearInFlightCommandDispatchState({
+                                        dispatchState: currentState.liveRide.commandDispatch
+                                    })
+                                }
                             }
-                        }));
+                            : currentState);
                     });
             } else {
                 void dispatchPromise.catch((error) => {
@@ -543,6 +567,58 @@ function archiveCompletedRideSession(session, exportService) {
         });
 }
 
+function buildPendingActivity(session) {
+    const metrics = session.summary?.metrics ?? {};
+    const ride = metrics.ride ?? {};
+    const power = metrics.power ?? {};
+    const heartRate = metrics.heartRate ?? {};
+    const load = metrics.load ?? {};
+
+    return {
+        id: `pending:${session.startedAt}`,
+        pendingRideId: session.startedAt,
+        isSaving: true,
+        name: session.exportMetadata?.activityName ?? DEFAULT_ACTIVITY_NAME,
+        source: session.source ?? "rider-tracker",
+        sportType: "VirtualRide",
+        startedAt: session.startedAt,
+        finishedAt: session.finishedAt,
+        elapsedSeconds: ride.elapsedSeconds,
+        distanceKm: ride.distanceKm,
+        ascentMeters: ride.ascentMeters,
+        averagePower: power.averageWatts,
+        normalizedPower: power.normalizedPowerWatts,
+        averageHr: heartRate.averageBpm,
+        estimatedTss: load.estimatedTss,
+        rawSession: session
+    };
+}
+
+function buildRideExportMetadata(exportMetadata, route) {
+    const metadata = sanitizeSessionExportMetadata(exportMetadata);
+    if (metadata.activityName !== DEFAULT_ACTIVITY_NAME) {
+        return metadata;
+    }
+
+    return {
+        ...metadata,
+        activityName: inferDefaultActivityName(route)
+    };
+}
+
+function inferDefaultActivityName(route) {
+    if (route?.source === "gpx") {
+        return `GPX 骑行 · ${route.importFileName ?? route.name ?? "路线"}`.slice(0, 48);
+    }
+    if (route?.source === "osm-exploration") {
+        return "OSM 自由探索骑行";
+    }
+    if (route?.source === "manual") {
+        return "自定义线路骑行";
+    }
+    return route?.name ? `路线骑行 · ${route.name}`.slice(0, 48) : DEFAULT_ACTIVITY_NAME;
+}
+
 function resolveStartRideSensorSnapshot({ sampling, settings, rideInput, streetViewDebugEnabled }) {
     const sampledSensors = buildEffectiveSensorSnapshot(sampling);
     if (streetViewDebugEnabled && rideInput?.powerSource === "virtual") {
@@ -699,6 +775,11 @@ function buildTrainerCommandKey(command) {
     const targetResistanceLevel = command.targetResistanceLevel ?? command.payload?.resistanceLevel ?? "";
     const requireConfirmation = command.requireConfirmation === true ? "confirm" : "best-effort";
     return `${controlMode}:${targetGradePercent}:${targetPowerWatts}:${targetResistanceLevel}:${requireConfirmation}`;
+}
+
+function isCurrentRideCommand(state, command) {
+    return state.liveRide?.isActive === true
+        && state.liveRide.session?.startedAt === command.rideId;
 }
 
 async function dispatchTrainerCommand({

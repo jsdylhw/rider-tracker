@@ -40,6 +40,10 @@ export function createRouteService({
     return {
         ...editorService,
         ...explorationService,
+        releaseRouteAfterRide: () => {
+            explorationService.clearActiveExploration();
+            operations.invalidateRequests();
+        },
         requestCurrentRouteElevation: elevationService.requestCurrentRouteElevation
     };
 }

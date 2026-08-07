@@ -12,8 +12,11 @@ const FTMS_OPCODES = {
     SET_TARGET_INCLINATION: 0x03,
     SET_TARGET_RESISTANCE: 0x04,
     SET_TARGET_POWER: 0x05,
+    STOP_OR_PAUSE: 0x08,
     SET_INDOOR_BIKE_SIMULATION: 0x11
 };
+
+const FTMS_STOP_CONTROL_INFO = 0x01;
 
 const FTMS_RESPONSE_RESULT = {
     SUCCESS: 0x01,
@@ -105,6 +108,7 @@ export function createTrainerFtms({ onStatus, onData }) {
     }
 
     function handleDisconnected() {
+        cancelQueuedCommands("智能骑行台连接已断开");
         clearPendingResponse(new Error("智能骑行台连接已断开"));
         if (controlPointChar && controlPointListener) {
             controlPointChar.removeEventListener("characteristicvaluechanged", controlPointListener);
@@ -192,6 +196,7 @@ export function createTrainerFtms({ onStatus, onData }) {
 
     let isCommandPending = false;
     let cmdQueue = [];
+    let commandEpoch = 0;
 
     async function processCommandQueue() {
         if (isCommandPending || cmdQueue.length === 0) return;
@@ -203,12 +208,17 @@ export function createTrainerFtms({ onStatus, onData }) {
             reject,
             awaitResponse,
             expectedRequestOpcode,
-            responseTimeoutMs
+            responseTimeoutMs,
+            epoch
         } = cmdQueue.shift();
 
         try {
             // 给骑行台硬件预留处理时间，防止指令过密
             await new Promise(r => setTimeout(r, 200));
+
+            if (epoch !== commandEpoch) {
+                throw new Error("FTMS 命令已在骑行结束后取消");
+            }
 
             const responsePromise = awaitResponse
                 ? armResponseWaiter(expectedRequestOpcode, responseTimeoutMs)
@@ -261,11 +271,43 @@ export function createTrainerFtms({ onStatus, onData }) {
                 awaitResponse,
                 expectedRequestOpcode,
                 responseTimeoutMs,
+                epoch: commandEpoch,
                 resolve,
                 reject
             });
             processCommandQueue();
         });
+    }
+
+    async function stopTrainingSession() {
+        if (!device?.gatt?.connected || !controlPointChar) {
+            return { released: false, reason: "not-connected" };
+        }
+
+        cancelQueuedCommands("FTMS 命令已因骑行结束取消");
+        try {
+            const response = await sendCommand(new Uint8Array([
+                FTMS_OPCODES.STOP_OR_PAUSE,
+                FTMS_STOP_CONTROL_INFO
+            ]), {
+                awaitResponse: controlPointNotificationsReady,
+                expectedRequestOpcode: FTMS_OPCODES.STOP_OR_PAUSE
+            });
+            return { released: true, response };
+        } catch (error) {
+            console.warn("[FTMS] Stop or Pause 写入失败，保留蓝牙连接。", error);
+            return { released: false, error };
+        }
+    }
+
+    function cancelQueuedCommands(reason) {
+        commandEpoch += 1;
+        const pendingCommands = cmdQueue;
+        cmdQueue = [];
+        pendingCommands.forEach(({ reject }) => {
+            reject(new Error(reason));
+        });
+        clearPendingResponse(new Error(reason));
     }
 
     async function activateControl({ controlModeLabel = "当前训练模式" } = {}) {
@@ -640,6 +682,7 @@ export function createTrainerFtms({ onStatus, onData }) {
         connect,
         disconnect,
         activateControl,
+        stopTrainingSession,
         setTargetGrade,
         setTargetPower,
         setTargetResistance,

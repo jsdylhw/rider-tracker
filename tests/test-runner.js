@@ -56,6 +56,7 @@ import { suite as fitBeaconClientSuite } from "./unit/fit-beacon-client.test.js"
 import { suite as incrementalPowerMetricsSuite } from "./unit/incremental-power-metrics.test.js";
 import { suite as tokenStoreSuite } from "./unit/token-store.test.js";
 import { suite as oauthStateStoreSuite } from "./unit/oauth-state-store.test.js";
+import { suite as localApiSecuritySuite } from "./unit/local-api-security.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
@@ -115,7 +116,8 @@ const suites = [
     fitBeaconClientSuite,
     incrementalPowerMetricsSuite,
     tokenStoreSuite,
-    oauthStateStoreSuite
+    oauthStateStoreSuite,
+    localApiSecuritySuite
 ];
 
 runSuites(suites).then((results) => {

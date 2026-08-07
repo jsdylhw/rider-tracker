@@ -180,6 +180,33 @@ export function buildActivityDetailPageHtml(activity) {
 }
 
 function buildActivityActionsHtml(activity) {
+    if (activity.isSaving) {
+        return `
+            <div class="activity-action-panel">
+                <div>
+                    <p class="eyebrow">Saving Activity</p>
+                    <h4>正在保存骑行活动</h4>
+                    <p class="section-subtitle">正在生成 FIT 并写入本地活动库，保存完成后可导出或上传。</p>
+                </div>
+            </div>
+        `;
+    }
+
+    if (activity.saveError) {
+        return `
+            <div class="activity-action-panel">
+                <div>
+                    <p class="eyebrow">Save Failed</p>
+                    <h4>活动未能完整保存</h4>
+                    <p class="section-subtitle">${escapeHtml(activity.saveError)}</p>
+                </div>
+                <div class="activity-action-buttons">
+                    <button class="btn secondary compact-btn" data-activity-page-action="download-json">导出 JSON</button>
+                </div>
+            </div>
+        `;
+    }
+
     const hasFitFile = Boolean(activity.fitFilePath);
     const fitStatus = hasFitFile
         ? `FIT 已保存：${activity.fitFilePath}`

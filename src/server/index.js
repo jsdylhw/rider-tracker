@@ -1,5 +1,4 @@
 import express from "express";
-import cors from "cors";
 import multer from "multer";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -10,6 +9,7 @@ import { createTokenStore } from "./token-store.js";
 import { createActivityStore } from "./activity-store.js";
 import { createActivityRoutes } from "./routes/activity-routes.js";
 import { createStravaRoutes } from "./routes/strava-routes.js";
+import { buildAllowedLocalOrigins, buildLocalBaseUrl, createLocalApiOriginGuard } from "./local-api-security.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,7 +25,10 @@ const HOST = process.env.HOST || "127.0.0.1";
 const CLIENT_ID = process.env.STRAVA_CLIENT_ID;
 const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
 const SCOPES = process.env.STRAVA_SCOPES || "activity:read_all,activity:write";
-const APP_BASE_URL = process.env.APP_BASE_URL || `http://${HOST === "127.0.0.1" ? "localhost" : HOST}:${PORT}`;
+const APP_BASE_URL = process.env.APP_BASE_URL || buildLocalBaseUrl({
+    host: HOST === "127.0.0.1" ? "localhost" : HOST,
+    port: PORT
+});
 const REDIRECT_URI = process.env.STRAVA_REDIRECT_URI || `${APP_BASE_URL}/api/strava/auth/callback`;
 const FRONTEND_REDIRECT_URL = process.env.FRONTEND_REDIRECT_URL || "";
 const CONFIG_STORE_PATH = process.env.STRAVA_CONFIG_PATH;
@@ -38,8 +41,14 @@ const tokenStore = createTokenStore(TOKEN_STORE_PATH);
 const activityStore = createActivityStore();
 activityStore.initialize();
 
-app.use(cors());
 app.use(express.json());
+app.use("/api", createLocalApiOriginGuard({
+    allowedOrigins: buildAllowedLocalOrigins({
+        host: HOST,
+        port: PORT,
+        appBaseUrl: APP_BASE_URL
+    })
+}));
 app.use("/src", express.static(path.join(PROJECT_ROOT, "src")));
 app.use("/vendor/@garmin/fitsdk", express.static(path.join(PROJECT_ROOT, "node_modules", "@garmin", "fitsdk")));
 app.use(createActivityRoutes({
@@ -65,19 +74,37 @@ app.get("/", (_req, res) => {
     res.sendFile(path.join(PROJECT_ROOT, "index.html"));
 });
 
-app.get("/user-profile.json", (_req, res) => {
-    res.sendFile(USER_PROFILE_PATH);
+app.get("/api/user-profile", async (_req, res) => {
+    try {
+        const profile = await readUserProfile();
+        res.json({ ok: true, profile: sanitizeUserProfile(profile) });
+    } catch (error) {
+        res.status(500).json({ ok: false, error: error.message });
+    }
 });
 
 app.put("/api/user-profile", async (req, res) => {
     try {
-        const profile = sanitizeUserProfile(req.body ?? {});
+        const currentProfile = await readUserProfile();
+        const profile = {
+            ...currentProfile,
+            ...sanitizeUserProfile(req.body ?? {})
+        };
         await fs.writeFile(USER_PROFILE_PATH, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
-        res.json({ ok: true, profile });
+        res.json({ ok: true, profile: sanitizeUserProfile(profile) });
     } catch (error) {
         res.status(400).json({ ok: false, error: error.message });
     }
 });
+
+async function readUserProfile() {
+    try {
+        return JSON.parse(await fs.readFile(USER_PROFILE_PATH, "utf8"));
+    } catch (error) {
+        if (error?.code === "ENOENT") return {};
+        throw error;
+    }
+}
 
 app.get("/healthz", (_req, res) => {
     res.json({ ok: true, service: "rider-tracker" });

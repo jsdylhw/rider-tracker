@@ -14,21 +14,22 @@ export function createUserService({ store }) {
     }
 
     function loadUserProfile() {
-        fetch("user-profile.json")
+        fetch("/api/user-profile")
             .then((response) => {
                 if (!response.ok) {
                     throw new Error("Local profile not found");
                 }
                 return response.json();
             })
-            .then((profile) => {
+            .then((payload) => {
+                const profile = payload?.profile ?? payload;
                 store.setState((state) => ({
                     ...state,
                     settings: sanitizeSettings({ ...state.settings, ...profile })
                 }));
             })
             .catch((error) => {
-                console.info("未能加载本地 user-profile.json，使用默认设置。", error);
+                console.info("未能加载本地用户设置，使用默认设置。", error);
             });
     }
 
