@@ -5,6 +5,7 @@ import { createMainView } from "../ui/renderers/main-view.js";
 import { createPipController } from "../ui/pip/pip-controller.js";
 import { formatDuration, formatNumber } from "../shared/format.js";
 import { buildPipViewModel } from "./view-models/live-ride-view-model.js";
+import { ensureLeaflet } from "../ui/map/leaflet-loader.js";
 
 import { createUserService } from "./services/user-service.js";
 import { createRouteService } from "./services/route-service.js";
@@ -14,6 +15,10 @@ import { createExportService } from "./services/export-service.js";
 import { createGoogleMapsConfigService } from "./services/google-maps-config-service.js";
 import { createUiService } from "./services/ui-service.js";
 import { createWorkoutService } from "./services/workout-service.js";
+
+// Leaflet is loaded from CDN with fallbacks. Do not prevent non-map features
+// from starting if every external source is unavailable.
+await ensureLeaflet();
 
 // 1. 初始化状态与 Store
 const persistedSession = loadLastSession();

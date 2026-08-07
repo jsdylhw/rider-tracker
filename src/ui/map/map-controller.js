@@ -10,7 +10,11 @@ export function createMapController({ previewElement, dashboardElement }) {
     let latestDashboardRecord = null;
     
     function createMap(element, options) {
-        if (!element || !window.L) {
+        if (!element) {
+            return null;
+        }
+        if (!window.L) {
+            renderMapUnavailable(element);
             return null;
         }
 
@@ -104,6 +108,18 @@ export function createMapController({ previewElement, dashboardElement }) {
         invalidateDashboardSize,
         isReady: Boolean(window.L)
     };
+}
+
+function renderMapUnavailable(element) {
+    if (element.dataset?.mapUnavailable === "true") return;
+    if (element.dataset) element.dataset.mapUnavailable = "true";
+    element.classList?.add("map-unavailable");
+    element.innerHTML = `
+        <div class="map-unavailable-message" role="status">
+            <strong>地图组件加载失败</strong>
+            <span>请检查网络或代理设置后刷新页面。</span>
+        </div>
+    `;
 }
 
 function refreshMapAfterVisibility(map, layers, route, currentRecord = null) {
