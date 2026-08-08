@@ -63,9 +63,12 @@ function initializeUploadConfirmModal() {
         const desc = descTextarea?.value?.trim() || "";
         const markVirtual = virtualCheckbox?.checked !== false;
 
-        onUpdate?.({ activityName: name, fitDescription: desc, markVirtualActivity: markVirtual });
+        // Name and description are reusable preferences. Virtual/real is an
+        // explicit decision for this upload only, so it must not become the
+        // next ride's archive default.
+        onUpdate?.({ activityName: name, fitDescription: desc });
         overlay?.classList.remove("open");
-        onUpload?.();
+        onUpload?.({ activityName: name, fitDescription: desc, markVirtualActivity: markVirtual });
     });
 }
 
@@ -76,7 +79,7 @@ function openUploadModal({ onUpload, onUpdateExportMetadata, getExportMetadata, 
     const meta = getExportMetadata?.() || {};
     const init = initialValues || {};
     if (nameInput) nameInput.value = init.activityName ?? meta.activityName ?? "";
-    if (virtualCheckbox) virtualCheckbox.checked = init.markVirtualActivity ?? (meta.markVirtualActivity !== false);
+    if (virtualCheckbox) virtualCheckbox.checked = init.markVirtualActivity === true;
     if (descTextarea) descTextarea.value = init.fitDescription ?? meta.fitDescription ?? "";
 
     _pendingUpload = { onUpload, onUpdateExportMetadata };

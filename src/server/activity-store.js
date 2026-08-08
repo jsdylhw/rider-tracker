@@ -93,6 +93,8 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
                 ${sqlValue(activity.updatedAt)}
             )
             ON CONFLICT(id) DO UPDATE SET
+                source = excluded.source,
+                sport_type = excluded.sport_type,
                 name = excluded.name,
                 finished_at = excluded.finished_at,
                 elapsed_seconds = excluded.elapsed_seconds,

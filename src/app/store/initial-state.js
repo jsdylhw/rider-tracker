@@ -28,7 +28,9 @@ export const defaultExportMetadata = {
     uploadEndpoint: "",
     stravaServerUrl: DEFAULT_STRAVA_SERVER_URL,
     stravaUserId: "default",
-    markVirtualActivity: true
+    // FIT archives stay neutral. The upload confirmation decides whether the
+    // copy sent to Strava is a virtual activity.
+    markVirtualActivity: false
 };
 
 export const STREET_VIEW_UPDATE_INTERVAL_MS = 3000;

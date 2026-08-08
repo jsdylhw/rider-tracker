@@ -190,7 +190,7 @@ export function createActivityRoutes({ activityStore, upload, fitFileDir, projec
 
             const activity = activityStore.saveRiderSession(session, {
                 name: req.body?.name,
-                sportType: req.body?.sportType || "VirtualRide",
+                sportType: req.body?.sportType || "Ride",
                 source: session.source || "beacon"
             });
             const savedActivity = saveFitFileForActivity({
