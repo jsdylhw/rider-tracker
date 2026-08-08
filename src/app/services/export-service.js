@@ -226,7 +226,7 @@ export function createExportService({ store }) {
         }
     }
 
-    async function uploadActivityFit() {
+    async function uploadActivityFit(uploadOptions = {}) {
         const { selectedActivity, session, exportMetadata } = store.getState();
         const activitySession = selectedActivity?.rawSession ?? session;
 
@@ -248,12 +248,16 @@ export function createExportService({ store }) {
             exportMetadata: {
                 ...exportMetadata,
                 ...(activitySession?.exportMetadata ?? {}),
-                activityName: exportMetadata.activityName ?? selectedActivity?.name ?? activitySession?.exportMetadata?.activityName
+                activityName: uploadOptions.activityName ?? selectedActivity?.name ?? exportMetadata.activityName ?? activitySession?.exportMetadata?.activityName,
+                fitDescription: uploadOptions.fitDescription ?? exportMetadata.fitDescription,
+                // This is intentionally per-upload. Do not reuse the archive
+                // classification or a previous upload's choice.
+                markVirtualActivity: uploadOptions.markVirtualActivity === true
             }
         });
     }
 
-    async function archiveFitForSession(sessionArg = null) {
+    async function archiveFitForSession(sessionArg = null, metadataOverride = null) {
         const { session, exportMetadata } = store.getState();
         const targetSession = sessionArg ?? session;
 
@@ -262,11 +266,17 @@ export function createExportService({ store }) {
         }
 
         try {
-            const fitBytes = await exportSessionAsFit(targetSession, exportMetadata, {
-                markVirtualActivity: exportMetadata?.markVirtualActivity
+            const metadata = {
+                ...exportMetadata,
+                ...(targetSession.exportMetadata ?? {}),
+                ...(metadataOverride ?? {})
+            };
+            const markVirtualActivity = metadata.markVirtualActivity === true;
+            const fitBytes = await exportSessionAsFit(targetSession, metadata, {
+                markVirtualActivity
             });
             const timestamp = resolveSessionTimestamp(targetSession);
-            const filename = `virtual-ride-${timestamp}.fit`;
+            const filename = `${markVirtualActivity ? "virtual-ride" : "ride"}-${timestamp}.fit`;
             const activity = await saveFitFileForSession({
                 session: targetSession,
                 fitBytes,
@@ -299,17 +309,21 @@ export function createExportService({ store }) {
                 ...(options.exportMetadata ?? {})
             };
             const fitBytes = await exportSessionAsFit(targetSession, metadata, {
-                markVirtualActivity: options.markVirtualActivity ?? metadata?.markVirtualActivity
+                // Completed rides are stored as a neutral FIT. The upload modal
+                // creates the virtual variant only when the user selects it.
+                markVirtualActivity: options.markVirtualActivity === true
             });
             const timestamp = resolveSessionTimestamp(targetSession);
-            const filename = options.filename ?? `virtual-ride-${timestamp}.fit`;
-            const compactSession = buildCompactFitSession(targetSession);
+            const filename = options.filename ?? `ride-${timestamp}.fit`;
+            const compactSession = buildCompactFitSession(targetSession, {
+                markVirtualActivity: false
+            });
             const savedActivity = await importActivityFitFile({
                 session: compactSession,
                 fitBytes,
                 filename,
                 name: options.name ?? metadata.activityName ?? targetSession.exportMetadata?.activityName,
-                sportType: options.sportType ?? inferSportTypeForSession(targetSession, metadata)
+                sportType: options.sportType ?? "Ride"
             });
 
             if (savedActivity?.id) {
@@ -375,7 +389,7 @@ export function createExportService({ store }) {
                 statusText: "Uploading archived FIT file..."
             }));
 
-            const uploadAsVirtual = exportMetadata?.markVirtualActivity !== false;
+            const uploadAsVirtual = exportMetadata?.markVirtualActivity === true;
             const hasGpsTrack = session ? sessionHasGpsTrack(session) : activityForUpload.hasGpsTrack === true;
             const upload = await uploadSavedActivityFitToStravaServer({
                 serverUrl: exportMetadata.stravaServerUrl,
@@ -494,7 +508,7 @@ function notifyActivitySaved(activity) {
     }
 }
 
-function buildCompactFitSession(session) {
+function buildCompactFitSession(session, exportMetadataOverride = null) {
     if (!session) {
         return null;
     }
@@ -508,7 +522,10 @@ function buildCompactFitSession(session) {
         finishedAt: session.finishedAt,
         settings: session.settings,
         summary: session.summary,
-        exportMetadata: session.exportMetadata,
+        exportMetadata: {
+            ...(session.exportMetadata ?? {}),
+            ...(exportMetadataOverride ?? {})
+        },
         hasGpsTrack: sessionHasGpsTrack(session),
         route: buildCompactRouteMap(session.route),
         records: []
@@ -555,11 +572,6 @@ function downsampleRouteGeometry(points, maxPoints = 1600) {
         const sourceIndex = index === maxPoints - 1 ? lastIndex : Math.round(index * step);
         return points[sourceIndex];
     });
-}
-
-function inferSportTypeForSession(session, exportMetadata = {}) {
-    const uploadAsVirtual = exportMetadata?.markVirtualActivity !== false;
-    return uploadAsVirtual || !sessionHasGpsTrack(session) ? "VirtualRide" : "Ride";
 }
 
 function resolveSessionTimestamp(session) {

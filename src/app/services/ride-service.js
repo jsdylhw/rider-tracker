@@ -224,7 +224,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
             ...state.exportMetadata,
             ...(session.exportMetadata ?? {})
         }, {
-            markVirtualActivity: state.exportMetadata?.markVirtualActivity
+            markVirtualActivity: false
         });
 
         if (!fitBytes) {
@@ -525,8 +525,8 @@ function saveSessionToActivityHistory(session) {
 function archiveCompletedRideSession(session, exportService) {
     const savePromise = typeof exportService?.archiveSessionAsFitActivity === "function"
         ? exportService.archiveSessionAsFitActivity(session, {
-            sportType: "VirtualRide",
-            markVirtualActivity: session.exportMetadata?.markVirtualActivity
+            sportType: "Ride",
+            markVirtualActivity: false
         })
         : saveSessionToActivityHistory(session);
 
@@ -616,8 +616,8 @@ function clampVirtualCadence(value, fallback = STREET_VIEW_DEBUG_CADENCE_RPM) {
 function archiveSimulationSession(session, exportService) {
     const savePromise = typeof exportService?.archiveSessionAsFitActivity === "function"
         ? exportService.archiveSessionAsFitActivity(session, {
-            sportType: "VirtualRide",
-            markVirtualActivity: session.exportMetadata?.markVirtualActivity
+            sportType: "Ride",
+            markVirtualActivity: false
         })
         : saveSessionToActivityHistory(session);
 

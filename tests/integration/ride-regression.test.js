@@ -624,7 +624,8 @@ export const suite = {
 
                     assertEqual(Boolean(archivedSession?.records?.length), true);
                     assertEqual(Boolean(archivedSession?.summary?.metrics), true);
-                    assertEqual(archivedOptions.sportType, "VirtualRide");
+                    assertEqual(archivedOptions.sportType, "Ride");
+                    assertEqual(archivedOptions.markVirtualActivity, false);
                     assertEqual(Boolean(store.getState().session), true);
                     assertEqual(Boolean(store.getState().session.summary), true);
                 } finally {
