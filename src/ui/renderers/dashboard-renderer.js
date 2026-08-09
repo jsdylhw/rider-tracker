@@ -132,10 +132,15 @@ export function createDashboardRenderer({
     }
 
     function enterImmersiveStreetView(store, mode) {
-        visuals.setStreetViewMode?.(mode, {
-            container1: elements.svPano1,
-            container2: elements.svPano2
-        });
+        // Debug fallback intentionally has no Google panorama. Do not try to
+        // create or switch a controller there: it would dereference
+        // window.google after the failed load and make both mode buttons fail.
+        if (isStreetViewLoaded()) {
+            visuals.setStreetViewMode?.(mode, {
+                container1: elements.svPano1,
+                container2: elements.svPano2
+            });
+        }
         immersiveStreetViewMode = true;
         resetVisualRenderState();
         if (elements.metricsCustomizer) {
