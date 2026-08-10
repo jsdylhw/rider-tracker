@@ -96,6 +96,24 @@
                                         <span>导入 GPX 文件</span>
                                         <input id="gpxFileInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
                                     </label>
+                                    <div class="saved-route-library">
+                                        <div class="route-panel-head">
+                                            <div>
+                                                <strong>我的 GPX 路线</strong>
+                                                <span>已导入路线会保存在本机，可直接重新加载。</span>
+                                            </div>
+                                            <button id="refreshSavedGpxRoutesBtn" class="btn ghost" type="button">刷新</button>
+                                        </div>
+                                        <div class="saved-route-library-actions">
+                                            <select id="savedGpxRouteSelect" aria-label="已保存 GPX 路线">
+                                                <option value="">正在读取我的路线...</option>
+                                            </select>
+                                            <button id="loadSavedGpxRouteBtn" class="btn secondary" type="button">从头加载</button>
+                                            <button id="continueSavedGpxRouteBtn" class="btn primary" type="button" hidden>继续上次</button>
+                                            <button id="deleteSavedGpxRouteBtn" class="btn ghost" type="button">删除</button>
+                                        </div>
+                                        <p id="savedGpxRouteStatus" class="saved-route-library-status">导入 GPX 后会自动保存到这里。</p>
+                                    </div>
                                 </div>
 
                                 <div id="manualRoutePanel" class="route-mode-panel">

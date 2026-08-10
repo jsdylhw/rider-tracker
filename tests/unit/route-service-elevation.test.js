@@ -65,6 +65,146 @@ export const suite = {
             }
         },
         {
+            name: "loads a saved GPX route without requesting elevation again",
+            async run() {
+                const savedRoute = createCoordinateRoute();
+                const store = createStore({ route: null, liveRide: { isActive: false, session: null } });
+                const service = createRouteService({
+                    store,
+                    routeLibrary: {
+                        async loadSavedRoute(id) {
+                            return { id, importFileName: "saved-climb", route: savedRoute };
+                        },
+                        async listSavedGpxRoutes() { return []; },
+                        async saveGpxRoute() { return null; },
+                        async deleteSavedRoute() { return null; }
+                    }
+                });
+
+                await service.loadSavedGpxRoute("route-123");
+
+                assertEqual(store.getState().route.libraryRouteId, "route-123");
+                assertEqual(store.getState().route.importFileName, "saved-climb");
+                assertEqual(store.getState().route.hasElevationData, false);
+                assert(store.getState().statusText.includes("已从起点加载"));
+            }
+        },
+        {
+            name: "continues a saved GPX route from its recorded position",
+            async run() {
+                const savedRoute = createCoordinateRoute();
+                const store = createStore({ route: null, liveRide: { isActive: false, session: null } });
+                const service = createRouteService({
+                    store,
+                    routeLibrary: {
+                        async loadSavedRoute(id) {
+                            return { id, importFileName: "saved-climb", resumeDistanceMeters: 500, route: savedRoute };
+                        },
+                        async listSavedGpxRoutes() { return []; },
+                        async saveGpxRoute() { return null; },
+                        async deleteSavedRoute() { return null; },
+                        async updateSavedRouteResumeDistance() { return null; }
+                    }
+                });
+
+                await service.continueSavedGpxRoute("route-123");
+
+                assertEqual(store.getState().route.continuation.startDistanceMeters, 500);
+                assertEqual(store.getState().route.libraryRouteId, "route-123");
+                assertEqual(store.getState().route.totalDistanceMeters, 500);
+                assert(store.getState().statusText.includes("已从 0.50 km 继续"));
+            }
+        },
+        {
+            name: "stores unfinished GPX progress in the route library",
+            async run() {
+                const updates = [];
+                const store = createStore({ route: null, liveRide: { isActive: false, session: null } });
+                const service = createRouteService({
+                    store,
+                    routeLibrary: {
+                        async saveGpxRoute() { return null; },
+                        async listSavedGpxRoutes() { return []; },
+                        async loadSavedRoute() { return null; },
+                        async deleteSavedRoute() { return null; },
+                        async updateSavedRouteResumeDistance(id, distanceMeters) {
+                            updates.push({ id, distanceMeters });
+                        }
+                    }
+                });
+                const route = {
+                    ...createCoordinateRoute(),
+                    libraryRouteId: "route-123",
+                    routeLibraryResumeDistanceMeters: 0
+                };
+
+                await service.updateSavedGpxRouteProgress({ route, sessionDistanceMeters: 300 });
+
+                assertEqual(updates.length, 1);
+                assertEqual(updates[0].id, "route-123");
+                assertEqual(updates[0].distanceMeters, 300);
+            }
+        },
+        {
+            name: "clears an old resume position when a restarted GPX route is completed",
+            async run() {
+                const updates = [];
+                const store = createStore({ route: null, liveRide: { isActive: false, session: null } });
+                const service = createRouteService({
+                    store,
+                    routeLibrary: {
+                        async saveGpxRoute() { return null; },
+                        async listSavedGpxRoutes() { return []; },
+                        async loadSavedRoute() { return null; },
+                        async deleteSavedRoute() { return null; },
+                        async updateSavedRouteResumeDistance(id, distanceMeters) {
+                            updates.push({ id, distanceMeters });
+                        }
+                    }
+                });
+                const route = {
+                    ...createCoordinateRoute(),
+                    libraryRouteId: "route-123",
+                    routeLibraryResumeDistanceMeters: 500
+                };
+
+                await service.updateSavedGpxRouteProgress({ route, sessionDistanceMeters: 1000 });
+
+                assertEqual(updates.length, 1);
+                assertEqual(updates[0].distanceMeters, 0);
+            }
+        },
+        {
+            name: "keeps a GPX usable when route library saving fails",
+            async run() {
+                const store = createStore({ route: null, liveRide: { isActive: false, session: null } });
+                const service = createRouteService({
+                    store,
+                    routeLibrary: {
+                        async saveGpxRoute() { throw new Error("database unavailable"); },
+                        async listSavedGpxRoutes() { return []; },
+                        async loadSavedRoute() { return null; },
+                        async deleteSavedRoute() { return null; }
+                    }
+                });
+                const file = {
+                    name: "fallback.gpx",
+                    async text() {
+                        return `<?xml version="1.0"?><gpx><trk><name>Fallback</name><trkseg>
+                            <trkpt lat="35.0" lon="135.0"><ele>10</ele></trkpt>
+                            <trkpt lat="35.001" lon="135.001"><ele>20</ele></trkpt>
+                        </trkseg></trk></gpx>`;
+                    }
+                };
+
+                await service.importGpx(file);
+
+                assertEqual(store.getState().route.source, "gpx");
+                assertEqual(store.getState().route.libraryRouteId, undefined);
+                assert(store.getState().statusText.includes("路线库保存失败"));
+            }
+        },
+        {
             name: "falls back to the synthetic grid when Overpass returns an unroutable response",
             async run() {
                 const store = createStore({

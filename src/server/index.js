@@ -7,7 +7,9 @@ import dotenv from "dotenv";
 import { createConfigStore } from "./config-store.js";
 import { createTokenStore } from "./token-store.js";
 import { createActivityStore } from "./activity-store.js";
+import { createRouteLibraryStore } from "./route-library-store.js";
 import { createActivityRoutes } from "./routes/activity-routes.js";
+import { createRouteLibraryRoutes } from "./routes/route-library-routes.js";
 import { createStravaRoutes } from "./routes/strava-routes.js";
 import { buildAllowedLocalOrigins, buildLocalBaseUrl, createLocalApiOriginGuard } from "./local-api-security.js";
 
@@ -39,9 +41,11 @@ const USER_PROFILE_PATH = path.join(PROJECT_ROOT, "user-profile.json");
 const configStore = createConfigStore(CONFIG_STORE_PATH);
 const tokenStore = createTokenStore(TOKEN_STORE_PATH);
 const activityStore = createActivityStore();
+const routeLibraryStore = createRouteLibraryStore();
 activityStore.initialize();
+routeLibraryStore.initialize();
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use("/api", createLocalApiOriginGuard({
     allowedOrigins: buildAllowedLocalOrigins({
         host: HOST,
@@ -57,6 +61,7 @@ app.use(createActivityRoutes({
     fitFileDir: FIT_FILE_DIR,
     projectRoot: PROJECT_ROOT
 }));
+app.use(createRouteLibraryRoutes({ routeLibraryStore }));
 app.use(createStravaRoutes({
     configStore,
     tokenStore,

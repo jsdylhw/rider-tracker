@@ -6,11 +6,17 @@ export function createRouteDetailsRenderer({
     onAddSegment,
     onResetRoute,
     onImportGpx,
+    onListSavedGpxRoutes,
+    onLoadSavedGpxRoute,
+    onContinueSavedGpxRoute,
+    onDeleteSavedGpxRoute,
     onUpdateRouteSegment,
     onRemoveRouteSegment,
     getInputMode
 }) {
     let lastRenderedState = null;
+    let savedGpxRoutes = [];
+    let savedRoutesLoading = false;
 
     function bindEvents() {
         elements.addSegmentBtn?.addEventListener("click", () => {
@@ -27,16 +33,50 @@ export function createRouteDetailsRenderer({
             if (!file || isRouteEditingLocked() || isRouteLoading()) return;
             try {
                 await onImportGpx(file);
+                await refreshSavedGpxRoutes();
             } finally {
                 event.target.value = "";
             }
         });
+        elements.refreshSavedGpxRoutesBtn?.addEventListener("click", () => {
+            void refreshSavedGpxRoutes();
+        });
+        elements.loadSavedGpxRouteBtn?.addEventListener("click", async () => {
+            const routeId = elements.savedGpxRouteSelect?.value;
+            if (!routeId || isRouteEditingLocked() || isRouteLoading()) return;
+            setSavedRouteStatus("正在加载已保存路线...");
+            const route = await onLoadSavedGpxRoute?.(routeId);
+            setSavedRouteStatus(route ? `已从起点加载：${route.name}` : "加载路线失败，请重试。");
+        });
+        elements.continueSavedGpxRouteBtn?.addEventListener("click", async () => {
+            const routeId = elements.savedGpxRouteSelect?.value;
+            if (!routeId || isRouteEditingLocked() || isRouteLoading()) return;
+            setSavedRouteStatus("正在从上次位置继续路线...");
+            const route = await onContinueSavedGpxRoute?.(routeId);
+            setSavedRouteStatus(route ? `已从上次位置继续：${route.name}` : "继续路线失败，请重试。");
+        });
+        elements.deleteSavedGpxRouteBtn?.addEventListener("click", async () => {
+            const routeId = elements.savedGpxRouteSelect?.value;
+            if (!routeId || isRouteEditingLocked()) return;
+            const route = savedGpxRoutes.find((item) => item.id === routeId);
+            if (typeof window !== "undefined" && !window.confirm(`删除已保存路线“${route?.name ?? ""}”？不会删除历史活动。`)) return;
+            try {
+                await onDeleteSavedGpxRoute?.(routeId);
+                setSavedRouteStatus("已删除保存的路线。");
+                await refreshSavedGpxRoutes();
+            } catch (error) {
+                setSavedRouteStatus(`删除失败：${error?.message ?? "请重试。"}`);
+            }
+        });
+        elements.savedGpxRouteSelect?.addEventListener("change", renderSavedGpxRouteControls);
+        void refreshSavedGpxRoutes();
     }
 
     function render(state) {
         lastRenderedState = state;
         renderRouteTable(state);
         renderRouteSummary(state);
+        renderSavedGpxRouteControls();
     }
 
     function renderRouteTable(state) {
@@ -161,6 +201,58 @@ export function createRouteDetailsRenderer({
         return lastRenderedState?.route?.isLoading === true;
     }
 
+    async function refreshSavedGpxRoutes() {
+        if (!onListSavedGpxRoutes || savedRoutesLoading) return;
+        savedRoutesLoading = true;
+        renderSavedGpxRouteControls();
+        try {
+            savedGpxRoutes = await onListSavedGpxRoutes();
+            if (!savedGpxRoutes.length) setSavedRouteStatus("还没有已保存的 GPX 路线。");
+        } catch (error) {
+            savedGpxRoutes = [];
+            setSavedRouteStatus(`读取路线库失败：${error?.message ?? "请重试。"}`);
+        } finally {
+            savedRoutesLoading = false;
+            renderSavedGpxRouteControls();
+        }
+    }
+
+    function renderSavedGpxRouteControls() {
+        const select = elements.savedGpxRouteSelect;
+        if (!select) return;
+        const previousValue = select.value;
+        const routeEditingLocked = isRouteEditingLocked();
+        const routeLoading = isRouteLoading();
+        const hasRoutes = savedGpxRoutes.length > 0;
+        if (savedRoutesLoading) {
+            select.innerHTML = '<option value="">正在读取我的路线...</option>';
+        } else if (!hasRoutes) {
+            select.innerHTML = '<option value="">暂无已保存路线</option>';
+        } else {
+            select.innerHTML = savedGpxRoutes.map((route) => (
+                `<option value="${escapeHtml(route.id)}">${escapeHtml(formatSavedRouteLabel(route))}</option>`
+            )).join("");
+            if (savedGpxRoutes.some((route) => route.id === previousValue)) select.value = previousValue;
+        }
+        select.disabled = savedRoutesLoading || !hasRoutes || routeEditingLocked || routeLoading;
+        if (elements.refreshSavedGpxRoutesBtn) elements.refreshSavedGpxRoutesBtn.disabled = savedRoutesLoading || routeEditingLocked;
+        if (elements.loadSavedGpxRouteBtn) elements.loadSavedGpxRouteBtn.disabled = !hasRoutes || routeEditingLocked || routeLoading;
+        const selectedRoute = savedGpxRoutes.find((route) => route.id === select.value) ?? savedGpxRoutes[0] ?? null;
+        const hasResumePosition = hasRouteResumePosition(selectedRoute);
+        if (elements.continueSavedGpxRouteBtn) {
+            elements.continueSavedGpxRouteBtn.hidden = !hasResumePosition;
+            elements.continueSavedGpxRouteBtn.disabled = !hasResumePosition || routeEditingLocked || routeLoading;
+            elements.continueSavedGpxRouteBtn.textContent = hasResumePosition
+                ? `继续 ${formatNumber(selectedRoute.resumeDistanceMeters / 1000, 2)} km`
+                : "继续上次";
+        }
+        if (elements.deleteSavedGpxRouteBtn) elements.deleteSavedGpxRouteBtn.disabled = !hasRoutes || routeEditingLocked || routeLoading;
+    }
+
+    function setSavedRouteStatus(message) {
+        if (elements.savedGpxRouteStatus) elements.savedGpxRouteStatus.textContent = message;
+    }
+
     return { bindEvents, render };
 }
 
@@ -170,4 +262,19 @@ function escapeHtml(value) {
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+}
+
+function formatSavedRouteLabel(route) {
+    const distanceKm = Number(route?.totalDistanceMeters ?? 0) / 1000;
+    const resumeDistanceMeters = Number(route?.resumeDistanceMeters) || 0;
+    const resumeText = hasRouteResumePosition(route)
+        ? ` · 上次停在 ${formatNumber(resumeDistanceMeters / 1000, 2)} km`
+        : "";
+    return `${route?.name ?? "GPX 路线"} · ${formatNumber(distanceKm, 2)} km${resumeText}`;
+}
+
+function hasRouteResumePosition(route) {
+    const resumeDistanceMeters = Number(route?.resumeDistanceMeters) || 0;
+    const totalDistanceMeters = Number(route?.totalDistanceMeters) || 0;
+    return resumeDistanceMeters > 0 && resumeDistanceMeters < totalDistanceMeters - 10;
 }

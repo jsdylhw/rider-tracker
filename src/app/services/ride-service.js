@@ -126,6 +126,14 @@ export function createRideService({ store, deviceService, exportService, routeSe
         const completedSession = finalizeRideSync();
 
         if (completedSession) {
+            const completedDistanceMeters = (completedSession.summary?.metrics?.ride?.distanceKm ?? 0) * 1000;
+            const routeProgressUpdate = routeService?.updateSavedGpxRouteProgress?.({
+                route: completedSession.route,
+                sessionDistanceMeters: completedDistanceMeters
+            });
+            void Promise.resolve(routeProgressUpdate).catch((error) => {
+                console.warn("[RideService] 保存未完成路线进度失败:", error);
+            });
             const completedRideId = completedSession.startedAt;
             const pendingActivity = buildPendingActivity(completedSession);
             store.setState((currentState) => ({

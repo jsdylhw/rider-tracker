@@ -6,13 +6,27 @@ import { createExplorationRouteService } from "./exploration-route-service.js";
 import { createRouteEditorService } from "./route-editor-service.js";
 import { createRouteElevationService } from "./route-elevation-service.js";
 import { createRouteOperationCoordinator } from "./route-operation-coordinator.js";
+import {
+    deleteSavedRoute,
+    listSavedGpxRoutes,
+    loadSavedRoute,
+    saveGpxRoute,
+    updateSavedRouteResumeDistance
+} from "../../adapters/storage/route-library-client.js";
 
 export function createRouteService({
     store,
     googleMapsConfig = null,
     fetchRoadNetwork = fetchOverpassRoadNetwork,
     loadGoogleMaps = loadGoogleMapsApi,
-    enrichElevation = enrichTrackPointsWithGoogleElevation
+    enrichElevation = enrichTrackPointsWithGoogleElevation,
+    routeLibrary = {
+        saveGpxRoute,
+        listSavedGpxRoutes,
+        loadSavedRoute,
+        deleteSavedRoute,
+        updateSavedRouteResumeDistance
+    }
 }) {
     const operations = createRouteOperationCoordinator({ store });
     let elevationService;
@@ -34,7 +48,8 @@ export function createRouteService({
         store,
         operations,
         defaultRouteSegments,
-        invalidateExploration: explorationService.clearActiveExploration
+        invalidateExploration: explorationService.clearActiveExploration,
+        routeLibrary
     });
 
     return {
