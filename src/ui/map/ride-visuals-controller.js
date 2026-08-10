@@ -12,13 +12,19 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
     });
     let streetViewController = null;
     let streetViewMode = "moving";
+    let streetViewGeneration = 0;
 
     async function enableStreetView({ apiKey, container1, container2, mode = streetViewMode }) {
+        const generation = ++streetViewGeneration;
         await loadGoogleMapsForStreetView(apiKey);
+        if (generation !== streetViewGeneration) {
+            return { enabled: false, reason: "stale-request" };
+        }
         googleMapsConfig?.lockApiKey?.(apiKey);
         streetViewController?.destroy();
         streetViewMode = mode;
         streetViewController = createStreetViewController({ container1, container2, mode });
+        return { enabled: true };
     }
 
     async function enableConfiguredStreetView({ container1, container2 }) {
@@ -27,7 +33,7 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
             return { enabled: false, reason: "missing-key" };
         }
         if (!streetViewController) {
-            await enableStreetView({ apiKey, container1, container2 });
+            return enableStreetView({ apiKey, container1, container2 });
         }
         return { enabled: true };
     }
@@ -88,9 +94,15 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         streetViewController?.invalidateSize?.();
     }
 
-    function destroy() {
+    function resetStreetView() {
+        streetViewGeneration += 1;
         streetViewController?.destroy();
         streetViewController = null;
+        streetViewMode = "moving";
+    }
+
+    function destroy() {
+        resetStreetView();
     }
 
     return {
@@ -108,6 +120,7 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         invalidatePreviewSize,
         invalidateDashboardSize,
         invalidateStreetViewSize,
+        resetStreetView,
         destroy
     };
 }
