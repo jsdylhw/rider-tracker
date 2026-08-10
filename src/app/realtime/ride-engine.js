@@ -49,6 +49,8 @@ export function buildNextRideSessionState({
         elapsedSeconds: nextSession.summary.metrics.ride.elapsedSeconds,
         ftp: state.settings.ftp
     });
+    const forceTrainerCommand = (state.liveRide?.trainerConnectionEpoch ?? 0)
+        > (state.liveRide?.appliedTrainerConnectionEpoch ?? 0);
 
     const workoutRuntime = trainerControlMode === TRAINER_CONTROL_MODES.SIM
         ? enrichRuntimeWithWorkoutTarget(buildGradeSimulationState({
@@ -59,6 +61,7 @@ export function buildNextRideSessionState({
                 ?? 0,
             config: state.workout.gradeSimulation,
             active: true,
+            forceCommand: forceTrainerCommand,
             rideId,
             commandSequence: nextCommandSequence
         }), workoutTargetRuntime)
@@ -127,6 +130,8 @@ export function buildRuntimeByControlMode({
             previousTargetPowerWatts: state.liveRide.commandDispatch?.lastSentPowerWatts ?? null,
             confirmationRequired: state.workout.erg?.confirmationRequired === true,
             active,
+            forceCommand: (state.liveRide?.trainerConnectionEpoch ?? 0)
+                > (state.liveRide?.appliedTrainerConnectionEpoch ?? 0),
             rideId,
             commandSequence
         }), workoutTargetRuntime);
@@ -137,6 +142,8 @@ export function buildRuntimeByControlMode({
             resistanceLevel: state.workout.resistance?.level,
             previousResistanceLevel: state.liveRide.commandDispatch?.lastSentResistanceLevel ?? null,
             active,
+            forceCommand: (state.liveRide?.trainerConnectionEpoch ?? 0)
+                > (state.liveRide?.appliedTrainerConnectionEpoch ?? 0),
             rideId,
             commandSequence
         }), workoutTargetRuntime);
