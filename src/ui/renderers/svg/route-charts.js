@@ -175,7 +175,7 @@ export function buildImmersiveElevationGradeSvg(route, currentRecord, { transpar
         0,
         totalDist
     );
-    const elevationChart = { x: 34, y: 28, width: 422, height: 108 };
+    const elevationChart = { x: 52, y: 28, width: 404, height: 108 };
     const gradeCard = { x: 474, y: 18, width: 142, height: 128 };
     const gradePlot = { x: gradeCard.x + 12, y: gradeCard.y + 34, width: gradeCard.width - 24, height: gradeCard.height - 54 };
     const elevations = route.points.map((point) => point.elevationMeters ?? 0);
@@ -217,9 +217,11 @@ export function buildImmersiveElevationGradeSvg(route, currentRecord, { transpar
         : null;
     const elevationTicks = getDistinctValues([maxElevation, (maxElevation + minElevation) / 2, minElevation]);
     const distanceTicks = getDistanceTickValues(totalDist, 3);
-    const currentPillX = currentRecord
-        ? clamp(currentElevationX - 42, elevationChart.x + 8, elevationChart.x + elevationChart.width - 86)
+    const currentAxisLabelY = currentRecord
+        ? clamp(currentElevationY + 4, elevationChart.y + 9, elevationBaseY - 2)
         : null;
+    const visibleElevationTicks = elevationTicks.filter((value) => !currentRecord
+        || Math.abs(toElevationY(value) - currentElevationY) > 12);
 
     return `
         ${transparent ? "" : `
@@ -230,6 +232,8 @@ export function buildImmersiveElevationGradeSvg(route, currentRecord, { transpar
         <text x="${elevationChart.x + elevationChart.width}" y="${elevationChart.y - 12}" text-anchor="end" fill="${colors.dim}" font-size="10.5">${formatNumber(totalDist / 1000, 1)} km</text>
         ${elevationTicks.map((value) => `
             <line x1="${elevationChart.x}" y1="${toElevationY(value).toFixed(1)}" x2="${elevationChart.x + elevationChart.width}" y2="${toElevationY(value).toFixed(1)}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="4 6"></line>
+        `).join("")}
+        ${visibleElevationTicks.map((value) => `
             <text x="${elevationChart.x - 8}" y="${(toElevationY(value) + 4).toFixed(1)}" text-anchor="end" fill="${colors.muted}" font-size="10.5">${Math.round(value)}m</text>
         `).join("")}
         ${distanceTicks.map((tickValue) => `
@@ -242,8 +246,8 @@ export function buildImmersiveElevationGradeSvg(route, currentRecord, { transpar
         ${currentRecord ? `<line x1="${currentElevationX.toFixed(1)}" y1="${elevationChart.y}" x2="${currentElevationX.toFixed(1)}" y2="${elevationBaseY}" stroke="${colors.current}" stroke-width="1.4" stroke-dasharray="4 5"></line>` : ""}
         ${currentRecord ? `<circle cx="${currentElevationX.toFixed(1)}" cy="${currentElevationY.toFixed(1)}" r="7.5" fill="${colors.currentSoft}"></circle>` : ""}
         ${currentRecord ? `<circle cx="${currentElevationX.toFixed(1)}" cy="${currentElevationY.toFixed(1)}" r="4.8" fill="#ffffff" stroke="${colors.current}" stroke-width="2"></circle>` : ""}
-        ${currentRecord ? `<rect x="${currentPillX.toFixed(1)}" y="${(elevationChart.y + 6).toFixed(1)}" width="84" height="20" rx="10" fill="#0f172a" stroke="rgba(148, 163, 184, 0.32)" stroke-width="1"></rect>` : ""}
-        ${currentRecord ? `<text x="${(currentPillX + 42).toFixed(1)}" y="${(elevationChart.y + 20).toFixed(1)}" text-anchor="middle" fill="#f8fafc" font-size="10.5" font-weight="700">${Math.round(currentPoint.elevationMeters ?? 0)} m</text>` : ""}
+        ${currentRecord ? `<line x1="${elevationChart.x - 5}" y1="${currentElevationY.toFixed(1)}" x2="${elevationChart.x}" y2="${currentElevationY.toFixed(1)}" stroke="${colors.current}" stroke-width="2"></line>` : ""}
+        ${currentRecord ? `<text x="${elevationChart.x - 8}" y="${currentAxisLabelY.toFixed(1)}" text-anchor="end" fill="${colors.current}" font-size="10.5" font-weight="700">${Math.round(currentPoint.elevationMeters ?? 0)}m</text>` : ""}
 
         <rect x="${gradeCard.x}" y="${gradeCard.y}" width="${gradeCard.width}" height="${gradeCard.height}" rx="14" fill="${colors.insetFill}" stroke="${colors.insetStroke}" stroke-width="1"></rect>
         <text x="${gradeCard.x + 12}" y="${gradeCard.y + 16}" fill="${colors.currentText}" font-size="11" font-weight="700">当前位置附近坡度</text>
@@ -263,7 +267,7 @@ export function buildImmersiveElevationGradeSvg(route, currentRecord, { transpar
 export function buildElevationProfileSvg(route, currentRecord) {
     const width = DEFAULT_ROUTE_CHART_WIDTH;
     const height = DEFAULT_ROUTE_CHART_HEIGHT;
-    const paddingLeft = 40;
+    const paddingLeft = 56;
     const paddingRight = 16;
     const paddingTop = 18;
     const paddingBottom = 28;
@@ -290,8 +294,12 @@ export function buildElevationProfileSvg(route, currentRecord) {
     const currentPoint = getPointAtDistance(route.points, currentDistanceMeters);
     const currentX = toX(currentDistanceMeters);
     const currentY = toY(currentPoint.elevationMeters ?? 0);
-    const currentPillX = clamp(currentX - 46, paddingLeft + 6, width - paddingRight - 94);
     const guideElevations = getDistinctValues([maxElevation, (maxElevation + minElevation) / 2, minElevation]);
+    const currentAxisLabelY = currentRecord
+        ? clamp(currentY + 4, paddingTop + 9, baseY - 2)
+        : null;
+    const visibleGuideElevations = guideElevations.filter((value) => !currentRecord
+        || Math.abs(toY(value) - currentY) > 12);
 
     return `
         <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="${ROUTE_CHART_COLORS.background}"></rect>
@@ -306,13 +314,11 @@ export function buildElevationProfileSvg(route, currentRecord) {
         ${currentRecord ? `<line x1="${currentX.toFixed(1)}" y1="${paddingTop}" x2="${currentX.toFixed(1)}" y2="${baseY}" stroke="${ROUTE_CHART_COLORS.current}" stroke-width="1.5" stroke-dasharray="4 4"></line>` : ""}
         ${currentRecord ? `<circle cx="${currentX.toFixed(1)}" cy="${currentY.toFixed(1)}" r="7.8" fill="${ROUTE_CHART_COLORS.currentSoft}"></circle>` : ""}
         ${currentRecord ? `<circle cx="${currentX.toFixed(1)}" cy="${currentY.toFixed(1)}" r="4.8" fill="#ffffff" stroke="${ROUTE_CHART_COLORS.current}" stroke-width="2"></circle>` : ""}
-        ${currentRecord ? `<rect x="${currentPillX.toFixed(1)}" y="${(paddingTop + 4).toFixed(1)}" width="94" height="24" rx="12" fill="#0f172a" stroke="rgba(148, 163, 184, 0.4)" stroke-width="1"></rect>` : ""}
-        ${currentRecord ? `<text x="${(currentPillX + 47).toFixed(1)}" y="${(paddingTop + 20).toFixed(1)}" text-anchor="middle" fill="#f8fafc" font-size="11" font-weight="700">${Math.round(currentPoint.elevationMeters ?? 0)} m</text>` : ""}
+        ${currentRecord ? `<line x1="${paddingLeft - 5}" y1="${currentY.toFixed(1)}" x2="${paddingLeft}" y2="${currentY.toFixed(1)}" stroke="${ROUTE_CHART_COLORS.current}" stroke-width="2"></line>` : ""}
+        ${currentRecord ? `<text x="${paddingLeft - 8}" y="${currentAxisLabelY.toFixed(1)}" text-anchor="end" fill="${ROUTE_CHART_COLORS.current}" font-size="11" font-weight="700">${Math.round(currentPoint.elevationMeters ?? 0)}m</text>` : ""}
         <text x="${paddingLeft}" y="${height - 8}" fill="${ROUTE_CHART_COLORS.muted}" font-size="12">0 km</text>
         <text x="${width - paddingRight}" y="${height - 8}" text-anchor="end" fill="${ROUTE_CHART_COLORS.muted}" font-size="12">${formatNumber(distanceKm, 1)} km</text>
-        <text x="${paddingLeft - 8}" y="${paddingTop + 4}" text-anchor="end" fill="${ROUTE_CHART_COLORS.muted}" font-size="12">${Math.round(maxElevation)} m</text>
-        <text x="${paddingLeft - 8}" y="${(paddingTop + innerHeight / 2 + 4).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="11">${Math.round((maxElevation + minElevation) / 2)} m</text>
-        <text x="${paddingLeft - 8}" y="${baseY}" text-anchor="end" fill="${ROUTE_CHART_COLORS.muted}" font-size="12">${Math.round(minElevation)} m</text>
+        ${visibleGuideElevations.map((value, index) => `<text x="${paddingLeft - 8}" y="${(toY(value) + 4).toFixed(1)}" text-anchor="end" fill="${index === 1 ? "#64748b" : ROUTE_CHART_COLORS.muted}" font-size="${index === 1 ? "11" : "12"}">${Math.round(value)}m</text>`).join("")}
         <text x="${paddingLeft}" y="${paddingTop - 4}" fill="${ROUTE_CHART_COLORS.text}" font-size="12" font-weight="700">距离 - 海拔</text>
     `;
 }
