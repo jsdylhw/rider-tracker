@@ -51,6 +51,8 @@ function createElements() {
         streetViewContainer: createFakeElement({ style: {} }),
         svPano1: createFakeElement(),
         svPano2: createFakeElement(),
+        immersiveMovingStreetViewBtn: createFakeElement({ hidden: true }),
+        immersiveStableStreetViewBtn: createFakeElement({ hidden: true }),
         immersiveStreetViewBtn: createFakeElement({ hidden: true }),
         loadStreetViewBtn: createFakeElement({ hidden: true }),
         requestRouteElevationBtn: createFakeElement({ hidden: true }),
@@ -136,6 +138,69 @@ export const suite = {
                 });
                 renderer.render(store.getState());
                 assertEqual(elements.immersiveStreetViewBtn.hidden, true);
+            }
+        },
+        {
+            name: "debug 模式的移动和稳定街景按钮都会切换已加载的 controller",
+            run() {
+                const elements = createElements();
+                const store = createStore(createBaseState());
+                const selectedModes = [];
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => true,
+                        setStreetViewMode(mode) { selectedModes.push(mode); },
+                        syncMap() {},
+                        syncStreetView() {},
+                        invalidateStreetViewSize() {},
+                        invalidateDashboardSize() {}
+                    },
+                    streetViewDebugEnabled: true
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                assertEqual(elements.immersiveMovingStreetViewBtn.hidden, false);
+                assertEqual(elements.immersiveStableStreetViewBtn.hidden, false);
+
+                elements.immersiveMovingStreetViewBtn.dispatch("click");
+                elements.immersiveBackBtn.dispatch("click");
+                renderer.render(store.getState());
+                elements.immersiveStableStreetViewBtn.dispatch("click");
+
+                assertEqual(selectedModes.join(","), "moving,stable");
+            }
+        },
+        {
+            name: "debug 黑屏占位不会尝试创建街景模式 controller",
+            async run() {
+                const elements = createElements();
+                const store = createStore(createBaseState());
+                let modeSwitchCount = 0;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => false,
+                        getGoogleMapsConfig: () => ({ apiKey: "aa" }),
+                        async enableConfiguredStreetView() {
+                            throw new Error("API Key 验证失败");
+                        },
+                        setStreetViewMode() { modeSwitchCount += 1; },
+                        syncMap() {},
+                        syncStreetView() {}
+                    },
+                    requestGoogleMapsApiKey: async () => "aa",
+                    streetViewDebugEnabled: true
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                elements.loadStreetViewBtn.dispatch("click");
+                await waitForUiAction();
+
+                assertEqual(modeSwitchCount, 0);
+                assertEqual(elements.rideDashboard.classList.contains("immersive-street-view"), true);
             }
         },
         {

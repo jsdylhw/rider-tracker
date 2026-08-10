@@ -5,6 +5,17 @@ const GPS_LOOKUP_DISTANCE_METERS = 18;
 const GPS_CATCH_UP_DISTANCE_METERS = 28;
 const GPS_CATCH_UP_INTERVAL_MS = 900;
 const NATIVE_PANO_ROUTE_LEAD_METERS = 2;
+// Keep the single-panorama handoff effect, but avoid replacing the image again
+// before the viewer has had time to perceive the previous panorama.
+const NATIVE_PANO_MIN_SWITCH_INTERVAL_MS = 700;
+const NATIVE_PANO_MIN_SWITCH_DISTANCE_METERS = 6;
+const STABLE_PANO_UPDATE_INTERVAL_MS = 2500;
+const STABLE_PANO_RENDER_SETTLE_MS = 300;
+const STABLE_PANO_SWITCH_LEAD_METERS = 2;
+const STABLE_PANO_SLOW_LOAD_NOTICE_MS = 1200;
+const STABLE_PANO_LOOKUP_TIMEOUT_MS = 12000;
+const STABLE_PANO_REQUEST_TIMEOUT_MS = 12000;
+const STABLE_PANO_MAX_LAG_METERS = 12;
 const USER_INTERACTION_PAUSE_MS = 3000;
 const PANO_READY_TIMEOUT_MS = 1200;
 const MAX_NATIVE_LINK_HEADING_DELTA_DEGREES = 75;
@@ -14,11 +25,24 @@ const THREE_HOP_LOOKAHEAD_SPEED_KPH = 32;
 const PANO_POV_TRANSITION_MIN_MS = 180;
 const PANO_POV_TRANSITION_MAX_MS = 360;
 
+export const STREET_VIEW_MODES = {
+    MOVING: "moving",
+    STABLE: "stable"
+};
+
 export function loadGoogleMapsForStreetView(apiKey) {
     return loadGoogleMapsApi(apiKey);
 }
 
-export function createStreetViewController({ container1, container2, onTrace } = {}) {
+export function createStreetViewController({ container1, container2, mode = STREET_VIEW_MODES.MOVING, onTrace } = {}) {
+    if (mode === STREET_VIEW_MODES.STABLE) {
+        return createStableStreetViewController({ container1, container2, onTrace });
+    }
+    if (container1) {
+        container1.style.display = "";
+        container1.style.opacity = "1";
+        container1.style.zIndex = "2";
+    }
     const streetViewService = new window.google.maps.StreetViewService();
     const googleEvent = window.google.maps.event;
     const listeners = [];
@@ -39,6 +63,8 @@ export function createStreetViewController({ container1, container2, onTrace } =
 
     if (container2) {
         container2.style.display = "none";
+        container2.style.opacity = "0";
+        container2.style.zIndex = "1";
     }
 
     let activePanoId = "";
@@ -48,6 +74,8 @@ export function createStreetViewController({ container1, container2, onTrace } =
     let lastGpsLookupDistance = -1;
     let lastGpsLookupTime = 0;
     let lastCatchUpTime = 0;
+    let lastNativePanoSwitchTime = -Infinity;
+    let lastNativePanoSwitchDistanceMeters = -Infinity;
     let gpsLookupGeneration = 0;
     let panoLoad = null;
     let cancelReadyWait = null;
@@ -176,13 +204,31 @@ export function createStreetViewController({ container1, container2, onTrace } =
             return null;
         }
 
+        const now = Date.now();
+        if (shouldThrottleNativePanoSwitch({
+            currentDistanceMeters: target.distanceMeters,
+            lastSwitchDistanceMeters: lastNativePanoSwitchDistanceMeters,
+            elapsedSinceLastSwitchMs: now - lastNativePanoSwitchTime
+        })) {
+            trace("native-throttled", "原生 pano 切换节流，保持当前画面", {
+                pano: link.pano,
+                routeDistanceMeters: Math.round(target.distanceMeters),
+                distanceSinceLastSwitchMeters: Math.round(target.distanceMeters - lastNativePanoSwitchDistanceMeters),
+                elapsedSinceLastSwitchMs: Math.round(now - lastNativePanoSwitchTime)
+            });
+            return null;
+        }
+
         const currentPanoId = panorama.getPano?.() || activePanoId;
         previousNativePanoId = currentPanoId;
         activePanoId = link.pano;
+        lastNativePanoSwitchTime = now;
+        lastNativePanoSwitchDistanceMeters = target.distanceMeters;
         gpsLookupGeneration += 1;
         beginPanoLoad(link.pano, "native-link", getNativeLinkPovTarget(link, target));
+        const checkPanoReady = waitForPanoReady(link.pano);
         panorama.setPano(link.pano);
-        waitForPanoReady(link.pano);
+        checkPanoReady();
         trace("native-link", `原生 link 切换到 ${link.pano}`, {
             routeDistanceMeters: Math.round(target.distanceMeters),
             targetRouteDistanceMeters: Math.round(targetDistanceMeters)
@@ -218,8 +264,9 @@ export function createStreetViewController({ container1, container2, onTrace } =
 
             activePanoId = panoId;
             beginPanoLoad(panoId, reason, latestTarget ?? target);
+            const checkPanoReady = waitForPanoReady(panoId);
             panorama.setPano(panoId);
-            waitForPanoReady(panoId);
+            checkPanoReady();
             trace("gps-ready", `GPS 查找到 pano ${panoId}`, { reason, durationMs: Date.now() - startedAt });
         });
     }
@@ -259,6 +306,11 @@ export function createStreetViewController({ container1, container2, onTrace } =
         cancelReadyWait = () => {
             googleEvent.removeListener(listener);
             window.clearTimeout(timeoutId);
+        };
+        return () => {
+            if (panorama.getPano?.() === expectedPanoId && panorama.getStatus?.() === "OK") {
+                finish("status-read");
+            }
         };
     }
 
@@ -428,6 +480,280 @@ export function getNativeLookaheadHopCount(speedKph) {
     if (speed >= THREE_HOP_LOOKAHEAD_SPEED_KPH) return NATIVE_LOOKAHEAD_MAX_HOPS;
     if (speed >= TWO_HOP_LOOKAHEAD_SPEED_KPH) return 2;
     return 1;
+}
+
+function createStableStreetViewController({ container1, container2, onTrace } = {}) {
+    const streetViewService = new window.google.maps.StreetViewService();
+    const googleEvent = window.google.maps.event;
+    const options = {
+        zoom: 1,
+        addressControl: false,
+        showRoadLabels: false,
+        linksControl: false,
+        panControl: false,
+        enableCloseButton: false,
+        motionTracking: false,
+        motionTrackingControl: false,
+        clickToGo: false,
+        disableDefaultUI: true
+    };
+    const containers = [container1, container2].filter(Boolean);
+    const panoramas = containers.map((container) => new window.google.maps.StreetViewPanorama(container, options));
+    let activeIndex = 0;
+    let hasActivePanorama = false;
+    let latestTarget = null;
+    let pendingPano = null;
+    let statusListener = null;
+    let readySettleTimeoutId = null;
+    let lookupTimeoutId = null;
+    let slowLoadTimeoutId = null;
+    let requestTimeoutId = null;
+    let pauseAutoUntil = 0;
+    const cleanupFns = [];
+
+    containers.forEach((container, index) => setStableContainerVisibility(container, index === activeIndex));
+    containers.forEach(bindStableUserInteractionPause);
+    trace("controller-ready", "稳定展示 Street View controller 已创建", { mode: STREET_VIEW_MODES.STABLE });
+
+    function update(target) {
+        if (!isStreetViewTarget(target) || panoramas.length === 0) return { navigation: "waiting" };
+        latestTarget = target;
+        if (Date.now() < pauseAutoUntil) return { navigation: "user-paused" };
+        if (pendingPano && shouldDiscardStablePano(target, pendingPano)) {
+            const stalePano = pendingPano;
+            clearPendingReady();
+            pendingPano = null;
+            trace("stable-pano-stale", "稳定展示候选 pano 已落后当前位置，重新预读", {
+                targetDistanceMeters: Math.round(target.distanceMeters),
+                candidateDistanceMeters: Math.round(stalePano.routeDistanceMeters)
+            });
+        }
+        if (pendingPano?.ready && shouldAutoSwitchStablePano(target, pendingPano, { pauseAutoUntil })) {
+            showStablePano();
+        }
+        if (pendingPano) return { navigation: pendingPano.ready ? "stable-waiting" : "pano-loading" };
+
+        const requestedTarget = buildStableLookaheadTarget(target, hasActivePanorama);
+        const nextIndex = hasActivePanorama && panoramas.length > 1 ? (activeIndex + 1) % panoramas.length : activeIndex;
+        const nextPanorama = panoramas[nextIndex];
+        const startedAt = Date.now();
+        pendingPano = {
+            nextIndex,
+            panorama: nextPanorama,
+            target: requestedTarget,
+            routeDistanceMeters: requestedTarget.distanceMeters,
+            startedAt,
+            ready: false
+        };
+        trace("stable-pano-request", "稳定展示请求下一张 pano", {
+            currentDistanceMeters: Math.round(target.distanceMeters),
+            targetDistanceMeters: Math.round(requestedTarget.distanceMeters),
+            lookaheadMs: hasActivePanorama ? STABLE_PANO_UPDATE_INTERVAL_MS : 0
+        });
+        lookupTimeoutId = window.setTimeout(() => {
+            if (!pendingPano || pendingPano.startedAt !== startedAt) return;
+            clearPendingReady();
+            pendingPano = null;
+            trace("stable-pano-lookup-timeout", "稳定展示 pano 查找超时，保留当前画面后重试", {
+                durationMs: STABLE_PANO_LOOKUP_TIMEOUT_MS
+            });
+        }, STABLE_PANO_LOOKUP_TIMEOUT_MS);
+        streetViewService.getPanorama({
+            location: new window.google.maps.LatLng(requestedTarget.latitude, requestedTarget.longitude),
+            radius: 50
+        }, (data, status) => {
+            const pending = pendingPano;
+            if (!pending || pending.startedAt !== startedAt) return;
+            clearStableLookupTimeout();
+            if (status !== window.google.maps.StreetViewStatus.OK || !data?.location?.pano) {
+                pendingPano = null;
+                trace("stable-pano-failed", "稳定展示查询 pano 失败", { status, durationMs: Date.now() - startedAt });
+                return;
+            }
+            const panoId = data.location.pano;
+            const activePanorama = panoramas[activeIndex];
+            if (hasActivePanorama && panoId === activePanorama.getPano?.()) {
+                activePanorama.setPov(toProgrammaticPov(requestedTarget));
+                pendingPano = null;
+                return;
+            }
+            const markPendingPanoReady = () => {
+                if (!statusListener
+                    || nextPanorama.getPano?.() !== panoId
+                    || nextPanorama.getStatus?.() !== "OK") return;
+                clearPendingReady();
+                // Street View has no public tile-complete event. Keep the next
+                // panorama hidden briefly after status=OK so its first imagery
+                // pass can settle before we perform a direct cut.
+                readySettleTimeoutId = window.setTimeout(() => {
+                    readySettleTimeoutId = null;
+                    if (!pendingPano || pendingPano.startedAt !== startedAt) return;
+                    pendingPano.ready = true;
+                    pendingPano.panoId = panoId;
+                    trace("stable-pano-ready", "稳定展示后台 pano 已就绪", {
+                        pano: panoId,
+                        durationMs: Date.now() - startedAt,
+                        renderSettleMs: STABLE_PANO_RENDER_SETTLE_MS
+                    });
+                    if (latestTarget && shouldAutoSwitchStablePano(latestTarget, pendingPano, { pauseAutoUntil })) {
+                        showStablePano();
+                    }
+                }, STABLE_PANO_RENDER_SETTLE_MS);
+            };
+            statusListener = googleEvent.addListener(nextPanorama, "status_changed", markPendingPanoReady);
+            slowLoadTimeoutId = window.setTimeout(() => {
+                slowLoadTimeoutId = null;
+                if (!pendingPano || pendingPano.startedAt !== startedAt) return;
+                trace("stable-pano-slow", "稳定展示 pano 仍在后台加载，保留当前画面", {
+                    pano: panoId,
+                    durationMs: STABLE_PANO_SLOW_LOAD_NOTICE_MS
+                });
+            }, STABLE_PANO_SLOW_LOAD_NOTICE_MS);
+            requestTimeoutId = window.setTimeout(() => {
+                if (!pendingPano || pendingPano.startedAt !== startedAt) return;
+                clearPendingReady();
+                pendingPano = null;
+                trace("stable-pano-timeout", "稳定展示 pano 长时间未就绪，保留当前画面后重试", {
+                    pano: panoId,
+                    durationMs: STABLE_PANO_REQUEST_TIMEOUT_MS
+                });
+            }, STABLE_PANO_REQUEST_TIMEOUT_MS);
+            nextPanorama.setPano(panoId);
+            nextPanorama.setPov(toProgrammaticPov(requestedTarget));
+            markPendingPanoReady();
+        });
+        return { navigation: "stable-lookup" };
+    }
+
+    function showStablePano() {
+        const pending = pendingPano;
+        if (!pending) return;
+        setStableContainerVisibility(containers[pending.nextIndex], true);
+        if (hasActivePanorama && pending.nextIndex !== activeIndex) {
+            setStableContainerVisibility(containers[activeIndex], false);
+        }
+        activeIndex = pending.nextIndex;
+        hasActivePanorama = true;
+        pendingPano = null;
+        trace("stable-pano-switch", "稳定展示切换到已预渲染 pano", {
+            pano: pending.panoId,
+            targetDistanceMeters: Math.round(pending.routeDistanceMeters),
+            currentDistanceMeters: Math.round(latestTarget?.distanceMeters ?? 0)
+        });
+    }
+
+    function invalidateSize() {
+        panoramas.forEach((panorama) => googleEvent.trigger?.(panorama, "resize"));
+    }
+
+    function destroy() {
+        clearPendingReady();
+        cleanupFns.forEach((cleanup) => cleanup());
+    }
+
+    function bindStableUserInteractionPause(container) {
+        if (!container) return;
+        const pause = () => {
+            pauseAutoUntil = Date.now() + USER_INTERACTION_PAUSE_MS;
+            trace("user-pause", "用户交互后暂停稳定街景更新", { mode: STREET_VIEW_MODES.STABLE });
+        };
+        container.addEventListener("pointerdown", pause);
+        container.addEventListener("wheel", pause, { passive: true });
+        container.addEventListener("touchstart", pause, { passive: true });
+        cleanupFns.push(() => {
+            container.removeEventListener("pointerdown", pause);
+            container.removeEventListener("wheel", pause);
+            container.removeEventListener("touchstart", pause);
+        });
+    }
+
+    function clearPendingReady() {
+        if (statusListener) googleEvent.removeListener(statusListener);
+        if (readySettleTimeoutId !== null) window.clearTimeout(readySettleTimeoutId);
+        clearStableLookupTimeout();
+        if (slowLoadTimeoutId !== null) window.clearTimeout(slowLoadTimeoutId);
+        if (requestTimeoutId !== null) window.clearTimeout(requestTimeoutId);
+        statusListener = null;
+        readySettleTimeoutId = null;
+        slowLoadTimeoutId = null;
+        requestTimeoutId = null;
+    }
+
+    function clearStableLookupTimeout() {
+        if (lookupTimeoutId !== null) window.clearTimeout(lookupTimeoutId);
+        lookupTimeoutId = null;
+    }
+
+    function trace(event, message, data = {}) {
+        onTrace?.({ event, message, at: Date.now(), ...data });
+    }
+
+    return { update, invalidateSize, destroy };
+}
+
+function buildStableLookaheadTarget(target, shouldLookAhead) {
+    if (!shouldLookAhead || !hasRoute(target.route)) return target;
+    const speedMetersPerSecond = Math.max(0, Number(target.speedKph) || 0) / 3.6;
+    const futureDistanceMeters = Math.min(
+        target.route.totalDistanceMeters,
+        target.distanceMeters + speedMetersPerSecond * (STABLE_PANO_UPDATE_INTERVAL_MS / 1000)
+    );
+    const state = getRouteStateAtDistance(target.route, futureDistanceMeters);
+    const nextState = getRouteStateAtDistance(target.route, futureDistanceMeters + 5);
+    if (!state || !nextState) return target;
+    return {
+        ...target,
+        distanceMeters: futureDistanceMeters,
+        latitude: state.latitude,
+        longitude: state.longitude,
+        gradePercent: state.gradePercent,
+        heading: bearingDegrees(state, nextState)
+    };
+}
+
+function shouldShowStablePano(target, pending) {
+    return !pending
+        ? false
+        : !Number.isFinite(pending.routeDistanceMeters)
+            || target.distanceMeters >= pending.routeDistanceMeters - STABLE_PANO_SWITCH_LEAD_METERS;
+}
+
+export function shouldAutoSwitchStablePano(target, pending, {
+    now = Date.now(),
+    pauseAutoUntil = 0
+} = {}) {
+    return now >= pauseAutoUntil && shouldShowStablePano(target, pending);
+}
+
+function setStableContainerVisibility(container, visible) {
+    if (!container) return;
+    container.style.display = "";
+    container.style.transition = "none";
+    container.style.opacity = visible ? "1" : "0";
+    container.style.zIndex = visible ? "2" : "1";
+}
+
+export function shouldThrottleNativePanoSwitch({
+    currentDistanceMeters,
+    lastSwitchDistanceMeters,
+    elapsedSinceLastSwitchMs,
+    minIntervalMs = NATIVE_PANO_MIN_SWITCH_INTERVAL_MS,
+    minDistanceMeters = NATIVE_PANO_MIN_SWITCH_DISTANCE_METERS
+} = {}) {
+    if (!Number.isFinite(currentDistanceMeters)
+        || !Number.isFinite(lastSwitchDistanceMeters)
+        || !Number.isFinite(elapsedSinceLastSwitchMs)) {
+        return false;
+    }
+
+    return elapsedSinceLastSwitchMs < minIntervalMs
+        || currentDistanceMeters - lastSwitchDistanceMeters < minDistanceMeters;
+}
+
+export function shouldDiscardStablePano(target, pending, maxLagMeters = STABLE_PANO_MAX_LAG_METERS) {
+    return Number.isFinite(target?.distanceMeters)
+        && Number.isFinite(pending?.routeDistanceMeters)
+        && target.distanceMeters > pending.routeDistanceMeters + maxLagMeters;
 }
 
 export function interpolateHeading(fromHeading, toHeading, progress) {

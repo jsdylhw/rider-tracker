@@ -11,12 +11,14 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
         dashboardElement: elements.rideDashboardMap
     });
     let streetViewController = null;
+    let streetViewMode = "moving";
 
-    async function enableStreetView({ apiKey, container1, container2 }) {
+    async function enableStreetView({ apiKey, container1, container2, mode = streetViewMode }) {
         await loadGoogleMapsForStreetView(apiKey);
         googleMapsConfig?.lockApiKey?.(apiKey);
         streetViewController?.destroy();
-        streetViewController = createStreetViewController({ container1, container2 });
+        streetViewMode = mode;
+        streetViewController = createStreetViewController({ container1, container2, mode });
     }
 
     async function enableConfiguredStreetView({ container1, container2 }) {
@@ -28,6 +30,15 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
             await enableStreetView({ apiKey, container1, container2 });
         }
         return { enabled: true };
+    }
+
+    function setStreetViewMode(mode, { container1, container2 } = {}) {
+        if (!["moving", "stable"].includes(mode) || !container1) return false;
+        if (streetViewMode === mode && streetViewController) return true;
+        streetViewController?.destroy();
+        streetViewMode = mode;
+        streetViewController = createStreetViewController({ container1, container2, mode });
+        return true;
     }
 
     function hasStreetView() {
@@ -85,6 +96,7 @@ export function createRideVisualsController({ elements, googleMapsConfig = null 
     return {
         enableStreetView,
         enableConfiguredStreetView,
+        setStreetViewMode,
         hasStreetView,
         getGoogleMapsConfig,
         syncRoute,

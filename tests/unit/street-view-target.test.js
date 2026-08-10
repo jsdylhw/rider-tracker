@@ -3,7 +3,10 @@ import {
     chooseRouteAlignedLink,
     getNativeLookaheadHopCount,
     getRouteDistanceAtPosition,
-    interpolateHeading
+    interpolateHeading,
+    shouldAutoSwitchStablePano,
+    shouldDiscardStablePano,
+    shouldThrottleNativePanoSwitch
 } from "../../src/ui/map/street-view-controller.js";
 import { assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
 
@@ -65,6 +68,55 @@ export const suite = {
                 assertEqual(getNativeLookaheadHopCount(12), 1);
                 assertEqual(getNativeLookaheadHopCount(22), 2);
                 assertEqual(getNativeLookaheadHopCount(36), 3);
+            }
+        },
+        {
+            name: "holds a native pano when a new handoff would be too soon or too close",
+            run() {
+                assertEqual(shouldThrottleNativePanoSwitch({
+                    currentDistanceMeters: 105,
+                    lastSwitchDistanceMeters: 100,
+                    elapsedSinceLastSwitchMs: 1200
+                }), true);
+                assertEqual(shouldThrottleNativePanoSwitch({
+                    currentDistanceMeters: 112,
+                    lastSwitchDistanceMeters: 100,
+                    elapsedSinceLastSwitchMs: 600
+                }), true);
+                assertEqual(shouldThrottleNativePanoSwitch({
+                    currentDistanceMeters: 112,
+                    lastSwitchDistanceMeters: 100,
+                    elapsedSinceLastSwitchMs: 1300
+                }), false);
+            }
+        },
+        {
+            name: "discards a stable pano candidate that has fallen behind the rider",
+            run() {
+                assertEqual(shouldDiscardStablePano(
+                    { distanceMeters: 109 },
+                    { routeDistanceMeters: 100 }
+                ), false);
+                assertEqual(shouldDiscardStablePano(
+                    { distanceMeters: 113 },
+                    { routeDistanceMeters: 100 }
+                ), true);
+            }
+        },
+        {
+            name: "keeps a ready stable pano hidden until the user pause ends",
+            run() {
+                const target = { distanceMeters: 100 };
+                const pending = { routeDistanceMeters: 100 };
+
+                assertEqual(shouldAutoSwitchStablePano(target, pending, {
+                    now: 1000,
+                    pauseAutoUntil: 1001
+                }), false);
+                assertEqual(shouldAutoSwitchStablePano(target, pending, {
+                    now: 1001,
+                    pauseAutoUntil: 1001
+                }), true);
             }
         },
         {
