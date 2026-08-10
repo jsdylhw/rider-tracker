@@ -67,6 +67,7 @@ export function createDashboardRenderer({
     let immersiveUiHidden = false;
     let previousImmersiveStreetViewMode = false;
     let previousDashboardOpen = false;
+    let previousRideActive = false;
     let boundStore = null;
     let dashboardMapRefreshScheduled = false;
     const visualRenderState = {
@@ -125,6 +126,13 @@ export function createDashboardRenderer({
             elements.immersiveStreetViewBtn.textContent = "进入沉浸街景";
         }
 
+    }
+
+    function resetStreetViewPresentation() {
+        exitImmersiveStreetView();
+        googleMapsRideActions.resetStreetViewPresentation();
+        visuals.resetStreetView?.();
+        resetVisualRenderState();
     }
 
     function hasStreetViewPresentation() {
@@ -323,6 +331,7 @@ export function createDashboardRenderer({
         const isGradeSimulation = training.mode === WORKOUT_MODES.GRADE_SIM;
         const modeChanged = previousImmersiveStreetViewMode !== immersiveStreetViewMode;
         const dashboardOpenChanged = previousDashboardOpen !== ride.dashboardOpen;
+        const rideActiveChanged = previousRideActive !== ride.isActive;
         if (modeChanged) {
             resetVisualRenderState();
             previousImmersiveStreetViewMode = immersiveStreetViewMode;
@@ -330,6 +339,10 @@ export function createDashboardRenderer({
         if (dashboardOpenChanged) {
             resetVisualRenderState();
             previousDashboardOpen = ride.dashboardOpen;
+        }
+        if (rideActiveChanged) {
+            resetVisualRenderState();
+            previousRideActive = ride.isActive;
         }
 
         elements.rideDashboard.hidden = !ride.dashboardOpen;
@@ -574,6 +587,7 @@ export function createDashboardRenderer({
 
     return {
         bindEvents,
+        resetStreetViewPresentation,
         render
     };
 }

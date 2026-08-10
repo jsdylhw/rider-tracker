@@ -10,6 +10,7 @@ export function createGoogleMapsRideActions({
 }) {
     let actionState = { streetViewLoading: false, elevationLoading: false, forceKeyPrompt: false };
     let debugStreetViewFallback = false;
+    let streetViewRequestGeneration = 0;
 
     function bindEvents(store) {
         elements.loadStreetViewBtn?.addEventListener("click", () => void requestStreetView(store));
@@ -63,8 +64,9 @@ export function createGoogleMapsRideActions({
         }
         if (actionState.streetViewLoading) return;
 
+        const requestGeneration = ++streetViewRequestGeneration;
         const apiKey = await resolveGoogleMapsApiKey("加载街景");
-        if (!apiKey) return;
+        if (!apiKey || requestGeneration !== streetViewRequestGeneration) return;
         actionState = { ...actionState, streetViewLoading: true };
         onRefresh();
         try {
@@ -73,6 +75,7 @@ export function createGoogleMapsRideActions({
                 container1: elements.svPano1,
                 container2: elements.svPano2
             });
+            if (requestGeneration !== streetViewRequestGeneration) return;
             if (!result?.enabled) throw new Error("街景服务未能初始化。");
 
             debugStreetViewFallback = false;
@@ -80,6 +83,7 @@ export function createGoogleMapsRideActions({
             elements.streetViewContainer.style.display = "block";
             setStatus(store, "街景已加载，可以进入沉浸街景。");
         } catch (error) {
+            if (requestGeneration !== streetViewRequestGeneration) return;
             console.warn("街景加载失败，继续使用地图骑行模式。", error);
             actionState = { ...actionState, forceKeyPrompt: true };
             if (streetViewDebugEnabled) {
@@ -94,9 +98,21 @@ export function createGoogleMapsRideActions({
             setStatus(store, `街景加载失败：${error?.message ?? "请检查 Google Maps API Key 与网络。"}`);
             onStreetViewFailure();
         } finally {
-            actionState = { ...actionState, streetViewLoading: false };
-            onRefresh();
+            if (requestGeneration === streetViewRequestGeneration) {
+                actionState = { ...actionState, streetViewLoading: false };
+                onRefresh();
+            }
         }
+    }
+
+    function resetStreetViewPresentation() {
+        streetViewRequestGeneration += 1;
+        actionState = { ...actionState, streetViewLoading: false, forceKeyPrompt: false };
+        debugStreetViewFallback = false;
+        elements.streetViewContainer?.classList.remove("streetview-debug-empty");
+        if (elements.streetViewContainer) elements.streetViewContainer.style.display = "none";
+        if (elements.svPano1) elements.svPano1.style.display = "";
+        if (elements.svPano2) elements.svPano2.style.display = "";
     }
 
     async function requestRouteElevation(store) {
@@ -133,7 +149,7 @@ export function createGoogleMapsRideActions({
         return confirmedKey;
     }
 
-    return { bindEvents, hasStreetViewPresentation, isDebugFallback, syncButtons };
+    return { bindEvents, hasStreetViewPresentation, isDebugFallback, resetStreetViewPresentation, syncButtons };
 }
 
 function hasCoordinateRoute(route) {

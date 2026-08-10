@@ -603,6 +603,30 @@ export const suite = {
                 assertEqual(elements.rideDashboard.classList.contains("immersive-ui-hidden"), false);
                 assertEqual(elements.immersiveUiToggleBtn.textContent, "隐藏 UI");
             }
+        },
+        {
+            name: "重置街景展示会销毁旧 controller 并隐藏旧画面",
+            run() {
+                const elements = createElements();
+                let resetCount = 0;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => true,
+                        resetStreetView() { resetCount += 1; },
+                        syncMap() {},
+                        syncStreetView() {}
+                    }
+                });
+
+                elements.streetViewContainer.style.display = "block";
+                elements.streetViewContainer.classList.add("streetview-debug-empty");
+                renderer.resetStreetViewPresentation();
+
+                assertEqual(resetCount, 1);
+                assertEqual(elements.streetViewContainer.style.display, "none");
+                assertEqual(elements.streetViewContainer.classList.contains("streetview-debug-empty"), false);
+            }
         }
     ]
 };

@@ -113,6 +113,15 @@ export function createMainView({ store, pipController, actions }) {
 
     store.subscribe((state, previousState) => {
         const initialRender = previousState === undefined;
+        const rideEnded = !initialRender
+            && previousState.liveRide?.isActive === true
+            && state.liveRide?.isActive !== true;
+        const routeChangedWhileIdle = !initialRender
+            && state.route !== previousState.route
+            && state.liveRide?.isActive !== true;
+        if (rideEnded || routeChangedWhileIdle) {
+            dashboardRenderer.resetStreetViewPresentation();
+        }
         if (initialRender || state.uiMode !== previousState.uiMode) {
             layoutCoordinator.render(state);
         }
