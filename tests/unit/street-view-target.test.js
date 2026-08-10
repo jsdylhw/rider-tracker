@@ -4,6 +4,8 @@ import {
     getNativeLookaheadHopCount,
     getRouteDistanceAtPosition,
     interpolateHeading,
+    shouldAutoSwitchStablePano,
+    shouldDiscardStablePano,
     shouldThrottleNativePanoSwitch
 } from "../../src/ui/map/street-view-controller.js";
 import { assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
@@ -86,6 +88,35 @@ export const suite = {
                     lastSwitchDistanceMeters: 100,
                     elapsedSinceLastSwitchMs: 1300
                 }), false);
+            }
+        },
+        {
+            name: "discards a stable pano candidate that has fallen behind the rider",
+            run() {
+                assertEqual(shouldDiscardStablePano(
+                    { distanceMeters: 109 },
+                    { routeDistanceMeters: 100 }
+                ), false);
+                assertEqual(shouldDiscardStablePano(
+                    { distanceMeters: 113 },
+                    { routeDistanceMeters: 100 }
+                ), true);
+            }
+        },
+        {
+            name: "keeps a ready stable pano hidden until the user pause ends",
+            run() {
+                const target = { distanceMeters: 100 };
+                const pending = { routeDistanceMeters: 100 };
+
+                assertEqual(shouldAutoSwitchStablePano(target, pending, {
+                    now: 1000,
+                    pauseAutoUntil: 1001
+                }), false);
+                assertEqual(shouldAutoSwitchStablePano(target, pending, {
+                    now: 1001,
+                    pauseAutoUntil: 1001
+                }), true);
             }
         },
         {
