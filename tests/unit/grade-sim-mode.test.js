@@ -109,6 +109,28 @@ export const suite = {
 
                 assertEqual(result.targetTrainerGradePercent, config.maxDownhillPercent);
             }
+        },
+        {
+            name: "buildGradeSimulationState reissues unchanged grade after trainer reconnect",
+            run() {
+                const route = createGradeRoute();
+                const first = buildGradeSimulationState({
+                    route,
+                    distanceMeters: 80,
+                    previousTargetGradePercent: 0,
+                    config
+                });
+                const result = buildGradeSimulationState({
+                    route,
+                    distanceMeters: 80,
+                    previousTargetGradePercent: first.targetTrainerGradePercent,
+                    config,
+                    active: true,
+                    forceCommand: true
+                });
+
+                assertEqual(result.pendingTrainerCommand.payload.gradePercent, first.targetTrainerGradePercent);
+            }
         }
     ]
 };

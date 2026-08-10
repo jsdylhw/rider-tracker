@@ -1,4 +1,4 @@
-import { createDeviceRenderer } from "../../src/ui/renderers/device-renderer.js";
+import { createDeviceRenderer, resolveDeviceButtonLabel } from "../../src/ui/renderers/device-renderer.js";
 import { assertEqual } from "../helpers/test-harness.js";
 import { createFakeElement } from "../helpers/fake-dom.js";
 
@@ -81,6 +81,17 @@ export const suite = {
                     if (originalWindow === undefined) delete globalThis.window;
                     else globalThis.window = originalWindow;
                 }
+            }
+        },
+        {
+            name: "曾连接的骑行台断开后显示重连操作",
+            run() {
+                assertEqual(resolveDeviceButtonLabel({
+                    label: "骑行台",
+                    isConnected: false,
+                    isConnecting: false,
+                    canReconnect: true
+                }), "重连骑行台");
             }
         }
     ]
