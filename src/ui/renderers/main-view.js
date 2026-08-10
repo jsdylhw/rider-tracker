@@ -72,10 +72,7 @@ export function createMainView({ store, pipController, actions }) {
         rideVisuals,
         onQueueExplorationTurn: route.queueExplorationTurn,
         onRequestRouteElevation: route.requestCurrentRouteElevation,
-        requestGoogleMapsApiKey: googleMapsServiceModal.requestApiKey,
-        onToggleHeartRate: device.toggleHeartRate,
-        onTogglePowerMeter: device.togglePowerMeter,
-        onToggleTrainer: device.toggleTrainer
+        requestGoogleMapsApiKey: googleMapsServiceModal.requestApiKey
     });
     dashboardRenderer.bindEvents(store);
     bindPipMetricControls();

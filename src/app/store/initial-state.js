@@ -126,8 +126,6 @@ function createInitialLiveRideState() {
         session: null,
         records: [],
         summary: null,
-        trainerConnectionEpoch: 0,
-        appliedTrainerConnectionEpoch: 0,
         commandDispatch: {
             lastSentAtMs: null,
             lastAttemptedAtMs: null,
@@ -218,10 +216,6 @@ function createInitialBleState() {
         trainer: {
             isConnecting: false,
             isConnected: false,
-            isReconnecting: false,
-            reconnectEligible: false,
-            reconnectAttempt: 0,
-            reconnectRetryInMs: null,
             controlActivating: false,
             controlReady: false,
             statusLabel: bluetoothSupported ? "未连接" : "不支持",
