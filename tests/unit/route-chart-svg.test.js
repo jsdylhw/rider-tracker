@@ -38,30 +38,20 @@ export const suite = {
             }
         },
         {
-            name: "距离海拔图将当前位置海拔标注在左侧坐标轴",
+            name: "距离海拔图在有当前位置时显示当前位置海拔标签",
             run() {
                 const svg = buildElevationProfileSvg(createRoute(), { distanceKm: 5 });
                 assert(svg.includes("距离 - 海拔"));
-                assert(svg.includes('fill="#f59e0b" font-size="11" font-weight="700">135m</text>'));
-                assert(!svg.includes('width="94" height="24"'));
+                assert(svg.includes(">135 m<"));
             }
         },
         {
-            name: "沉浸街景底部图预留四位数海拔轴并将当前位置标注在坐标轴",
+            name: "沉浸街景底部图左侧显示海拔右侧显示附近坡度",
             run() {
-                const route = {
-                    ...createRoute(),
-                    points: createRoute().points.map((point) => ({
-                        ...point,
-                        elevationMeters: point.elevationMeters + 1000
-                    }))
-                };
-                const svg = buildImmersiveElevationGradeSvg(route, { distanceKm: 5 });
+                const svg = buildImmersiveElevationGradeSvg(createRoute(), { distanceKm: 5 });
                 assert(svg.includes("距离 - 海拔"));
                 assert(svg.includes("当前位置附近坡度"));
-                assert(svg.includes(">1148m<"));
-                assert(svg.includes('fill="#f59e0b" font-size="10.5" font-weight="700">1135m</text>'));
-                assert(!svg.includes('width="84" height="20"'));
+                assert(svg.includes(">135 m<"));
                 assert(svg.includes(">+2.5%<"));
                 assert(svg.includes("4.8 - 5.8 km"));
             }

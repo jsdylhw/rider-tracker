@@ -7,7 +7,6 @@ import { createDashboardMetricsRenderer } from "./dashboard-metrics-renderer.js"
 import { createGoogleMapsRideActions } from "./google-maps-ride-actions.js";
 import { createRideVisualSyncController } from "./ride-visual-sync-controller.js";
 import { createWorkoutRuntimeRenderer } from "./workout-runtime-renderer.js";
-import { resolveDeviceButtonLabel } from "./device-renderer.js";
 import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 import {
     DEFAULT_METRIC_SELECTION,
@@ -28,9 +27,6 @@ export function createDashboardRenderer({
     onQueueExplorationTurn = () => {},
     onRequestRouteElevation = async () => {},
     requestGoogleMapsApiKey = async () => "",
-    onToggleHeartRate = () => {},
-    onTogglePowerMeter = () => {},
-    onToggleTrainer = () => {},
     streetViewDebugEnabled = isStreetViewDebugEnabled()
 }) {
     const visuals = rideVisuals ?? {
@@ -74,7 +70,6 @@ export function createDashboardRenderer({
     let previousRideActive = false;
     let boundStore = null;
     let dashboardMapRefreshScheduled = false;
-    let deviceStatusDialogOpen = false;
     const visualRenderState = {
         gradeChart: createVisualRenderSlot(),
         workoutRuntime: createVisualRenderSlot()
@@ -98,12 +93,6 @@ export function createDashboardRenderer({
             slot.lastSignature = "";
         });
         rideVisualSyncController.reset();
-    }
-
-    function setDeviceStatusDialogOpen(isOpen) {
-        deviceStatusDialogOpen = isOpen === true;
-        elements.rideDeviceStatusOverlay?.classList.toggle("open", deviceStatusDialogOpen);
-        elements.rideDeviceStatusOverlay?.setAttribute("aria-hidden", String(!deviceStatusDialogOpen));
     }
 
     function setImmersiveUiHidden(hidden) {
@@ -248,16 +237,6 @@ export function createDashboardRenderer({
             });
         }
 
-        elements.rideDeviceStatusBtn?.addEventListener("click", () => {
-            setDeviceStatusDialogOpen(true);
-        });
-        elements.closeRideDeviceStatusBtn?.addEventListener("click", () => {
-            setDeviceStatusDialogOpen(false);
-        });
-        elements.rideConnectHrBtn?.addEventListener("click", () => onToggleHeartRate());
-        elements.rideConnectPowerBtn?.addEventListener("click", () => onTogglePowerMeter());
-        elements.rideConnectTrainerBtn?.addEventListener("click", () => onToggleTrainer());
-
         bindCustomMetricControls(store);
     }
 
@@ -379,19 +358,6 @@ export function createDashboardRenderer({
         if (elements.stopRideDashboardBtn) {
             elements.stopRideDashboardBtn.disabled = !ride.isActive;
         }
-        const showRideDeviceStatus = ride.isActive && !immersiveStreetViewMode;
-        if (elements.rideDeviceStatusBtn) {
-            elements.rideDeviceStatusBtn.hidden = !showRideDeviceStatus;
-            elements.rideDeviceStatusBtn.textContent = state.ble.trainer?.isReconnecting
-                ? "骑行台重连中"
-                : state.ble.trainer?.reconnectEligible && !state.ble.trainer?.isConnected
-                    ? "骑行台断开 · 重连"
-                    : "设备连接状态";
-        }
-        if (!showRideDeviceStatus && deviceStatusDialogOpen) {
-            setDeviceStatusDialogOpen(false);
-        }
-        renderRideDeviceStatusDialog(state);
         if (elements.startRideDashboardBtn) {
             elements.startRideDashboardBtn.disabled = !ride.canStart || ride.isActive;
         }
@@ -520,36 +486,6 @@ export function createDashboardRenderer({
         });
     }
 
-    function renderRideDeviceStatusDialog(state) {
-        const heartRate = state.ble?.heartRate ?? {};
-        const powerMeter = state.ble?.powerMeter ?? {};
-        const trainer = state.ble?.trainer ?? {};
-        const bluetoothSupported = state.ble?.supported === true;
-
-        renderConnectionButton(elements.rideConnectHrBtn, {
-            label: "心率带",
-            isConnected: heartRate.isConnected,
-            isConnecting: heartRate.isConnecting,
-            deviceName: heartRate.deviceName,
-            bluetoothSupported
-        });
-        renderConnectionButton(elements.rideConnectPowerBtn, {
-            label: "功率计",
-            isConnected: powerMeter.externalConnected,
-            isConnecting: powerMeter.externalConnecting,
-            deviceName: powerMeter.externalDeviceName,
-            bluetoothSupported
-        });
-        renderConnectionButton(elements.rideConnectTrainerBtn, {
-            label: "骑行台",
-            isConnected: trainer.isConnected,
-            isConnecting: trainer.isConnecting,
-            canReconnect: trainer.reconnectEligible === true,
-            deviceName: trainer.deviceName,
-            bluetoothSupported
-        });
-    }
-
     function renderRouteContext(route, currentRecord) {
         const routeName = route?.source === "osm-exploration"
             ? "OSM 自由探索"
@@ -654,28 +590,6 @@ export function createDashboardRenderer({
         resetStreetViewPresentation,
         render
     };
-}
-
-function renderConnectionButton(button, {
-    label,
-    isConnected,
-    isConnecting,
-    canReconnect = false,
-    deviceName,
-    bluetoothSupported
-}) {
-    if (!button) return;
-    button.disabled = !bluetoothSupported || isConnecting === true;
-    button.textContent = resolveDeviceButtonLabel({
-        label,
-        isConnected,
-        isConnecting,
-        canReconnect,
-        deviceName
-    });
-    button.title = isConnected
-        ? `点击断开${label}`
-        : canReconnect ? `点击立即重连${label}` : "";
 }
 
 function formatRoutePosition(route, currentRecord) {

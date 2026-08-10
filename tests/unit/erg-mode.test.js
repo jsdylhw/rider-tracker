@@ -39,19 +39,6 @@ export const suite = {
 
                 assertEqual(runtime.pendingTrainerCommand, null);
             }
-        },
-        {
-            name: "buildErgControlState reissues unchanged target after trainer reconnect",
-            run() {
-                const runtime = buildErgControlState({
-                    targetPowerWatts: 224,
-                    previousTargetPowerWatts: 224,
-                    active: true,
-                    forceCommand: true
-                });
-
-                assertEqual(runtime.pendingTrainerCommand.payload.targetPowerWatts, 224);
-            }
         }
     ]
 };

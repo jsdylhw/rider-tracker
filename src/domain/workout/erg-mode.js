@@ -9,7 +9,6 @@ export function buildErgControlState({
     previousTargetPowerWatts = null,
     confirmationRequired = false,
     active = false,
-    forceCommand = false,
     rideId = null,
     commandSequence = 0
 }) {
@@ -25,7 +24,7 @@ export function buildErgControlState({
         targetErgPowerWatts: normalizedTargetPower,
         targetResistanceLevel: null,
         ergConfirmationRequired: confirmationRequired,
-        pendingTrainerCommand: active && (forceCommand || hasTargetChanged)
+        pendingTrainerCommand: active && hasTargetChanged
             ? createTrainerCommand({
                 controlMode: TRAINER_CONTROL_MODES.ERG,
                 type: TRAINER_COMMAND_TYPES.SET_ERG_POWER,

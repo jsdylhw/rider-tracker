@@ -23,19 +23,6 @@ export const suite = {
                 assertEqual(runtime.pendingTrainerCommand.rideId, "ride-res");
                 assertEqual(runtime.pendingTrainerCommand.sequence, 5);
             }
-        },
-        {
-            name: "buildResistanceControlState reissues unchanged target after trainer reconnect",
-            run() {
-                const runtime = buildResistanceControlState({
-                    resistanceLevel: 42,
-                    previousResistanceLevel: 42,
-                    active: true,
-                    forceCommand: true
-                });
-
-                assertEqual(runtime.pendingTrainerCommand.payload.resistanceLevel, 42);
-            }
         }
     ]
 };
