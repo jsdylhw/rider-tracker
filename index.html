@@ -444,6 +444,7 @@
                             </div>
                         </div>
                     </details>
+                    <button id="rideDeviceStatusBtn" class="btn secondary" hidden>设备连接状态</button>
                     <button id="startRideDashboardBtn" class="btn primary">开始骑行</button>
                     <button id="stopRideDashboardBtn" class="btn ghost">结束骑行</button>
                     <button id="closeRideDashboardBtn" class="btn ghost">返回页面</button>
@@ -634,6 +635,21 @@
             </div>
         </div>
     </section>
+
+    <div class="modal-overlay" id="rideDeviceStatusOverlay" aria-hidden="true">
+        <div class="modal-card ride-device-status-card" role="dialog" aria-modal="true" aria-labelledby="rideDeviceStatusTitle">
+            <h3 id="rideDeviceStatusTitle">设备连接状态</h3>
+            <p class="muted">骑行过程中可在此快速查看、连接或重连设备。</p>
+            <div class="ride-device-status-actions">
+                <button id="rideConnectHrBtn" class="btn secondary" type="button">连接心率带</button>
+                <button id="rideConnectPowerBtn" class="btn secondary" type="button">连接功率计</button>
+                <button id="rideConnectTrainerBtn" class="btn power-btn" type="button">连接骑行台</button>
+            </div>
+            <div class="modal-actions">
+                <button id="closeRideDeviceStatusBtn" class="btn secondary" type="button">完成</button>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="src/app/bootstrap.js"></script>
 </body>
