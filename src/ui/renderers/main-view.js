@@ -14,6 +14,7 @@ import { createGoogleMapsServiceModal } from "../views/google-maps-service-modal
 import { createExportView } from "../views/export-view.js";
 import { createActivityDetailView } from "../views/activity-detail-view.js";
 import { buildActivityDetailPageHtml } from "./activity-detail-renderer.js";
+import { buildRouteGeometryKey, collectRouteMapLatLngs } from "../map/map-controller.js";
 
 export function createMainView({ store, pipController, actions }) {
     const { navigation, workout, route, ride, device, export: exportActions, googleMaps, pip } = actions;
@@ -118,6 +119,7 @@ export function createMainView({ store, pipController, actions }) {
             && state.liveRide?.isActive !== true;
         const routeChangedWhileIdle = !initialRender
             && state.route !== previousState.route
+            && hasRouteGeometryChanged(previousState.route, state.route)
             && state.liveRide?.isActive !== true;
         if (rideEnded || routeChangedWhileIdle) {
             dashboardRenderer.resetStreetViewPresentation();
@@ -213,4 +215,9 @@ export function shouldRenderDashboard(state, previousState) {
         || state.workout !== previousState.workout
         || state.settings !== previousState.settings
         || state.uiMode !== previousState.uiMode;
+}
+
+export function hasRouteGeometryChanged(previousRoute, nextRoute) {
+    return buildRouteGeometryKey(previousRoute, collectRouteMapLatLngs(previousRoute))
+        !== buildRouteGeometryKey(nextRoute, collectRouteMapLatLngs(nextRoute));
 }
