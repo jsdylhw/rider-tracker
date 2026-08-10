@@ -10,7 +10,6 @@ export function buildResistanceControlState({
     resistanceLevel = DEFAULT_RESISTANCE_LEVEL,
     previousResistanceLevel = null,
     active = false,
-    forceCommand = false,
     rideId = null,
     commandSequence = 0
 }) {
@@ -25,7 +24,7 @@ export function buildResistanceControlState({
         targetTrainerGradePercent: 0,
         targetErgPowerWatts: null,
         targetResistanceLevel: normalizedResistanceLevel,
-        pendingTrainerCommand: active && (forceCommand || hasResistanceChanged)
+        pendingTrainerCommand: active && hasResistanceChanged
             ? createTrainerCommand({
                 controlMode: TRAINER_CONTROL_MODES.RESISTANCE,
                 type: TRAINER_COMMAND_TYPES.SET_RESISTANCE,

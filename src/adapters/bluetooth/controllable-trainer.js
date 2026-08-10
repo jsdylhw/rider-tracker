@@ -55,10 +55,6 @@ export function createControllableTrainer({
         await trainerFtms.connect();
     }
 
-    function setAutoReconnectEnabled(enabled) {
-        trainerFtms.setAutoReconnectEnabled(enabled);
-    }
-
     async function disconnect() {
         await Promise.allSettled([
             trainerFtms.isConnected ? trainerFtms.disconnect() : Promise.resolve(),
@@ -150,7 +146,6 @@ export function createControllableTrainer({
 
     return {
         toggle,
-        setAutoReconnectEnabled,
         disconnect,
         toggleExternalPowerMeter,
         activateControl,

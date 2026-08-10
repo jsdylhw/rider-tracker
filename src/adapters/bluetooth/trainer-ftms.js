@@ -33,11 +33,9 @@ const DEFAULT_SIMULATION_CONFIG = {
 };
 
 const ERG_CONFIRMATION_TIMEOUT_RETRIES = 1;
-const FTMS_RECONNECT_DELAYS_MS = [1000, 2000, 3000, 4000, 10000, 20000, 40000, 60000];
 
 export function createTrainerFtms({ onStatus, onData }) {
     let device = null;
-    let reconnectableDevice = null;
     let ftmsService = null;
     let controlPointChar = null;
     let indoorBikeDataChar = null;
@@ -51,11 +49,6 @@ export function createTrainerFtms({ onStatus, onData }) {
     let capabilitiesHydrated = false;
     let pendingResponse = null;
     let ergConfirmationUnavailable = false;
-    let autoReconnectEnabled = false;
-    let reconnectAllowed = false;
-    let reconnectTimerId = null;
-    let reconnectAttempt = 0;
-    let connectionPromise = null;
     let capabilities = {
         simulationSupported: true,
         inclinationSupported: true,
@@ -74,165 +67,47 @@ export function createTrainerFtms({ onStatus, onData }) {
             throw new Error("当前浏览器不支持 Web Bluetooth");
         }
 
-        if (reconnectableDevice) {
-            return reconnectNow();
-        }
-
         onStatus({ type: "connecting", message: "正在搜索智能骑行台 (FTMS)..." });
 
-        let selectedDevice;
         try {
-            selectedDevice = await navigator.bluetooth.requestDevice({
+            device = await navigator.bluetooth.requestDevice({
                 filters: [{ services: [FTMS_SERVICE] }]
+            });
+
+            const server = await device.gatt.connect();
+            ftmsService = await server.getPrimaryService(FTMS_SERVICE);
+            [controlPointChar, indoorBikeDataChar] = await Promise.all([
+                ftmsService.getCharacteristic(FTMS_CONTROL_POINT),
+                getCharacteristicOrNull(ftmsService, INDOOR_BIKE_DATA)
+            ]);
+            ergConfirmationUnavailable = false;
+
+            disconnectListener = handleDisconnected;
+            device.addEventListener("gattserverdisconnected", disconnectListener);
+
+            await ensureIndoorBikeDataSubscription();
+            emitStatus({
+                type: "connected",
+                phase: "data-ready",
+                message: indoorBikeDataReady
+                    ? "已连接骑行台数据流，等待训练模式激活 FTMS 控制。"
+                    : "已连接骑行台，但当前未获取到 Indoor Bike Data 数据流。"
             });
         } catch (error) {
             console.error("FTMS Connection Error:", error);
             onStatus({ type: "error", message: `连接失败: ${error.message}` });
             throw error;
         }
-        setReconnectableDevice(selectedDevice);
-        reconnectAllowed = true;
-        return connectToRememberedDevice({ reason: "manual" });
     }
 
     async function disconnect() {
-        autoReconnectEnabled = false;
-        reconnectAllowed = false;
-        cancelReconnectTimer();
-        if (reconnectableDevice && disconnectListener) {
-            reconnectableDevice.removeEventListener("gattserverdisconnected", disconnectListener);
-        }
         if (device?.gatt?.connected) {
             device.gatt.disconnect();
         }
-        clearGattSession();
-        device = null;
-        reconnectableDevice = null;
-        disconnectListener = null;
-        emitStatus({ type: "disconnected", phase: "disconnected", message: "智能骑行台已断开" });
+        handleDisconnected();
     }
 
     function handleDisconnected() {
-        clearGattSession();
-        if (shouldAutoReconnect()) {
-            scheduleReconnect();
-            return;
-        }
-        emitStatus({ type: "disconnected", phase: "disconnected", message: "智能骑行台已断开" });
-    }
-
-    async function reconnectNow() {
-        if (!reconnectableDevice) {
-            return connect();
-        }
-        reconnectAllowed = true;
-        reconnectAttempt = 0;
-        cancelReconnectTimer();
-        return connectToRememberedDevice({ reason: "manual-retry" });
-    }
-
-    function setAutoReconnectEnabled(enabled) {
-        autoReconnectEnabled = enabled === true;
-        if (!autoReconnectEnabled) {
-            cancelReconnectTimer();
-            reconnectAttempt = 0;
-            return;
-        }
-        if (!device?.gatt?.connected && shouldAutoReconnect()) {
-            scheduleReconnect();
-        }
-    }
-
-    async function connectToRememberedDevice({ reason }) {
-        if (!reconnectableDevice) {
-            throw new Error("没有可重连的骑行台，请重新选择设备。");
-        }
-        if (connectionPromise) {
-            return connectionPromise;
-        }
-
-        connectionPromise = (async () => {
-            let retryAfterFailure = false;
-            device = reconnectableDevice;
-            emitStatus({
-                type: reason === "manual" ? "connecting" : "reconnecting",
-                phase: reason === "manual" ? "connecting" : "reconnecting",
-                message: reason === "manual" ? "正在连接智能骑行台..." : "正在重连智能骑行台..."
-            });
-            try {
-                const server = await device.gatt.connect();
-                ftmsService = await server.getPrimaryService(FTMS_SERVICE);
-                [controlPointChar, indoorBikeDataChar] = await Promise.all([
-                    ftmsService.getCharacteristic(FTMS_CONTROL_POINT),
-                    getCharacteristicOrNull(ftmsService, INDOOR_BIKE_DATA)
-                ]);
-                ergConfirmationUnavailable = false;
-                await ensureIndoorBikeDataSubscription();
-                cancelReconnectTimer();
-                reconnectAttempt = 0;
-                emitStatus({
-                    type: "connected",
-                    phase: "data-ready",
-                    message: indoorBikeDataReady
-                        ? "已连接骑行台数据流，等待训练模式激活 FTMS 控制。"
-                        : "已连接骑行台，但当前未获取到 Indoor Bike Data 数据流。"
-                });
-            } catch (error) {
-                clearGattSession();
-                if (shouldAutoReconnect()) {
-                    retryAfterFailure = true;
-                } else {
-                    emitStatus({ type: "error", message: `连接失败: ${error.message}` });
-                }
-                throw error;
-            } finally {
-                connectionPromise = null;
-                if (retryAfterFailure && shouldAutoReconnect()) {
-                    scheduleReconnect();
-                }
-            }
-        })();
-        return connectionPromise;
-    }
-
-    function setReconnectableDevice(nextDevice) {
-        if (reconnectableDevice === nextDevice) return;
-        if (reconnectableDevice && disconnectListener) {
-            reconnectableDevice.removeEventListener("gattserverdisconnected", disconnectListener);
-        }
-        reconnectableDevice = nextDevice;
-        device = nextDevice;
-        disconnectListener = handleDisconnected;
-        reconnectableDevice.addEventListener("gattserverdisconnected", disconnectListener);
-    }
-
-    function scheduleReconnect() {
-        if (!shouldAutoReconnect() || reconnectTimerId !== null || connectionPromise) return;
-        const delayMs = getFtmsReconnectDelayMs(reconnectAttempt);
-        reconnectAttempt += 1;
-        emitStatus({
-            type: "reconnecting",
-            phase: "reconnecting",
-            message: `骑行台已断开，${Math.round(delayMs / 1000)} 秒后自动重连。`,
-            reconnectAttempt,
-            retryInMs: delayMs
-        });
-        reconnectTimerId = globalThis.setTimeout(() => {
-            reconnectTimerId = null;
-            void connectToRememberedDevice({ reason: "auto" }).catch(() => {});
-        }, delayMs);
-    }
-
-    function cancelReconnectTimer() {
-        if (reconnectTimerId !== null) globalThis.clearTimeout(reconnectTimerId);
-        reconnectTimerId = null;
-    }
-
-    function shouldAutoReconnect() {
-        return autoReconnectEnabled && reconnectAllowed && reconnectableDevice !== null;
-    }
-
-    function clearGattSession() {
         cancelQueuedCommands("智能骑行台连接已断开");
         clearPendingResponse(new Error("智能骑行台连接已断开"));
         if (controlPointChar && controlPointListener) {
@@ -241,17 +116,23 @@ export function createTrainerFtms({ onStatus, onData }) {
         if (indoorBikeDataChar && indoorBikeDataListener) {
             indoorBikeDataChar.removeEventListener("characteristicvaluechanged", indoorBikeDataListener);
         }
+        if (device && disconnectListener) {
+            device.removeEventListener("gattserverdisconnected", disconnectListener);
+        }
+        device = null;
         ftmsService = null;
         controlPointChar = null;
         indoorBikeDataChar = null;
         controlPointListener = null;
         indoorBikeDataListener = null;
+        disconnectListener = null;
         controlPointNotificationsReady = false;
         indoorBikeDataReady = false;
         controlReady = false;
         controlActivationPromise = null;
         capabilitiesHydrated = false;
         ergConfirmationUnavailable = false;
+        emitStatus({ type: "disconnected", phase: "disconnected", message: "智能骑行台已断开" });
     }
 
     function handleControlPointResponse(event) {
@@ -789,42 +670,26 @@ export function createTrainerFtms({ onStatus, onData }) {
     function emitStatus(status) {
         onStatus?.({
             ...status,
-            deviceName: reconnectableDevice?.name || device?.name || "未命名设备",
+            deviceName: device?.name || "未命名设备",
             capabilities: { ...capabilities },
             dataStreamReady: indoorBikeDataReady,
             controlReady,
-            controlPointNotificationsReady,
-            reconnectEligible: reconnectableDevice !== null,
-            reconnecting: status.type === "reconnecting" || connectionPromise !== null,
-            reconnectAttempt,
-            retryInMs: status.retryInMs ?? null
+            controlPointNotificationsReady
         });
     }
 
     return {
         connect,
-        reconnectNow,
         disconnect,
-        setAutoReconnectEnabled,
         activateControl,
         stopTrainingSession,
         setTargetGrade,
         setTargetPower,
         setTargetResistance,
         getCapabilities: () => ({ ...capabilities }),
-        getReconnectState: () => ({
-            reconnectEligible: reconnectableDevice !== null,
-            reconnecting: reconnectTimerId !== null || connectionPromise !== null,
-            reconnectAttempt
-        }),
         get isControlReady() { return controlReady; },
         get isConnected() { return !!device?.gatt?.connected; }
     };
-}
-
-export function getFtmsReconnectDelayMs(attempt) {
-    const index = Math.max(0, Math.min(Math.floor(Number(attempt) || 0), FTMS_RECONNECT_DELAYS_MS.length - 1));
-    return FTMS_RECONNECT_DELAYS_MS[index];
 }
 
 async function getCharacteristicOrNull(service, uuid) {

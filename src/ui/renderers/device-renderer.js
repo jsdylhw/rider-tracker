@@ -62,12 +62,9 @@ export function createDeviceRenderer({
                 label: "骑行台",
                 isConnected: trainer.isConnected,
                 isConnecting: trainer.isConnecting,
-                canReconnect: trainer.reconnectEligible === true,
                 deviceName: trainer.deviceName
             });
-            elements.connectTrainerBtn.title = trainer.isConnected
-                ? "点击断开骑行台"
-                : trainer.reconnectEligible ? "点击立即重连骑行台" : "";
+            elements.connectTrainerBtn.title = trainer.isConnected ? "点击断开骑行台" : "";
         }
         const streetViewDebugEnabled = isStreetViewDebugEnabled();
         const isVirtualPower = streetViewDebugEnabled && state.rideInput?.powerSource === "virtual";
@@ -129,14 +126,14 @@ export function createDeviceRenderer({
     };
 }
 
-export function resolveDeviceButtonLabel({ label, isConnected, isConnecting, canReconnect = false, deviceName }) {
+function resolveDeviceButtonLabel({ label, isConnected, isConnecting, deviceName }) {
     if (isConnected) {
         return `已连接：${resolveConnectedDeviceName(deviceName, label)}`;
     }
     if (isConnecting) {
-        return canReconnect ? `正在重连${label}...` : `连接中${label}...`;
+        return `连接中${label}...`;
     }
-    return canReconnect ? `重连${label}` : `连接${label}`;
+    return `连接${label}`;
 }
 
 function resolveConnectedDeviceName(deviceName, fallbackLabel) {
