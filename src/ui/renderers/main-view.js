@@ -154,7 +154,14 @@ export function createMainView({ store, pipController, actions }) {
         if (!elements.activityDetailContent) return;
         const activity = state.selectedActivity;
         const signature = activity
-            ? [activity.id ?? "", activity.updatedAt ?? "", activity.rawSession?.records?.length ?? 0, activity.rawSession?.createdAt ?? ""].join("|")
+            ? [
+                activity.id ?? "",
+                activity.updatedAt ?? "",
+                activity.rawSession?.records?.length ?? 0,
+                activity.rawSession?.createdAt ?? "",
+                activity.isSaving === true,
+                activity.saveError ?? ""
+            ].join("|")
             : "empty";
         if (signature === lastRenderedActivityDetailSignature) return;
         lastRenderedActivityDetailSignature = signature;

@@ -76,6 +76,10 @@ export function createControllableTrainer({
         });
     }
 
+    async function stopTrainingSession() {
+        return trainerFtms.stopTrainingSession();
+    }
+
     async function setTargetPower(powerWatts, options) {
         return trainerFtms.setTargetPower(powerWatts, options);
     }
@@ -145,6 +149,7 @@ export function createControllableTrainer({
         disconnect,
         toggleExternalPowerMeter,
         activateControl,
+        stopTrainingSession,
         setTargetGrade,
         setTargetPower,
         setTargetResistance,

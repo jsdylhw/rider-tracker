@@ -53,6 +53,9 @@ export function createRouteInputController({
     }
 
     function render(state) {
+        if (hasActiveRoute(lastRenderedState?.route) && !hasActiveRoute(state?.route)) {
+            resetMapRouteSelection();
+        }
         lastRenderedState = state;
         renderRouteMap(state);
         renderRouteModePanels();
@@ -122,13 +125,17 @@ export function createRouteInputController({
     function clearMapRouteSelection() {
         if (isRouteEditingLocked()) return;
         onInvalidateMapRoute?.();
+        resetMapRouteSelection();
+        renderMapRoutePlanner();
+    }
+
+    function resetMapRouteSelection() {
         isEditingMapRoute = true;
         isPlanningMapRoute = false;
         mapRouteSelection.mode = null;
         mapRouteSelection.start = null;
         mapRouteSelection.destination = null;
-        visuals.setPlannerMode("select");
-        renderMapRoutePlanner();
+        if (routeInputMode === "map") visuals.setPlannerMode("select");
     }
 
     function renderMapRoutePlanner() {
@@ -203,6 +210,10 @@ function matchesRouteInputMode(route, inputMode) {
 function hasCoordinateRoute(route) {
     return Array.isArray(route?.points)
         && route.points.some((point) => Number.isFinite(point?.latitude) && Number.isFinite(point?.longitude));
+}
+
+function hasActiveRoute(route) {
+    return Number(route?.totalDistanceMeters) > 0;
 }
 
 function setPanelVisible(panel, visible) {

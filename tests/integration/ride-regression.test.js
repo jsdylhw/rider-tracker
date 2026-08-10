@@ -147,6 +147,7 @@ export const suite = {
                     const state = store.getState();
                     assertEqual(state.liveRide.isActive, true);
                     assertEqual(state.liveRide.dashboardOpen, true);
+                    assertEqual(state.liveRide.session.exportMetadata.activityName, "自定义线路骑行");
                     assertGreaterThan(timerCallbacks.length, 0);
                     assertEqual(timerIntervals[0], 250);
                 } finally {
@@ -316,6 +317,157 @@ export const suite = {
                     assertEqual(Boolean(state.selectedActivity?.rawSession), true);
                 } finally {
                     globalThis.setTimeout = originalSetTimeout;
+                    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+                    else globalThis.localStorage = originalLocalStorage;
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
+            name: "结束骑行会释放活动路线，但保留设备连接状态",
+            async run() {
+                const initialState = createState();
+                const store = createStore(initialState);
+                const timerCallbacks = [];
+                const originalWindow = globalThis.window;
+                const originalLocalStorage = globalThis.localStorage;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval(callback) {
+                        timerCallbacks.push(callback);
+                        return timerCallbacks.length;
+                    },
+                    clearInterval() {}
+                };
+                globalThis.localStorage = { setItem() {}, getItem() { return null; }, removeItem() {} };
+                const connectedBle = store.getState().ble;
+                let releasedControl = 0;
+                let releasedRoute = 0;
+
+                try {
+                    const service = createRideService({
+                        store,
+                        routeService: { releaseRouteAfterRide() { releasedRoute += 1; } },
+                        deviceService: {
+                            async releaseTrainerControl() { releasedControl += 1; },
+                            async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {}
+                        },
+                        exportService: { archiveSessionAsFitActivity() { return Promise.resolve({ id: "saved-activity" }); } }
+                    });
+                    service.startRide();
+                    timerCallbacks[0]();
+                    service.stopRide();
+                    await flushPromises(3);
+
+                    const state = store.getState();
+                    assertEqual(state.route.totalDistanceMeters, 0);
+                    assertEqual(state.liveRide.session, null);
+                    assertEqual(state.liveRide.records.length, 0);
+                    assertEqual(state.ble, connectedBle);
+                    assertEqual(releasedRoute, 1);
+                    assertEqual(releasedControl, 1);
+                } finally {
+                    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+                    else globalThis.localStorage = originalLocalStorage;
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
+            name: "旧骑行归档完成后不会覆盖已经开始的新骑行",
+            async run() {
+                const store = createStore(createState());
+                const timerCallbacks = [];
+                const originalWindow = globalThis.window;
+                const originalLocalStorage = globalThis.localStorage;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval(callback) {
+                        timerCallbacks.push(callback);
+                        return timerCallbacks.length;
+                    },
+                    clearInterval() {}
+                };
+                globalThis.localStorage = { setItem() {}, getItem() { return null; }, removeItem() {} };
+                let resolveArchive;
+                const archivePromise = new Promise((resolve) => { resolveArchive = resolve; });
+
+                try {
+                    const service = createRideService({
+                        store,
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: { archiveSessionAsFitActivity() { return archivePromise; } }
+                    });
+                    service.startRide();
+                    timerCallbacks[0]();
+                    service.stopRide();
+
+                    store.setState((state) => ({ ...state, route: createState().route }));
+                    service.startRide();
+                    resolveArchive({ id: "old-activity", name: "Old ride" });
+                    await flushPromises(5);
+
+                    const state = store.getState();
+                    assertEqual(state.liveRide.isActive, true);
+                    assertEqual(state.liveRide.dashboardOpen, true);
+                    assertEqual(state.uiMode, "live");
+                    assertEqual(state.selectedActivity, null);
+                    assertEqual(state.session, null);
+                } finally {
+                    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+                    else globalThis.localStorage = originalLocalStorage;
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
+            name: "结束后返回的旧 ERG 确认不会写回已清空的骑行状态",
+            async run() {
+                const initialState = createState();
+                initialState.workout = {
+                    ...initialState.workout,
+                    mode: WORKOUT_MODES.FIXED_POWER,
+                    erg: { confirmationRequired: true }
+                };
+                const store = createStore(initialState);
+                const timerCallbacks = [];
+                const originalWindow = globalThis.window;
+                const originalLocalStorage = globalThis.localStorage;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval(callback) {
+                        timerCallbacks.push(callback);
+                        return timerCallbacks.length;
+                    },
+                    clearInterval() {}
+                };
+                globalThis.localStorage = { setItem() {}, getItem() { return null; }, removeItem() {} };
+                let resolveTrainerPower;
+                const trainerPowerPromise = new Promise((resolve) => { resolveTrainerPower = resolve; });
+
+                try {
+                    const service = createRideService({
+                        store,
+                        deviceService: {
+                            async setTrainerGrade() {},
+                            setTrainerPower() { return trainerPowerPromise; },
+                            async setTrainerResistance() {}
+                        },
+                        exportService: { archiveSessionAsFitActivity() { return Promise.resolve({ id: "saved-activity" }); } }
+                    });
+                    service.startRide();
+                    timerCallbacks[0]();
+                    service.stopRide();
+                    resolveTrainerPower();
+                    await flushPromises(5);
+
+                    const state = store.getState();
+                    assertEqual(state.liveRide.isActive, false);
+                    assertEqual(state.liveRide.commandDispatch.lastSentPowerWatts, null);
+                } finally {
                     if (originalLocalStorage === undefined) delete globalThis.localStorage;
                     else globalThis.localStorage = originalLocalStorage;
                     if (originalWindow === undefined) delete globalThis.window;

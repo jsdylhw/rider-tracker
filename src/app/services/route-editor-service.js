@@ -64,8 +64,12 @@ export function createRouteEditorService({
             if (operations.discardAfterRideStart("骑行已开始，已忽略未完成的 GPX 导入。")) return;
 
             const route = parseGpx(xmlText);
+            const routeWithImportMetadata = {
+                ...route,
+                importFileName: normalizeImportedFileName(file.name)
+            };
             operations.commitRoute(
-                route,
+                routeWithImportMetadata,
                 `已导入 GPX：${route.name}，距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km`
             );
         } catch (error) {
@@ -82,4 +86,11 @@ export function createRouteEditorService({
         removeRouteSegment,
         importGpx
     };
+}
+
+function normalizeImportedFileName(fileName) {
+    const baseName = String(fileName ?? "")
+        .replace(/\.[^.]+$/, "")
+        .trim();
+    return baseName || "GPX 路线";
 }

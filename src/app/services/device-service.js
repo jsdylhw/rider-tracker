@@ -346,11 +346,19 @@ export function createDeviceService({ store }) {
         }
     }
 
+    async function releaseTrainerControl() {
+        if (!controllableTrainer.isConnected) {
+            return { released: false, reason: "not-connected" };
+        }
+        return controllableTrainer.stopTrainingSession();
+    }
+
     return {
         toggleHeartRate,
         togglePowerMeter,
         toggleTrainer,
         prepareTrainerControlForWorkoutMode,
+        releaseTrainerControl,
         setTrainerGrade,
         setTrainerPower,
         setTrainerResistance
