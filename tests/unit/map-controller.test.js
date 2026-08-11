@@ -95,13 +95,23 @@ export const suite = {
                 let fitBoundsCount = 0;
                 let invalidateSizeCount = 0;
                 let lastBounds = null;
+                const mapContainerListeners = new Map();
+                const mapContainer = {
+                    addEventListener(eventName, handler) {
+                        mapContainerListeners.set(eventName, handler);
+                    },
+                    dispatch(eventName) {
+                        mapContainerListeners.get(eventName)?.();
+                    }
+                };
                 const map = {
                     attributionControl: { removeAttribution() {}, addAttribution() {} },
                     on() {},
                     setView() {},
                     invalidateSize() { invalidateSizeCount += 1; },
                     fitBounds(bounds) { fitBoundsCount += 1; lastBounds = bounds; },
-                    panTo() {}
+                    panTo() {},
+                    _container: mapContainer
                 };
                 const makeLayer = (points, options) => ({
                     points,
@@ -198,6 +208,26 @@ export const suite = {
                         .at(-1);
                     assert(currentMarker?.bringToFrontCount > 0, "current-position marker should remain above the route line");
                     assertEqual(currentMarker?.lastStyle?.opacity, 1);
+
+                    const fitBoundsBeforeManualView = fitBoundsCount;
+                    mapContainer.dispatch("wheel");
+                    controller.invalidateDashboardSize();
+                    assertEqual(fitBoundsCount, fitBoundsBeforeManualView,
+                        "layout refresh should retain a dashboard view adjusted by the rider");
+
+                    controller.syncRide({
+                        ...dashboardOnlyRoute,
+                        points: [
+                            ...dashboardOnlyRoute.points,
+                            { latitude: 35.3, longitude: 139.3 }
+                        ]
+                    }, {
+                        positionLat: 35.15,
+                        positionLong: 139.15,
+                        distanceKm: 0.5
+                    });
+                    assertEqual(fitBoundsCount, fitBoundsBeforeManualView,
+                        "exploration-style route refresh should retain a dashboard view adjusted by the rider");
                 } finally {
                     globalThis.window = originalWindow;
                     globalThis.requestAnimationFrame = originalAnimationFrame;
