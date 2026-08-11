@@ -61,18 +61,26 @@ export function createMapController({ previewElement, dashboardElement }) {
         });
     }
 
+    // The dashboard map is reused as the immersive mini map. Once the rider
+    // adjusts it, resizing the layout or extending an exploration route must
+    // not replace that deliberate view with a whole-route fit.
+    bindDashboardUserViewTracking(dashboardMap, dashboardLayers);
+
     function syncRoute(route) {
         latestRoute = route;
         renderRoute(previewMap, previewLayers, route, null);
         renderRoute(dashboardMap, dashboardLayers, route, latestDashboardRecord, {
-            preserveCurrentPosition: Boolean(latestDashboardRecord)
+            preserveCurrentPosition: Boolean(latestDashboardRecord),
+            preserveUserView: dashboardLayers?.userViewLocked === true
         });
     }
 
     function syncRide(route, currentRecord) {
         latestRoute = route;
         latestDashboardRecord = currentRecord ?? null;
-        renderRoute(dashboardMap, dashboardLayers, route, currentRecord);
+        renderRoute(dashboardMap, dashboardLayers, route, currentRecord, {
+            preserveUserView: dashboardLayers?.userViewLocked === true
+        });
     }
 
     function setPlannerClickHandler(handler) {
@@ -131,7 +139,10 @@ function refreshMapAfterVisibility(map, layers, route, currentRecord = null) {
     // A route may have arrived while this map was inside a hidden route tab or dashboard.
     // Refit only after the container becomes measurable.
     if (route) {
-        renderRoute(map, layers, route, currentRecord, { forceFocus: true });
+        renderRoute(map, layers, route, currentRecord, {
+            forceFocus: layers.userViewLocked !== true,
+            preserveUserView: layers.userViewLocked === true
+        });
     }
 }
 
@@ -197,7 +208,8 @@ function createLayerSet(map) {
         }).addTo(map),
         routeLineOpacity: 0.95,
         hasVisibleRoute: false,
-        lastRouteKey: ""
+        lastRouteKey: "",
+        userViewLocked: false
     };
 
     layers.plannerStartMarker.bindTooltip?.("起点", {
@@ -216,7 +228,8 @@ function createLayerSet(map) {
 
 function renderRoute(map, layers, route, currentRecord, {
     forceFocus = false,
-    preserveCurrentPosition = false
+    preserveCurrentPosition = false,
+    preserveUserView = false
 } = {}) {
     if (!map || !layers) {
         return;
@@ -250,7 +263,9 @@ function renderRoute(map, layers, route, currentRecord, {
         layers.endMarker.setLatLng(geoPoints.at(-1)).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
         layers.hasVisibleRoute = true;
         layers.lastRouteKey = routeKey;
-        focusRouteAfterLayout(map, layers, geoPoints, routeKey);
+        if (!preserveUserView) {
+            focusRouteAfterLayout(map, layers, geoPoints, routeKey);
+        }
     }
 
     if (preserveCurrentPosition) {
@@ -274,7 +289,7 @@ function renderRoute(map, layers, route, currentRecord, {
 
 function focusRouteAfterLayout(map, layers, geoPoints, routeKey) {
     scheduleAfterLayout(() => {
-        if (layers.lastRouteKey !== routeKey) {
+        if (layers.lastRouteKey !== routeKey || layers.userViewLocked) {
             return;
         }
         map.invalidateSize({ pan: false });
@@ -286,6 +301,22 @@ function focusRouteAfterLayout(map, layers, geoPoints, routeKey) {
         layers.startMarker.bringToFront?.();
         layers.endMarker.bringToFront?.();
         layers.currentMarker.bringToFront?.();
+    });
+}
+
+function bindDashboardUserViewTracking(map, layers) {
+    const container = map?._container ?? map?.getContainer?.();
+    if (!container?.addEventListener || !layers) {
+        return;
+    }
+
+    const markUserView = () => {
+        layers.userViewLocked = true;
+    };
+    // These are user-originated DOM events, unlike Leaflet's move/zoom events
+    // which are also emitted by our own panTo and fitBounds calls.
+    ["pointerdown", "wheel", "touchstart", "dblclick"].forEach((eventName) => {
+        container.addEventListener(eventName, markUserView, { passive: true });
     });
 }
 
