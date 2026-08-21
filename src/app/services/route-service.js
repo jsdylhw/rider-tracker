@@ -7,6 +7,7 @@ import { createExplorationRouteService } from "./exploration-route-service.js";
 import { createRouteEditorService } from "./route-editor-service.js";
 import { createRouteElevationService } from "./route-elevation-service.js";
 import { createMapDrawRouteService } from "./map-draw-route-service.js";
+import { createAgentRoutePreviewService } from "./agent-route-preview-service.js";
 import { createRouteOperationCoordinator } from "./route-operation-coordinator.js";
 
 export function createRouteService({
@@ -46,10 +47,16 @@ export function createRouteService({
         fetchGoogleRoute,
         invalidateExploration: explorationService.clearActiveExploration
     });
+    const agentRoutePreviewService = createAgentRoutePreviewService({
+        store,
+        operations,
+        invalidateExploration: explorationService.clearActiveExploration
+    });
 
     return {
         ...editorService,
         ...mapDrawRouteService,
+        ...agentRoutePreviewService,
         ...explorationService,
         releaseRouteAfterRide: () => {
             explorationService.clearActiveExploration();

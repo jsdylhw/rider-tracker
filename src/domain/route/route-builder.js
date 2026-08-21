@@ -99,7 +99,9 @@ export function buildRoute(segments) {
 export function isRouteReadyForRide(route) {
     return Number.isFinite(route?.totalDistanceMeters)
         && route.totalDistanceMeters > 0
-        && route?.isLoading !== true;
+        && route?.isLoading !== true
+        && route?.isPrototype !== true
+        && route?.isDraft !== true;
 }
 
 export function getSegmentAtDistance(route, distanceMeters) {

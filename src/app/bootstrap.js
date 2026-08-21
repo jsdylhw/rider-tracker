@@ -15,6 +15,7 @@ import { createExportService } from "./services/export-service.js";
 import { createGoogleMapsConfigService } from "./services/google-maps-config-service.js";
 import { createUiService } from "./services/ui-service.js";
 import { createWorkoutService } from "./services/workout-service.js";
+import { createAgentFloatingWindow } from "../ui/agent/agent-floating-window.js";
 
 // Leaflet is loaded from CDN with fallbacks. Do not prevent non-map features
 // from starting if every external source is unavailable.
@@ -42,6 +43,7 @@ const exportService = createExportService({ store });
 const rideService = createRideService({ store, deviceService, exportService, routeService });
 const uiService = createUiService({ store });
 const workoutService = createWorkoutService({ store, deviceService });
+const agentFloatingWindow = createAgentFloatingWindow();
 
 // 3. 创建控制器与视图
 const pipController = createPipController({
@@ -66,6 +68,14 @@ const mainView = createMainView({
             resetRoute: routeService.resetRoute,
             importGpx: routeService.importGpx,
             createMapDrawRoute: routeService.createMapDrawRoute,
+            planAgentRoutes: routeService.planAgentRoutes,
+            restoreAgentRouteDraft: routeService.restoreAgentRouteDraft,
+            previewAgentRoute: routeService.previewAgentRoute,
+            confirmAgentRoute: routeService.confirmAgentRoute,
+            exploreAgentRouteSegments: routeService.exploreAgentRouteSegments,
+            composeAgentRouteSegments: routeService.composeAgentRouteSegments,
+            reverseAgentRoute: routeService.reverseAgentRoute,
+            undoAgentRoute: routeService.undoAgentRoute,
             invalidatePendingMapRoute: routeService.invalidatePendingMapRoute,
             planMapRoute: routeService.planMapRoute,
             queueExplorationTurn: routeService.queueExplorationTurn,
@@ -120,6 +130,7 @@ const mainView = createMainView({
 // 4. 注册页面关闭时的清理逻辑（同步收尾 + 尝试 sendBeacon 发送 FIT）
 window.addEventListener("beforeunload", () => {
     mainView.destroy();
+    agentFloatingWindow.destroy();
     if (store.getState().liveRide.isActive) {
         rideService.finalizeRideSync({ sendBeacon: true });
     }

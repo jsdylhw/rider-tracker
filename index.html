@@ -77,7 +77,7 @@
                 </div>
             </section>
 
-            <section class="layout-grid live-setup-grid">
+            <section class="layout-grid live-setup-grid live-setup-stack">
                 <div class="column" id="live-col-1">
                     <div id="routeCardContainer">
                         <div id="routeCard" class="card">
@@ -86,10 +86,70 @@
                             </div>
                             <div class="import-panel">
                                 <div class="route-mode-tabs" role="tablist" aria-label="路线来源">
+                                    <button id="routeModeAiBtn" class="route-mode-tab route-mode-tab-ai" type="button" data-route-mode="ai">AI 路线</button>
                                     <button id="routeModeGpxBtn" class="route-mode-tab" type="button" data-route-mode="gpx">GPX 导入</button>
                                     <button id="routeModeManualBtn" class="route-mode-tab" type="button" data-route-mode="manual">自定义线路</button>
                                     <button id="routeModeDrawBtn" class="route-mode-tab" type="button" data-route-mode="draw">地图选择路线</button>
                                     <button id="routeModeMapBtn" class="route-mode-tab" type="button" data-route-mode="map">地图探索</button>
+                                </div>
+
+                                <div id="aiRoutePanel" class="route-mode-panel ai-route-panel" hidden>
+                                    <div class="ai-route-panel-heading">
+                                        <div>
+                                            <span class="ai-route-kicker">AI Route Studio</span>
+                                            <strong>用对话生成和修改路线</strong>
+                                            <p>路线对话固定保留在此页面；候选选择后在下方唯一地图中预览。</p>
+                                        </div>
+                                        <span class="ai-route-prototype-badge">Personal FIT Agent</span>
+                                    </div>
+
+                                    <div class="ai-route-planner-grid">
+                                        <section class="ai-route-conversation" aria-label="AI 路线对话">
+                                            <div id="aiRouteMessages" class="ai-route-messages" role="log" aria-live="polite"></div>
+                                            <div class="ai-route-suggestions" aria-label="路线示例问题">
+                                                <button type="button" data-ai-route-prompt="京都市内风景好的 30 km 环线">京都风景 30 km</button>
+                                                <button type="button" data-ai-route-prompt="少走城市道路，多一些河边路段">减少城市道路</button>
+                                                <button type="button" data-ai-route-prompt="增加一点爬坡，但控制在 35 km 内">增加适量爬坡</button>
+                                            </div>
+                                            <form id="aiRouteComposer" class="ai-route-composer">
+                                                <textarea id="aiRouteMessageInput" rows="2" placeholder="例如：从京都站出发，风景好一点，30 km 左右……" aria-label="输入 AI 路线需求"></textarea>
+                                                <button id="aiRouteSendBtn" class="btn primary" type="submit">生成候选</button>
+                                            </form>
+                                        </section>
+
+                                        <section class="ai-route-results" aria-label="AI 路线候选">
+                                            <div class="ai-route-results-heading">
+                                                <div>
+                                                    <span>本轮候选</span>
+                                                    <strong id="aiRouteResultTitle">等待生成路线</strong>
+                                                </div>
+                                                <span id="aiRouteResultStatus">等待生成或选择</span>
+                                            </div>
+                                            <div class="ai-route-draft-actions">
+                                                <button id="aiRouteExploreSegmentsBtn" class="btn secondary" type="button">查找附近 Strava 路段</button>
+                                                <button id="aiRouteReverseBtn" class="btn ghost" type="button">反转当前路线</button>
+                                                <button id="aiRouteUndoBtn" class="btn ghost" type="button">撤销修改</button>
+                                            </div>
+                                            <div id="aiRouteCandidates" class="ai-route-candidates"></div>
+                                            <section id="aiRouteSegmentPanel" class="ai-route-segment-panel" hidden>
+                                                <div class="ai-route-segment-heading">
+                                                    <div>
+                                                        <span>Strava 路段池</span>
+                                                        <strong>按点击顺序选择 1–3 个路段</strong>
+                                                    </div>
+                                                    <button id="aiRouteClearSegmentsBtn" class="btn ghost" type="button">清空选择</button>
+                                                </div>
+                                                <div id="aiRouteSegmentList" class="ai-route-segment-list"></div>
+                                                <div class="ai-route-segment-compose">
+                                                    <span id="aiRouteSegmentSelection">尚未选择路段</span>
+                                                    <button id="aiRouteComposeSegmentsBtn" class="btn primary" type="button" disabled>按顺序拼接路线</button>
+                                                </div>
+                                            </section>
+                                        </section>
+                                    </div>
+                                    <div id="aiRoutePrototypeNotice" class="ai-route-prototype-notice">
+                                        AI 虚拟路线不请求海拔，坡度按 0 处理，适合配合 ERG 课表骑行；坡度模拟请继续使用带海拔的 GPX 或 Strava 路线。
+                                    </div>
                                 </div>
 
                                 <div id="gpxRoutePanel" class="route-mode-panel">
@@ -653,6 +713,80 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <button
+        id="agentLauncher"
+        class="agent-launcher"
+        type="button"
+        aria-controls="agentWindow"
+        aria-expanded="false"
+        aria-label="打开 Training Agent"
+    >
+        <span class="agent-launcher-mark" aria-hidden="true">AI</span>
+        <span class="agent-launcher-copy">
+            <strong>Training Agent</strong>
+            <small>活动 · 实时骑行</small>
+        </span>
+        <span id="agentLauncherBadge" class="agent-launcher-badge" hidden>1</span>
+    </button>
+
+    <section
+        id="agentWindow"
+        class="agent-window"
+        role="dialog"
+        aria-label="Training Agent 对话窗口"
+        aria-hidden="true"
+        hidden
+    >
+        <header class="agent-window-header">
+            <div class="agent-window-identity">
+                <span class="agent-avatar" aria-hidden="true">AI</span>
+                <div>
+                    <strong>Training Agent</strong>
+                    <span><i aria-hidden="true"></i> 前端交互原型</span>
+                </div>
+            </div>
+            <div class="agent-window-controls">
+                <button id="agentExpandBtn" type="button" aria-label="展开工作区" aria-pressed="false">展开</button>
+                <button id="agentMinimizeBtn" type="button" aria-label="最小化对话窗口">—</button>
+                <button id="agentCloseBtn" type="button" aria-label="关闭对话窗口">×</button>
+            </div>
+        </header>
+
+        <div class="agent-window-body">
+            <div class="agent-conversation-pane">
+                <div class="agent-context-bar">
+                    <span>当前上下文</span>
+                    <strong id="agentContextLabel">全局骑行助手</strong>
+                    <button id="agentClearContextBtn" type="button" aria-label="清除当前上下文">×</button>
+                </div>
+
+                <div id="agentMessages" class="agent-messages" role="log" aria-live="polite"></div>
+
+                <div id="agentQuickPrompts" class="agent-quick-prompts" aria-label="示例问题">
+                    <button type="button" data-agent-prompt="activity">分析最近活动</button>
+                    <button type="button" data-agent-prompt="live">查看实时强度</button>
+                </div>
+
+                <form id="agentComposer" class="agent-composer">
+                    <textarea id="agentMessageInput" rows="1" placeholder="询问活动或当前骑行……" aria-label="输入给 Training Agent 的消息"></textarea>
+                    <button id="agentSendBtn" type="submit">发送</button>
+                </form>
+                <p class="agent-prototype-note">当前为假对话原型，不会请求 Agent 或修改骑行设置。</p>
+            </div>
+
+            <aside id="agentWorkspace" class="agent-workspace" aria-label="结构化结果预览">
+                <div class="agent-workspace-heading">
+                    <div>
+                        <span>结构化结果</span>
+                        <strong id="agentWorkspaceTitle">实时骑行快照</strong>
+                    </div>
+                    <span class="agent-prototype-pill">模拟数据</span>
+                </div>
+                <div id="agentWorkspaceContent" class="agent-workspace-content"></div>
+            </aside>
         </div>
     </section>
 

@@ -72,6 +72,32 @@ data/rider-tracker.db
 - 会基于路线生成距离、海拔、坡度数据。
 - 实时骑行时可以按路线推进位置。
 
+### AI 虚拟路线
+
+- “实时骑行设置 → AI 路线”可以通过对话请求 Personal FIT Agent 生成 2-3 条路线候选。
+- 候选使用同一张 Rider 地图预览；预览草稿不能直接开骑，点击“最终确认”后才会成为可骑行路线。
+- 后续对话会基于当前计划增量修改，不会默认重新进行宽泛路线发现；也可以直接反转或撤销当前路线。
+- 国内路线可以查询附近的 Strava 路段，在页面中按骑行顺序选择 1-3 个路段，再由 Agent 拼接起点、路段和终点之间的连接路线。
+- AI 路线草稿、当前候选和确认状态会保存在浏览器及 Agent 会话中，刷新页面后可继续处理。
+- AI 虚拟路线不请求海拔，坡度按 `0%` 处理，适合与 ERG 课表组合使用。
+- 页面中的预计时间按虚拟骑行 `25 km/h` 估算，不沿用地图服务偏保守的城市骑行耗时。
+- 需要真实坡度模拟时，请继续导入带海拔的 GPX/Strava 路线；Agent 不伪造坡度数据。
+
+先在 Personal FIT Agent 项目启动 API：
+
+```bash
+python -m uvicorn app.api:app --host 127.0.0.1 --port 8000
+```
+
+Rider 默认连接 `http://127.0.0.1:8000`。需要修改地址或 PFA 配置了 `web_api_token` 时，将 `.env.example` 复制为 `.env`，填写：
+
+```text
+PERSONAL_FIT_AGENT_URL=http://127.0.0.1:8000
+PERSONAL_FIT_AGENT_TOKEN=对应的 web_api_token
+```
+
+Token 仅由 Rider Node 服务读取，不会发送给浏览器。
+
 ### 离线模拟
 
 - 输入骑手参数和恒定功率。

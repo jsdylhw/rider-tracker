@@ -1,6 +1,7 @@
 import { createRouteDetailsRenderer } from "./route-details-renderer.js";
 import { createRouteElevationChartRenderer } from "./route-elevation-chart-renderer.js";
 import { createRouteInputController } from "./route-input-controller.js";
+import { createAgentRoutePlanner } from "./agent-route-planner.js";
 
 export function createRouteRenderer({
     elements,
@@ -11,6 +12,14 @@ export function createRouteRenderer({
     onResetRoute,
     onImportGpx,
     onCreateMapDrawRoute,
+    onPlanAgentRoutes,
+    onRestoreAgentRouteDraft,
+    onPreviewAgentRoute,
+    onConfirmAgentRoute,
+    onExploreAgentRouteSegments,
+    onComposeAgentRouteSegments,
+    onReverseAgentRoute,
+    onUndoAgentRoute,
     onInvalidateMapRoute,
     onPlanMapRoute,
     onRequestRouteElevation,
@@ -48,17 +57,31 @@ export function createRouteRenderer({
         getInputMode: routeInputController.getInputMode
     });
     const routeElevationChartRenderer = createRouteElevationChartRenderer({ elements });
+    const agentRoutePlanner = createAgentRoutePlanner({
+        elements,
+        onPlanAgentRoutes,
+        onRestoreAgentRouteDraft,
+        onPreviewAgentRoute,
+        onConfirmAgentRoute,
+        onExploreAgentRouteSegments,
+        onComposeAgentRouteSegments,
+        onReverseAgentRoute,
+        onUndoAgentRoute,
+    });
 
     routeInputController.bindEvents();
     routeDetailsRenderer.bindEvents();
+    agentRoutePlanner.bindEvents();
 
     function render(state) {
         routeInputController.render(state);
         routeDetailsRenderer.render(state);
+        agentRoutePlanner.render(state);
     }
 
     return {
         render,
-        renderElevationChart: routeElevationChartRenderer.render
+        renderElevationChart: routeElevationChartRenderer.render,
+        destroy: agentRoutePlanner.destroy
     };
 }

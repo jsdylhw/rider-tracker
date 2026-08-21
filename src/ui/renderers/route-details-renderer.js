@@ -98,9 +98,12 @@ export function createRouteDetailsRenderer({
         const isGpx = route.source === "gpx";
         const isExploration = route.source === "osm-exploration";
         const isMapDrawn = route.source === "map-drawn";
+        const isAgentPlanned = route.source === "agent-planned";
+        const isAgentDraft = isAgentPlanned && route.isDraft === true;
         const hasUsableRoute = Number.isFinite(route.totalDistanceMeters) && route.totalDistanceMeters > 0;
         const isPendingMapExploration = inputMode === "map" && !isExploration;
         const isPendingMapDrawing = inputMode === "draw" && !isMapDrawn;
+        const isPendingAgentRoute = inputMode === "ai" && !isAgentPlanned;
         const isPendingGpxImport = inputMode === "gpx" && !isGpx;
 
         if (elements.routeSourceLabel) {
@@ -108,12 +111,16 @@ export function createRouteDetailsRenderer({
                 ? "路线处理中"
                 : isPendingMapExploration
                     ? "地图探索（待生成）"
+                    : isPendingAgentRoute
+                        ? "AI 路线（等待预览）"
                     : isPendingMapDrawing
                         ? "地图选择路线（待生成）"
                     : isPendingGpxImport
                         ? "GPX（待导入）"
                         : isExploration
                             ? "OSM 街景探索"
+                            : isAgentPlanned
+                                ? `AI 路线：${route.name}`
                             : isMapDrawn
                                 ? "Google 地图选择路线"
                             : isGpx
@@ -137,6 +144,10 @@ export function createRouteDetailsRenderer({
             elements.routeSummary.innerHTML = "<strong>地图探索</strong><br>请在地图上选择起点和起步目标。系统会请求周边 OSM 路网，生成初始探索路线。";
             return;
         }
+        if (isPendingAgentRoute) {
+            elements.routeSummary.innerHTML = "<strong>AI 路线</strong><br>在上方对话区描述路线需求，再从候选中选择一条；路线会显示在下方的统一地图中。";
+            return;
+        }
         if (isPendingMapDrawing) {
             elements.routeSummary.innerHTML = "<strong>地图选择路线</strong><br>在 OSM 地图上依次点击起点、途经点和终点。系统会调用 Google Routes API 生成实际可骑行道路路线，再自动请求 Google 海拔。";
             return;
@@ -151,9 +162,9 @@ export function createRouteDetailsRenderer({
         }
 
         const usedDrivingFallback = isMapDrawn && route.travelMode === "DRIVE";
-        const sourceText = isExploration ? "OSM 地图探索" : isMapDrawn ? usedDrivingFallback ? "Google 道路路线（驾车回退）" : "Google 骑行路线" : isGpx ? "GPX 导入" : "手工输入";
+        const sourceText = isAgentPlanned ? "Personal FIT Agent 虚拟路线" : isExploration ? "OSM 地图探索" : isMapDrawn ? usedDrivingFallback ? "Google 道路路线（驾车回退）" : "Google 骑行路线" : isGpx ? "GPX 导入" : "手工输入";
         const segmentsText = isGpx ? "" : `，共 ${route.segments.length} 段`;
-        const elevationWarning = route.hasElevationData === false
+        const elevationWarning = route.hasElevationData === false && !isAgentPlanned
             ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : isMapDrawn ? "骑行路线" : "GPX"}尚无海拔数据，坡度按 0 处理。${isExploration ? "可在骑行界面主动请求海拔。" : isMapDrawn ? "可在地图选择路线中请求海拔。" : ""}</span>`
             : "";
         const bicycleRouteWarning = usedDrivingFallback
@@ -161,11 +172,16 @@ export function createRouteDetailsRenderer({
             : isMapDrawn
             ? "<br><span class=\"muted\">提示：Google 自行车路线仍可能缺少部分自行车道或通行限制信息，请结合当地实际道路判断。</span>"
             : "";
+        const prototypeWarning = isAgentDraft
+            ? "<br><span style=\"color: var(--danger);\">当前仍是路线草稿；请点击“最终确认”后再开始骑行。</span>"
+            : isAgentPlanned
+            ? "<br><span class=\"muted\">AI 虚拟路线已确认，不包含海拔，坡度按 0 处理；建议配合 ERG 模式骑行。</span>"
+            : "";
         elements.routeSummary.innerHTML = `
             <strong>路线概览</strong><br>
             来源：${sourceText}${segmentsText}，累计距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km，
             累计爬升 ${Math.round(route.totalElevationGainMeters)} m，
-            累计下降 ${Math.round(route.totalDescentMeters)} m。${elevationWarning}${bicycleRouteWarning}
+            累计下降 ${Math.round(route.totalDescentMeters)} m。${elevationWarning}${bicycleRouteWarning}${prototypeWarning}
         `;
     }
 

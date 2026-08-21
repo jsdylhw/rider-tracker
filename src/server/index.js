@@ -9,6 +9,8 @@ import { createTokenStore } from "./token-store.js";
 import { createActivityStore } from "./activity-store.js";
 import { createActivityRoutes } from "./routes/activity-routes.js";
 import { createStravaRoutes } from "./routes/strava-routes.js";
+import { createAgentRoutes } from "./routes/agent-routes.js";
+import { createPersonalFitAgentClient } from "./personal-fit-agent-client.js";
 import { buildAllowedLocalOrigins, buildLocalBaseUrl, createLocalApiOriginGuard } from "./local-api-security.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -35,10 +37,16 @@ const CONFIG_STORE_PATH = process.env.STRAVA_CONFIG_PATH;
 const TOKEN_STORE_PATH = process.env.TOKEN_STORE_PATH;
 const FIT_FILE_DIR = process.env.FIT_FILE_DIR || path.join(PROJECT_ROOT, "data", "files", "fit");
 const USER_PROFILE_PATH = path.join(PROJECT_ROOT, "user-profile.json");
+const PERSONAL_FIT_AGENT_URL = process.env.PERSONAL_FIT_AGENT_URL || "http://127.0.0.1:8000";
+const PERSONAL_FIT_AGENT_TOKEN = process.env.PERSONAL_FIT_AGENT_TOKEN || "";
 
 const configStore = createConfigStore(CONFIG_STORE_PATH);
 const tokenStore = createTokenStore(TOKEN_STORE_PATH);
 const activityStore = createActivityStore();
+const personalFitAgentClient = createPersonalFitAgentClient({
+    baseUrl: PERSONAL_FIT_AGENT_URL,
+    apiToken: PERSONAL_FIT_AGENT_TOKEN
+});
 activityStore.initialize();
 
 app.use(express.json());
@@ -69,6 +77,7 @@ app.use(createStravaRoutes({
     redirectUri: REDIRECT_URI,
     frontendRedirectUrl: FRONTEND_REDIRECT_URL
 }));
+app.use(createAgentRoutes({ agentClient: personalFitAgentClient }));
 
 app.get("/", (_req, res) => {
     res.sendFile(path.join(PROJECT_ROOT, "index.html"));

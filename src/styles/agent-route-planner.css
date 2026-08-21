@@ -1,0 +1,320 @@
+.ai-route-panel {
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid #dbe4f0;
+    background: linear-gradient(145deg, #fbfdff, #f5f8fc);
+}
+
+.ai-route-panel-heading,
+.ai-route-results-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.ai-route-panel-heading {
+    padding: 18px 20px;
+    border-bottom: 1px solid #dbe4f0;
+}
+
+.ai-route-panel-heading > div,
+.ai-route-results-heading > div {
+    display: grid;
+    gap: 4px;
+}
+
+.ai-route-panel-heading p,
+.ai-route-candidate p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.55;
+}
+
+.ai-route-kicker {
+    color: #18735d;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.ai-route-prototype-badge,
+.ai-route-results-heading > span {
+    flex: 0 0 auto;
+    padding: 5px 9px;
+    color: #6b4d11;
+    background: #fff5d9;
+    border: 1px solid #f3d58e;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.ai-route-planner-grid {
+    display: grid;
+    min-height: 420px;
+    grid-template-columns: minmax(320px, 0.82fr) minmax(440px, 1.18fr);
+}
+
+.ai-route-conversation,
+.ai-route-results {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+}
+
+.ai-route-conversation {
+    border-right: 1px solid #dbe4f0;
+}
+
+.ai-route-messages {
+    display: flex;
+    height: 270px;
+    padding: 18px;
+    overflow-y: auto;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ai-route-message {
+    display: grid;
+    max-width: 88%;
+    gap: 3px;
+}
+
+.ai-route-message.is-user {
+    align-self: flex-end;
+}
+
+.ai-route-message > span {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.ai-route-message.is-user > span {
+    text-align: right;
+}
+
+.ai-route-message p {
+    margin: 0;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid #dbe4f0;
+    border-radius: 4px 14px 14px;
+    line-height: 1.55;
+}
+
+.ai-route-message.is-user p {
+    color: #fff;
+    background: #245f58;
+    border-color: #245f58;
+    border-radius: 14px 4px 14px 14px;
+}
+
+.ai-route-message.is-pending p {
+    color: var(--muted);
+}
+
+.ai-route-suggestions {
+    display: flex;
+    padding: 0 18px 12px;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.ai-route-suggestions button {
+    padding: 6px 9px;
+    color: #315c55;
+    background: #edf8f4;
+    border: 1px solid #c8e7dc;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.ai-route-composer {
+    display: grid;
+    padding: 12px 18px 18px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 9px;
+}
+
+.ai-route-composer textarea {
+    width: 100%;
+    min-height: 58px;
+    padding: 10px 12px;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font: inherit;
+}
+
+.ai-route-results {
+    padding: 18px;
+    gap: 13px;
+}
+
+.ai-route-results-heading > div > span {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.ai-route-candidates {
+    display: grid;
+    gap: 10px;
+}
+
+.ai-route-draft-actions,
+.ai-route-candidate-actions,
+.ai-route-segment-compose {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ai-route-candidate-actions {
+    justify-content: flex-end;
+}
+
+.ai-route-segment-panel {
+    display: grid;
+    padding: 14px;
+    gap: 12px;
+    background: #f8fafc;
+    border: 1px solid #dbe4f0;
+    border-radius: 13px;
+}
+
+.ai-route-segment-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ai-route-segment-heading > div {
+    display: grid;
+    gap: 3px;
+}
+
+.ai-route-segment-heading span,
+.ai-route-segment-compose span {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.ai-route-segment-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px;
+}
+
+.ai-route-segment-card {
+    display: grid;
+    padding: 10px 11px;
+    gap: 4px;
+    color: var(--text);
+    text-align: left;
+    background: #fff;
+    border: 1px solid #dbe4f0;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.ai-route-segment-card.is-selected {
+    border-color: #fc7f3f;
+    box-shadow: 0 0 0 3px rgba(252, 127, 63, 0.13);
+}
+
+.ai-route-segment-card span {
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.ai-route-segment-compose {
+    justify-content: space-between;
+}
+
+.ai-route-candidate {
+    display: grid;
+    padding: 14px;
+    align-items: center;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px;
+    background: #fff;
+    border: 1px solid #dbe4f0;
+    border-radius: 13px;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.ai-route-candidate.is-selected {
+    border-color: #3e9a82;
+    box-shadow: 0 0 0 3px rgba(62, 154, 130, 0.12);
+}
+
+.ai-route-candidate > div {
+    display: grid;
+    gap: 5px;
+}
+
+.ai-route-candidate > div > span {
+    color: #315c55;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ai-route-candidate-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.ai-route-candidate-tags span {
+    padding: 3px 7px;
+    color: #526274;
+    background: #f0f4f8;
+    border-radius: 999px;
+    font-size: 10px;
+}
+
+.ai-route-prototype-notice {
+    padding: 10px 18px;
+    color: #805d18;
+    background: #fff8e7;
+    border-top: 1px solid #f1ddb0;
+    font-size: 11px;
+}
+
+@media (max-width: 980px) {
+    .ai-route-planner-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ai-route-conversation {
+        border-right: 0;
+        border-bottom: 1px solid #dbe4f0;
+    }
+}
+
+@media (max-width: 640px) {
+    .ai-route-panel-heading,
+    .ai-route-candidate {
+        grid-template-columns: 1fr;
+    }
+
+    .ai-route-panel-heading {
+        flex-direction: column;
+    }
+
+    .ai-route-candidate {
+        align-items: stretch;
+    }
+
+    .ai-route-composer {
+        grid-template-columns: 1fr;
+    }
+}

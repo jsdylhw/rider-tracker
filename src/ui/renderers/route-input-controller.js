@@ -25,6 +25,7 @@ export function createRouteInputController({
     const mapDrawSelection = { waypoints: [] };
 
     function bindEvents() {
+        bindRouteModeButton(elements.routeModeAiBtn, "ai");
         bindRouteModeButton(elements.routeModeGpxBtn, "gpx");
         bindRouteModeButton(elements.routeModeManualBtn, "manual");
         bindRouteModeButton(elements.routeModeDrawBtn, "draw");
@@ -90,16 +91,21 @@ export function createRouteInputController({
         if (!hasRouteModeControls) return;
         const route = lastRenderedState?.route;
         const hasActiveRouteForMode = matchesRouteInputMode(route, routeInputMode);
-        const shouldShowRouteMap = routeInputMode === "map"
+        const shouldShowRouteMap = routeInputMode === "ai"
+            || routeInputMode === "map"
             || routeInputMode === "draw"
             || (hasActiveRouteForMode && hasCoordinateRoute(route));
+        setPanelVisible(elements.aiRoutePanel, routeInputMode === "ai");
         setPanelVisible(elements.gpxRoutePanel, routeInputMode === "gpx");
         setPanelVisible(elements.manualRoutePanel, routeInputMode === "manual");
         setPanelVisible(elements.mapDrawRoutePanel, routeInputMode === "draw");
         setPanelVisible(elements.mapRoutePanel, routeInputMode === "map");
         setPanelVisible(elements.routeMapShell, shouldShowRouteMap);
-        setPanelVisible(elements.setupElevationChartShell, hasActiveRouteForMode);
+        const shouldShowElevation = hasActiveRouteForMode
+            && !(routeInputMode === "ai" && route?.hasElevationData === false);
+        setPanelVisible(elements.setupElevationChartShell, shouldShowElevation);
         setPanelVisible(elements.routeCurrentSourceRow, hasActiveRouteForMode);
+        setModeButtonActive(elements.routeModeAiBtn, routeInputMode === "ai");
         setModeButtonActive(elements.routeModeGpxBtn, routeInputMode === "gpx");
         setModeButtonActive(elements.routeModeManualBtn, routeInputMode === "manual");
         setModeButtonActive(elements.routeModeDrawBtn, routeInputMode === "draw");
@@ -380,10 +386,14 @@ export function createRouteInputController({
 
 function buildMapRouteSignature(route) {
     const geometry = collectRouteMapLatLngs(route);
-    return `${route?.networkSource ?? "default"}:${buildRouteGeometryKey(route, geometry)}`;
+    const overlays = (route?.agentSegmentOverlays ?? []).map((item) => (
+        `${item.segmentId}:${item.coordinates?.length ?? 0}`
+    )).join(",");
+    return `${route?.networkSource ?? "default"}:${buildRouteGeometryKey(route, geometry)}:${overlays}`;
 }
 
 function matchesRouteInputMode(route, inputMode) {
+    if (inputMode === "ai") return route?.source === "agent-planned";
     if (inputMode === "map") return route?.source === "osm-exploration";
     if (inputMode === "draw") return route?.source === "map-drawn";
     if (inputMode === "gpx") return route?.source === "gpx";

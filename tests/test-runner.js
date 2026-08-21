@@ -59,6 +59,12 @@ import { suite as incrementalPowerMetricsSuite } from "./unit/incremental-power-
 import { suite as tokenStoreSuite } from "./unit/token-store.test.js";
 import { suite as oauthStateStoreSuite } from "./unit/oauth-state-store.test.js";
 import { suite as localApiSecuritySuite } from "./unit/local-api-security.test.js";
+import { suite as agentFloatingWindowSuite } from "./unit/agent-floating-window.test.js";
+import { suite as agentRouteContractSuite } from "./unit/agent-route-contract.test.js";
+import { suite as personalFitAgentClientSuite } from "./unit/personal-fit-agent-client.test.js";
+import { suite as agentRouteDraftStorageSuite } from "./unit/agent-route-draft-storage.test.js";
+import { suite as agentRouteServiceSuite } from "./unit/agent-route-service.test.js";
+import { suite as agentRoutePlannerSuite } from "./unit/agent-route-planner.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
@@ -121,7 +127,13 @@ const suites = [
     incrementalPowerMetricsSuite,
     tokenStoreSuite,
     oauthStateStoreSuite,
-    localApiSecuritySuite
+    localApiSecuritySuite,
+    agentFloatingWindowSuite,
+    agentRouteContractSuite,
+    personalFitAgentClientSuite,
+    agentRouteDraftStorageSuite,
+    agentRouteServiceSuite,
+    agentRoutePlannerSuite
 ];
 
 runSuites(suites).then((results) => {

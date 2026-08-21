@@ -1,0 +1,123 @@
+import express from "express";
+
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+export function createAgentRoutes({ agentClient }) {
+    const router = express.Router();
+
+    router.post("/api/agent/chat", async (req, res) => {
+        try {
+            const request = normalizeChatRequest(req.body);
+            const result = await agentClient.chat(request);
+            return res.json({ ok: true, result });
+        } catch (error) {
+            return res.status(resolveStatus(error)).json({ ok: false, error: error.message });
+        }
+    });
+
+    router.post("/api/agent/route-plans/select", async (req, res) => {
+        try {
+            const request = normalizeSelectionRequest(req.body);
+            const result = await agentClient.selectRouteCandidate(request);
+            return res.json({ ok: true, result });
+        } catch (error) {
+            return res.status(resolveStatus(error)).json({ ok: false, error: error.message });
+        }
+    });
+
+    router.post("/api/agent/route-plans/command", async (req, res) => {
+        try {
+            const request = normalizeCommandRequest(req.body);
+            const result = await agentClient.routePlanCommand(request);
+            return res.json({ ok: true, result });
+        } catch (error) {
+            return res.status(resolveStatus(error)).json({ ok: false, error: error.message });
+        }
+    });
+
+    return router;
+}
+
+function normalizeChatRequest(body = {}) {
+    const sessionId = normalizeId(body.session_id, "session_id");
+    const requestId = normalizeId(body.request_id, "request_id");
+    const message = String(body.message || "").trim();
+    if (!message || message.length > 20_000) {
+        throw new RequestValidationError("message 必须是 1-20000 字符的文本。");
+    }
+    return { session_id: sessionId, request_id: requestId, message };
+}
+
+function normalizeSelectionRequest(body = {}) {
+    const sessionId = normalizeId(body.session_id, "session_id");
+    const planId = normalizeText(body.plan_id, "plan_id");
+    const candidateId = normalizeText(body.candidate_id, "candidate_id");
+    return { session_id: sessionId, plan_id: planId, candidate_id: candidateId };
+}
+
+function normalizeCommandRequest(body = {}) {
+    const allowed = new Set(["get", "select", "confirm", "reverse", "undo", "explore_segments", "compose_segments"]);
+    const operation = String(body.operation || "").trim();
+    if (!allowed.has(operation)) throw new RequestValidationError("不支持的路线操作。");
+    const request = {
+        session_id: normalizeId(body.session_id, "session_id"),
+        operation,
+    };
+    if (body.plan_id) request.plan_id = normalizeText(body.plan_id, "plan_id");
+    if (body.candidate_id) request.candidate_id = normalizeText(body.candidate_id, "candidate_id");
+    if (body.candidate_name) request.candidate_name = String(body.candidate_name).trim().slice(0, 200);
+    if (body.target_distance_km !== undefined && body.target_distance_km !== null) {
+        const distance = Number(body.target_distance_km);
+        if (!Number.isFinite(distance) || distance <= 0) throw new RequestValidationError("target_distance_km 格式无效。");
+        request.target_distance_km = distance;
+    }
+    if (operation === "compose_segments") {
+        request.segments = normalizeSegments(body.segments);
+    }
+    if (operation === "explore_segments") {
+        request.corridor_km = clampNumber(body.corridor_km, 0.1, 20, 5);
+        request.max_segments = Math.round(clampNumber(body.max_segments, 1, 20, 12));
+    }
+    return request;
+}
+
+function normalizeSegments(value) {
+    if (!Array.isArray(value) || value.length < 1 || value.length > 3) {
+        throw new RequestValidationError("segments 必须包含 1-3 个路段。");
+    }
+    return value.map((item) => {
+        const segmentId = Number(item?.segment_id);
+        const direction = ["auto", "forward", "reverse"].includes(item?.direction) ? item.direction : "auto";
+        if (!Number.isInteger(segmentId) || segmentId <= 0) {
+            throw new RequestValidationError("segment_id 格式无效。");
+        }
+        return { segment_id: segmentId, direction };
+    });
+}
+
+function clampNumber(value, min, max, fallback) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function normalizeId(value, field) {
+    const text = String(value || "").trim();
+    if (!SESSION_ID_PATTERN.test(text)) {
+        throw new RequestValidationError(`${field} 格式无效。`);
+    }
+    return text;
+}
+
+function normalizeText(value, field) {
+    const text = String(value || "").trim();
+    if (!text || text.length > 128) {
+        throw new RequestValidationError(`${field} 格式无效。`);
+    }
+    return text;
+}
+
+function resolveStatus(error) {
+    return error instanceof RequestValidationError ? 400 : 502;
+}
+
+class RequestValidationError extends Error {}

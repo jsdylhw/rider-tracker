@@ -196,6 +196,7 @@ function createLayerSet(map) {
             dashArray: "8 10"
         }).addTo(map),
         plannerWaypointMarkers: [],
+        agentSegmentLines: [],
         requestedWaypointLinks: [],
         requestedWaypointMarkers: [],
         routeLineOpacity: 0.95,
@@ -227,6 +228,7 @@ function renderRoute(map, layers, route, currentRecord, {
 
     const geoPoints = collectRouteMapLatLngs(route);
     const routeKey = buildRouteGeometryKey(route, geoPoints);
+    renderAgentSegmentOverlays(map, layers, route?.agentSegmentOverlays);
 
     if (geoPoints.length < 2) {
         layers.routeLine.setLatLngs([]);
@@ -244,7 +246,6 @@ function renderRoute(map, layers, route, currentRecord, {
     layers.routeLineOpacity = routeLineStyle.opacity;
     const routeChanged = layers.lastRouteKey !== routeKey;
     const shouldRenderStaticRoute = routeChanged || forceFocus || !layers.hasVisibleRoute;
-
     if (shouldRenderStaticRoute) {
         map.invalidateSize({ pan: false });
         layers.routeLine.setStyle(routeLineStyle);
@@ -275,6 +276,31 @@ function renderRoute(map, layers, route, currentRecord, {
     layers.riddenLine.bringToFront?.();
     layers.currentMarker.setLatLng(currentLatLng).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
     map.panTo(currentLatLng, { animate: true, duration: 0.5 });
+}
+
+function renderAgentSegmentOverlays(map, layers, overlays) {
+    for (const line of layers.agentSegmentLines ?? []) map.removeLayer?.(line);
+    layers.agentSegmentLines = [];
+    for (const overlay of overlays ?? []) {
+        const points = (overlay?.coordinates ?? []).map((coordinate) => [
+            Number(coordinate?.[1]), Number(coordinate?.[0]),
+        ]).filter(([latitude, longitude]) => (
+            Number.isFinite(latitude) && Number.isFinite(longitude)
+        ));
+        if (points.length < 2) continue;
+        const line = window.L.polyline(points, {
+            color: "#fc7f3f",
+            weight: 5,
+            opacity: 0.8,
+            dashArray: "8 6",
+        }).addTo(map);
+        const label = document.createElement("span");
+        label.textContent = `Strava · ${overlay.name || overlay.segmentId}`;
+        line.bindTooltip?.(label, { sticky: true });
+        line.bringToFront?.();
+        layers.agentSegmentLines.push(line);
+    }
+    layers.routeLine.bringToFront?.();
 }
 
 function renderRequestedWaypointSnaps(map, layers, route) {

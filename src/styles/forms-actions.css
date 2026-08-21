@@ -89,7 +89,7 @@ tbody tr:last-child td {
 
 .route-mode-tabs {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 6px;
     padding: 6px;
     border: 1px solid var(--border);

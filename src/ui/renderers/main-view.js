@@ -63,6 +63,14 @@ export function createMainView({ store, pipController, actions }) {
         onResetRoute: route.resetRoute,
         onImportGpx: route.importGpx,
         onCreateMapDrawRoute: route.createMapDrawRoute,
+        onPlanAgentRoutes: route.planAgentRoutes,
+        onRestoreAgentRouteDraft: route.restoreAgentRouteDraft,
+        onPreviewAgentRoute: route.previewAgentRoute,
+        onConfirmAgentRoute: route.confirmAgentRoute,
+        onExploreAgentRouteSegments: route.exploreAgentRouteSegments,
+        onComposeAgentRouteSegments: route.composeAgentRouteSegments,
+        onReverseAgentRoute: route.reverseAgentRoute,
+        onUndoAgentRoute: route.undoAgentRoute,
         onInvalidateMapRoute: route.invalidatePendingMapRoute,
         onPlanMapRoute: route.planMapRoute,
         onRequestRouteElevation: route.requestCurrentRouteElevation,
@@ -203,6 +211,7 @@ export function createMainView({ store, pipController, actions }) {
 
     return {
         destroy: () => {
+            routeRenderer.destroy?.();
             googleMapsServiceModal.destroy();
             rideVisuals.destroy();
             activityDetailView.destroy();
