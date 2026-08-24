@@ -63,6 +63,27 @@ export const suite = {
                 assertEqual(elements.agentMessages.children.length, 1);
                 windowController.destroy();
             }
+        },
+        {
+            name: "hides and closes the assistant outside the home view",
+            run() {
+                const { root, elements } = createAgentTestDom();
+                const windowController = createAgentFloatingWindow({ root, seedConversation: false });
+
+                windowController.open();
+                windowController.setVisible(false);
+                assertEqual(elements.agentLauncher.hidden, true);
+                assertEqual(windowController.getState().open, false);
+                assertEqual(windowController.getState().visible, false);
+
+                windowController.open();
+                assertEqual(windowController.getState().open, false);
+
+                windowController.setVisible(true);
+                assertEqual(elements.agentLauncher.hidden, false);
+                assertEqual(windowController.getState().open, false);
+                windowController.destroy();
+            }
         }
     ]
 };

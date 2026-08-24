@@ -1,204 +1,31 @@
+import { createDeviceSetupView } from "./device-setup-view.js";
+import { createLiveRideDashboard } from "./live-ride-dashboard-view.js";
+import { createPreRideSetupView } from "./pre-ride-setup-view.js";
+import { createRideReadinessView } from "./ride-readiness-view.js";
+import { createRouteWorkspaceView } from "./route-workspace-view.js";
+
+/**
+ * Stable facade used by MainView. Feature views own their DOM and event bindings;
+ * renderers still receive one flat element map while they are migrated independently.
+ */
 export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide, onUpdateRideInput }) {
-    const preRideDeviceMount = document.getElementById("preRideDeviceMount");
-    const deviceControlsPanel = document.getElementById("deviceControlsPanel");
-    if (preRideDeviceMount?.append && deviceControlsPanel) preRideDeviceMount.append(deviceControlsPanel);
-    const elements = {
-        viewLive: document.getElementById("view-live"),
-        liveCol1: document.getElementById("live-col-1"),
-        liveCol2: document.getElementById("live-col-2"),
-        routeCardContainer: document.getElementById("routeCardContainer"),
-        routeTableBody: document.getElementById("routeTableBody"),
-        routeTableShell: document.getElementById("routeTableShell"),
-        addSegmentBtn: document.getElementById("addSegmentBtn"),
-        resetRouteBtn: document.getElementById("resetRouteBtn"),
-        routeModeGpxBtn: document.getElementById("routeModeGpxBtn"),
-        routeModeManualBtn: document.getElementById("routeModeManualBtn"),
-        routeModeAiBtn: document.getElementById("routeModeAiBtn"),
-        routeModeDrawBtn: document.getElementById("routeModeDrawBtn"),
-        routeModeMapBtn: document.getElementById("routeModeMapBtn"),
-        routeLibraryToggleBtn: document.getElementById("routeLibraryToggleBtn"),
-        routeLibraryPanel: document.getElementById("routeLibraryPanel"),
-        savedRouteLibraryStatus: document.getElementById("savedRouteLibraryStatus"),
-        savedRouteSelect: document.getElementById("savedRouteSelect"),
-        refreshSavedRoutesBtn: document.getElementById("refreshSavedRoutesBtn"),
-        loadSavedRouteBtn: document.getElementById("loadSavedRouteBtn"),
-        continueSavedRouteBtn: document.getElementById("continueSavedRouteBtn"),
-        saveCurrentRouteBtn: document.getElementById("saveCurrentRouteBtn"),
-        deleteSavedRouteBtn: document.getElementById("deleteSavedRouteBtn"),
-        aiRoutePanel: document.getElementById("aiRoutePanel"),
-        aiRouteMessages: document.getElementById("aiRouteMessages"),
-        aiRouteComposer: document.getElementById("aiRouteComposer"),
-        aiRouteMessageInput: document.getElementById("aiRouteMessageInput"),
-        aiRouteSendBtn: document.getElementById("aiRouteSendBtn"),
-        aiRouteCandidates: document.getElementById("aiRouteCandidates"),
-        aiRouteResultTitle: document.getElementById("aiRouteResultTitle"),
-        aiRouteResultStatus: document.getElementById("aiRouteResultStatus"),
-        aiRouteReverseBtn: document.getElementById("aiRouteReverseBtn"),
-        aiRouteUndoBtn: document.getElementById("aiRouteUndoBtn"),
-        aiRouteExploreSegmentsBtn: document.getElementById("aiRouteExploreSegmentsBtn"),
-        aiRouteSegmentPanel: document.getElementById("aiRouteSegmentPanel"),
-        aiRouteSegmentList: document.getElementById("aiRouteSegmentList"),
-        aiRouteSegmentSelection: document.getElementById("aiRouteSegmentSelection"),
-        aiRouteComposeSegmentsBtn: document.getElementById("aiRouteComposeSegmentsBtn"),
-        aiRouteClearSegmentsBtn: document.getElementById("aiRouteClearSegmentsBtn"),
-        aiRoutePromptButtons: [...document.querySelectorAll("[data-ai-route-prompt]")],
-        gpxRoutePanel: document.getElementById("gpxRoutePanel"),
-        manualRoutePanel: document.getElementById("manualRoutePanel"),
-        mapDrawRoutePanel: document.getElementById("mapDrawRoutePanel"),
-        mapRoutePanel: document.getElementById("mapRoutePanel"),
-        gpxFileInput: document.getElementById("gpxFileInput"),
-        routeCurrentSourceRow: document.getElementById("routeCurrentSourceRow"),
-        routeSourceLabel: document.getElementById("routeSourceLabel"),
-        routeMapPreview: document.getElementById("routeMapPreview"),
-        routeSummary: document.getElementById("routeSummary"),
-        routeMapShell: document.getElementById("routeMapShell"),
-        setupElevationChartShell: document.getElementById("setupElevationChartShell"),
-        setupElevationChart: document.getElementById("setupElevationChart"),
-        undoMapDrawWaypointBtn: document.getElementById("undoMapDrawWaypointBtn"),
-        clearMapDrawRouteBtn: document.getElementById("clearMapDrawRouteBtn"),
-        createMapDrawRouteBtn: document.getElementById("createMapDrawRouteBtn"),
-        requestMapDrawElevationBtn: document.getElementById("requestMapDrawElevationBtn"),
-        mapDrawRouteStatus: document.getElementById("mapDrawRouteStatus"),
-        mapDrawWaypointSummary: document.getElementById("mapDrawWaypointSummary"),
-        mapDrawRoutePlanStatus: document.getElementById("mapDrawRoutePlanStatus"),
-        clearMapRouteSelectionBtn: document.getElementById("clearMapRouteSelectionBtn"),
-        planMapRouteBtn: document.getElementById("planMapRouteBtn"),
-        mapRouteSelectionStatus: document.getElementById("mapRouteSelectionStatus"),
-        mapRouteStartText: document.getElementById("mapRouteStartText"),
-        mapRouteDestinationText: document.getElementById("mapRouteDestinationText"),
-        mapRoutePlanStatus: document.getElementById("mapRoutePlanStatus"),
-        googleMapsServiceOverlay: document.getElementById("googleMapsServiceOverlay"),
-        googleMapsServiceTitle: document.getElementById("googleMapsServiceTitle"),
-        googleMapsServiceDescription: document.getElementById("googleMapsServiceDescription"),
-        googleMapsServiceApiKeyInput: document.getElementById("googleMapsServiceApiKeyInput"),
-        googleMapsServiceStatus: document.getElementById("googleMapsServiceStatus"),
-        confirmGoogleMapsServiceBtn: document.getElementById("confirmGoogleMapsServiceBtn"),
-        cancelGoogleMapsServiceBtn: document.getElementById("cancelGoogleMapsServiceBtn"),
-        closeGoogleMapsServiceBtn: document.getElementById("closeGoogleMapsServiceBtn"),
-        connectHrBtn: document.getElementById("connectHrBtn"),
-        connectPowerBtn: document.getElementById("connectPowerBtn"),
-        connectTrainerBtn: document.getElementById("connectTrainerBtn"),
-        rideInputCard: document.getElementById("rideInputCard"),
-        ridePowerSourceSelect: document.getElementById("ridePowerSourceSelect"),
-        virtualPowerInput: document.getElementById("virtualPowerInput"),
-        virtualCadenceInput: document.getElementById("virtualCadenceInput"),
-        workoutModeForm: document.getElementById("workoutModeForm"),
-        workoutModeSelect: document.getElementById("workoutModeSelect"),
-        workoutModeRadios: [...document.querySelectorAll('input[name="workoutMode"]')],
-        gradeDifficultyInput: document.getElementById("gradeDifficultyInput"),
-        gradeLookaheadInput: document.getElementById("gradeLookaheadInput"),
-        maxUphillInput: document.getElementById("maxUphillInput"),
-        maxDownhillInput: document.getElementById("maxDownhillInput"),
-        gradeSmoothingInput: document.getElementById("gradeSmoothingInput"),
-        ergTargetPowerInput: document.getElementById("ergTargetPowerInput"),
-        ergConfirmationRequiredInput: document.getElementById("ergConfirmationRequiredInput"),
-        resistanceLevelInput: document.getElementById("resistanceLevelInput"),
-        workoutModeLabel: document.getElementById("workoutModeLabel"),
-        trainerTargetLabel: document.getElementById("trainerTargetLabel"),
-        targetTrainerGradeValue: document.getElementById("targetTrainerGradeValue"),
-        workoutControlStatus: document.getElementById("workoutControlStatus"),
-        customWorkoutTargetEnabled: document.getElementById("customWorkoutTargetEnabled"),
-        customWorkoutTargetToggle: document.getElementById("customWorkoutTargetToggle"),
-        customWorkoutTargetPanel: document.getElementById("customWorkoutTargetPanel"),
-        customWorkoutTargetEditor: document.getElementById("customWorkoutTargetEditor"),
-        customWorkoutTargetPresetSelect: document.getElementById("customWorkoutTargetPresetSelect"),
-        applyCustomWorkoutTargetPresetBtn: document.getElementById("applyCustomWorkoutTargetPresetBtn"),
-        editCustomWorkoutTargetBtn: document.getElementById("editCustomWorkoutTargetBtn"),
-        addCustomWorkoutTargetStepBtn: document.getElementById("addCustomWorkoutTargetStepBtn"),
-        customWorkoutTargetChart: document.getElementById("customWorkoutTargetChart"),
-        customWorkoutTargetTableShell: document.getElementById("customWorkoutTargetTableShell"),
-        customWorkoutTargetTableBody: document.getElementById("customWorkoutTargetTableBody"),
-        customWorkoutTargetStatus: document.getElementById("customWorkoutTargetStatus"),
-        openRideDashboardBtn: document.getElementById("openRideDashboardBtn"),
-        hrDeviceStatus: document.getElementById("hrDeviceStatus"),
-        hrDeviceName: document.getElementById("hrDeviceName"),
-        powerDeviceStatus: document.getElementById("powerDeviceStatus"),
-        powerDeviceName: document.getElementById("powerDeviceName"),
-        trainerDeviceStatus: document.getElementById("trainerDeviceStatus"),
-        trainerDeviceName: document.getElementById("trainerDeviceName"),
-        rideStatusLabel: document.getElementById("rideStatusLabel"),
-        rideStatusMeta: document.getElementById("rideStatusMeta"),
-        rideSegmentLabel: document.getElementById("rideSegmentLabel"),
-        rideSegmentMeta: document.getElementById("rideSegmentMeta"),
-        liveHeartRateDisplay: document.getElementById("liveHeartRateDisplay"),
-        livePowerDisplay: document.getElementById("livePowerDisplay"),
-        liveCadenceDisplay: document.getElementById("liveCadenceDisplay"),
-        liveAvgPowerDisplay: document.getElementById("liveAvgPowerDisplay"),
-        liveSpeedDisplay: document.getElementById("liveSpeedDisplay"),
-        liveDistanceDisplay: document.getElementById("liveDistanceDisplay"),
-        rideDashboard: document.getElementById("rideDashboard"),
-        rideDashboardTitle: document.getElementById("rideDashboardTitle"),
-        rideDashboardSubtitle: document.getElementById("rideDashboardSubtitle"),
-        rideDashboardMap: document.getElementById("rideDashboardMap"),
-        rideRouteContext: document.getElementById("rideRouteContext"),
-        dashboardAvgHr: document.getElementById("dashboardAvgHr"),
-        dashboardAvgPower: document.getElementById("dashboardAvgPower"),
-        dashboardMaxPower: document.getElementById("dashboardMaxPower"),
-        dashboardTss: document.getElementById("dashboardTss"),
-        dashboardCurrentSpeed: document.getElementById("dashboardCurrentSpeed"),
-        dashboardCurrentGrade: document.getElementById("dashboardCurrentGrade"),
-        startRideDashboardBtn: document.getElementById("startRideDashboardBtn"),
-        closeRideDashboardBtn: document.getElementById("closeRideDashboardBtn"),
-        immersiveBackBtn: document.getElementById("immersiveBackBtn"),
-        immersiveUiToggleBtn: document.getElementById("immersiveUiToggleBtn"),
-        stopRideDashboardBtn: document.getElementById("stopRideDashboardBtn"),
-        dashboardMetricsGrid: document.getElementById("dashboardMetricsGrid"),
-        immersiveMetricsGrid: document.getElementById("immersiveMetricsGrid"),
-        customizeMetricsBtn: document.getElementById("customizeMetricsBtn"),
-        pipMetricInputs: [...document.querySelectorAll('input[name="pipMetric"]')],
-        pipChartInputs: [...document.querySelectorAll('input[name="pipChart"]')],
-        pipLayoutSelect: document.getElementById("pipLayoutSelect"),
-        metricsCustomizer: document.getElementById("metricsCustomizer"),
-        metricAddSelect: document.getElementById("metricAddSelect"),
-        addMetricBtn: document.getElementById("addMetricBtn"),
-        selectedMetricsList: document.getElementById("selectedMetricsList"),
-        liveElevationCard: document.getElementById("liveElevationCard"),
-        rideElevationChartTitle: document.getElementById("rideElevationChartTitle"),
-        rideElevationChartSubtitle: document.getElementById("rideElevationChartSubtitle"),
-        rideDashboardElevationChart: document.getElementById("rideDashboardElevationChart"),
-        trainerPushGradeValue: document.getElementById("trainerPushGradeValue"),
-        trainerPushGradeMeta: document.getElementById("trainerPushGradeMeta"),
-        deviceControlsPanel: document.getElementById("deviceControlsPanel"),
-        immersiveMovingStreetViewBtn: document.getElementById("immersiveMovingStreetViewBtn"),
-        immersiveStableStreetViewBtn: document.getElementById("immersiveStableStreetViewBtn"),
-        loadStreetViewBtn: document.getElementById("loadStreetViewBtn"),
-        requestRouteElevationBtn: document.getElementById("requestRouteElevationBtn"),
-        explorationTurnControls: document.getElementById("explorationTurnControls"),
-        explorationTurnStatus: document.getElementById("explorationTurnStatus"),
-        explorationTurnLeftBtn: document.getElementById("explorationTurnLeftBtn"),
-        explorationTurnStraightBtn: document.getElementById("explorationTurnStraightBtn"),
-        explorationTurnRightBtn: document.getElementById("explorationTurnRightBtn"),
-        streetViewContainer: document.getElementById("streetViewContainer"),
-        svPano1: document.getElementById("svPano1"),
-        svPano2: document.getElementById("svPano2"),
-        workoutTargetHudCard: document.getElementById("workoutTargetHudCard"),
-        workoutTargetHudGrid: document.getElementById("workoutTargetHudGrid"),
-        workoutTargetChart: document.getElementById("workoutTargetChart"),
-        liveWorkoutTargetCard: document.getElementById("liveWorkoutTargetCard")
-    };
+    const routeWorkspace = createRouteWorkspaceView();
+    const preRideSetup = createPreRideSetupView({ onUpdateRideInput });
+    const deviceSetup = createDeviceSetupView();
+    const rideReadiness = createRideReadinessView();
+    const liveRideDashboard = createLiveRideDashboard({
+        onClose: onCloseRideDashboard,
+        onStart: onStartRide,
+        onStop: onStopRide
+    });
 
-    bind(elements.closeRideDashboardBtn, "click", onCloseRideDashboard);
-    bind(elements.startRideDashboardBtn, "click", onStartRide);
-    bind(elements.stopRideDashboardBtn, "click", onStopRide);
-    bind(elements.ridePowerSourceSelect, "change", () => onUpdateRideInput?.({
-        powerSource: elements.ridePowerSourceSelect.value,
-        virtualPowerWatts: Number(elements.virtualPowerInput?.value),
-        virtualCadenceRpm: Number(elements.virtualCadenceInput?.value)
-    }));
-    [elements.virtualPowerInput, elements.virtualCadenceInput].forEach((input) => bind(input, "input", () => {
-        if (elements.ridePowerSourceSelect) {
-            elements.ridePowerSourceSelect.value = "virtual";
+    return {
+        elements: {
+            ...routeWorkspace.elements,
+            ...preRideSetup.elements,
+            ...deviceSetup.elements,
+            ...rideReadiness.elements,
+            ...liveRideDashboard.elements
         }
-        onUpdateRideInput?.({
-            powerSource: "virtual",
-            virtualPowerWatts: Number(elements.virtualPowerInput?.value),
-            virtualCadenceRpm: Number(elements.virtualCadenceInput?.value)
-        });
-    }));
-
-    return { elements };
-}
-
-function bind(el, event, handler) {
-    if (el) el.addEventListener(event, handler);
+    };
 }

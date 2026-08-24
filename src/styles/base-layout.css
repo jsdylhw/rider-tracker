@@ -48,7 +48,6 @@ body {
     gap: 24px;
 }
 
-/* 新增的视图层布局样式 */
 .view-section {
     display: flex;
     flex-direction: column;
@@ -59,19 +58,11 @@ body {
     display: none !important;
 }
 
-.layout-grid {
+.home-content-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
     gap: 24px;
     align-items: start;
-}
-
-#view-simulation .layout-grid {
-    grid-template-columns: minmax(0, 1fr);
-}
-
-#view-simulation #sim-route-col {
-    display: none;
 }
 
 .view-header {
@@ -168,124 +159,6 @@ body {
     font-size: 22px;
 }
 
-.device-meta {
-    margin: 10px 0 0;
-    color: var(--muted);
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-.device-status-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-    margin-top: 16px;
-}
-
-#deviceControlsPanel {
-    display: block;
-}
-
-#deviceControlsPanel .column-main {
-    display: block;
-}
-
-#deviceControlsPanel .card {
-    padding: 18px;
-}
-
-#deviceControlsPanel .controls {
-    margin-top: 12px;
-}
-
-#deviceControlsPanel .device-status-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    margin-top: 12px;
-}
-
-#deviceControlsPanel .device-status-item {
-    display: grid;
-    gap: 4px;
-    min-width: 0;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: #f8fafc;
-}
-
-#deviceControlsPanel .device-status-item > span {
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 700;
-}
-
-#deviceControlsPanel .device-status-item > strong {
-    color: var(--text);
-    font-size: 15px;
-}
-
-#deviceControlsPanel .device-status-item .device-meta {
-    margin: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#deviceControlsPanel .ride-readiness-message {
-    grid-column: 1 / -1;
-    color: var(--text);
-    line-height: 1.5;
-}
-
-#deviceControlsPanel .summary-card {
-    padding: 12px;
-}
-
-#deviceControlsPanel .summary-card span {
-    margin-bottom: 4px;
-}
-
-#deviceControlsPanel .summary-card strong {
-    font-size: 18px;
-}
-
-#deviceControlsPanel .device-meta {
-    margin-top: 6px;
-}
-
-#view-live .layout-grid.live-setup-stack {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
-    align-items: stretch;
-}
-
-.live-setup-full {
-    width: 100%;
-}
-
-#view-live .live-setup-stack > .column {
-    width: 100%;
-}
-
-#view-live .live-setup-stack > .pre-ride-card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-    gap: 20px;
-    align-items: start;
-}
-
-#view-live .pre-ride-card-grid > .card,
-#view-live .pre-ride-card-grid > #preRideDeviceMount,
-#view-live #preRideDeviceMount > #deviceControlsPanel,
-#view-live #deviceControlsPanel > .column,
-#view-live #deviceControlsPanel .card {
-    width: 100%;
-    min-width: 0;
-    margin: 0;
-}
-
 #view-home .hero {
     grid-template-columns: minmax(0, 1fr);
 }
@@ -301,7 +174,7 @@ body {
         gap: 28px;
     }
 
-    #view-home .layout-grid {
+    #view-home .home-content-grid {
         grid-template-columns: minmax(0, 1fr);
     }
 }

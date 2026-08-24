@@ -1,6 +1,5 @@
 import { formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
-import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
 import { deriveRideReadiness, formatReadinessMessages } from "../../domain/ride/ride-readiness.js";
 
 export function createDeviceRenderer({
@@ -28,11 +27,6 @@ export function createDeviceRenderer({
         const liveRecords = liveRide.records ?? liveSession?.records ?? [];
         const currentRecord = liveSession?.currentRecord ?? liveRecords.at(-1) ?? null;
         const workoutRuntime = liveSession?.workoutRuntime ?? state.workout.runtime;
-        const sessionMetrics = resolveRideMetrics({
-            summary: liveRide.summary ?? liveSession?.summary ?? null,
-            records: liveRecords,
-            ftp: state.settings?.ftp ?? null
-        });
 
         if (elements.connectHrBtn) {
             elements.connectHrBtn.disabled = !state.ble.supported || heartRate.isConnecting;
@@ -65,7 +59,6 @@ export function createDeviceRenderer({
             elements.connectTrainerBtn.title = trainer.isConnected ? "点击断开骑行台" : "";
         }
         const streetViewDebugEnabled = isStreetViewDebugEnabled();
-        const isVirtualPower = streetViewDebugEnabled && state.rideInput?.powerSource === "virtual";
         const readiness = deriveRideReadiness({
             route: state.route, workout: state.workout, rideInput: state.rideInput,
             ble: state.ble, debugEnabled: streetViewDebugEnabled
@@ -110,18 +103,6 @@ export function createDeviceRenderer({
                 : "速度将按当前路线坡度和实时功率计算。";
         }
 
-        if (elements.liveHeartRateDisplay) elements.liveHeartRateDisplay.innerHTML = `${heartRate.value ?? "--"} <span class="unit">bpm</span>`;
-        const displayedPower = isVirtualPower ? state.rideInput.virtualPowerWatts : powerMeter.power;
-        const displayedCadence = isVirtualPower ? state.rideInput.virtualCadenceRpm : powerMeter.cadence;
-        if (elements.livePowerDisplay) elements.livePowerDisplay.innerHTML = `${displayedPower ?? "--"} <span class="unit">W</span>`;
-        if (elements.liveCadenceDisplay) elements.liveCadenceDisplay.innerHTML = `${displayedCadence ?? "--"} <span class="unit">rpm</span>`;
-        if (elements.liveAvgPowerDisplay) {
-            elements.liveAvgPowerDisplay.innerHTML = liveSession
-                ? `${Math.round(sessionMetrics.power.averageWatts ?? 0)} <span class="unit">W</span>`
-                : `-- <span class="unit">W</span>`;
-        }
-        if (elements.liveSpeedDisplay) elements.liveSpeedDisplay.innerHTML = `${currentRecord ? formatNumber(currentRecord.speedKph, 1) : "--"} <span class="unit">km/h</span>`;
-        if (elements.liveDistanceDisplay) elements.liveDistanceDisplay.innerHTML = `${currentRecord ? formatNumber(currentRecord.distanceKm, 2) : "--"} <span class="unit">km</span>`;
     }
 
     bindEvents();

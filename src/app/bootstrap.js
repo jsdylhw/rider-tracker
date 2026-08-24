@@ -44,6 +44,11 @@ const rideService = createRideService({ store, deviceService, exportService, rou
 const uiService = createUiService({ store });
 const workoutService = createWorkoutService({ store, deviceService });
 const agentFloatingWindow = createAgentFloatingWindow();
+const stopAgentVisibilitySync = store.subscribe((state, previousState) => {
+    if (previousState === undefined || state.uiMode !== previousState.uiMode) {
+        agentFloatingWindow.setVisible(state.uiMode === "home");
+    }
+});
 
 // 3. 创建控制器与视图
 const pipController = createPipController({
@@ -134,6 +139,7 @@ const mainView = createMainView({
 // 4. 注册页面关闭时的清理逻辑（同步收尾 + 尝试 sendBeacon 发送 FIT）
 window.addEventListener("beforeunload", () => {
     mainView.destroy();
+    stopAgentVisibilitySync();
     agentFloatingWindow.destroy();
     if (store.getState().liveRide.isActive) {
         rideService.finalizeRideSync({ sendBeacon: true });

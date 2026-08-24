@@ -39,7 +39,7 @@ Agent 草稿仍不会直接进入路线库；最终确认会写入 `saved_routes
 
 ### 前端
 
-当前主页面已经有 Home、Live、Activity Detail 等模式，也拆出了 renderer、view 和 service；但 `main-view` 仍集中组装大量 DOM 元素、订阅和功能控制。活动详情、路线规划、实时骑行和全局 Agent 的布局规则还没有形成统一页面外壳。
+当前主页面已有 Home、Live、Activity Detail 等模式。Live 页已按路线工作区、骑行前设置、设备连接、readiness 和实时 Dashboard 拆出 View，Dashboard 的指标配置、路线展示和提醒也已从主 renderer 下沉。`main-view` 仍集中负责 store 订阅，HTML 静态标记和 `forms-actions.css` 还需要继续按页面域拆分。当前边界见 [`frontend-architecture.md`](./frontend-architecture.md)。
 
 ### 已统一的跨模块 owner
 
@@ -102,7 +102,7 @@ AI 虚拟路线继续允许无海拔并配合 ERG；GPX/Strava 路线可以携�
 
 1. 建立统一 App Shell 和一级导航：主页、骑行、活动、路线；Agent 保持全局入口。
 2. AI 路线对话仍放在路线页面；全局 Agent 用于活动分析、训练建议和骑行过程辅助，不复制路线规划页面。
-3. 把 `main-view` 中的活动、路线、骑行订阅逐步下沉到各自 page controller；共享地图、状态提示、空态和错误展示组件。
+3. Live 页的五个 View 已完成第一轮拆分；下一步把 `main-view` 中的活动、路线、骑行订阅逐步下沉到各自 page controller，并共享地图、状态提示、空态和错误展示组件。
 4. 活动详情只消费统一的 activity detail/presentation contract；路线页面只消费 draft/saved/runtime 三种明确状态。
 5. 先保证桌面布局，再补响应式尺寸，不在领域契约仍变化时做大规模视觉重写。
 
@@ -114,4 +114,4 @@ AI 虚拟路线继续允许无海拔并配合 ERG；GPX/Strava 路线可以携�
 
 ## 建议的下一步
 
-下一轮优先做第三阶段的前端外壳整理，并补第一、二阶段的浏览器真实数据验收；路线识别算法和工作流恢复状态机继续独立排期。
+下一轮优先补第一、二阶段的浏览器真实数据验收，并继续拆分 `main-view` 订阅和大体积表单 CSS；路线识别算法和工作流恢复状态机继续独立排期。

@@ -90,11 +90,6 @@
     display: none;
 }
 
-.ride-dashboard.immersive-street-view #deviceControlsPanel {
-    /* The renderer restores this panel with an inline display value before a ride starts. */
-    display: none !important;
-}
-
 .ride-dashboard.immersive-street-view .ride-metrics-column {
     display: none;
 }

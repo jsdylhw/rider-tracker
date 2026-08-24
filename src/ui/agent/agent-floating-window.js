@@ -12,12 +12,13 @@ export function createAgentFloatingWindow({
 } = {}) {
     const elements = collectElements(root);
     if (!elements.window || !elements.launcher) {
-        return { destroy() {}, open() {}, close() {} };
+        return { destroy() {}, open() {}, close() {}, setVisible() {} };
     }
 
     const listeners = [];
     let requestSequence = 0;
     let contextCleared = false;
+    let visible = true;
 
     const listen = (element, type, handler) => {
         element?.addEventListener(type, handler);
@@ -25,14 +26,21 @@ export function createAgentFloatingWindow({
     };
 
     function setWindowOpen(open) {
-        elements.window.hidden = !open;
-        elements.window.setAttribute("aria-hidden", String(!open));
-        elements.launcher.setAttribute("aria-expanded", String(open));
-        elements.launcher.classList.toggle("is-hidden", open);
-        if (open) {
+        const shouldOpen = visible && open;
+        elements.window.hidden = !shouldOpen;
+        elements.window.setAttribute("aria-hidden", String(!shouldOpen));
+        elements.launcher.setAttribute("aria-expanded", String(shouldOpen));
+        elements.launcher.classList.toggle("is-hidden", shouldOpen);
+        if (shouldOpen) {
             elements.badge.hidden = true;
             schedule(() => elements.input?.focus(), 0);
         }
+    }
+
+    function setVisible(nextVisible) {
+        visible = nextVisible === true;
+        elements.launcher.hidden = !visible;
+        if (!visible) setWindowOpen(false);
     }
 
     function setExpanded(expanded) {
@@ -195,6 +203,7 @@ export function createAgentFloatingWindow({
     return {
         open: () => setWindowOpen(true),
         close: () => setWindowOpen(false),
+        setVisible,
         sendMessage,
         destroy() {
             requestSequence += 1;
@@ -202,6 +211,7 @@ export function createAgentFloatingWindow({
         },
         getState: () => ({
             open: !elements.window.hidden,
+            visible,
             expanded: elements.window.classList.contains("is-expanded"),
             contextCleared
         })

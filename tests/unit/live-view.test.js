@@ -51,6 +51,34 @@ export const suite = {
                     globalThis.document = previousDocument;
                 }
             }
+        },
+        {
+            name: "feature views keep dashboard actions wired through the live view facade",
+            run() {
+                const previousDocument = globalThis.document;
+                const harness = createDocumentHarness();
+                globalThis.document = harness.document;
+                const actions = [];
+
+                try {
+                    const view = createLiveView({
+                        onCloseRideDashboard: () => actions.push("close"),
+                        onStartRide: () => actions.push("start"),
+                        onStopRide: () => actions.push("stop")
+                    });
+
+                    view.elements.closeRideDashboardBtn.dispatch("click");
+                    view.elements.startRideDashboardBtn.dispatch("click");
+                    view.elements.stopRideDashboardBtn.dispatch("click");
+
+                    assertEqual(actions.join(","), "close,start,stop");
+                    assertEqual(view.elements.viewLive, harness.get("view-live"));
+                    assertEqual(Object.hasOwn(view.elements, "workoutModeRadios"), false);
+                    assertEqual(Object.hasOwn(view.elements, "liveHeartRateDisplay"), false);
+                } finally {
+                    globalThis.document = previousDocument;
+                }
+            }
         }
     ]
 };

@@ -1,5 +1,6 @@
 @media (max-width: 1024px) {
-    .layout-grid,
+    .home-content-grid,
+    .live-setup-grid,
     .hero,
     .ride-dashboard-grid {
         grid-template-columns: 1fr;

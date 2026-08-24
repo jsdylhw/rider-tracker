@@ -20,7 +20,7 @@
                 </div>
             </section>
 
-            <section class="layout-grid">
+            <section class="home-content-grid">
                 <div class="column">
                     <div id="homeHistoryCard" class="card">
                         <div class="section-title-row">
@@ -77,7 +77,7 @@
                 </div>
             </section>
 
-            <section class="layout-grid live-setup-grid live-setup-stack">
+            <section class="live-setup-grid">
                 <div class="column" id="live-col-1">
                     <div id="routeCardContainer">
                         <div id="routeCard" class="card">
@@ -405,7 +405,43 @@
                             <div id="customWorkoutTargetStatus" class="route-summary">未启用自定义训练目标。</div>
                         </div>
                     </div>
-                    <div id="preRideDeviceMount" class="live-setup-full"></div>
+                    <section id="deviceControlsPanel" class="card device-setup-card" aria-labelledby="deviceSetupTitle">
+                        <div class="section-title-row">
+                            <div>
+                                <h2 id="deviceSetupTitle">设备连接与骑行控制</h2>
+                            </div>
+                        </div>
+                        <div class="controls">
+                            <button id="connectHrBtn" class="btn primary">连接心率带</button>
+                            <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
+                            <button id="connectTrainerBtn" class="btn secondary">连接骑行台</button>
+                        </div>
+
+                        <div class="device-status-grid">
+                            <div class="device-status-item">
+                                <span>心率带</span>
+                                <strong id="hrDeviceStatus">未连接</strong>
+                                <p class="device-meta" id="hrDeviceName">等待连接</p>
+                            </div>
+                            <div class="device-status-item">
+                                <span>功率计</span>
+                                <strong id="powerDeviceStatus">未连接</strong>
+                                <p class="device-meta" id="powerDeviceName">等待连接</p>
+                            </div>
+                            <div class="device-status-item">
+                                <span>骑行台</span>
+                                <strong id="trainerDeviceStatus">未连接</strong>
+                                <p class="device-meta" id="trainerDeviceName">等待连接</p>
+                            </div>
+                            <span id="rideStatusLabel" hidden>未开始</span>
+                            <span id="rideStatusMeta" class="ride-readiness-message">连接功率计后即可开始骑行。</span>
+                            <span id="trainerPushGradeValue" hidden>0.0%</span>
+                            <span id="trainerPushGradeMeta" hidden>等待骑行开始后推送</span>
+                            <span id="rideSegmentLabel" hidden>等待开始</span>
+                            <span id="rideSegmentMeta" hidden>速度将按当前路线坡度和实时功率计算。</span>
+                        </div>
+                        <p class="device-meta">路线、功率源和当前控制模式全部就绪后，进入骑行界面开始骑行。</p>
+                    </section>
                 </div>
             </section>
         </div>
@@ -626,58 +662,6 @@
                     <button id="addMetricBtn" class="btn secondary" type="button">添加</button>
                 </div>
                 <div id="selectedMetricsList" class="selected-metrics-list" aria-live="polite"></div>
-            </div>
-
-            <div id="deviceControlsPanel" class="live-setup-full">
-                <div class="column column-main">
-                    <div class="card">
-                        <div class="section-title-row">
-                            <div>
-                                <h2>设备连接与骑行控制</h2>
-                            </div>
-                        </div>
-                        <div class="controls">
-                            <button id="connectHrBtn" class="btn primary">连接心率带</button>
-                            <button id="connectPowerBtn" class="btn power-btn">连接功率计</button>
-                            <button id="connectTrainerBtn" class="btn secondary">连接骑行台</button>
-                        </div>
-
-                        <div class="device-status-grid">
-                            <div class="device-status-item">
-                                <span>心率带</span>
-                                <strong id="hrDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="hrDeviceName">等待连接</p>
-                            </div>
-                            <div class="device-status-item">
-                                <span>功率计</span>
-                                <strong id="powerDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="powerDeviceName">等待连接</p>
-                            </div>
-                            <div class="device-status-item">
-                                <span>骑行台</span>
-                                <strong id="trainerDeviceStatus">未连接</strong>
-                                <p class="device-meta" id="trainerDeviceName">等待连接</p>
-                            </div>
-                            <span id="rideStatusLabel" hidden>未开始</span>
-                            <span id="rideStatusMeta" class="ride-readiness-message">连接功率计后即可开始骑行。</span>
-                            <span id="trainerPushGradeValue" hidden>0.0%</span>
-                            <span id="trainerPushGradeMeta" hidden>等待骑行开始后推送</span>
-                            <span id="rideSegmentLabel" hidden>等待开始</span>
-                            <span id="rideSegmentMeta" hidden>速度将按当前路线坡度和实时功率计算。</span>
-                        </div>
-                        <p class="device-meta">路线、功率源和当前控制模式全部就绪后，进入骑行界面开始骑行。</p>
-                        
-                        <div class="data-grid" style="display: none;">
-                            <!-- Hidden redundant data grid for DOM compatibility -->
-                            <div class="data-display" id="liveHeartRateDisplay"></div>
-                            <div class="data-display" id="livePowerDisplay"></div>
-                            <div class="data-display" id="liveCadenceDisplay"></div>
-                            <div class="data-display" id="liveAvgPowerDisplay"></div>
-                            <div class="data-display" id="liveSpeedDisplay"></div>
-                            <div class="data-display" id="liveDistanceDisplay"></div>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div id="rideDashboardGrid" class="ride-dashboard-grid">
