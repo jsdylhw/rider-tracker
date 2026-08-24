@@ -23,15 +23,19 @@ REQUIRED_TABLES = {
     "activities",
     "activity_reports",
     "activity_facts",
+    "activity_artifacts",
     "analysis_navigation",
     "analysis_results",
     "route_plans",
     "route_plan_revisions",
+    "saved_routes",
+    "route_progress",
     "chat_sessions",
 }
 REQUIRED_ACTIVITY_COLUMNS = {
     "id", "source", "source_activity_id", "sport_type", "sub_sport", "name",
     "fit_file_path", "strava_activity_id", "raw_json", "created_at", "updated_at",
+    "saved_route_id", "route_start_distance_meters", "route_end_distance_meters",
 }
 
 

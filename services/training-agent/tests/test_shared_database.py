@@ -32,6 +32,20 @@ def test_migrates_rider_activity_catalog_without_losing_summary_only_rows(tmp_pa
                 fit_file_size_bytes INTEGER,
                 fit_file_created_at TEXT
             );
+            CREATE TABLE saved_routes (
+                id TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                name TEXT NOT NULL,
+                import_file_name TEXT,
+                fingerprint TEXT NOT NULL UNIQUE,
+                route_json TEXT NOT NULL,
+                original_gpx_text TEXT,
+                total_distance_meters REAL NOT NULL,
+                total_elevation_gain_meters REAL NOT NULL DEFAULT 0,
+                has_elevation_data INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             """
         )
         connection.execute(
@@ -42,13 +56,29 @@ def test_migrates_rider_activity_catalog_without_losing_summary_only_rows(tmp_pa
             """,
             ("ride-1", "rider-tracker", "VirtualRide", "Summary only", 0, "{}", "now", "now"),
         )
+        connection.execute(
+            """
+            INSERT INTO saved_routes (
+                id, source, name, fingerprint, route_json,
+                total_distance_meters, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("route-1", "gpx", "Existing route", "fingerprint-1", "{}", 1000, "now", "now"),
+        )
         initialize_database(connection)
 
         columns = {row[1] for row in connection.execute("PRAGMA table_info(activities)")}
-        assert {"source_activity_id", "sub_sport", "strava_activity_id"} <= columns
+        assert {
+            "source_activity_id", "sub_sport", "strava_activity_id", "saved_route_id",
+            "route_start_distance_meters", "route_end_distance_meters",
+        } <= columns
         assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert connection.execute("SELECT COUNT(*) FROM activities").fetchone()[0] == 1
         assert connection.execute("SELECT COUNT(*) FROM activity_reports").fetchone()[0] == 0
+        route_columns = {row[1] for row in connection.execute("PRAGMA table_info(saved_routes)")}
+        assert {"agent_plan_id", "agent_candidate_id", "metadata_json"} <= route_columns
+        assert connection.execute("SELECT name FROM saved_routes WHERE id = 'route-1'").fetchone()[0] == "Existing route"
+        assert connection.execute("SELECT COUNT(*) FROM route_progress").fetchone()[0] == 0
 
     entry = ActivityStore(database).get_activity("ride-1")
     assert entry is not None

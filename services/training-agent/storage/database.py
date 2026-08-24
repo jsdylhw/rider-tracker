@@ -14,7 +14,7 @@ from pathlib import Path
 DEFAULT_DATABASE_PATH = Path(
     os.environ.get("TRAINING_AGENT_DB_PATH", str(Path("data") / "personal-fit-agent.db"))
 )
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 8
 
 
 def database_path(path: str | Path | None = None) -> Path:
@@ -72,6 +72,8 @@ def initialize_database(connection: sqlite3.Connection) -> None:
             ON activities(source, source_activity_id);
         CREATE INDEX IF NOT EXISTS idx_activities_sport_type
             ON activities(sport_type, started_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_activities_saved_route
+            ON activities(saved_route_id, started_at DESC);
 
         CREATE TABLE IF NOT EXISTS activity_reports (
             activity_id TEXT PRIMARY KEY,
@@ -113,6 +115,23 @@ def initialize_database(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_activity_facts_schema_version
             ON activity_facts(schema_version, updated_at DESC);
+
+        -- Rebuildable UI artifacts keep chart/map payloads out of the activity
+        -- catalogue while avoiding a full FIT decode on every detail view.
+        CREATE TABLE IF NOT EXISTS activity_artifacts (
+            activity_id TEXT NOT NULL,
+            artifact_type TEXT NOT NULL,
+            schema_version TEXT NOT NULL,
+            input_hash TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(activity_id, artifact_type),
+            FOREIGN KEY(activity_id) REFERENCES activities(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_activity_artifacts_schema_version
+            ON activity_artifacts(artifact_type, schema_version, updated_at DESC);
 
         -- Analysis navigation is intentionally separate from chat history.  It
         -- freezes concrete activity/segment targets so a later CLI process can
@@ -173,6 +192,48 @@ def initialize_database(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_route_plan_revisions_plan
             ON route_plan_revisions(plan_id, revision DESC);
 
+        -- Saved routes are Rider product assets. Agent route plans remain
+        -- editable drafts until one candidate is explicitly confirmed here.
+        CREATE TABLE IF NOT EXISTS saved_routes (
+            id TEXT PRIMARY KEY,
+            source TEXT NOT NULL,
+            name TEXT NOT NULL,
+            import_file_name TEXT,
+            fingerprint TEXT NOT NULL UNIQUE,
+            route_json TEXT NOT NULL,
+            original_gpx_text TEXT,
+            total_distance_meters REAL NOT NULL,
+            total_elevation_gain_meters REAL NOT NULL DEFAULT 0,
+            has_elevation_data INTEGER NOT NULL DEFAULT 0,
+            agent_plan_id TEXT,
+            agent_candidate_id TEXT,
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_saved_routes_updated_at
+            ON saved_routes(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_saved_routes_source
+            ON saved_routes(source, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_saved_routes_agent_candidate
+            ON saved_routes(agent_plan_id, agent_candidate_id);
+
+        -- Mutable continuation state is separate from immutable route geometry.
+        CREATE TABLE IF NOT EXISTS route_progress (
+            route_id TEXT PRIMARY KEY,
+            resume_distance_meters REAL NOT NULL DEFAULT 0,
+            last_activity_id TEXT,
+            status TEXT NOT NULL DEFAULT 'paused',
+            started_at TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(route_id) REFERENCES saved_routes(id) ON DELETE CASCADE,
+            FOREIGN KEY(last_activity_id) REFERENCES activities(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_route_progress_updated_at
+            ON route_progress(updated_at DESC);
+
         -- Web chat state is compact but durable.  Domain artifacts remain in
         -- their dedicated tables; this row restores the transcript, activity
         -- focus, retry state, and request-id idempotency after a process restart.
@@ -232,6 +293,9 @@ def _ensure_activity_catalog(connection: sqlite3.Connection) -> None:
         ("fit_file_size_bytes", "INTEGER"),
         ("fit_file_created_at", "TEXT"),
         ("strava_activity_id", "TEXT"),
+        ("saved_route_id", "TEXT"),
+        ("route_start_distance_meters", "REAL"),
+        ("route_end_distance_meters", "REAL"),
     ):
         if name not in existing:
             connection.execute(f"ALTER TABLE activities ADD COLUMN {name} {definition}")
@@ -241,6 +305,23 @@ def _ensure_activity_catalog(connection: sqlite3.Connection) -> None:
         ON activities(fit_file_path) WHERE fit_file_path IS NOT NULL
         """
     )
+    _ensure_saved_route_columns(connection)
+
+
+def _ensure_saved_route_columns(connection: sqlite3.Connection) -> None:
+    """Expand the earlier GPX-only route table without losing saved routes."""
+    existing = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(saved_routes)").fetchall()
+    }
+    if not existing:
+        return
+    for name, definition in (
+        ("agent_plan_id", "TEXT"),
+        ("agent_candidate_id", "TEXT"),
+        ("metadata_json", "TEXT NOT NULL DEFAULT '{}'"),
+    ):
+        if name not in existing:
+            connection.execute(f"ALTER TABLE saved_routes ADD COLUMN {name} {definition}")
 
 
 def _managed_database() -> bool:

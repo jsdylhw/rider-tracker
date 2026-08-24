@@ -31,6 +31,39 @@ class ActivityStore:
             row = connection.execute("SELECT COUNT(*) AS count FROM activities").fetchone()
         return int(row["count"] if row else 0)
 
+    def find_activity_identity(
+        self,
+        *,
+        fit_path: str | None = None,
+        source: str | None = None,
+        source_activity_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Resolve an existing stable identity before deriving a new FIT hash ID."""
+        clauses: list[str] = []
+        values: list[str] = []
+        if fit_path:
+            clauses.append("fit_file_path = ?")
+            values.append(str(fit_path))
+        if source and source_activity_id:
+            clauses.append("(source = ? AND source_activity_id = ?)")
+            values.extend([str(source), str(source_activity_id)])
+        if not clauses:
+            return None
+        with connect_database(self.path) as connection:
+            row = connection.execute(
+                f"SELECT id, source, source_activity_id, fit_file_path, name FROM activities WHERE {' OR '.join(clauses)} LIMIT 1",
+                values,
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "activity_key": str(row["id"]),
+            "source": str(row["source"]),
+            "source_activity_id": row["source_activity_id"],
+            "fit_path": row["fit_file_path"],
+            "name": row["name"],
+        }
+
     def upsert_activity(self, entry: dict[str, Any]) -> dict[str, Any]:
         activity_id = str(entry.get("activity_key") or "").strip()
         fit_path = str(entry.get("fit_path") or "").strip()
@@ -439,6 +472,67 @@ class ActivityStore:
             ).fetchall()
         return {str(row["schema_version"]): int(row["count"]) for row in rows}
 
+    def save_artifact(
+        self,
+        activity_key: str,
+        *,
+        artifact_type: str,
+        schema_version: str,
+        input_hash: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        now = _now()
+        with connect_database(self.path) as connection:
+            existing = connection.execute(
+                "SELECT created_at FROM activity_artifacts WHERE activity_id = ? AND artifact_type = ?",
+                (activity_key, artifact_type),
+            ).fetchone()
+            created_at = str(existing["created_at"]) if existing else now
+            connection.execute(
+                """
+                INSERT INTO activity_artifacts (
+                    activity_id, artifact_type, schema_version, input_hash,
+                    payload_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(activity_id, artifact_type) DO UPDATE SET
+                    schema_version = excluded.schema_version,
+                    input_hash = excluded.input_hash,
+                    payload_json = excluded.payload_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    activity_key, artifact_type, schema_version, input_hash,
+                    json.dumps(payload, ensure_ascii=False, default=str), created_at, now,
+                ),
+            )
+        return {
+            "activity_key": activity_key,
+            "artifact_type": artifact_type,
+            "schema_version": schema_version,
+            "input_hash": input_hash,
+            "payload": payload,
+            "created_at": created_at,
+            "updated_at": now,
+        }
+
+    def get_artifact(self, activity_key: str, artifact_type: str) -> dict[str, Any] | None:
+        with connect_database(self.path) as connection:
+            row = connection.execute(
+                "SELECT * FROM activity_artifacts WHERE activity_id = ? AND artifact_type = ?",
+                (activity_key, artifact_type),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "activity_key": str(row["activity_id"]),
+            "artifact_type": str(row["artifact_type"]),
+            "schema_version": str(row["schema_version"]),
+            "input_hash": str(row["input_hash"]),
+            "payload": _json_object(row["payload_json"]),
+            "created_at": str(row["created_at"]),
+            "updated_at": str(row["updated_at"]),
+        }
+
 
 def entry_from_fit_summary(
     fit_path: str | Path,
@@ -523,12 +617,19 @@ def _activity_entry(row: Any) -> dict[str, Any]:
         "source_activity_id": row["source_activity_id"],
         "sport_type": row["sport_type"],
         "sub_sport": row["sub_sport"],
+        "name": row["name"],
         "start_time_local": row["started_at"],
         "date_local": str(row["started_at"])[:10] if row["started_at"] else None,
         "duration_s": row["elapsed_seconds"],
         "duration_min": _divide(row["elapsed_seconds"], 60),
         "distance_km": row["distance_km"],
         "distance_m": float(row["distance_km"]) * 1000 if row["distance_km"] is not None else None,
+        "ascent_meters": row["ascent_meters"],
+        "average_power": row["average_power"],
+        "normalized_power": row["normalized_power"],
+        "average_hr": row["average_hr"],
+        "estimated_tss": row["estimated_tss"],
+        "has_gps_track": bool(row["has_gps_track"]),
         "strava_activity_id": row["strava_activity_id"],
     }))
     has_report = row["report_schema_version"] is not None
