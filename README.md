@@ -19,7 +19,7 @@ npm install
 npm run setup:agent
 ```
 
-将 `services/training-agent/config.yaml.example` 复制为同目录下的 `config.yaml`，只填写需要使用的模型、Garmin、Strava、高德或 Google 配置。真实配置和本地 Token 均被 Git 忽略。
+将根目录的 `config.yaml.example` 复制为 `config.yaml`，只填写需要使用的 Rider、模型、Garmin、Strava、高德或 Google 配置。Node 和 Python 共用这一份配置；真实配置和本地 Token 均被 Git 忽略。
 
 统一启动 Rider 和 Training Agent：
 
@@ -93,7 +93,9 @@ data/rider-tracker.db
 - 页面中的预计时间按虚拟骑行 `25 km/h` 估算，不沿用地图服务偏保守的城市骑行耗时。
 - 需要真实坡度模拟时，请继续导入带海拔的 GPX/Strava 路线；Agent 不伪造坡度数据。
 
-Training Agent 已位于 `services/training-agent/`，不再要求并排启动另一个源码仓。Rider 默认通过内部代理连接 `http://127.0.0.1:8000`。需要修改地址或 Agent 配置了 `web_api_token` 时，将 `.env.example` 复制为 `.env`，填写：
+Training Agent 已位于 `services/training-agent/`，不再要求并排启动另一个源码仓。Rider 默认通过内部代理连接 `http://127.0.0.1:8000`。监听地址、端口、数据库、模型和外部平台配置都在根目录 `config.yaml` 中维护。
+
+环境变量仍可作为临时覆盖，例如连接另一个 Agent 实例：
 
 ```text
 PERSONAL_FIT_AGENT_URL=http://127.0.0.1:8000

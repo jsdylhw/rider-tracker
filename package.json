@@ -7,7 +7,7 @@
   },
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning scripts/start-local.js",
-    "start:rider": "node --disable-warning=ExperimentalWarning src/server/index.js",
+    "start:rider": "node --disable-warning=ExperimentalWarning scripts/start-rider.js",
     "start:agent": "node scripts/start-local.js --agent-only",
     "setup:agent": "node scripts/setup-agent.js",
     "test": "node --disable-warning=ExperimentalWarning tests/test-runner.js",
@@ -20,6 +20,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "multer": "^2.1.1"
+    "multer": "^2.1.1",
+    "yaml": "^2.9.0"
   }
 }

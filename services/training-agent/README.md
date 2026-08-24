@@ -1,4 +1,4 @@
-# Personal FIT Agent
+# Training Agent service
 
 ![Personal FIT Agent — 运动分析助手主视觉](figure.png)
 
@@ -19,23 +19,24 @@
 
 运动数据、活动索引、分析报告和处理记录默认保存在本地。大模型负责理解问题、选择分析方式和解释结果；FIT 解析、指标计算、路线计算和文件管理由本地程序完成。
 
-只有在你主动使用相应功能时才会访问外部服务：Garmin 用于同步，大模型服务用于理解和分析，Strava 用于活动发布与国内热门路段参考，高德用于国内地点检索和骑行算路，Google 用于国外地点、路线和参考海拔。请把账号和 API 凭据放在本地 `config.yaml`，不要提交到 Git。
+只有在你主动使用相应功能时才会访问外部服务：Garmin 用于同步，大模型服务用于理解和分析，Strava 用于活动发布与国内热门路段参考，高德用于国内地点检索和骑行算路，Google 用于国外地点、路线和参考海拔。在 Rider Tracker 单仓中，账号和 API 凭据统一放在仓库根目录 `config.yaml`，不要在这个服务目录维护第二份配置。
 
 ## 快速开始
 
-推荐 Python 3.12 或更高版本：
+推荐从 Rider Tracker 根目录安装和启动：
 
 ```bash
-pip install -r requirements.txt
+npm run setup:agent
+npm start
 ```
 
-从示例创建本地配置：
+从仓库根目录示例创建统一配置：
 
 ```bash
 cp config.yaml.example config.yaml
 ```
 
-编辑 `config.yaml` 并填入所需凭据：`agent` 用于对话和分析；Garmin 配置仅在同步时需要；Strava 配置用于活动发布和国内热门路段；高德与 Google 配置用于路线规划。若要通过局域网或反向代理访问 Web UI，请设置随机的 `web_api_token`。`config.yaml` 不会提交到 Git。
+编辑根目录 `config.yaml` 并填入所需凭据：`agent` 用于对话和分析；Garmin 配置仅在同步时需要；Strava 配置用于活动发布和国内热门路段；高德与 Google 配置用于路线规划。若要通过局域网或反向代理访问 Web UI，请设置随机的 `web_api_token`。`config.yaml` 不会提交到 Git。
 
 启动对话：
 

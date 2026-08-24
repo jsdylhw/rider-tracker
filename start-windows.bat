@@ -79,9 +79,9 @@ if not exist "services\training-agent\.venv\Scripts\python.exe" (
     )
 )
 
-if not exist "services\training-agent\config.yaml" (
+if not exist "config.yaml" (
     echo [提示] 尚未配置 Training Agent。
-    echo 请复制 services\training-agent\config.yaml.example 为 config.yaml 并填写所需服务。
+    echo 请复制根目录 config.yaml.example 为 config.yaml 并填写所需服务。
     echo 基础页面仍可启动，但 AI 对话和在线服务不可用。
     echo.
 )

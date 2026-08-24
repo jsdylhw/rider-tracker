@@ -14,7 +14,9 @@ Browser -> Rider Node -> Training Agent Python
 
 ## 代码来源
 
-`services/training-agent/` 从 Personal FIT Agent 的固定提交导入。运行时数据、FIT、日志、SQLite、地图数据、Token 和 `config.yaml` 不属于迁移内容。后续同步原仓改动时应使用明确提交，不要直接复制脏工作区。
+`services/training-agent/` 从 Personal FIT Agent 的固定提交导入。运行时数据、FIT、日志、SQLite、地图数据和 Token 不属于迁移内容。后续同步原仓改动时应使用明确提交，不要直接复制脏工作区。
+
+根目录 `config.yaml` 是 Rider 与 Training Agent 的唯一人工配置入口，模板为 `config.yaml.example`。启动器将同一份 YAML 映射为 Node 环境变量，同时通过 `TRAINING_AGENT_CONFIG_PATH` 交给 Python。环境变量只用于临时覆盖，不再维护第二份 Agent 配置。
 
 ## 本地数据
 

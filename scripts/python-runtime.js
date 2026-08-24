@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-export function resolvePythonExecutable(projectRoot) {
-    if (process.env.PYTHON_EXECUTABLE) return process.env.PYTHON_EXECUTABLE;
+export function resolvePythonExecutable(projectRoot, env = process.env) {
+    if (env.PYTHON_EXECUTABLE) return env.PYTHON_EXECUTABLE;
 
     const agentRoot = path.join(projectRoot, "services", "training-agent");
     const localPython = process.platform === "win32"

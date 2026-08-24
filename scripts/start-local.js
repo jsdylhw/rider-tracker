@@ -1,17 +1,22 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
+import { buildRuntimeEnv, loadUnifiedConfig } from "./local-config.js";
 import { resolvePythonExecutable, trainingAgentRoot } from "./python-runtime.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const agentRoot = trainingAgentRoot(projectRoot);
+dotenv.config({ path: path.join(projectRoot, ".env"), quiet: true });
+const unifiedConfig = loadUnifiedConfig(projectRoot);
+const runtimeEnv = buildRuntimeEnv(projectRoot, unifiedConfig, process.env);
 const agentOnly = process.argv.includes("--agent-only");
-const agentUrl = process.env.PERSONAL_FIT_AGENT_URL || "http://127.0.0.1:8000";
+const agentUrl = runtimeEnv.PERSONAL_FIT_AGENT_URL || "http://127.0.0.1:8000";
 const parsedAgentUrl = new URL(agentUrl);
-const agentHost = process.env.PERSONAL_FIT_AGENT_HOST || parsedAgentUrl.hostname;
-const agentPort = process.env.PERSONAL_FIT_AGENT_PORT || parsedAgentUrl.port || "8000";
-const python = resolvePythonExecutable(projectRoot);
+const agentHost = runtimeEnv.PERSONAL_FIT_AGENT_HOST || parsedAgentUrl.hostname;
+const agentPort = runtimeEnv.PERSONAL_FIT_AGENT_PORT || parsedAgentUrl.port || "8000";
+const python = resolvePythonExecutable(projectRoot, runtimeEnv);
 const children = new Set();
 let stopping = false;
 
@@ -21,7 +26,7 @@ const agent = launch("training-agent", python, [
     "--port", String(agentPort)
 ], {
     cwd: agentRoot,
-    env: { ...process.env, PYTHONUNBUFFERED: "1" }
+    env: { ...runtimeEnv, PYTHONUNBUFFERED: "1" }
 });
 
 try {
@@ -33,7 +38,7 @@ try {
             path.join(projectRoot, "src", "server", "index.js")
         ], {
             cwd: projectRoot,
-            env: { ...process.env, PERSONAL_FIT_AGENT_URL: agentUrl }
+            env: { ...runtimeEnv, PERSONAL_FIT_AGENT_URL: agentUrl }
         });
     }
 } catch (error) {

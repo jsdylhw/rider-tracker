@@ -4,13 +4,14 @@ This module is deliberately outside ``app`` so storage and integrations do
 not depend on CLI or HTTP entry points. ``config.yaml`` remains git-ignored.
 """
 
+import os
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 DEFAULT_DATA_DIR = Path("data")
-DEFAULT_CONFIG_PATH = Path("config.yaml")
+DEFAULT_CONFIG_PATH = Path(os.environ.get("TRAINING_AGENT_CONFIG_PATH", "config.yaml"))
 
 
 def get_data_dir() -> Path:

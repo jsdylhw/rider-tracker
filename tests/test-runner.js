@@ -65,6 +65,7 @@ import { suite as personalFitAgentClientSuite } from "./unit/personal-fit-agent-
 import { suite as agentRouteDraftStorageSuite } from "./unit/agent-route-draft-storage.test.js";
 import { suite as agentRouteServiceSuite } from "./unit/agent-route-service.test.js";
 import { suite as agentRoutePlannerSuite } from "./unit/agent-route-planner.test.js";
+import { suite as localConfigSuite } from "./unit/local-config.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
@@ -133,7 +134,8 @@ const suites = [
     personalFitAgentClientSuite,
     agentRouteDraftStorageSuite,
     agentRouteServiceSuite,
-    agentRoutePlannerSuite
+    agentRoutePlannerSuite,
+    localConfigSuite
 ];
 
 runSuites(suites).then((results) => {

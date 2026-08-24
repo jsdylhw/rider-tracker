@@ -1,0 +1,70 @@
+# Rider Tracker + Training Agent unified local configuration.
+# Copy this file to config.yaml. The real file is ignored by Git.
+
+rider:
+  host: "127.0.0.1"
+  port: 8787
+  database_path: "data/rider-tracker.db"
+  fit_file_dir: "data/files/fit"
+  app_base_url: ""
+  frontend_redirect_url: ""
+  strava_redirect_uri: ""
+  strava_scopes: "activity:read_all,activity:write"
+
+training_agent:
+  host: "127.0.0.1"
+  port: 8000
+  # Usually leave blank. The launcher prefers services/training-agent/.venv.
+  python_executable: ""
+
+# Number used only when a request does not explicitly specify activity count.
+download_count: 5
+output_dir: "garmin_cn_fit_files"
+
+# Anthropic Messages API compatible model service.
+agent:
+  provider: "anthropic"
+  base_url: "https://your-api-base-url/v1"
+  api_key: "replace-with-your-api-key"
+  model: "your-model"
+  max_tokens: 4000
+  temperature: 0.3
+  thinking: "enabled"
+  reasoning_effort: "low"
+  anthropic_version: "2023-06-01"
+  timeout_seconds: 300
+  max_retries: 2
+
+# Optional Garmin China synchronization.
+garmin_username: "your-garmin-cn-username"
+garmin_password: "your-garmin-cn-password"
+garmin_tokenstore: ".garmin_cn_tokens"
+disable_curl_cffi: false
+
+# Shared Strava application credentials. Rider uses OAuth tokens for ride
+# uploads; Training Agent can additionally use refresh_token for workflows and
+# public Segment access.
+strava:
+  client_id: "your-strava-client-id"
+  client_secret: "your-strava-client-secret"
+  refresh_token: "your-strava-refresh-token"
+  token_store: ".strava_tokens.json"
+  timeout_seconds: 120
+
+athlete:
+  ftp: 260
+  weight_kg: 80
+  max_heart_rate: 200
+  resting_heart_rate: 50
+
+google:
+  api_key: "replace-with-google-maps-api-key"
+
+amap:
+  web_service_key: "replace-with-amap-web-service-key"
+  js_key: "replace-with-amap-js-key"
+  security_js_code: "replace-with-amap-security-js-code"
+
+# Leave blank for local-only access. When set, Rider automatically uses the
+# same token for its server-side Agent proxy.
+web_api_token: ""

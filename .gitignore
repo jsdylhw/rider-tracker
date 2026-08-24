@@ -2,6 +2,7 @@
 log.md
 local-project-docs.md
 user-profile.json
+/config.yaml
 # 系统或编辑器产生的文件
 .DS_Store
 *:Zone.Identifier
