@@ -12,7 +12,7 @@ from storage.repositories.activity import ActivityStore, entry_from_fit_summary,
 from fit.parser import parse_fit
 from fit.analysis.features import build_activity_features
 from fit.analysis.metrics import build_activity_metrics
-from project_paths import resolve_project_path
+from project_paths import project_relative_or_absolute, resolve_project_path
 
 def load_activity_index(path: str | Path | None = None) -> dict[str, Any]:
     """Return the catalogue shape expected by existing selection handlers."""
@@ -33,26 +33,66 @@ def replace_activity_entries(entries: list[dict[str, Any]], *, path: str | Path 
 def upsert_activity_from_fit(
     fit_path: str | Path,
     *,
+    activity_key: str | None = None,
     source: str = "manual",
     source_activity_id: str | None = None,
+    name: str | None = None,
     path: str | Path | None = None,
+    parsed: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """解析 FIT 并写入/更新活动索引."""
     fit = resolve_project_path(fit_path)
-    parsed = parse_fit(fit)
-    summary = parsed.get("summary") or {}
-    entry = entry_from_fit_summary(
-        fit, summary, source=source, source_activity_id=source_activity_id,
-    )
+    parsed_fit = parsed if isinstance(parsed, dict) else parse_fit(fit)
+    summary = parsed_fit.get("summary") or {}
     store = ActivityStore(path)
+    stored_fit_path = project_relative_or_absolute(fit)
+    existing = store.find_activity_identity(
+        fit_path=stored_fit_path,
+        source=source,
+        source_activity_id=source_activity_id,
+    )
+    stable_activity_key = activity_key or (existing or {}).get("activity_key")
+    entry = entry_from_fit_summary(
+        fit,
+        summary,
+        source=source,
+        source_activity_id=source_activity_id,
+        activity_key=str(stable_activity_key) if stable_activity_key else None,
+    )
+    entry["name"] = str(name or (existing or {}).get("name") or entry["file_name"])
+    entry["has_gps_track"] = any(
+        row.get("position_lat") is not None and row.get("position_long") is not None
+        for row in parsed_fit.get("records") or []
+        if isinstance(row, dict)
+    )
+    metrics = build_activity_metrics(
+        parsed_fit,
+        activity_key=str(entry["activity_key"]),
+        fit_path=entry.get("fit_path"),
+    )
+    features = build_activity_features(
+        parsed_fit,
+        activity_key=str(entry["activity_key"]),
+        fit_path=entry.get("fit_path"),
+    )
+    scale = metrics.get("scale") if isinstance(metrics.get("scale"), dict) else {}
+    power = metrics.get("power") if isinstance(metrics.get("power"), dict) else {}
+    heart_rate = metrics.get("heart_rate") if isinstance(metrics.get("heart_rate"), dict) else {}
+    power_stress = (
+        metrics.get("load", {}).get("power_stress", {})
+        if isinstance(metrics.get("load"), dict)
+        else {}
+    )
+    entry.update(prune_empty_values({
+        "ascent_meters": scale.get("total_ascent_m"),
+        "average_power": power.get("avg_power_w"),
+        "normalized_power": power.get("normalized_power_w"),
+        "average_hr": heart_rate.get("avg_hr_bpm"),
+        "estimated_tss": power_stress.get("tss") if isinstance(power_stress, dict) else None,
+    }))
     stored = store.upsert_activity(entry)
     activity_key = str(stored.get("activity_key") or entry["activity_key"])
-    facts = persist_activity_facts(
-        parsed,
-        activity_key=activity_key,
-        fit_path=stored.get("fit_path"),
-        path=path,
-    )
+    facts = store.save_facts(activity_key, metrics=metrics, features=features)
     return {**stored, "facts_schema_version": facts["schema_version"], "facts_revision": facts["revision"]}
 
 

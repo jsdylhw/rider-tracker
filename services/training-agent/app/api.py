@@ -39,6 +39,8 @@ from storage.repositories.route import RoutePlanStore
 from services.route.single_day import compact_route_plan
 from operations.activity.strava import upload_activity_to_strava
 from fit.parser import parse_fit
+from project_paths import project_root
+from services.activity.ingestion import get_activity_detail, ingest_fit_activity
 
 
 app = FastAPI(title="Personal FIT Agent API")
@@ -56,6 +58,15 @@ class AnalyzeFitRequest(BaseModel):
     path: str
     history: bool = False
     force: bool = False
+
+
+class IngestFitRequest(BaseModel):
+    path: str
+    activity_id: str | None = Field(default=None, min_length=1, max_length=128)
+    source: str = Field(default="manual", min_length=1, max_length=64)
+    source_activity_id: str | None = Field(default=None, max_length=128)
+    name: str | None = Field(default=None, max_length=200)
+    max_points: int = Field(default=700, ge=2, le=2000)
 
 
 class UploadStravaRequest(BaseModel):
@@ -179,6 +190,39 @@ def analyze_fit_endpoint(request: AnalyzeFitRequest, http_request: Request) -> d
         label="FIT file",
     )
     return analyze_fit_document(fit_path, use_history=request.history, force=request.force)
+
+
+@app.post("/api/activities/ingest-fit")
+def ingest_fit_endpoint(request: IngestFitRequest, http_request: Request) -> dict[str, Any]:
+    """Deterministically index a Rider-managed FIT without invoking an LLM."""
+    _require_api_access(http_request)
+    requested_path = Path(request.path).expanduser()
+    fit_path = _require_managed_path(
+        requested_path if requested_path.is_absolute() else project_root() / requested_path,
+        allowed_root=project_root() / "data" / "files" / "fit",
+        suffix=".fit",
+        label="FIT file",
+    )
+    return ingest_fit_activity(
+        fit_path,
+        activity_key=request.activity_id,
+        source=request.source,
+        source_activity_id=request.source_activity_id,
+        name=request.name,
+        max_points=request.max_points,
+    )
+
+
+@app.get("/api/activities/{activity_id}/detail")
+def activity_detail_endpoint(activity_id: str, request: Request, max_points: int = 700) -> dict[str, Any]:
+    """Return cached canonical series, rebuilding from the immutable FIT when stale."""
+    _require_api_access(request)
+    if max_points < 2 or max_points > 2000:
+        raise HTTPException(status_code=422, detail="max_points must be between 2 and 2000.")
+    detail = get_activity_detail(activity_id, max_points=max_points)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Activity does not exist.")
+    return detail
 
 
 @app.get("/api/summary")

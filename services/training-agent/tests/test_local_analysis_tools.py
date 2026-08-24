@@ -277,7 +277,7 @@ class TestActivityIndex:
         assert ranged["count"] == 1
         assert ranged["totals"]["distance_km"] == 5.0
 
-    def test_fit_upsert_replaces_stale_path_identity(self, tmp_path, monkeypatch, sample_parsed_fit):
+    def test_fit_upsert_preserves_stable_path_identity(self, tmp_path, monkeypatch, sample_parsed_fit):
         monkeypatch.chdir(tmp_path)
         from services.activity.catalog import (
             load_activity_index,
@@ -301,7 +301,8 @@ class TestActivityIndex:
         upsert_activity_from_fit(fit_file, path=index_path)
 
         row = load_activity_index(index_path)["activities"][0]
-        assert row["activity_key"] != "same"
+        assert row["activity_key"] == "same"
+        assert row["sport_type"] == "cycling"
         assert row["sport_type"] == "cycling"
         assert row["has_summary"] is False
         assert "summary_path" not in row

@@ -1,4 +1,5 @@
 import { createPersonalFitAgentClient } from "../../src/server/personal-fit-agent-client.js";
+import { canonicalDetailToRiderActivity } from "../../src/server/routes/activity-routes.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
@@ -40,6 +41,62 @@ export const suite = {
                 assertEqual(request.url, "http://127.0.0.1:8000/api/chat");
                 assertEqual(request.options.headers["X-API-Token"], "server-only-token");
                 assertEqual(JSON.parse(request.options.body).message, "规划路线");
+            }
+        },
+        {
+            name: "forwards deterministic FIT ingestion and activity detail requests",
+            async run() {
+                const requests = [];
+                const client = createPersonalFitAgentClient({
+                    baseUrl: "http://127.0.0.1:8000",
+                    apiToken: "server-only-token",
+                    fetchImpl: async (url, options) => {
+                        requests.push({ url, options });
+                        return fakeResponse({ schema_version: "activity_detail.v1" });
+                    }
+                });
+
+                await client.ingestFit({ path: "data/files/fit/fit-a.fit", activity_id: "fit-a" });
+                await client.activityDetail("fit-a", { maxPoints: 500 });
+
+                assertEqual(requests[0].url, "http://127.0.0.1:8000/api/activities/ingest-fit");
+                assertEqual(JSON.parse(requests[0].options.body).activity_id, "fit-a");
+                assertEqual(requests[1].url, "http://127.0.0.1:8000/api/activities/fit-a/detail?max_points=500");
+                assertEqual(requests[1].options.headers["X-API-Token"], "server-only-token");
+            }
+        },
+        {
+            name: "adapts the canonical Python FIT detail contract for Rider views",
+            run() {
+                const activity = canonicalDetailToRiderActivity({
+                    activity: {
+                        activity_key: "fit-a",
+                        name: "Morning Run",
+                        sport_type: "running",
+                        start_time_local: "2026-08-24T08:00:00",
+                        fit_path: "data/files/fit/fit-a.fit"
+                    },
+                    metrics: {
+                        scale: { duration_s: 1800, distance_km: 5, total_ascent_m: 42 },
+                        power: { avg_power_w: 210, normalized_power_w: 225 },
+                        heart_rate: { avg_hr_bpm: 145, max_hr_bpm: 170 },
+                        load: { power_stress: { tss: null } }
+                    },
+                    settings: { resting_hr: 50, max_hr: 190 },
+                    series: {
+                        records: [
+                            { elapsed_seconds: 0, distance_km: 0, elevation_m: 10, latitude: 31, longitude: 121 },
+                            { elapsed_seconds: 60, distance_km: 0.2, elevation_m: 15, latitude: 31.001, longitude: 121.001 },
+                            { elapsed_seconds: 120, distance_km: 0.4, elevation_m: 13, latitude: 31.002, longitude: 121.002 }
+                        ]
+                    }
+                });
+
+                assertEqual(activity.id, "fit-a");
+                assertEqual(activity.sportType, "running");
+                assertEqual(activity.rawSession.records.at(-1).ascentMeters, 5);
+                assertEqual(activity.rawSession.summary.metrics.ride.ascentMeters, 42);
+                assertEqual(activity.rawSession.route.points.length, 3);
             }
         },
         {

@@ -70,6 +70,56 @@ def test_analyze_history_must_be_explicitly_enabled(tmp_path, monkeypatch):
     assert calls == [(managed_fit, {"use_history": True, "force": False})]
 
 
+def test_ingest_fit_uses_deterministic_managed_file_service(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    rider_root = tmp_path / "rider"
+    fit = rider_root / "data" / "files" / "fit" / "manual.fit"
+    fit.parent.mkdir(parents=True)
+    fit.write_bytes(b"fit")
+    monkeypatch.setattr(api, "project_root", lambda: rider_root)
+    calls = []
+    monkeypatch.setattr(
+        api,
+        "ingest_fit_activity",
+        lambda path, **kwargs: calls.append((path, kwargs)) or {
+            "schema_version": "fit_ingestion.v1", "status": "completed",
+        },
+    )
+
+    response = client.post("/api/activities/ingest-fit", json={
+        "path": "data/files/fit/manual.fit",
+        "activity_id": "fit-manual",
+        "source": "fit-import",
+        "max_points": 500,
+    })
+
+    assert response.status_code == 200
+    assert calls == [(fit, {
+        "activity_key": "fit-manual",
+        "source": "fit-import",
+        "source_activity_id": None,
+        "name": None,
+        "max_points": 500,
+    })]
+
+
+def test_activity_detail_endpoint_returns_cached_contract(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        api, "get_activity_detail",
+        lambda key, max_points=700: {
+            "schema_version": "activity_detail.v1",
+            "activity": {"activity_key": key},
+            "series": {"records": [], "sample_count": 0},
+        },
+    )
+
+    response = client.get("/api/activities/a1/detail?max_points=500")
+
+    assert response.status_code == 200
+    assert response.json()["activity"]["activity_key"] == "a1"
+
+
 def test_strava_upload_uses_activity_key(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
     calls = []

@@ -62,6 +62,10 @@ export function createPersonalFitAgentClient({
     return {
         health: () => get("/health"),
         chat: (request) => post("/api/chat", request),
+        ingestFit: (request) => post("/api/activities/ingest-fit", request),
+        activityDetail: (activityId, { maxPoints = 700 } = {}) => get(
+            `/api/activities/${encodeURIComponent(activityId)}/detail?max_points=${encodeURIComponent(maxPoints)}`
+        ),
         selectRouteCandidate: (request) => post("/api/route-plans/select", request),
         routePlanCommand: (request) => post("/api/route-plans/command", request)
     };

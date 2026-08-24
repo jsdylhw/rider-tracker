@@ -1,5 +1,4 @@
 import { exportSessionAsFit } from "../../adapters/export/fit-exporter.js";
-import { importFitActivity } from "../../adapters/fit/fit-importer.js";
 import {
     getStravaConnection,
     getStravaServerConfig,
@@ -190,29 +189,22 @@ export function createExportService({ store }) {
         }));
 
         try {
-            const { settings } = store.getState();
             const fitBytes = new Uint8Array(await file.arrayBuffer());
-            const { session, activity } = await importFitActivity(fitBytes, {
-                fileName: file.name,
-                settings
-            });
-            const savedActivity = await saveImportedFitActivityFile({
-                session,
-                activity,
+            const savedActivity = await importActivityFitFile({
                 fitBytes,
-                filename: file.name
+                filename: file.name,
+                name: file.name
             });
-            const selectedActivity = {
-                ...activity,
-                ...(savedActivity ?? {}),
-                rawSession: session
-            };
-            notifyActivitySaved(savedActivity ?? selectedActivity);
+            if (!savedActivity?.rawSession) {
+                throw new Error("FIT 导入未返回可展示的活动详情。");
+            }
+            const session = savedActivity.rawSession;
+            notifyActivitySaved(savedActivity);
 
             store.setState((state) => ({
                 ...state,
                 session,
-                selectedActivity,
+                selectedActivity: savedActivity,
                 uiMode: "activity-detail",
                 hasPersistedSession: true,
                 statusText: `已导入 FIT 文件：${file.name}。`
@@ -477,26 +469,6 @@ async function saveFitFileForSession({ session, fitBytes, filename }) {
     return null;
 }
 
-async function saveImportedFitActivityFile({ session, activity, fitBytes, filename }) {
-    try {
-        const compactSession = buildCompactFitSession(session);
-        const savedActivity = await importActivityFitFile({
-            session: compactSession,
-            fitBytes,
-            filename,
-            name: activity?.name ?? session?.exportMetadata?.activityName,
-            sportType: "Ride"
-        });
-        if (savedActivity?.id) {
-            session.activityId = savedActivity.id;
-        }
-        return savedActivity;
-    } catch (error) {
-        console.warn("[ExportService] 保存导入 FIT 活动失败:", error);
-        return null;
-    }
-}
-
 function notifyActivitySaved(activity) {
     if (!activity?.id) {
         return;
@@ -557,6 +529,9 @@ function buildCompactRouteMap(route) {
         source: route?.source ?? "gpx",
         name: route?.name ?? "路线",
         totalDistanceMeters: route?.totalDistanceMeters ?? points.at(-1)?.distanceMeters ?? 0,
+        savedRouteId: route?.savedRouteId ?? null,
+        savedRouteResumeDistanceMeters: route?.savedRouteResumeDistanceMeters ?? 0,
+        continuation: route?.continuation ?? null,
         mapGeometry: downsampleRouteGeometry(points)
     };
 }
