@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Personal FIT Agent</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260821-3" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Personal FIT Agent</h1>
+          <p>Garmin 下载、本地 FIT 分析、报告查看和 Strava 上传。</p>
+        </div>
+        <div id="status" class="status">准备就绪</div>
+      </header>
+
+      <section class="controls">
+        <label class="token-field">
+          API Token
+          <input id="apiToken" type="password" autocomplete="off" placeholder="局域网访问时填写" />
+        </label>
+        <button id="connectGarminBtn">连接 Garmin</button>
+        <label class="count-field">
+          下载最近
+          <input id="downloadCount" type="number" min="1" max="50" value="5" />
+          条
+        </label>
+        <button id="downloadBtn" class="primary">下载</button>
+        <button id="refreshBtn">刷新本地 FIT</button>
+      </section>
+
+      <section class="chat-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Training Agent</h2>
+            <p class="muted">用自然语言定位活动、查询细节或分析训练趋势。</p>
+          </div>
+          <button id="clearChatBtn" type="button">清空对话</button>
+        </div>
+        <div class="chat-layout">
+          <div class="conversation-column">
+            <div id="chatMessages" class="chat-messages" aria-live="polite">
+              <div class="chat-empty">例如：比较最近两周的骑行训练量和强度。</div>
+            </div>
+            <form id="chatForm" class="chat-form">
+              <textarea
+                id="chatInput"
+                rows="3"
+                maxlength="20000"
+                placeholder="输入活动或训练问题；Enter 发送，Shift+Enter 换行"
+                required
+              ></textarea>
+              <button id="sendChatBtn" class="primary" type="submit">发送</button>
+            </form>
+          </div>
+          <div class="presentation-column">
+            <div class="presentation-heading">结构化结果</div>
+            <div id="presentations" class="presentations">
+              <div class="chat-empty">表格、趋势图和活动报告会显示在这里。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="layout">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>本地 FIT</h2>
+            <span id="fitDir" class="muted"></span>
+          </div>
+          <div id="fitList" class="fit-list"></div>
+        </section>
+
+        <section class="panel detail-panel">
+          <div class="panel-header">
+            <div>
+              <h2 id="detailTitle">选择一个 FIT 文件</h2>
+              <p id="detailMeta" class="muted"></p>
+            </div>
+          </div>
+
+          <div id="summaryGrid" class="summary-grid"></div>
+
+          <div class="action-row">
+            <button id="analyzeBtn" class="primary">大模型分析</button>
+            <button id="viewReportBtn">查看报告</button>
+            <button id="uploadStravaBtn">上传 Strava</button>
+          </div>
+
+          <section class="report-preview">
+            <h3>Strava 总结</h3>
+            <p id="stravaSummary" class="summary-text">分析后会显示。</p>
+          </section>
+
+          <section class="report-preview">
+            <h3>报告</h3>
+            <pre id="reportText" class="report-text">点击“查看报告”后显示。</pre>
+          </section>
+        </section>
+      </section>
+
+      <section class="log-panel">
+        <h2>操作日志</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/static/app.js?v=20260821-3"></script>
+  </body>
+</html>

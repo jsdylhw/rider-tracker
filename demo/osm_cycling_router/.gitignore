@@ -1,0 +1,6 @@
+# Downloaded / generated routing data must never enter the repository.
+data/
+graph-cache/
+runtime/
+graphhopper-web-*.jar
+__pycache__/

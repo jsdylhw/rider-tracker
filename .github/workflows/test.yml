@@ -1,0 +1,46 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Validate agent evaluation cases
+        # Skill/live evaluation calls the configured remote model and is not
+        # deterministic in CI.  Schema loading remains a local fail-fast check;
+        # behavioral evaluation runs explicitly with model credentials.
+        run: python -m evaluation.cli list-cases --cases evaluation/cases/skills.jsonl
+
+      - name: Compile Python sources
+        run: python -m compileall -q agent app core evaluation fit sinks demo
+
+      - name: Check demo JavaScript syntax
+        run: node --check demo/osm_cycling_router/web/app.js

@@ -1,0 +1,37 @@
+# Small, local-only GraphHopper setup for Jiangsu / Zhejiang / Shanghai cycling
+# experiments. The first boot imports the combined PBF and builds a new cache.
+graphhopper:
+  datareader.file: data/osm/jzsh-latest.osm.pbf
+  graph.location: data/graph-cache-jzsh
+
+  profiles:
+    - name: car
+      custom_model_files: [car_no_highway.json]
+    - name: bike
+      custom_model_files: [bike.json]
+    - name: racingbike
+      custom_model_files: [racingbike.json]
+
+  profiles_ch:
+    - profile: car
+    - profile: bike
+    - profile: racingbike
+
+  # Expose the OSM attributes needed for route quality comparison.
+  graph.encoded_values: car_access,car_average_speed,bike_access,bike_priority,bike_average_speed,bike_road_access,racingbike_access,racingbike_priority,racingbike_average_speed,roundabout,road_class,road_environment,surface,smoothness,max_speed,osm_way_id,mtb_rating,hike_rating,country
+  # The connecting profile deliberately avoids expressways.  Keep ``trunk``:
+  # in China it often represents a normal national/provincial arterial rather
+  # than a controlled-access motorway.
+  import.osm.ignored_highways: motorway,motorway_link
+  routing.timeout_ms: 30000
+  prepare.min_network_size: 200
+
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: 127.0.0.1
+  admin_connectors:
+    - type: http
+      port: 8990
+      bind_host: 127.0.0.1
