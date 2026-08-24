@@ -51,7 +51,7 @@ export const suite = {
     tests: [
         {
             name: "updateErgTargetPower 会更新 settings.power 与 ERG runtime",
-            run() {
+            async run() {
                 const store = createStore(createBaseState(WORKOUT_MODES.FIXED_POWER));
                 const service = createWorkoutService({ store });
 
@@ -95,7 +95,7 @@ export const suite = {
         },
         {
             name: "updateWorkoutMode 会尝试按训练模式预激活 trainer 控制",
-            run() {
+            async run() {
                 const store = createStore(createBaseState(WORKOUT_MODES.FREE_RIDE));
                 const invokedModes = [];
                 const service = createWorkoutService({
@@ -108,11 +108,51 @@ export const suite = {
                     }
                 });
 
-                service.updateWorkoutMode(WORKOUT_MODES.GRADE_SIM);
+                await service.updateWorkoutMode(WORKOUT_MODES.GRADE_SIM);
 
                 assertEqual(store.getState().workout.mode, WORKOUT_MODES.GRADE_SIM);
                 assertEqual(invokedModes.length, 1);
                 assertEqual(invokedModes[0], WORKOUT_MODES.GRADE_SIM);
+            }
+        },
+        {
+            name: "骑行中模式切换会原子更新 session 并清理命令去重状态",
+            async run() {
+                const state = createBaseState(WORKOUT_MODES.FREE_RIDE);
+                state.liveRide = {
+                    isActive: true,
+                    session: { startedAt: "ride-1", trainerControlMode: "resistance", commandSequence: 2, customWorkoutTargetPlan: { enabled: false, steps: [] } },
+                    summary: { metrics: { ride: { elapsedSeconds: 30, distanceKm: 0.2 } } },
+                    commandDispatch: { lastSentControlMode: "resistance", lastSentResistanceLevel: 35, inFlightCommandKey: "resistance:35" }
+                };
+                const store = createStore(state);
+                const service = createWorkoutService({ store, deviceService: {
+                    async prepareTrainerControlForWorkoutMode() { return true; }
+                } });
+
+                await service.updateWorkoutMode(WORKOUT_MODES.FIXED_POWER);
+
+                assertEqual(store.getState().workout.mode, WORKOUT_MODES.FIXED_POWER);
+                assertEqual(store.getState().liveRide.session.trainerControlMode, TRAINER_CONTROL_MODES.ERG);
+                assertEqual(store.getState().liveRide.commandDispatch.lastSentControlMode, null);
+                assertEqual(store.getState().liveRide.commandDispatch.inFlightCommandKey, null);
+            }
+        },
+        {
+            name: "骑行中目标模式激活失败会保留原模式",
+            async run() {
+                const state = createBaseState(WORKOUT_MODES.FREE_RIDE);
+                state.liveRide = { isActive: true, session: { trainerControlMode: "resistance" } };
+                const store = createStore(state);
+                const service = createWorkoutService({ store, deviceService: {
+                    async prepareTrainerControlForWorkoutMode() { return false; }
+                } });
+
+                await service.updateWorkoutMode(WORKOUT_MODES.FIXED_POWER);
+
+                assertEqual(store.getState().workout.mode, WORKOUT_MODES.FREE_RIDE);
+                assertEqual(store.getState().liveRide.session.trainerControlMode, "resistance");
+                assertEqual(store.getState().workout.modeTransition.status, "error");
             }
         },
         {

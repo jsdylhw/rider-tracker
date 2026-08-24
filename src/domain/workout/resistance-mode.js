@@ -36,7 +36,7 @@ export function buildResistanceControlState({
             })
             : null,
         controlStatus: active
-            ? `固定阻力控制中：阻力等级 ${normalizedResistanceLevel}%（开始骑行前已锁定控制模式）。`
-            : `固定阻力待命：阻力等级 ${normalizedResistanceLevel}%（开始骑行前已锁定控制模式）。`
+            ? `固定阻力控制中：阻力等级 ${normalizedResistanceLevel}%。`
+            : `固定阻力待命：阻力等级 ${normalizedResistanceLevel}%；骑行中仍可切换模式。`
     };
 }

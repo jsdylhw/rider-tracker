@@ -145,7 +145,6 @@ export const suite = {
                     service.startRide();
 
                     const state = store.getState();
-                    assertEqual(state.liveRide.canStart, true);
                     assertEqual(state.liveRide.isActive, true);
                     assertEqual(state.liveRide.session.sampledSensors.powerSourceType, "virtual");
                     assertEqual(state.liveRide.session.sampledSensors.power, 287);
@@ -177,7 +176,6 @@ export const suite = {
 
                     const state = store.getState();
                     assertEqual(state.rideInput.powerSource, "device");
-                    assertEqual(state.liveRide.canStart, false);
                     assertEqual(state.liveRide.isActive, false);
                     assertEqual(windowHarness.timerCallbacks.length, 0);
                 } finally {

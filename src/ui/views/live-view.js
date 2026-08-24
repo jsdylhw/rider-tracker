@@ -1,4 +1,7 @@
 export function createLiveView({ onCloseRideDashboard, onStartRide, onStopRide, onUpdateRideInput }) {
+    const preRideDeviceMount = document.getElementById("preRideDeviceMount");
+    const deviceControlsPanel = document.getElementById("deviceControlsPanel");
+    if (preRideDeviceMount?.append && deviceControlsPanel) preRideDeviceMount.append(deviceControlsPanel);
     const elements = {
         viewLive: document.getElementById("view-live"),
         liveCol1: document.getElementById("live-col-1"),

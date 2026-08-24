@@ -71,7 +71,13 @@ function createState() {
                 lastUpdated: Date.now()
             },
             heartRate: { value: 130 },
-            powerMeter: { power: 260, cadence: 88 }
+            powerMeter: { power: 260, cadence: 88, isConnected: true, sourceType: "trainer", lastUpdated: Date.now() },
+            trainer: {
+                isConnected: true,
+                connectionState: "connected",
+                controlState: "ready",
+                capabilities: { resistanceSupported: true, powerSupported: true, gradeControlSupported: true }
+            }
         },
         exportMetadata: {},
         session: null,

@@ -24,6 +24,7 @@ import { encodeFitSync } from "../../adapters/export/fit-exporter.js";
 import { sendFitBeacon } from "../../adapters/upload/fit-beacon-client.js";
 import { loadFitSdk } from "../../adapters/fit/fit-sdk-loader.js";
 import { buildRoute, isRouteReadyForRide } from "../../domain/route/route-builder.js";
+import { deriveRideReadiness } from "../../domain/ride/ride-readiness.js";
 
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
@@ -39,12 +40,18 @@ export function createRideService({ store, deviceService, exportService, routeSe
 
     function startRide() {
         let state = store.getState();
-        if (!isRouteReadyForRide(state.route)) {
+        const readiness = deriveRideReadiness({
+            route: state.route,
+            workout: state.workout,
+            rideInput: state.rideInput,
+            ble: state.ble,
+            debugEnabled: isStreetViewDebugEnabled()
+        });
+        if (!readiness.canStart) {
             store.setState((currentState) => ({
                 ...currentState,
-                statusText: currentState.route?.isLoading
-                    ? "路线仍在处理中，请等待完成后再开始骑行。"
-                    : "请先设置一条有效路线后再开始骑行。"
+                statusText: readiness.blockers[0]?.message || "当前状态不能开始骑行。",
+                liveRide: { ...currentState.liveRide, statusMeta: readiness.blockers.map((item) => item.message).join("；") }
             }));
             return;
         }
@@ -54,8 +61,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
             return;
         }
         const streetViewDebugEnabled = isStreetViewDebugEnabled();
-        const virtualRideEnabled = streetViewDebugEnabled && state.rideInput?.powerSource === "virtual";
-        if ((!state.liveRide.canStart && !virtualRideEnabled && !streetViewDebugEnabled) || state.liveRide.isActive) {
+        if (state.liveRide.isActive) {
             return;
         }
 
@@ -486,12 +492,6 @@ export function createRideService({ store, deviceService, exportService, routeSe
                 powerSource,
                 virtualPowerWatts: clampVirtualPower(input?.virtualPowerWatts, state.rideInput?.virtualPowerWatts),
                 virtualCadenceRpm: clampVirtualCadence(input?.virtualCadenceRpm, state.rideInput?.virtualCadenceRpm)
-            },
-            liveRide: {
-                ...state.liveRide,
-                canStart: powerSource === "device"
-                    ? Boolean(state.ble.trainer.isConnected || state.ble.powerMeter.sourceType !== "none")
-                    : true
             },
             statusText: powerSource === "device"
                 ? "已切换为已连接设备功率。"

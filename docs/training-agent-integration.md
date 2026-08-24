@@ -38,6 +38,8 @@ Strava 也由 Python 单独持有外部副作用：凭据来自 `config.yaml`，
 `data/strava-tokens.json`，Token 刷新、活动上传和状态查询都通过 Node 代理进入 Training Agent。
 旧 Node Token 文件的 `default` 包装格式会在首次读取时兼容，后续写入统一的单用户格式。
 
+FIT 历史解析也只有一个生产入口：`services/activity/fit_loader.py` 从数据库读取统一运动员档案并显式注入纯 FIT parser。JavaScript 继续负责实时记录、导出与页面适配，不再作为历史 FIT 指标的权威来源。
+
 共享数据库不等于允许任意跨层写入。Rider 负责实时骑行和文件接收，Agent 负责
 分析派生数据和路线计划；两边通过稳定的 `activity_id`、`plan_id` 关联。
 
@@ -52,3 +54,6 @@ Strava 也由 Python 单独持有外部副作用：凭据来自 `config.yaml`，
 
 FIT 处理、路线持久化和前端外壳的下一阶段整理顺序及验收边界见
 [`consolidation-roadmap.md`](./consolidation-roadmap.md)。工作流恢复状态机暂不在该轮整理范围内。
+
+实时骑行的准备规则、debug 边界、FTMS capability 和模式切换见
+[`ride-readiness-and-control.md`](./ride-readiness-and-control.md)。

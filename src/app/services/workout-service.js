@@ -1,4 +1,4 @@
-import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
+import { getWorkoutModeLabel, WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 import { buildGradeSimulationState } from "../../domain/workout/grade-sim-mode.js";
 import { buildErgControlState } from "../../domain/workout/erg-mode.js";
 import { buildResistanceControlState } from "../../domain/workout/resistance-mode.js";
@@ -11,27 +11,43 @@ import {
 } from "../../domain/workout/custom-workout-target.js";
 import { resolveTrainerControlModeForWorkoutMode, TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
 import { clamp } from "../../shared/utils/common.js";
+import { buildRuntimeByControlMode } from "../realtime/ride-engine.js";
+import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 
 export function createWorkoutService({ store, deviceService = null }) {
-    function updateWorkoutMode(mode) {
+    async function updateWorkoutMode(mode) {
         const normalizedMode = mode === WORKOUT_MODES.GRADE_SIM
             ? WORKOUT_MODES.GRADE_SIM
             : mode === WORKOUT_MODES.FIXED_POWER
                 ? WORKOUT_MODES.FIXED_POWER
                 : WORKOUT_MODES.FREE_RIDE;
 
+        const before = store.getState();
+        const switchingLive = before.liveRide.isActive === true;
         store.setState((state) => ({
             ...state,
-            workout: {
-                ...state.workout,
-                mode: normalizedMode,
-                runtime: deriveRuntime(state, normalizedMode, state.workout.gradeSimulation, state.workout.customWorkoutTarget)
-            }
+            workout: { ...state.workout, modeTransition: switchingLive
+                ? { status: "switching", from: state.workout.mode, to: normalizedMode, error: null }
+                : state.workout.modeTransition }
         }));
 
-        if (deviceService?.prepareTrainerControlForWorkoutMode) {
-            void deviceService.prepareTrainerControlForWorkoutMode(normalizedMode);
+        const debugVirtual = isStreetViewDebugEnabled() && before.rideInput?.powerSource !== "device";
+        const prepared = debugVirtual || !deviceService?.prepareTrainerControlForWorkoutMode
+            ? true
+            : await deviceService.prepareTrainerControlForWorkoutMode(normalizedMode);
+        if (!prepared && switchingLive) {
+            store.setState((state) => ({
+                ...state,
+                workout: { ...state.workout, modeTransition: {
+                    status: "error", from: before.workout.mode, to: normalizedMode,
+                    error: "骑行台未能激活目标控制模式"
+                } }
+            }));
+            return false;
         }
+
+        store.setState((state) => applyWorkoutMode(state, normalizedMode));
+        return true;
     }
 
     function updateGradeSimulationConfig(partialConfig) {
@@ -139,6 +155,7 @@ export function createWorkoutService({ store, deviceService = null }) {
 
     function updateCustomWorkoutTargetEnabled(enabled) {
         store.setState((state) => {
+            if (state.liveRide.isActive) return lockWorkoutPlan(state);
             const nextTarget = sanitizeCustomWorkoutTarget({
                 ...state.workout.customWorkoutTarget,
                 enabled
@@ -158,6 +175,7 @@ export function createWorkoutService({ store, deviceService = null }) {
 
     function addCustomWorkoutTargetStep() {
         store.setState((state) => {
+            if (state.liveRide.isActive) return lockWorkoutPlan(state);
             const nextTarget = sanitizeCustomWorkoutTarget({
                 ...state.workout.customWorkoutTarget,
                 source: "custom",
@@ -182,6 +200,7 @@ export function createWorkoutService({ store, deviceService = null }) {
 
     function editCustomWorkoutTarget() {
         store.setState((state) => {
+            if (state.liveRide.isActive) return lockWorkoutPlan(state);
             const nextTarget = sanitizeCustomWorkoutTarget({
                 ...state.workout.customWorkoutTarget,
                 enabled: true,
@@ -222,6 +241,7 @@ export function createWorkoutService({ store, deviceService = null }) {
 
     function updateCustomWorkoutTargetStep(stepId, partialStep) {
         store.setState((state) => {
+            if (state.liveRide.isActive) return lockWorkoutPlan(state);
             const nextTarget = sanitizeCustomWorkoutTarget({
                 ...state.workout.customWorkoutTarget,
                 source: "custom",
@@ -244,6 +264,7 @@ export function createWorkoutService({ store, deviceService = null }) {
 
     function removeCustomWorkoutTargetStep(stepId) {
         store.setState((state) => {
+            if (state.liveRide.isActive) return lockWorkoutPlan(state);
             const nextTarget = sanitizeCustomWorkoutTarget({
                 ...state.workout.customWorkoutTarget,
                 source: "custom",
@@ -276,6 +297,54 @@ export function createWorkoutService({ store, deviceService = null }) {
         updateCustomWorkoutTargetStep,
         removeCustomWorkoutTargetStep
     };
+}
+
+function applyWorkoutMode(state, mode) {
+    const trainerControlMode = resolveTrainerControlModeForWorkoutMode(mode);
+    const workout = {
+        ...state.workout,
+        mode,
+        modeTransition: { status: "ready", from: state.workout.mode, to: mode, error: null },
+        runtime: deriveRuntime(state, mode, state.workout.gradeSimulation, state.workout.customWorkoutTarget)
+    };
+    if (!state.liveRide.isActive || !state.liveRide.session) return { ...state, workout };
+    const session = {
+        ...state.liveRide.session,
+        trainerControlMode,
+        workoutRuntime: buildRuntimeByControlMode({
+            trainerControlMode,
+            state: { ...state, workout },
+            session: state.liveRide.session,
+            active: true,
+            rideId: state.liveRide.session.startedAt,
+            commandSequence: (state.liveRide.session.commandSequence ?? 0) + 1,
+            customWorkoutTargetPlan: state.liveRide.session.customWorkoutTargetPlan,
+            elapsedSeconds: state.liveRide.session.ergElapsedSeconds ?? 0
+        })
+    };
+    return {
+        ...state,
+        workout,
+        liveRide: {
+            ...state.liveRide,
+            session,
+            commandDispatch: {
+                ...state.liveRide.commandDispatch,
+                lastSentAtMs: null,
+                lastAttemptedAtMs: null,
+                lastSentControlMode: null,
+                lastSentGradePercent: null,
+                lastSentPowerWatts: null,
+                lastSentResistanceLevel: null,
+                inFlightCommandKey: null
+            },
+            statusMeta: `骑行中已切换控制模式：${getWorkoutModeLabel(mode)}。`
+        }
+    };
+}
+
+function lockWorkoutPlan(state) {
+    return { ...state, statusText: "骑行中已锁定课表结构；可以切换控制模式或调整即时目标。" };
 }
 
 function deriveRuntime(state, mode, gradeSimulation, customWorkoutTarget) {
@@ -320,7 +389,7 @@ function deriveRuntime(state, mode, gradeSimulation, customWorkoutTarget) {
             ...preview,
             pendingTrainerCommand: null,
             controlStatus: preview.available
-                ? `坡度模拟待命：已基于当前路线实时梯度生成目标模拟坡度，开始骑行后按预先锁定模式下发 trainer 指令。`
+                ? `坡度模拟待命：已基于当前路线实时梯度生成目标模拟坡度；骑行中仍可切换控制模式。`
                 : preview.controlStatus
         };
 

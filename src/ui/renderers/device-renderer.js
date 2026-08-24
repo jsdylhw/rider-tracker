@@ -1,7 +1,7 @@
 import { formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
-import { isRouteReadyForRide } from "../../domain/route/route-builder.js";
+import { deriveRideReadiness } from "../../domain/ride/ride-readiness.js";
 
 export function createDeviceRenderer({
     elements,
@@ -68,8 +68,11 @@ export function createDeviceRenderer({
         }
         const streetViewDebugEnabled = isStreetViewDebugEnabled();
         const isVirtualPower = streetViewDebugEnabled && state.rideInput?.powerSource === "virtual";
-        const canStartRide = (liveRide.canStart || isVirtualPower || streetViewDebugEnabled)
-            && isRouteReadyForRide(state.route);
+        const readiness = deriveRideReadiness({
+            route: state.route, workout: state.workout, rideInput: state.rideInput,
+            ble: state.ble, debugEnabled: streetViewDebugEnabled
+        });
+        const canStartRide = readiness.canStart;
         if (elements.rideInputCard) {
             elements.rideInputCard.hidden = !streetViewDebugEnabled;
         }
@@ -83,13 +86,19 @@ export function createDeviceRenderer({
         if (elements.openRideDashboardBtn) elements.openRideDashboardBtn.disabled = false;
 
         if (elements.hrDeviceStatus) elements.hrDeviceStatus.textContent = heartRate.statusLabel;
-        if (elements.hrDeviceName) elements.hrDeviceName.textContent = heartRate.deviceName;
+        if (elements.hrDeviceName) elements.hrDeviceName.textContent = heartRate.lastError?.message || heartRate.deviceName;
         if (elements.powerDeviceStatus) elements.powerDeviceStatus.textContent = powerMeter.statusLabel;
-        if (elements.powerDeviceName) elements.powerDeviceName.textContent = powerMeter.deviceName;
+        if (elements.powerDeviceName) elements.powerDeviceName.textContent = powerMeter.lastError?.message || powerMeter.deviceName;
         if (elements.trainerDeviceStatus) elements.trainerDeviceStatus.textContent = trainer.statusLabel;
-        if (elements.trainerDeviceName) elements.trainerDeviceName.textContent = trainer.deviceName;
+        if (elements.trainerDeviceName) elements.trainerDeviceName.textContent = trainer.lastError?.message
+            || `${trainer.deviceName}${trainer.capabilitiesState && trainer.capabilitiesState !== "unknown"
+                ? ` · 能力 ${trainer.capabilitiesState}` : ""}`;
         if (elements.rideStatusLabel) elements.rideStatusLabel.textContent = liveRide.isActive ? "骑行中" : (liveRide.lastCompletedAt ? "已结束" : "未开始");
-        if (elements.rideStatusMeta) elements.rideStatusMeta.textContent = liveRide.statusMeta;
+        if (elements.rideStatusMeta) elements.rideStatusMeta.textContent = liveRide.isActive
+            ? liveRide.statusMeta
+            : readiness.canStart
+                ? readiness.warnings.map((item) => item.message).join("；") || "设备和路线已就绪。"
+                : readiness.blockers.map((item) => item.message).join("；");
         if (elements.trainerPushGradeValue) {
             elements.trainerPushGradeValue.textContent = `${formatNumber(workoutRuntime.targetTrainerGradePercent ?? 0, 1)}%`;
         }

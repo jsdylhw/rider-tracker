@@ -41,6 +41,18 @@ Agent 草稿仍不会直接进入路线库；最终确认会写入 `saved_routes
 
 当前主页面已经有 Home、Live、Activity Detail 等模式，也拆出了 renderer、view 和 service；但 `main-view` 仍集中组装大量 DOM 元素、订阅和功能控制。活动详情、路线规划、实时骑行和全局 Agent 的布局规则还没有形成统一页面外壳。
 
+### 已统一的跨模块 owner
+
+- 历史 FIT：Python `fit_loader` 注入数据库运动员档案；JS 只负责实时采集、导出和展示适配。
+- 运动员档案：`athlete_profiles` 是 FTP、体重和心率阈值的唯一事实源。
+- Strava：Python 持有配置、OAuth Token、刷新、上传与状态查询；Node 只代理浏览器回调。
+- 路线：Agent plan/revision、浏览器草稿、Rider runtime 和 saved route 已按生命周期分离。
+- 活动：Garmin、网页导入和 Rider 骑行结束统一进入同一 ingestion 与 artifact 链路。
+
+### 骑行准备与设备控制
+
+骑行准备正在收敛到统一 `deriveRideReadiness`。debug 模拟功率只豁免真实设备，不豁免有效路线；正式模式按路线、功率源和 FTMS capability 校验。骑行开始后路线和课表结构锁定，控制模式允许安全热切换。详细契约见 [`ride-readiness-and-control.md`](./ride-readiness-and-control.md)。
+
 ## 推荐实施顺序
 
 ### 第一阶段：统一 FIT 处理边界

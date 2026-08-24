@@ -37,7 +37,7 @@ export function buildErgControlState({
             })
             : null,
         controlStatus: active
-            ? `ERG 控制中：目标功率 ${normalizedTargetPower} W，${confirmationRequired ? "已启用确认模式" : "使用快速下发模式"}（开始骑行前已锁定控制模式）。`
-            : `ERG 待命：目标功率 ${normalizedTargetPower} W，${confirmationRequired ? "已启用确认模式" : "使用快速下发模式"}（开始骑行前已锁定控制模式）。`
+            ? `ERG 控制中：目标功率 ${normalizedTargetPower} W，${confirmationRequired ? "已启用确认模式" : "使用快速下发模式"}。`
+            : `ERG 待命：目标功率 ${normalizedTargetPower} W，${confirmationRequired ? "已启用确认模式" : "使用快速下发模式"}；骑行中仍可切换模式。`
     };
 }
