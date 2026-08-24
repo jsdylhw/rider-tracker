@@ -43,6 +43,9 @@ export const suite = {
                 assertEqual(draft.candidates.length, 1);
                 assertEqual(chatMessages.length, 2);
                 assert(chatMessages[0].includes("不请求海拔"), "首次生成应明确无海拔约束");
+                assertEqual(state.route.agentCandidateId, "candidate-1");
+                assertEqual(state.route.isDraft, true);
+                assertEqual(state.route.mapGeometry.length, 3, "生成完成后应立即把首条候选送入地图路线状态");
 
                 await service.previewAgentRoute("candidate-1");
                 assertEqual(state.route.isDraft, true);

@@ -35,7 +35,17 @@ export function createAgentRoutePreviewService({
             if (!operations.isCurrent(requestId) || store.getState().route !== loadingRoute) return null;
             if (operations.discardAfterRideStart("骑行已开始，已忽略未完成的 AI 路线。")) return null;
             const draft = saveDraft(parseAgentRouteDraft(turnResult));
-            operations.clearRouteLoading(`Agent 已返回 ${draft.candidates.length} 条路线候选，请先预览再最终确认。`);
+            const candidateId = activeCandidateId(draft);
+            if (candidateId) {
+                commitCandidateRoute(
+                    draft,
+                    candidateId,
+                    true,
+                    `Agent 已返回 ${draft.candidates.length} 条候选，正在预览首条`
+                );
+            } else {
+                operations.clearRouteLoading(`Agent 已返回 ${draft.candidates.length} 条路线候选，请先预览再最终确认。`);
+            }
             return draft;
         } catch (error) {
             if (operations.isCurrent(requestId) && store.getState().route === loadingRoute) {

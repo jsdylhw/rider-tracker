@@ -43,6 +43,9 @@ export const suite = {
                 assertEqual(elements.aiRouteCandidates.children.length, 1);
                 assertEqual(elements.aiRouteSegmentPanel.hidden, false);
                 assertEqual(elements.aiRouteSegmentList.children.length, 2);
+                const generatedActions = elements.aiRouteCandidates.children[0].children[1];
+                assertEqual(generatedActions.children[0].disabled, false, "生成结束后预览按钮必须解除 disabled");
+                assertEqual(generatedActions.children[1].disabled, false, "生成结束后确认按钮必须解除 disabled");
 
                 elements.aiRouteSegmentList.children[0].dispatch("click");
                 elements.aiRouteSegmentList.children[1].dispatch("click");

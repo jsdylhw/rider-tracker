@@ -99,7 +99,10 @@ export function createAgentRoutePlanner({
             pending.remove?.();
             addMessage("agent", `路线处理失败：${error?.message || "请确认 Personal FIT Agent 已启动后重试。"}`);
         } finally {
-            if (sequence === requestSequence) setBusy(false);
+            if (sequence === requestSequence) {
+                setBusy(false);
+                renderDraft();
+            }
         }
     }
 
@@ -122,6 +125,7 @@ export function createAgentRoutePlanner({
             addMessage("agent", `操作失败：${error?.message || "请重试。"}`);
         } finally {
             setBusy(false);
+            renderDraft();
         }
     }
 
@@ -215,6 +219,7 @@ export function createAgentRoutePlanner({
             addMessage("agent", `确认失败：${error?.message || "请重试。"}`);
         } finally {
             setBusy(false);
+            renderDraft();
         }
     }
 
