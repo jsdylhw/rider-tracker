@@ -14,24 +14,28 @@
 
 ### FIT 处理
 
-当前不是两个数据库，而是同一数据库之上存在两套 FIT 解析用途：
+当前已经收敛为一条历史 FIT 权威链路：
 
-- Rider JavaScript `fit-importer` 在浏览器或 Node 侧把 FIT 转成 `session`、records、路线和页面指标。
-- Training Agent Python `fit.parser` 解析更完整的 FIT 消息，用于 `activity_facts`、专项分析、报告和精确区间查询。
-- 两边已共用 `activities.fit_file_path` 和稳定活动 ID，但 records、运动员参数、指标命名和缺失值规则仍可能漂移。
+- Rider JavaScript 保留实时骑行计算、FIT 导出和页面渲染职责，不再作为历史 FIT 摘要的权威来源。
+- Training Agent Python `fit.parser` 统一处理网页导入、骑行结束归档和后续详情读取，生成 `activity_facts` 与 `activity_detail.v1`。
+- `activity_artifacts` 缓存有版本、可重建的曲线和地图序列；原始 FIT 仍是不可变事实源。
+- Node 只把统一详情契约适配为 Rider 页面所需的 `rawSession`，不再重复解码 FIT。
 
-因此问题不是立即删除某一个解析器，而是缺少一个明确的活动导入契约和跨实现一致性测试。
+旧的 JS 历史 FIT importer 及其独立指标推导已删除；FIT SDK loader 继续服务实时骑行归档和 FIT 导出。
 
 ### 路线
 
-目前至少存在四种不同生命周期的数据：
+实时骑行中的坡度与累计爬升已经解耦：坡度继续驱动物理阻力和骑行台控制，累计爬升则按相邻路线海拔采样点的正差累加；没有海拔的 AI 路线仍按平路处理。
+
+路线数据已经按四种生命周期拆开：
 
 - `route_plans` / `route_plan_revisions`：Agent 生成的候选、当前选择、语义修改和撤销历史。
 - 浏览器 `agent-route-draft`：当前 Agent 草稿的本地镜像，用于刷新后快速恢复。
 - Rider store 中的 route：当前地图预览或即将执行的运行时路线。
-- `saved_routes`：数据库中遗留的可复用路线库表，目前尚未接回当前分支的产品链路。
+- `saved_routes`：经用户确认或导入后可长期复用的路线资产。
+- `route_progress`：与路线几何分离的未完成进度，可关联最后一次骑行活动。
 
-Agent 草稿已经要求最终确认，但“确认”还没有成为稳定的 `saved_routes` 写入动作，因此确认后的路线仍不等于用户路线库中的长期资产。
+Agent 草稿仍不会直接进入路线库；最终确认会写入 `saved_routes`。GPX 导入也会自动入库，地图选择或探索路线可以显式保存。完成活动通过 `saved_route_id` 和路线起止里程关联到实际使用的路线快照。
 
 ### 前端
 
@@ -43,17 +47,17 @@ Agent 草稿已经要求最终确认，但“确认”还没有成为稳定的 `
 
 这是优先级最高的一块，因为活动详情、历史分析、训练建议和后续实时反馈都依赖它。
 
-建议先完成：
+已完成的最小闭环：
 
-1. 定义 `ActivityIngestionResult`，至少固定 `activity_id`、source、FIT path、运动类型、开始时间、摘要指标、运动员参数来源和数据质量信息。
+1. 定义 `fit_ingestion.v1` 与 `activity_detail.v1`，固定活动身份、摘要指标、运动员参数和有界序列。
 2. 明确原始 FIT 是不可变事实源；`activity_facts` 是可重建的确定性派生物；`activity_reports` 是模型派生物。
 3. Garmin 下载、网页 FIT 导入和骑行结束生成 FIT，最终都进入同一个“保存文件 → upsert activity → 生成 facts”入口。
-4. 暂时保留 JS 和 Python 解析器：JS 负责即时导入体验，Python 负责完整事实和分析；用同一批 FIT fixture 校验距离、时长、功率、心率、GPS、FTP 和心率设定等公共字段。
-5. 页面优先读取数据库中的活动身份和事实；只有绘制完整秒级曲线时才读取原始 FIT，避免每层自行推导摘要。
+4. 网页 FIT 导入和活动详情已改走 Python 权威结果；JS 仅做 Rider 视图字段适配。
+5. 页面优先读取数据库事实和 `activity_artifacts`，缓存失效时才重新读取原始 FIT。
 
-完成标准：同一 FIT 从 Garmin、网页导入或本地索引进入后，只产生一个活动；Node/Python 公共指标在约定容差内一致；缺失 FTP/心率的来源能够解释。
+剩余验收：补充 Garmin 原生骑行、跑步、Rider 虚拟骑行等真实 fixture 的契约回归，并在浏览器手工确认导入、详情、改名、删除和 Strava 上传。
 
-### 第二阶段：接通路线保存
+### 第二阶段：接通路线保存（最小闭环已完成）
 
 FIT 边界稳定后再处理路线资产，范围相对独立，也能为前端统一提供稳定接口。
 
@@ -63,17 +67,20 @@ FIT 边界稳定后再处理路线资产，范围相对独立，也能为前端�
 Agent RoutePlan draft -> confirmed candidate -> Rider SavedRoute -> Ride runtime snapshot
 ```
 
-具体工作：
+已完成：
 
 1. 给 `saved_routes` 建立正式 repository 和 API，不让页面直接写 SQLite。
-2. 确认 Agent 候选时执行显式 `save_confirmed_route`，保存几何、名称、来源、距离、是否有海拔、Agent plan/candidate 关联信息和指纹。
+2. 确认 Agent 候选时保存几何、名称、来源、距离、是否有海拔、Agent plan/candidate 关联信息和指纹。
 3. GPX 导入、地图选点、AI 路线最终都转换成同一个 `SavedRoute` 契约。
 4. 浏览器 localStorage 只保存未确认草稿或缓存键，不再作为已确认路线的事实源。
 5. 开始骑行时从 `SavedRoute` 创建不可变 runtime snapshot；后续编辑路线不会改变已经开始的骑行。
+6. `route_progress` 独立保存中断位置；活动落库后记录 `saved_route_id`、起始里程和结束里程。
 
 AI 虚拟路线继续允许无海拔并配合 ERG；GPX/Strava 路线可以携带海拔。二者使用同一保存模型，但不能伪造坡度数据。
 
-完成标准：确认后的 AI/GPX/地图路线都能在路线库重新打开、骑行和删除；刷新或重启不依赖原聊天会话；重复导入由几何指纹处理。
+当前完成标准：确认后的 AI 路线和导入的 GPX 会自动入库；地图路线可显式保存；路线能从起点或上次位置重新打开、骑行和删除；刷新或重启不依赖原聊天会话；重复保存由几何指纹处理。
+
+剩余验收：浏览器手工覆盖 AI 确认、地图路线保存、GPX 重复导入、中途停止后继续、骑完整条路线后清除进度。路线识别和历史活动聚类不在本阶段范围内。
 
 ### 第三阶段：统一前端外壳
 
@@ -95,4 +102,4 @@ AI 虚拟路线继续允许无海拔并配合 ERG；GPX/Strava 路线可以携�
 
 ## 建议的下一步
 
-下一轮只做第一阶段的设计与最小实现：列出 JS/Python FIT 公共字段映射，选择 3 至 5 个真实 fixture 建立一致性测试，再决定哪些解析结果需要持久化。不要同时开始路线库或页面重构。
+下一轮优先做第三阶段的前端外壳整理，并补第一、二阶段的浏览器真实数据验收；路线识别算法和工作流恢复状态机继续独立排期。

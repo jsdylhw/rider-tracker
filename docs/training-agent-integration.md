@@ -26,7 +26,10 @@ Python 在正常启动时只检查 schema，不各自执行隐式迁移。
 
 - `activities` 保存活动身份、摘要和原始 FIT 路径。
 - `activity_facts`、`activity_reports` 保存 Agent 生成的确定性特征和报告。
+- `activity_artifacts` 保存可重建的详情曲线/地图序列，避免每次打开活动都重新解码 FIT。
 - `route_plans`、`route_plan_revisions` 保存 Agent 路线草稿及修改历史。
+- `saved_routes` 保存 Rider 已确认的路线资产；`route_progress` 单独保存未完成进度。
+- `activities.saved_route_id` 及路线起止里程把完成活动关联到实际骑行路线。
 - `chat_sessions` 保存可恢复的对话状态。
 - 原始 FIT 文件统一保存在根目录 `data/files/fit/`，数据库只保存相对路径或必要的绝对路径。
 
