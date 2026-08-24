@@ -1,6 +1,6 @@
 # Rider Tracker
 
-Rider Tracker 是一个本地运行的虚拟骑行与 FIT 活动分析工具。它可以导入 GPX 路线、连接蓝牙骑行设备、按路线进行实时骑行或离线模拟，也可以导入/导出 FIT 文件并保存本地活动历史。
+Rider Tracker 是一个本地运行的智能虚拟骑行平台。它可以导入 GPX 路线、连接蓝牙骑行设备、按路线进行实时骑行或离线模拟，也可以通过内置 Training Agent 进行活动分析、训练建议和路线规划。
 
 ## 怎么用
 
@@ -12,13 +12,16 @@ start-windows.bat
 
 它会检查 Node.js 版本、安装依赖、启动本地服务，并自动打开浏览器。
 
-先安装依赖：
+首次安装 Node 和 Training Agent 依赖：
 
 ```bash
 npm install
+npm run setup:agent
 ```
 
-启动本地服务：
+将 `services/training-agent/config.yaml.example` 复制为同目录下的 `config.yaml`，只填写需要使用的模型、Garmin、Strava、高德或 Google 配置。真实配置和本地 Token 均被 Git 忽略。
+
+统一启动 Rider 和 Training Agent：
 
 ```bash
 npm start
@@ -42,7 +45,14 @@ Ctrl + C
 npm test
 ```
 
-注意：不要直接双击 `index.html`。Web Bluetooth、本地活动历史、FIT 文件保存和 Strava 上传都依赖 `npm start` 启动的本地服务。
+`npm start` 会先启动内置 Python Training Agent，健康检查通过后再启动 Rider Node 服务。注意不要直接双击 `index.html`；Web Bluetooth、本地活动历史、FIT 文件保存、Agent 和 Strava 上传都依赖本地服务。
+
+需要单独排查服务时可以使用：
+
+```bash
+npm run start:rider
+npm run start:agent
+```
 
 ## 主要功能
 
@@ -83,13 +93,7 @@ data/rider-tracker.db
 - 页面中的预计时间按虚拟骑行 `25 km/h` 估算，不沿用地图服务偏保守的城市骑行耗时。
 - 需要真实坡度模拟时，请继续导入带海拔的 GPX/Strava 路线；Agent 不伪造坡度数据。
 
-先在 Personal FIT Agent 项目启动 API：
-
-```bash
-python -m uvicorn app.api:app --host 127.0.0.1 --port 8000
-```
-
-Rider 默认连接 `http://127.0.0.1:8000`。需要修改地址或 PFA 配置了 `web_api_token` 时，将 `.env.example` 复制为 `.env`，填写：
+Training Agent 已位于 `services/training-agent/`，不再要求并排启动另一个源码仓。Rider 默认通过内部代理连接 `http://127.0.0.1:8000`。需要修改地址或 Agent 配置了 `web_api_token` 时，将 `.env.example` 复制为 `.env`，填写：
 
 ```text
 PERSONAL_FIT_AGENT_URL=http://127.0.0.1:8000
@@ -97,6 +101,25 @@ PERSONAL_FIT_AGENT_TOKEN=对应的 web_api_token
 ```
 
 Token 仅由 Rider Node 服务读取，不会发送给浏览器。
+
+## 项目结构与测试
+
+浏览器只访问 Rider Node；Node 负责实时骑行、设备控制和页面，并代理 Agent 请求。`services/training-agent/` 中的 Python 服务负责对话、活动分析、工作流和路线规划。两者仍是独立进程，避免模型调用影响 FTMS 实时控制。
+
+```text
+浏览器 -> Rider Node :8787 -> Training Agent Python :8000
+```
+
+运行测试：
+
+```bash
+npm test                  # Rider 单元与本地集成测试
+npm run test:agent        # Training Agent pytest
+npm run test:integration  # 启动两个真实进程，验证 Rider -> Agent 代理链路
+npm run test:all          # 依次运行以上测试
+```
+
+这些默认测试不执行真实 Garmin 下载或 Strava 上传。真实账号、地图服务和上传链路应作为显式在线验收单独运行。
 
 ### 离线模拟
 

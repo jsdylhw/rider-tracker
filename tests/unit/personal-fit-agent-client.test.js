@@ -5,6 +5,25 @@ export const suite = {
     name: "personal-fit-agent-client",
     tests: [
         {
+            name: "checks embedded agent health through the server-side client",
+            async run() {
+                let request = null;
+                const client = createPersonalFitAgentClient({
+                    baseUrl: "http://127.0.0.1:8000/",
+                    apiToken: "server-only-token",
+                    fetchImpl: async (url, options) => {
+                        request = { url, options };
+                        return fakeResponse({ status: "ok" });
+                    }
+                });
+                const result = await client.health();
+                assertEqual(result.status, "ok");
+                assertEqual(request.url, "http://127.0.0.1:8000/health");
+                assertEqual(request.options.headers["X-API-Token"], "server-only-token");
+                assertEqual(request.options.body, undefined);
+            }
+        },
+        {
             name: "forwards chat through the server with token kept out of the browser",
             async run() {
                 let request = null;

@@ -58,8 +58,36 @@ if not exist "node_modules\" (
     )
 )
 
+where python >nul 2>nul
+if errorlevel 1 (
+    echo [错误] 没有找到 Python。
+    echo Training Agent 需要 Python 3.12 或更高版本。
+    echo.
+    pause
+    exit /b 1
+)
+
+if not exist "services\training-agent\.venv\Scripts\python.exe" (
+    echo 第一次启动，正在安装 Training Agent Python 环境...
+    call npm.cmd run setup:agent
+    if errorlevel 1 (
+        echo.
+        echo [错误] Training Agent 依赖安装失败。请检查 Python 版本和网络。
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
+if not exist "services\training-agent\config.yaml" (
+    echo [提示] 尚未配置 Training Agent。
+    echo 请复制 services\training-agent\config.yaml.example 为 config.yaml 并填写所需服务。
+    echo 基础页面仍可启动，但 AI 对话和在线服务不可用。
+    echo.
+)
+
 echo.
-echo 正在启动 Rider Tracker...
+echo 正在启动 Rider Tracker 和 Training Agent...
 echo 浏览器稍后会自动打开：http://127.0.0.1:8787
 echo.
 echo 关闭服务：回到这个窗口，按 Ctrl + C。

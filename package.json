@@ -6,8 +6,14 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning src/server/index.js",
-    "test": "node --disable-warning=ExperimentalWarning tests/test-runner.js"
+    "start": "node --disable-warning=ExperimentalWarning scripts/start-local.js",
+    "start:rider": "node --disable-warning=ExperimentalWarning src/server/index.js",
+    "start:agent": "node scripts/start-local.js --agent-only",
+    "setup:agent": "node scripts/setup-agent.js",
+    "test": "node --disable-warning=ExperimentalWarning tests/test-runner.js",
+    "test:agent": "node scripts/run-agent-tests.js",
+    "test:integration": "node scripts/test-local-integration.js",
+    "test:all": "npm test && npm run test:agent && npm run test:integration"
   },
   "dependencies": {
     "@garmin/fitsdk": "^21.178.0",

@@ -5,6 +5,15 @@ const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 export function createAgentRoutes({ agentClient }) {
     const router = express.Router();
 
+    router.get("/api/agent/health", async (_req, res) => {
+        try {
+            const result = await agentClient.health();
+            return res.json({ ok: true, result });
+        } catch (error) {
+            return res.status(502).json({ ok: false, error: error.message });
+        }
+    });
+
     router.post("/api/agent/chat", async (req, res) => {
         try {
             const request = normalizeChatRequest(req.body);

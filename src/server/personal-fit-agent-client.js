@@ -8,6 +8,29 @@ export function createPersonalFitAgentClient({
 } = {}) {
     const normalizedBaseUrl = String(baseUrl).replace(/\/+$/, "");
 
+    async function get(pathname) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const response = await fetchImpl(`${normalizedBaseUrl}${pathname}`, {
+                headers: apiToken ? { "X-API-Token": apiToken } : {},
+                signal: controller.signal
+            });
+            const payload = await readJson(response);
+            if (!response.ok) {
+                throw new Error(payload?.detail || payload?.error || `Personal FIT Agent 请求失败（HTTP ${response.status}）`);
+            }
+            return payload;
+        } catch (error) {
+            if (error?.name === "AbortError") {
+                throw new Error(`Personal FIT Agent 在 ${Math.round(timeoutMs / 1000)} 秒内未响应。`);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeout);
+        }
+    }
+
     async function post(pathname, body) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -37,6 +60,7 @@ export function createPersonalFitAgentClient({
     }
 
     return {
+        health: () => get("/health"),
         chat: (request) => post("/api/chat", request),
         selectRouteCandidate: (request) => post("/api/route-plans/select", request),
         routePlanCommand: (request) => post("/api/route-plans/command", request)
