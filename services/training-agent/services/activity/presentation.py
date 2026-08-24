@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fit.parser import parse_fit, records_dataframe
+from project_paths import resolve_project_path
 
 
 DEFAULT_PROFILE_POINTS = 300
@@ -17,7 +18,7 @@ def build_activity_profile(
     max_points: int = DEFAULT_PROFILE_POINTS,
 ) -> dict[str, Any]:
     """Return downsampled activity series without adding them to the LLM prompt."""
-    path = Path(str(fit_path or "")).expanduser()
+    path = resolve_project_path(str(fit_path or "")) if fit_path else Path()
     if path.suffix.lower() != ".fit" or not path.is_file():
         return {}
     try:

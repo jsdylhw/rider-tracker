@@ -18,6 +18,7 @@ from domain.analysis.artifacts import (
 )
 from fit.parser import parse_fit
 from storage.repositories.activity import ActivityStore
+from project_paths import resolve_project_path
 
 
 GROUP_BY_VALUES = {"day", "week", "month"}
@@ -218,7 +219,7 @@ def _resolve_fit_path(activity: dict[str, Any], summary: dict[str, Any] | None) 
     for value in candidates:
         if not value:
             continue
-        path = Path(str(value)).expanduser()
+        path = resolve_project_path(str(value))
         if path.exists() and path.is_file():
             return path
         name = str(value).replace("\\", "/").split("/")[-1]

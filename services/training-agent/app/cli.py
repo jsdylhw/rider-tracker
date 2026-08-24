@@ -103,7 +103,12 @@ def sync_garmin_command(
     ),
 ) -> None:
     """下载 Garmin 中国区最近活动 FIT 文件,自动跳过本地已有文件."""
-    result = sync_garmin_activities_tool(count=count, force_download=force_download)
+    try:
+        result = sync_garmin_activities_tool(count=count, force_download=force_download)
+    except Exception as exc:
+        # Typer/Rich 的默认 traceback 会展开局部变量，可能把配置凭据一并打印。
+        typer.echo(f"Garmin 同步失败：{exc}", err=True)
+        raise typer.Exit(code=1) from None
     typer.echo(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 

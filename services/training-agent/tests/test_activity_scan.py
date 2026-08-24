@@ -72,6 +72,17 @@ def test_scan_activity_segments_handles_empty_records():
     assert result["schema_version"] == "activity_scan.v1"
 
 
+def test_scan_activity_segments_handles_records_without_altitude():
+    parsed = _parsed_for_scan()
+    for record in parsed["records"]:
+        record.pop("enhanced_altitude")
+
+    result = scan_activity_segments(parsed, window_seconds=30, step_seconds=10, max_segments=10)
+
+    assert result["available"] is True
+    assert result["summary"]["key_effort_count"] >= 1
+
+
 def test_scan_activity_segments_resolves_threshold_hr_from_time_in_zone():
     parsed = _parsed_for_scan()
     parsed["sessions"][0]["threshold_heart_rate"] = 0

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from agent.main_agent.context import AgentContext
 from agent.main_agent.guard import guard_tool_call
 from agent.tools.registry import TOOL_HANDLERS
@@ -82,9 +84,40 @@ def test_sync_workflow_handler_returns_service_result_directly(monkeypatch):
     assert result["status"] == "completed"
     assert result["workflow_id"] == "run-2"
     assert context.current_activity_key == "new"
-    assert str(context.current_fit_file) == "new.fit"
+    assert context.current_fit_file == (Path.cwd() / "new.fit").resolve()
     assert context.selected_activity_range == {
         "type": "garmin_sync_result", "workflow_id": "run-2",
+    }
+
+
+def test_local_workflow_handler_focuses_the_processed_activity(monkeypatch, tmp_path):
+    context = AgentContext(session_id="local-workflow-tool")
+    monkeypatch.setenv("RIDER_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        "operations.activity.workflow_service.start_local_activity_workflow",
+        lambda **kwargs: {
+            "status": "partial", "workflow_id": "run-local",
+            "answer": "处理部分完成：最新活动。\n- Strava 上传失败：offline。",
+            "activities": [{"activity_key": "latest", "fit_path": "data/files/fit/latest.fit"}],
+        },
+    )
+    monkeypatch.setattr(
+        "agent.tools.handlers.activity_operations.ActivityStore.get_activity",
+        lambda self, key: {
+            "activity_key": key, "fit_path": "data/files/fit/latest.fit",
+            "sport_type": "cycling", "start_time_local": "2026-08-24T08:33:28",
+        },
+    )
+
+    result = TOOL_HANDLERS["run_activity_workflow"](
+        {"limit": 1, "goals": ["ensure_summary", "upload_strava"]}, context,
+    )
+
+    assert result["status"] == "partial"
+    assert context.current_activity_key == "latest"
+    assert context.current_fit_file == (tmp_path / "data/files/fit/latest.fit").resolve()
+    assert context.selected_activity_range == {
+        "type": "activity_workflow_result", "workflow_id": "run-local",
     }
 
 

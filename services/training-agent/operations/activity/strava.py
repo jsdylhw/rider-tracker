@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from storage.repositories.activity import ActivityStore
+from project_paths import resolve_project_path
 from integrations.strava import StravaSink
 
 
@@ -26,15 +27,18 @@ def upload_activity_to_strava(
     if report is None:
         raise KeyError(f"activity report not found: {activity_key}")
 
-    fit_path = str(activity.get("fit_path") or report.get("fit_path") or "")
-    if not fit_path or not Path(fit_path).exists():
-        raise FileNotFoundError(fit_path or f"FIT path missing for {activity_key}")
+    stored_fit_path = str(activity.get("fit_path") or report.get("fit_path") or "")
+    if not stored_fit_path:
+        raise FileNotFoundError(f"FIT path missing for {activity_key}")
+    fit_path = resolve_project_path(stored_fit_path)
+    if not fit_path.exists():
+        raise FileNotFoundError(str(fit_path))
     description = str(report.get("strava_summary") or "").strip()
     if not description:
         raise RuntimeError("activity report does not contain strava_summary")
 
     fit_summary = report.get("fit_summary") if isinstance(report.get("fit_summary"), dict) else {}
-    upload_title = title or _default_title(fit_summary, Path(fit_path))
+    upload_title = title or _default_title(fit_summary, fit_path)
     sink = StravaSink()
     known_activity_id = _known_strava_activity_id(activity, report)
     if force and known_activity_id:
@@ -42,7 +46,7 @@ def upload_activity_to_strava(
         _remember_strava_activity_id(store, activity, report, known_activity_id)
         return {
             "activity_key": activity_key,
-            "fit_path": fit_path,
+            "fit_path": str(fit_path),
             "status": "description_updated",
             "strava_activity_id": known_activity_id,
             "update_result": updated,
@@ -50,14 +54,14 @@ def upload_activity_to_strava(
         }
 
     upload = sink.upload_fit(
-        fit_path,
+        str(fit_path),
         title=upload_title,
         description=description,
         external_id=activity_key,
     )
     result: dict[str, Any] = {
         "activity_key": activity_key,
-        "fit_path": fit_path,
+        "fit_path": str(fit_path),
         "title": upload_title,
         "description": description,
         "upload": upload,
@@ -81,7 +85,7 @@ def upload_activity_to_strava(
         else:
             return {
                 "activity_key": activity_key,
-                "fit_path": fit_path,
+                "fit_path": str(fit_path),
                 "status": "duplicate",
                 "strava_activity_id": duplicate_id,
                 "message": (

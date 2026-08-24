@@ -20,12 +20,18 @@ Browser -> Rider Node -> Training Agent Python
 
 ## 本地数据
 
-当前阶段保留两个数据库：
+Rider 与 Training Agent 现在共用根目录下的 SQLite 数据库，默认路径为
+`data/rider-tracker.db`。数据库迁移必须显式运行 `npm run db:migrate`；Node 和
+Python 在正常启动时只检查 schema，不各自执行隐式迁移。
 
-- Rider 数据位于根目录 `data/`，保存活动、FIT 和骑行执行状态。
-- Agent 数据位于 `services/training-agent/data/`，保存会话、分析报告、工作流和路线计划。
+- `activities` 保存活动身份、摘要和原始 FIT 路径。
+- `activity_facts`、`activity_reports` 保存 Agent 生成的确定性特征和报告。
+- `route_plans`、`route_plan_revisions` 保存 Agent 路线草稿及修改历史。
+- `chat_sessions` 保存可恢复的对话状态。
+- 原始 FIT 文件统一保存在根目录 `data/files/fit/`，数据库只保存相对路径或必要的绝对路径。
 
-在活动入口统一前，不允许 Node 和 Python 同时直接写同一组 SQLite 表。后续由 Rider 提供活动导入接口，Agent 使用稳定 `activity_id` 关联分析结果。
+共享数据库不等于允许任意跨层写入。Rider 负责实时骑行和文件接收，Agent 负责
+分析派生数据和路线计划；两边通过稳定的 `activity_id`、`plan_id` 关联。
 
 ## 验收层次
 
@@ -34,10 +40,7 @@ Browser -> Rider Node -> Training Agent Python
 3. `npm run test:integration`：使用临时端口和临时 Rider 数据库启动两个真实进程，验证健康检查和代理链路。
 4. 在线验收：显式使用本地账号验证模型、Garmin、Strava、高德和 Google，不纳入默认 CI，也不默认产生上传副作用。
 
-## 后续集成顺序
+## 后续整理
 
-1. 把 Rider 当前活动上下文传给 Agent。
-2. 统一 Garmin/FIT 活动进入 Rider 活动库的入口。
-3. 增加结构化 `workout.preview`、`workout.apply` 和 `activity.report` 动作。
-4. 用户确认后由 Rider 执行路线或 ERG 课表；Agent 不直接控制 FTMS。
-5. 骑行结束后把 FIT 和结果回传给 Agent，形成建议、执行、反馈和报告闭环。
+FIT 处理、路线持久化和前端外壳的下一阶段整理顺序及验收边界见
+[`consolidation-roadmap.md`](./consolidation-roadmap.md)。工作流恢复状态机暂不在该轮整理范围内。

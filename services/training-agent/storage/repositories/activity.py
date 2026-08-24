@@ -15,7 +15,7 @@ from domain.analysis.artifacts import (
     get_tss,
     summary_schema_version,
 )
-from storage.paths import project_relative_or_absolute
+from project_paths import project_relative_or_absolute, resolve_project_path
 from storage.database import connect_database
 from domain.time import local_time_without_timezone
 
@@ -480,7 +480,7 @@ def file_content_key(path: Path) -> str:
 
 
 def _activity_values(raw: dict[str, Any], *, activity_id: str, fit_path: str, now: str) -> dict[str, Any]:
-    path = Path(fit_path).expanduser()
+    path = resolve_project_path(fit_path)
     started_at = raw.get("start_time_local") or raw.get("started_at")
     return {
         "id": activity_id,
@@ -514,10 +514,11 @@ def _activity_values(raw: dict[str, Any], *, activity_id: str, fit_path: str, no
 
 def _activity_entry(row: Any) -> dict[str, Any]:
     raw = _json_object(row["raw_json"])
+    fit_path = row["fit_file_path"]
     raw.update(_without_none({
         "activity_key": row["id"],
-        "fit_path": row["fit_file_path"],
-        "file_name": raw.get("file_name") or Path(str(row["fit_file_path"])).name,
+        "fit_path": fit_path,
+        "file_name": raw.get("file_name") or (Path(str(fit_path)).name if fit_path else None),
         "source": row["source"],
         "source_activity_id": row["source_activity_id"],
         "sport_type": row["sport_type"],

@@ -32,6 +32,11 @@ def test_service_runs_and_retries_persisted_upload_run(monkeypatch, tmp_path):
     assert failed["workflow"]["status"] == "partial"
     assert next(task for task in run["tasks"] if task["kind"] == TASK_UPLOAD_STRAVA)["status"] == "failed"
 
+    visible = get_activity_workflow(workflow_id, directory=tmp_path)
+    assert visible["status"] == "partial"
+    assert "处理部分完成" in visible["answer"]
+    assert "Strava 上传失败：offline" in visible["answer"]
+
     monkeypatch.setattr(
         "operations.activity.workflow_handlers.upload_activity",
         lambda *args, **kwargs: {"status": "completed", "outcome": "uploaded", "strava_activity_id": "456"},
@@ -42,6 +47,7 @@ def test_service_runs_and_retries_persisted_upload_run(monkeypatch, tmp_path):
     assert retried["workflow"]["status"] == "completed"
     assert upload["attempts"] == 2
     assert retried["activities"][0]["strava_activity_id"] == "456"
+    assert "Strava 上传已完成（activity_id=456）" in retried["answer"]
 
 
 def test_service_reports_missing_run_and_nothing_to_retry(tmp_path):

@@ -16,7 +16,7 @@ def sync_garmin_activities(args: dict[str, Any], context: AgentContext) -> dict[
         count=int(args.get("count", 5)),
         force_download=bool(args.get("force_download")),
     )
-    _install_synced_activity_selection(result, context)
+    _install_activity_selection(result, context, scope_type="garmin_sync_result")
     return result
 
 
@@ -30,12 +30,17 @@ def sync_and_run_activity_workflow(args: dict[str, Any], context: AgentContext) 
         force_download=bool(args.get("force_download")),
         force_upload=bool(args.get("force_upload")),
     )
-    _install_synced_activity_selection(result, context)
+    _install_activity_selection(result, context, scope_type="garmin_sync_result")
     return result
 
 
-def _install_synced_activity_selection(result: dict[str, Any], context: AgentContext) -> None:
-    """Make follow-up references point at this sync result, never an older FIT."""
+def _install_activity_selection(
+    result: dict[str, Any],
+    context: AgentContext,
+    *,
+    scope_type: str,
+) -> None:
+    """Make follow-up references point at this workflow, never an older FIT."""
     rows = [item for item in result.get("activities") or [] if isinstance(item, dict)]
     handles: list[ActivityHandle] = []
     store = ActivityStore()
@@ -51,17 +56,22 @@ def _install_synced_activity_selection(result: dict[str, Any], context: AgentCon
     status = str(result.get("status") or "")
     if handles:
         context.set_selected_activities(handles, scope={
-            "type": "garmin_sync_result",
+            "type": scope_type,
             "workflow_id": result.get("workflow_id"),
         })
     elif status in {"completed", "partial", "no_activities"} or result.get("error") == "activity_index_failed":
         context.clear_activities()
 
 
+def _install_synced_activity_selection(result: dict[str, Any], context: AgentContext) -> None:
+    """Backward-compatible name for callers that install Garmin sync results."""
+    _install_activity_selection(result, context, scope_type="garmin_sync_result")
+
+
 def run_activity_workflow(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
     from operations.activity.workflow_service import start_local_activity_workflow
 
-    return start_local_activity_workflow(
+    result = start_local_activity_workflow(
         limit=int(args.get("limit", 5)),
         order=str(args.get("order") or "latest"),
         sport_type=str(args["sport_type"]) if args.get("sport_type") else None,
@@ -69,6 +79,8 @@ def run_activity_workflow(args: dict[str, Any], context: AgentContext) -> dict[s
         force=bool(args.get("force")),
         force_upload=bool(args.get("force_upload")),
     )
+    _install_activity_selection(result, context, scope_type="activity_workflow_result")
+    return result
 
 
 def rebuild_activity_reports(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:

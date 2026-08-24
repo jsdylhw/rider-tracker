@@ -180,7 +180,7 @@ def test_second_sync_turn_replaces_previous_activity_focus(monkeypatch):
     assert first["executions"][0]["result"]["workflow_id"] == "run-old"
     assert second["executions"][0]["result"]["workflow_id"] == "run-new"
     assert context.current_activity_key == "new"
-    assert str(context.current_fit_file) == "new.fit"
+    assert context.current_fit_file == (Path.cwd() / "new.fit").resolve()
     assert second["answer"].startswith("已处理：2026-08-20T11:00:00")
 
 

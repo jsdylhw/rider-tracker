@@ -1,20 +1,11 @@
-"""Project path serialization helpers.
+"""Compatibility exports for project path helpers.
 
-Artifacts are normally stored relative to the project working directory, but
-CLI callers may explicitly analyze FIT files outside that directory.  In that
-case an absolute canonical path is the only lossless representation.
+New code should import :mod:`project_paths`; this module remains so older
+storage callers and extensions do not break during the repository migration.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+from project_paths import project_relative_or_absolute, project_root, resolve_project_path
 
-
-def project_relative_or_absolute(path: str | Path, *, base: Path | None = None) -> str:
-    """Return a project-relative path when possible, otherwise a canonical absolute path."""
-    candidate = Path(path).expanduser().resolve()
-    root = (base or Path.cwd()).expanduser().resolve()
-    try:
-        return str(candidate.relative_to(root))
-    except ValueError:
-        return str(candidate)
+__all__ = ["project_relative_or_absolute", "project_root", "resolve_project_path"]

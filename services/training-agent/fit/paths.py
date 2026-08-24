@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from project_paths import project_root, resolve_project_path
 
 
 def resolve_fit_path(value: str | Path) -> Path:
@@ -17,9 +18,9 @@ def resolve_fit_path(value: str | Path) -> Path:
             raise FileNotFoundError("No FIT file found. Pass a FIT path explicitly.")
         return fit_files[-1].resolve()
 
-    path = Path(value).expanduser()
+    path = resolve_project_path(value)
     if path.is_dir():
-        fit_files = sorted(path.glob("*.fit"), key=lambda item: item.stat().st_mtime)
+        fit_files = sorted(path.rglob("*.fit"), key=lambda item: item.stat().st_mtime)
         if not fit_files:
             raise FileNotFoundError(f"No *.fit found in {path}")
         return fit_files[-1].resolve()
@@ -33,12 +34,14 @@ def resolve_fit_path(value: str | Path) -> Path:
 def iter_candidate_fit_files() -> list[Path]:
     """返回常用本地目录下可被自然语言匹配的 FIT 候选文件."""
     roots = [
-        Path("data") / "fit",
-        Path("garmin_cn_fit_files"),
-        Path.cwd(),
+        (project_root() / "data" / "files" / "fit", True),
+        (project_root() / "data" / "fit", True),
+        (project_root() / "garmin_cn_fit_files", True),
+        (project_root(), False),
     ]
     files: list[Path] = []
-    for root in roots:
+    for root, recursive in roots:
         if root.exists():
-            files.extend(path for path in root.glob("*.fit") if path.is_file())
-    return files
+            pattern = root.rglob("*.fit") if recursive else root.glob("*.fit")
+            files.extend(path for path in pattern if path.is_file())
+    return list(dict.fromkeys(files))

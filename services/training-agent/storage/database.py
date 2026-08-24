@@ -8,9 +8,12 @@ report state.
 from __future__ import annotations
 
 import sqlite3
+import os
 from pathlib import Path
 
-DEFAULT_DATABASE_PATH = Path("data") / "personal-fit-agent.db"
+DEFAULT_DATABASE_PATH = Path(
+    os.environ.get("TRAINING_AGENT_DB_PATH", str(Path("data") / "personal-fit-agent.db"))
+)
 SCHEMA_VERSION = 6
 
 
@@ -28,11 +31,13 @@ def connect_database(path: str | Path | None = None) -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 30000")
-    initialize_database(connection)
+    if not _managed_database():
+        initialize_database(connection)
     return connection
 
 
 def initialize_database(connection: sqlite3.Connection) -> None:
+    _ensure_activity_catalog(connection)
     connection.executescript(
         """
         CREATE TABLE IF NOT EXISTS activities (
@@ -52,7 +57,7 @@ def initialize_database(connection: sqlite3.Connection) -> None:
             average_hr REAL,
             estimated_tss REAL,
             has_gps_track INTEGER NOT NULL DEFAULT 0,
-            fit_file_path TEXT NOT NULL UNIQUE,
+            fit_file_path TEXT UNIQUE,
             fit_file_size_bytes INTEGER,
             fit_file_created_at TEXT,
             strava_activity_id TEXT,
@@ -184,3 +189,61 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     )
     connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     connection.commit()
+
+
+def _ensure_activity_catalog(connection: sqlite3.Connection) -> None:
+    """Create or expand the shared Rider/Agent activity catalogue."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS activities (
+            id TEXT PRIMARY KEY,
+            source TEXT NOT NULL,
+            source_activity_id TEXT,
+            sport_type TEXT NOT NULL,
+            sub_sport TEXT,
+            name TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT,
+            elapsed_seconds REAL,
+            distance_km REAL,
+            ascent_meters REAL,
+            average_power REAL,
+            normalized_power REAL,
+            average_hr REAL,
+            estimated_tss REAL,
+            has_gps_track INTEGER NOT NULL DEFAULT 0,
+            fit_file_path TEXT,
+            fit_file_size_bytes INTEGER,
+            fit_file_created_at TEXT,
+            strava_activity_id TEXT,
+            raw_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    existing = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(activities)").fetchall()
+    }
+    for name, definition in (
+        ("source_activity_id", "TEXT"),
+        ("sub_sport", "TEXT"),
+        ("fit_file_path", "TEXT"),
+        ("fit_file_size_bytes", "INTEGER"),
+        ("fit_file_created_at", "TEXT"),
+        ("strava_activity_id", "TEXT"),
+    ):
+        if name not in existing:
+            connection.execute(f"ALTER TABLE activities ADD COLUMN {name} {definition}")
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_fit_file_path_unique
+        ON activities(fit_file_path) WHERE fit_file_path IS NOT NULL
+        """
+    )
+
+
+def _managed_database() -> bool:
+    return os.environ.get("TRAINING_AGENT_MANAGED_DATABASE", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }

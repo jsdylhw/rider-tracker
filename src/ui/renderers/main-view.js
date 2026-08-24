@@ -156,7 +156,11 @@ export function createMainView({ store, pipController, actions }) {
         if (shouldRenderDashboard(state, previousState)) {
             dashboardRenderer.render(state);
         }
-        if (initialRender || state.selectedActivity !== previousState.selectedActivity) renderActivityDetail(state);
+        if (
+            initialRender
+            || state.selectedActivity !== previousState.selectedActivity
+            || state.settings !== previousState.settings
+        ) renderActivityDetail(state);
         if (!initialRender && state.uiMode === "activity-detail" && state.uiMode !== previousState.uiMode) {
             activityDetailView.invalidateMapSize();
         }
@@ -181,13 +185,18 @@ export function createMainView({ store, pipController, actions }) {
                 activity.updatedAt ?? "",
                 activity.rawSession?.records?.length ?? 0,
                 activity.rawSession?.createdAt ?? "",
+                state.settings?.ftp ?? "",
+                state.settings?.restingHr ?? "",
+                state.settings?.maxHr ?? "",
                 activity.isSaving === true,
                 activity.saveError ?? ""
             ].join("|")
             : "empty";
         if (signature === lastRenderedActivityDetailSignature) return;
         lastRenderedActivityDetailSignature = signature;
-        elements.activityDetailContent.innerHTML = buildActivityDetailPageHtml(activity);
+        elements.activityDetailContent.innerHTML = buildActivityDetailPageHtml(activity, {
+            fallbackSettings: state.settings
+        });
         activityDetailView.setActivity(activity);
     }
 

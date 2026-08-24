@@ -21,6 +21,20 @@ npm run setup:agent
 
 将根目录的 `config.yaml.example` 复制为 `config.yaml`，只填写需要使用的 Rider、模型、Garmin、Strava、高德或 Google 配置。Node 和 Python 共用这一份配置；真实配置和本地 Token 均被 Git 忽略。
 
+首次创建数据库：
+
+```bash
+npm run db:init
+```
+
+从旧版 Rider 数据库升级时只需显式执行一次：
+
+```bash
+npm run db:migrate
+```
+
+`npm start` 不会重复迁移数据库，只检查已初始化的共享结构。需要排查结构时可运行 `npm run db:check`。
+
 统一启动 Rider 和 Training Agent：
 
 ```bash
@@ -61,7 +75,7 @@ npm run start:agent
 - 首页可以导入本地 `.fit` 文件。
 - 导入后会进入活动详情页。
 - 原始 FIT 文件会保存到 `data/files/fit/`。
-- 数据库只保存活动摘要和 FIT 文件路径。
+- 共享数据库保存 Rider 活动摘要、FIT 文件路径，以及 Agent 生成的确定性特征和分析报告。
 - 打开详情时会从 FIT 文件解析 records，再展示图表和分析结果。
 
 ### 活动历史
@@ -122,6 +136,12 @@ npm run test:all          # 依次运行以上测试
 ```
 
 这些默认测试不执行真实 Garmin 下载或 Strava 上传。真实账号、地图服务和上传链路应作为显式在线验收单独运行。
+
+配置 Garmin 后，可通过统一入口同步并索引最近活动：
+
+```bash
+npm run agent:cli -- sync-garmin --count 10
+```
 
 ### 离线模拟
 

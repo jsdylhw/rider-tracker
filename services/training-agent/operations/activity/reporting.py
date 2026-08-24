@@ -7,11 +7,12 @@ from typing import Any
 
 from operations.activity.service import analyze_fit_file_tool
 from storage.repositories.activity import ActivityStore
+from project_paths import resolve_project_path
 
 
 def ensure_summary(fit_path: str | Path, *, force: bool = False) -> dict[str, Any]:
     """确保一个 FIT 在 SQLite 中有一份当前 V2 报告。"""
-    path = Path(fit_path).expanduser()
+    path = resolve_project_path(fit_path)
     if not path.exists():
         return _failed(path, "fit_not_found", f"FIT file does not exist: {path}")
     if path.suffix.lower() != ".fit":

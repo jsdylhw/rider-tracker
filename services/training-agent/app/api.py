@@ -309,7 +309,9 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
 
 
 def _fit_output_dir(config: dict[str, Any]) -> Path:
-    return Path(cfg_get(config, "output_dir", DEFAULT_OUTPUT_DIR)).expanduser().resolve()
+    from settings import resolve_project_path
+
+    return resolve_project_path(cfg_get(config, "output_dir", DEFAULT_OUTPUT_DIR))
 
 
 def _require_api_access(request: Request) -> None:

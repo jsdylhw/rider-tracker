@@ -13,6 +13,7 @@ from typing import Any
 from fit.parser import parse_fit
 from services.activity.catalog import persist_activity_facts
 from storage.repositories.activity import ActivityStore
+from project_paths import resolve_project_path
 
 
 def rebuild_activity_facts(*, force: bool = False, path: str | Path | None = None) -> dict[str, Any]:
@@ -30,7 +31,7 @@ def rebuild_activity_facts(*, force: bool = False, path: str | Path | None = Non
             skipped.append(activity_key)
             continue
         try:
-            parsed = parse_fit(fit_path)
+            parsed = parse_fit(resolve_project_path(fit_path))
             persist_activity_facts(
                 parsed,
                 activity_key=activity_key,

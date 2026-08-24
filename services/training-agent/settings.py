@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from project_paths import resolve_project_path
 
 DEFAULT_DATA_DIR = Path("data")
 DEFAULT_CONFIG_PATH = Path(os.environ.get("TRAINING_AGENT_CONFIG_PATH", "config.yaml"))

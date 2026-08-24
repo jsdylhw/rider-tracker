@@ -42,6 +42,8 @@ export function buildSessionFromFitMessages({
         throw new Error("FIT 文件里没有 record 数据，无法分析。");
     }
 
+    const resolvedSettings = resolveFitSettings(messages, settings);
+
     const activityName = normalizeActivityName({
         fileName,
         sessionMessage: normalizeMessageList(messages.sessionMesgs).at(0)
@@ -51,7 +53,7 @@ export function buildSessionFromFitMessages({
     const finalRecord = records.at(-1) ?? {};
     const metrics = buildRideMetrics({
         records,
-        ftp: Number.isFinite(settings?.ftp) ? settings.ftp : null
+        ftp: Number.isFinite(resolvedSettings.ftp) ? resolvedSettings.ftp : null
     });
     const finishedAt = new Date(startedAt.getTime() + (Number(finalRecord.elapsedSeconds) || 0) * 1000);
     const route = buildRouteFromRecords({
@@ -64,7 +66,7 @@ export function buildSessionFromFitMessages({
         startedAt: startedAt.toISOString(),
         finishedAt: finishedAt.toISOString(),
         route,
-        settings: { ...settings },
+        settings: resolvedSettings,
         records,
         summary: { metrics },
         exportMetadata: {
@@ -77,6 +79,44 @@ export function buildSessionFromFitMessages({
         session,
         activity: buildActivityFromSession(session, activityName)
     };
+}
+
+/**
+ * Build the one Rider settings contract used by browser import and server-side
+ * activity hydration. FIT values describe the activity at recording time and
+ * therefore take precedence over caller-provided current-profile fallbacks.
+ */
+export function resolveFitSettings(messages = {}, fallbackSettings = {}) {
+    return {
+        ...fallbackSettings,
+        ...extractFitSettings(messages)
+    };
+}
+
+export function extractFitSettings(messages = {}) {
+    const zonesTarget = normalizeMessageList(
+        messages.zonesTargetMesgs ?? messages.zonesTargets ?? messages.zonesTargetMessages
+    ).at(-1) ?? {};
+    const userProfile = normalizeMessageList(
+        messages.userProfileMesgs ?? messages.userProfiles ?? messages.userProfileMessages
+    ).at(-1) ?? {};
+    const session = normalizeMessageList(
+        messages.sessionMesgs ?? messages.sessions ?? messages.sessionMessages
+    ).at(-1) ?? {};
+
+    return compactObject({
+        ftp: finiteOrUndefined(firstFinite(
+            zonesTarget.functionalThresholdPower,
+            session.thresholdPower
+        )),
+        restingHr: finiteOrUndefined(userProfile.restingHeartRate),
+        maxHr: finiteOrUndefined(firstFinite(
+            zonesTarget.maxHeartRate,
+            userProfile.defaultMaxBikingHeartRate,
+            userProfile.defaultMaxHeartRate
+        )),
+        mass: finiteOrUndefined(userProfile.weight)
+    });
 }
 
 function buildRecords(recordMessages, startedAt) {

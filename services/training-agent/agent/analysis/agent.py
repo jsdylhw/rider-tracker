@@ -15,7 +15,7 @@ from agent.analysis.prompts import build_fit_analysis_system_prompt
 from agent.tools import build_tool_handlers
 from agent.tools.fit_analysis import FIT_ANALYSIS_TOOLS
 from agent.tools.spec import ToolRegistry
-from storage.paths import project_relative_or_absolute
+from project_paths import project_relative_or_absolute, resolve_project_path
 from storage.repositories.activity import ActivityStore
 from fit.analysis.data import llm_safe_fit_summary, llm_safe_history
 from fit.analysis.metrics import build_activity_metrics
@@ -88,7 +88,7 @@ def analyze_fit_file(
     persist: bool = True,
 ) -> dict[str, Any]:
     """Analyze one FIT file through an independent child-agent session."""
-    path = Path(fit_path).expanduser().resolve()
+    path = resolve_project_path(fit_path)
     if not path.exists():
         raise FileNotFoundError(path)
     if path.suffix.lower() != ".fit":

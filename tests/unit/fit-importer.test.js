@@ -1,5 +1,9 @@
 import { exportSessionAsFit } from "../../src/adapters/export/fit-exporter.js";
-import { buildSessionFromFitMessages, importFitActivity } from "../../src/adapters/fit/fit-importer.js";
+import {
+    buildSessionFromFitMessages,
+    importFitActivity,
+    resolveFitSettings
+} from "../../src/adapters/fit/fit-importer.js";
 import { assert, assertApprox, assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
@@ -71,6 +75,34 @@ export const suite = {
                 assertEqual(session.summary.metrics.heartRate.maxBpm, 150);
                 assertEqual(session.route.points.length, 3);
                 assert(activity.rawSession === session, "activity 应引用导入后的 session");
+            }
+        },
+        {
+            name: "uses historical FIT thresholds before current profile fallbacks",
+            run() {
+                const settings = resolveFitSettings({
+                    zonesTargetMesgs: [{
+                        functionalThresholdPower: 242,
+                        maxHeartRate: 206
+                    }],
+                    userProfileMesgs: [{
+                        restingHeartRate: 52,
+                        defaultMaxBikingHeartRate: 185,
+                        weight: 80
+                    }],
+                    sessionMesgs: [{ thresholdPower: 240 }]
+                }, {
+                    ftp: 260,
+                    restingHr: 50,
+                    maxHr: 200,
+                    cda: 0.32
+                });
+
+                assertEqual(settings.ftp, 242);
+                assertEqual(settings.restingHr, 52);
+                assertEqual(settings.maxHr, 206);
+                assertEqual(settings.mass, 80);
+                assertEqual(settings.cda, 0.32);
             }
         },
         {

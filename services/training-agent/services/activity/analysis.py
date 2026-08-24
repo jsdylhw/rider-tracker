@@ -15,6 +15,7 @@ from fit.analysis.segments import scan_activity_segments
 from fit.analysis.sprints import detect_sprints
 from domain.analysis.artifacts import get_tss
 from storage.repositories.activity import ActivityStore
+from project_paths import resolve_project_path
 from fit.parser import parse_fit
 
 
@@ -407,5 +408,5 @@ def _segment_ref(value: dict[str, Any]) -> SegmentRef:
 
 def _fit_path(activity: dict[str, Any]) -> Path | None:
     value = activity.get("fit_path")
-    path = Path(str(value)).expanduser() if value else None
+    path = resolve_project_path(str(value)) if value else None
     return path if path and path.is_file() else None

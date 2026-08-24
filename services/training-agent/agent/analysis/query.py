@@ -21,7 +21,7 @@ from fit.analysis.metrics import build_activity_metrics
 from fit.parser import parse_fit
 from integrations.llm import AnthropicMessagesClient, build_tool_result_block, extract_text
 from settings import get_agent_config
-from storage.paths import project_relative_or_absolute
+from project_paths import project_relative_or_absolute, resolve_project_path
 from storage.repositories.activity import ActivityStore, file_content_key
 
 MAX_QUERY_STEPS = 4
@@ -56,7 +56,7 @@ limitations. Evidence must contain only objective values present in the input.
 
 def run_activity_query_agent(fit_path: str | Path, *, question: str) -> dict[str, Any]:
     """Answer one activity question without creating or replacing a report."""
-    path = Path(fit_path).expanduser().resolve()
+    path = resolve_project_path(fit_path)
     if not path.exists():
         raise FileNotFoundError(path)
     if path.suffix.lower() != ".fit":

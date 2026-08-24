@@ -129,6 +129,7 @@ def sync_and_start_activity_workflow(
     }
     if sync.get("status") == "partial" and response.get("status") == "completed":
         response["status"] = "partial"
+        response["answer"] = _append_sync_warning(response.get("answer"), response.get("sync") or {})
     return response
 
 
@@ -214,6 +215,7 @@ def _response(
         "workflow": overview,
         "activities": run.get("activities") or [],
         "tasks": run.get("tasks") or [],
+        "answer": _workflow_answer(run),
     }
     if execution is not None:
         response["execution"] = execution
@@ -227,6 +229,80 @@ def _not_found(workflow_id: str) -> dict[str, Any]:
         "error": "workflow_not_found",
         "message": f"找不到活动工作流: {workflow_id}",
     }
+
+
+def _workflow_answer(run: dict[str, Any]) -> str:
+    """Describe persisted task outcomes without relying on another model call."""
+    overview = workflow_overview(run)
+    status = str(overview.get("status") or "unknown")
+    activities = [item for item in run.get("activities") or [] if isinstance(item, dict)]
+    labels = [_activity_label(item) for item in activities[:2]]
+    target = "；".join(label for label in labels if label) or "所选活动"
+    if len(activities) > len(labels):
+        target += f" 等 {len(activities)} 条活动"
+
+    if status == "completed":
+        heading = f"处理完成：{target}。"
+    elif status == "partial":
+        heading = f"处理部分完成：{target}。"
+    elif status == "cancelled":
+        heading = f"处理已取消：{target}。"
+    else:
+        heading = f"处理状态为 {status}：{target}。"
+
+    details = [_task_outcome(task) for task in run.get("tasks") or [] if isinstance(task, dict)]
+    return "\n".join([heading, *(f"- {detail}" for detail in details if detail)])
+
+
+def _activity_label(activity: dict[str, Any]) -> str:
+    started = activity.get("start_time_local") or activity.get("date_local")
+    name = activity.get("summary_label") or activity.get("file_name")
+    return " ".join(str(value) for value in (started, name) if value) or str(activity.get("activity_key") or "")
+
+
+def _task_outcome(task: dict[str, Any]) -> str:
+    kind = str(task.get("kind") or "task")
+    status = str(task.get("status") or "pending")
+    if kind == "ensure_summary":
+        label = "活动分析"
+        success = "报告已生成"
+    elif kind == "upload_strava":
+        label = "Strava 上传"
+        success = "已完成"
+    elif kind == "aggregate_report":
+        label = "汇总报告"
+        success = "已生成"
+    else:
+        label = kind
+        success = "已完成"
+
+    if status == "completed":
+        suffix = ""
+        if kind == "upload_strava" and task.get("strava_activity_id"):
+            suffix = f"（activity_id={task['strava_activity_id']}）"
+        return f"{label}{success}{suffix}。"
+    if status == "failed":
+        message = task.get("message") or task.get("error") or "未知错误"
+        return f"{label}失败：{message}。"
+    if status == "skipped":
+        reason = str(task.get("reason") or "")
+        if reason == "existing_report":
+            return f"{label}复用已有报告。"
+        if reason == "already_uploaded":
+            activity_id = task.get("strava_activity_id")
+            suffix = f"（activity_id={activity_id}）" if activity_id else ""
+            return f"{label}已存在，未重复上传{suffix}。"
+        if reason == "dependency_failed":
+            return f"{label}未执行：前置任务失败。"
+        return f"{label}已跳过{f'：{reason}' if reason else ''}。"
+    return f"{label}尚未完成（{status}）。"
+
+
+def _append_sync_warning(answer: Any, sync: dict[str, Any]) -> str:
+    failed = int(sync.get("failed") or 0)
+    index_failed = int(sync.get("index_failed") or 0)
+    warning = f"Garmin 同步部分完成：下载失败 {failed} 条，索引失败 {index_failed} 条。"
+    return f"{str(answer or '').rstrip()}\n- {warning}".strip()
 
 
 def _directory(directory: str | Path | None) -> Path:

@@ -14,6 +14,14 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
             return;
         }
         fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+        if (isManagedDatabase()) {
+            const columns = new Set(queryJson("PRAGMA table_info(activities);").map((column) => column.name));
+            if (!columns.has("id") || !columns.has("source") || !columns.has("fit_file_path")) {
+                throw new Error("Unified database is not initialized. Run npm run db:migrate.");
+            }
+            initialized = true;
+            return;
+        }
         runSql(`
             PRAGMA journal_mode = WAL;
             CREATE TABLE IF NOT EXISTS activities (
@@ -334,6 +342,7 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
     function withDatabase(callback) {
         const db = new DatabaseSync(dbPath);
         try {
+            db.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 30000;");
             return callback(db);
         } finally {
             db.close();
@@ -354,6 +363,12 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         deleteActivity,
         getSummary
     };
+}
+
+function isManagedDatabase() {
+    return ["1", "true", "yes", "on"].includes(
+        String(process.env.RIDER_DATABASE_MANAGED || "").trim().toLowerCase()
+    );
 }
 
 function buildActivityListSql({ whereClause, safeLimit, safeOffset }) {

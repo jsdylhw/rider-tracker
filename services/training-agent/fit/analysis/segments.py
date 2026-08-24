@@ -167,7 +167,11 @@ def _features_for_group(group: Any, *, start_s: float, end_s: float) -> dict[str
     elevation_delta = _delta(altitude_start, altitude_end)
     elevation_gain = _positive_altitude_change(group)
     elevation_loss = _negative_altitude_change(group)
-    avg_grade = (elevation_delta / distance_m * 100) if distance_m and abs(distance_m) > 1 else None
+    avg_grade = (
+        elevation_delta / distance_m * 100
+        if elevation_delta is not None and distance_m is not None and abs(distance_m) > 1
+        else None
+    )
     hr_start = _first_value(group, "heart_rate")
     hr_end = _last_value(group, "heart_rate")
     power = _numeric_series(group, "power")

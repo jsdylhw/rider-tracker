@@ -12,6 +12,7 @@ from storage.repositories.activity import ActivityStore, entry_from_fit_summary,
 from fit.parser import parse_fit
 from fit.analysis.features import build_activity_features
 from fit.analysis.metrics import build_activity_metrics
+from project_paths import resolve_project_path
 
 def load_activity_index(path: str | Path | None = None) -> dict[str, Any]:
     """Return the catalogue shape expected by existing selection handlers."""
@@ -37,7 +38,7 @@ def upsert_activity_from_fit(
     path: str | Path | None = None,
 ) -> dict[str, Any]:
     """解析 FIT 并写入/更新活动索引."""
-    fit = Path(fit_path).expanduser().resolve()
+    fit = resolve_project_path(fit_path)
     parsed = parse_fit(fit)
     summary = parsed.get("summary") or {}
     entry = entry_from_fit_summary(

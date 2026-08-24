@@ -71,6 +71,20 @@ export const suite = {
             }
         },
         {
+            name: "falls back to current Rider thresholds when an imported FIT has no settings",
+            run() {
+                const activity = buildActivity();
+                activity.rawSession.settings = { ftp: null, restingHr: null, maxHr: null };
+
+                const html = buildActivityDetailPageHtml(activity, {
+                    fallbackSettings: { ftp: 260, restingHr: 50, maxHr: 200 }
+                });
+
+                assert(!html.includes("缺少 FTP"));
+                assert(!html.includes("缺少静息/最大心率"));
+            }
+        },
+        {
             name: "builds time series chart when enough points exist",
             run() {
                 const svg = buildTimeSeriesChartSvg(buildActivity().rawSession.records, {

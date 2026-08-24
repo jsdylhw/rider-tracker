@@ -100,5 +100,5 @@ class AgentContext:
         # Never retain the previous activity's FIT path when the newly selected
         # catalogue row has no local file.  The activity ID and FIT shortcut
         # must always describe the same immutable activity.
-        self.current_fit_file = Path(handle.fit_path).expanduser() if handle.fit_path else None
+        self.current_fit_file = handle.fit_path_obj
         self.current_activity_key = handle.activity_key

@@ -43,7 +43,7 @@ def sync_garmin_activities_tool(
     if isinstance(count, bool) or not isinstance(count, int) or count <= 0 or count > MAX_SYNC_COUNT:
         raise ValueError(f"count must be an integer between 1 and {MAX_SYNC_COUNT}")
 
-    from settings import cfg_get, load_config
+    from settings import cfg_get, load_config, resolve_project_path
     from integrations.garmin import (
         DEFAULT_OUTPUT_DIR,
         build_downloader,
@@ -52,7 +52,7 @@ def sync_garmin_activities_tool(
     )
 
     config = load_config()
-    output_dir = Path(cfg_get(config, "output_dir", DEFAULT_OUTPUT_DIR))
+    output_dir = resolve_project_path(cfg_get(config, "output_dir", DEFAULT_OUTPUT_DIR))
     downloader = build_downloader(config)
     downloader.login()
     activities = downloader.list_activities(count)
@@ -221,7 +221,9 @@ def upload_to_strava_tool(fit_path: str, *, force: bool = False) -> dict[str, An
     Returns:
         dict: 执行成功返回 {status, strava_activity_id}。
     """
-    path = Path(fit_path)
+    from project_paths import resolve_project_path
+
+    path = resolve_project_path(fit_path)
     from storage.repositories.activity import ActivityStore, file_content_key
     from operations.activity.strava import upload_activity_to_strava
 

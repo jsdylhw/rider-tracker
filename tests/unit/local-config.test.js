@@ -30,6 +30,8 @@ export const suite = {
                 assertEqual(env.PERSONAL_FIT_AGENT_TOKEN, "shared-token");
                 assertEqual(env.STRAVA_CLIENT_ID, "client");
                 assertEqual(env.RIDER_TRACKER_DB_PATH, path.join(root, "runtime", "rider.db"));
+                assertEqual(env.TRAINING_AGENT_DB_PATH, path.join(root, "runtime", "rider.db"));
+                assertEqual(env.TRAINING_AGENT_MANAGED_DATABASE, "1");
                 assertEqual(env.TRAINING_AGENT_CONFIG_PATH, path.join(root, "config.yaml"));
             }
         },
@@ -44,6 +46,20 @@ export const suite = {
                 assertEqual(env.PORT, "9999");
                 assertEqual(env.PERSONAL_FIT_AGENT_URL, "http://127.0.0.1:9998");
                 assertEqual(env.PERSONAL_FIT_AGENT_PORT, "9998");
+            }
+        },
+        {
+            name: "uses the unified Rider database when legacy config has no Rider section",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: { download_count: 1 }
+                }, {});
+                const databasePath = path.join(root, "data", "rider-tracker.db");
+                assertEqual(env.RIDER_TRACKER_DB_PATH, databasePath);
+                assertEqual(env.TRAINING_AGENT_DB_PATH, databasePath);
+                assertEqual(env.FIT_FILE_DIR, path.join(root, "data", "files", "fit"));
             }
         },
         {

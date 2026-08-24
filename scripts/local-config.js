@@ -31,8 +31,17 @@ export function buildRuntimeEnv(projectRoot, unifiedConfig, baseEnv = process.en
     setDefault(env, "STRAVA_SCOPES", rider.strava_scopes);
     setDefault(env, "STRAVA_CLIENT_ID", strava.client_id);
     setDefault(env, "STRAVA_CLIENT_SECRET", strava.client_secret);
-    setPathDefault(env, "RIDER_TRACKER_DB_PATH", projectRoot, rider.database_path);
-    setPathDefault(env, "FIT_FILE_DIR", projectRoot, rider.fit_file_dir);
+    setPathDefault(
+        env,
+        "RIDER_TRACKER_DB_PATH",
+        projectRoot,
+        rider.database_path || "data/rider-tracker.db"
+    );
+    setPathDefault(env, "FIT_FILE_DIR", projectRoot, rider.fit_file_dir || "data/files/fit");
+    setDefault(env, "TRAINING_AGENT_DB_PATH", env.RIDER_TRACKER_DB_PATH);
+    setDefault(env, "TRAINING_AGENT_MANAGED_DATABASE", "1");
+    setDefault(env, "RIDER_DATABASE_MANAGED", "1");
+    setDefault(env, "RIDER_PROJECT_ROOT", projectRoot);
 
     const endpointOverride = parseHttpEndpoint(env.PERSONAL_FIT_AGENT_URL);
     const agentHost = String(endpointOverride?.hostname || trainingAgent.host || "127.0.0.1");

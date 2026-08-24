@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from domain.analysis.artifacts import get_index_load_label
+from project_paths import resolve_project_path
 
 
 @dataclass(frozen=True)
@@ -84,7 +85,7 @@ class ActivityHandle:
     @property
     def fit_path_obj(self) -> Path | None:
         if self.fit_path:
-            return Path(self.fit_path).expanduser()
+            return resolve_project_path(self.fit_path)
         return None
 
 

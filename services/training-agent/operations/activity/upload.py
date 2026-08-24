@@ -6,11 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from operations.activity.service import upload_to_strava_tool
+from project_paths import resolve_project_path
 
 
 def upload_activity(fit_path: str | Path, *, force: bool = False) -> dict[str, Any]:
     """上传一个已分析 FIT。"""
-    path = Path(fit_path).expanduser()
+    path = resolve_project_path(fit_path)
     if not path.exists():
         return _failed(path, "fit_not_found", f"FIT file does not exist: {path}")
     try:

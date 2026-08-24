@@ -107,3 +107,40 @@ def test_upload_activity_normalizes_completed_and_failed_results(monkeypatch, tm
     failed = upload_activity(fit)
     assert failed["status"] == "failed"
     assert failed["error"] == "network_error"
+
+
+def test_embedded_operations_resolve_persisted_paths_from_rider_root(monkeypatch, tmp_path):
+    nested_cwd = tmp_path / "services" / "training-agent"
+    nested_cwd.mkdir(parents=True)
+    fit = tmp_path / "data" / "files" / "fit" / "garmin" / "latest.fit"
+    fit.parent.mkdir(parents=True)
+    fit.write_bytes(b"fit")
+    monkeypatch.setenv("RIDER_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.chdir(nested_cwd)
+
+    analyzed_paths = []
+    monkeypatch.setattr(
+        "operations.activity.reporting.analyze_fit_file_tool",
+        lambda path, force: analyzed_paths.append(path) or {
+            "activity_key": "latest", "status": "analyzed", "error": "mock_failure",
+        },
+    )
+    monkeypatch.setattr(
+        "operations.activity.reporting.ActivityStore.get_report",
+        lambda self, key: None,
+    )
+    analysis = ensure_summary("data/files/fit/garmin/latest.fit")
+
+    uploaded_paths = []
+    monkeypatch.setattr(
+        "operations.activity.upload.upload_to_strava_tool",
+        lambda path, force: uploaded_paths.append(path) or {
+            "error": "network_error", "message": "mock offline",
+        },
+    )
+    upload = upload_activity("data/files/fit/garmin/latest.fit")
+
+    assert analysis["error"] == "mock_failure"
+    assert analyzed_paths == [str(fit.resolve())]
+    assert upload["error"] == "network_error"
+    assert uploaded_paths == [str(fit.resolve())]

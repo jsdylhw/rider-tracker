@@ -19,7 +19,7 @@ training_agent:
 
 # Number used only when a request does not explicitly specify activity count.
 download_count: 5
-output_dir: "garmin_cn_fit_files"
+output_dir: "data/files/fit/garmin"
 
 # Anthropic Messages API compatible model service.
 agent:
@@ -38,7 +38,7 @@ agent:
 # Optional Garmin China synchronization.
 garmin_username: "your-garmin-cn-username"
 garmin_password: "your-garmin-cn-password"
-garmin_tokenstore: ".garmin_cn_tokens"
+garmin_tokenstore: "data/credentials/garmin"
 disable_curl_cffi: false
 
 # Shared Strava application credentials. Rider uses OAuth tokens for ride

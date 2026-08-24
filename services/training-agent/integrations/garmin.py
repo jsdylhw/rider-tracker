@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from settings import cfg_bool, cfg_get
+from settings import cfg_bool, cfg_get, resolve_project_path
 
 DEFAULT_OUTPUT_DIR = "garmin_cn_fit_files"
 DEFAULT_TOKENSTORE = ".garmin_cn_tokens"
@@ -150,7 +150,9 @@ def build_downloader(config: dict[str, Any]) -> GarminChinaDownloader:
     return GarminChinaDownloader(
         username=str(username),
         password=str(password),
-        tokenstore=cfg_get(config, "garmin_tokenstore", DEFAULT_TOKENSTORE),
+        tokenstore=resolve_project_path(
+            cfg_get(config, "garmin_tokenstore", DEFAULT_TOKENSTORE)
+        ),
         proxy=cfg_get(config, "garmin_proxy"),
         disable_curl_cffi=cfg_bool(config, "disable_curl_cffi", default=False),
     )

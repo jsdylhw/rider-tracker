@@ -23,7 +23,8 @@ const MAX_CHART_POINTS = 500;
 
 export function buildActivityDetailHtml(activity, {
     showCloseButton = true,
-    actionsHtml = ""
+    actionsHtml = "",
+    fallbackSettings = {}
 } = {}) {
     if (!activity) {
         return "";
@@ -38,9 +39,13 @@ export function buildActivityDetailHtml(activity, {
     const heartRate = metrics.heartRate ?? {};
     const load = metrics.load ?? {};
     const energy = metrics.energy ?? {};
-    const ftp = Number(session.settings?.ftp ?? session.rawSettings?.ftp);
-    const maxHr = Number(session.settings?.maxHr ?? session.rawSettings?.maxHr);
-    const restingHr = Number(session.settings?.restingHr ?? session.rawSettings?.restingHr);
+    const ftp = firstFiniteNumber(session.settings?.ftp, session.rawSettings?.ftp, fallbackSettings.ftp);
+    const maxHr = firstFiniteNumber(session.settings?.maxHr, session.rawSettings?.maxHr, fallbackSettings.maxHr);
+    const restingHr = firstFiniteNumber(
+        session.settings?.restingHr,
+        session.rawSettings?.restingHr,
+        fallbackSettings.restingHr
+    );
     const normalizedPower = numberOrNull(activity.normalizedPower ?? power.normalizedPowerWatts);
     const averagePower = numberOrNull(activity.averagePower ?? power.averageWatts);
     const intensityFactor = numberOrNull(power.intensityFactor) ?? (
@@ -162,7 +167,7 @@ function buildActivitySeriesXDomain(records) {
     };
 }
 
-export function buildActivityDetailPageHtml(activity) {
+export function buildActivityDetailPageHtml(activity, { fallbackSettings = {} } = {}) {
     if (!activity) {
         return `
             <section class="activity-detail-page-empty">
@@ -175,7 +180,8 @@ export function buildActivityDetailPageHtml(activity) {
 
     return buildActivityDetailHtml(activity, {
         showCloseButton: false,
-        actionsHtml: buildActivityActionsHtml(activity)
+        actionsHtml: buildActivityActionsHtml(activity),
+        fallbackSettings
     });
 }
 
@@ -488,6 +494,15 @@ function formatActivityDate(value) {
 function numberOrNull(value) {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : null;
+}
+
+function firstFiniteNumber(...values) {
+    for (const value of values) {
+        if (value === null || value === undefined || value === "") continue;
+        const number = Number(value);
+        if (Number.isFinite(number)) return number;
+    }
+    return NaN;
 }
 
 function escapeHtml(value) {

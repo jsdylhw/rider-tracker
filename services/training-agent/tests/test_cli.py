@@ -40,6 +40,21 @@ def test_sync_garmin_command_calls_operation_tool(monkeypatch):
     assert '"status": "ok"' in result.output
 
 
+def test_sync_garmin_command_hides_traceback_locals(monkeypatch):
+    def fail_sync(*args, **kwargs):
+        secret = "must-not-appear"
+        raise RuntimeError("connection failed")
+
+    monkeypatch.setattr("app.cli.sync_garmin_activities_tool", fail_sync)
+
+    result = CliRunner().invoke(app, ["sync-garmin", "--count", "10"])
+
+    assert result.exit_code == 1
+    assert "Garmin 同步失败：connection failed" in result.output
+    assert "Traceback" not in result.output
+    assert "must-not-appear" not in result.output
+
+
 def test_analyze_file_command_uses_operation_tool_and_resolves_path(tmp_path, monkeypatch):
     fit = tmp_path / "activity.fit"
     fit.write_bytes(b"fit")
