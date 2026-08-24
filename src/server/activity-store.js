@@ -42,6 +42,9 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
                 fit_file_path TEXT,
                 fit_file_size_bytes INTEGER,
                 fit_file_created_at TEXT,
+                saved_route_id TEXT,
+                route_start_distance_meters REAL,
+                route_end_distance_meters REAL,
                 raw_json TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -49,11 +52,15 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
             CREATE INDEX IF NOT EXISTS idx_activities_started_at ON activities(started_at DESC);
             CREATE INDEX IF NOT EXISTS idx_activities_source ON activities(source);
             CREATE INDEX IF NOT EXISTS idx_activities_sport_type ON activities(sport_type);
+            CREATE INDEX IF NOT EXISTS idx_activities_saved_route ON activities(saved_route_id, started_at DESC);
         `);
         ensureActivityColumns([
             { name: "fit_file_path", definition: "TEXT" },
             { name: "fit_file_size_bytes", definition: "INTEGER" },
-            { name: "fit_file_created_at", definition: "TEXT" }
+            { name: "fit_file_created_at", definition: "TEXT" },
+            { name: "saved_route_id", definition: "TEXT" },
+            { name: "route_start_distance_meters", definition: "REAL" },
+            { name: "route_end_distance_meters", definition: "REAL" }
         ]);
         initialized = true;
     }
@@ -144,6 +151,9 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
                 fit_file_path AS fitFilePath,
                 fit_file_size_bytes AS fitFileSizeBytes,
                 fit_file_created_at AS fitFileCreatedAt,
+                saved_route_id AS savedRouteId,
+                route_start_distance_meters AS routeStartDistanceMeters,
+                route_end_distance_meters AS routeEndDistanceMeters,
                 created_at AS createdAt,
                 updated_at AS updatedAt
             FROM activities
@@ -201,6 +211,9 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
                 fit_file_path AS fitFilePath,
                 fit_file_size_bytes AS fitFileSizeBytes,
                 fit_file_created_at AS fitFileCreatedAt,
+                saved_route_id AS savedRouteId,
+                route_start_distance_meters AS routeStartDistanceMeters,
+                route_end_distance_meters AS routeEndDistanceMeters,
                 created_at AS createdAt,
                 updated_at AS updatedAt
             FROM activities
@@ -231,6 +244,9 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
                 fit_file_path AS fitFilePath,
                 fit_file_size_bytes AS fitFileSizeBytes,
                 fit_file_created_at AS fitFileCreatedAt,
+                saved_route_id AS savedRouteId,
+                route_start_distance_meters AS routeStartDistanceMeters,
+                route_end_distance_meters AS routeEndDistanceMeters,
                 raw_json AS rawJson,
                 created_at AS createdAt,
                 updated_at AS updatedAt
@@ -299,6 +315,28 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         return activity;
     }
 
+    function updateActivityRoute(id, {
+        savedRouteId,
+        routeStartDistanceMeters = 0,
+        routeEndDistanceMeters = 0
+    } = {}) {
+        initialize();
+        if (!id) throw new Error("Activity id is required.");
+        const normalizedRouteId = normalizeOptionalText(savedRouteId, 128);
+        runSql(`
+            UPDATE activities
+            SET
+                saved_route_id = ${sqlValue(normalizedRouteId)},
+                route_start_distance_meters = ${sqlValue(finiteOrNull(routeStartDistanceMeters))},
+                route_end_distance_meters = ${sqlValue(finiteOrNull(routeEndDistanceMeters))},
+                updated_at = ${sqlValue(new Date().toISOString())}
+            WHERE id = ${sqlValue(id)};
+        `);
+        const activity = getActivity(id);
+        if (!activity) throw new Error("Activity not found.");
+        return activity;
+    }
+
     function deleteActivity(id) {
         initialize();
         if (!id) {
@@ -360,6 +398,7 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         getActivityDetail,
         updateActivityName,
         updateActivityFitFile,
+        updateActivityRoute,
         deleteActivity,
         getSummary
     };
@@ -391,6 +430,9 @@ function buildActivityListSql({ whereClause, safeLimit, safeOffset }) {
             fit_file_path AS fitFilePath,
             fit_file_size_bytes AS fitFileSizeBytes,
             fit_file_created_at AS fitFileCreatedAt,
+            saved_route_id AS savedRouteId,
+            route_start_distance_meters AS routeStartDistanceMeters,
+            route_end_distance_meters AS routeEndDistanceMeters,
             created_at AS createdAt,
             updated_at AS updatedAt
         FROM activities
@@ -524,7 +566,9 @@ function normalizeActivityRow(row) {
         averageHr: finiteOrNull(row.averageHr),
         estimatedTss: finiteOrNull(row.estimatedTss),
         hasGpsTrack: Boolean(row.hasGpsTrack),
-        fitFileSizeBytes: finiteOrNull(row.fitFileSizeBytes)
+        fitFileSizeBytes: finiteOrNull(row.fitFileSizeBytes),
+        routeStartDistanceMeters: finiteOrNull(row.routeStartDistanceMeters),
+        routeEndDistanceMeters: finiteOrNull(row.routeEndDistanceMeters)
     };
 }
 
@@ -561,4 +605,9 @@ function normalizeText(value, fallback, maxLength) {
 
 function normalizeFilterText(value) {
     return typeof value === "string" ? value.trim().slice(0, 120) : "";
+}
+
+function normalizeOptionalText(value, maxLength) {
+    const text = typeof value === "string" ? value.trim() : "";
+    return text ? text.slice(0, maxLength) : null;
 }

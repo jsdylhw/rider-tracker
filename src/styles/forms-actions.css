@@ -97,6 +97,31 @@ tbody tr:last-child td {
     background: #f8fafc;
 }
 
+.route-source-toolbar {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+}
+
+.route-source-toolbar .route-mode-tabs {
+    flex: 1 1 auto;
+}
+
+.route-library-toggle {
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    background: #ffffff;
+    color: var(--text);
+    font-weight: 750;
+}
+
+.route-library-toggle:hover,
+.route-library-toggle.active {
+    border-color: var(--primary);
+    background: #f0f7ff;
+    color: var(--primary);
+}
+
 .route-mode-tab {
     border: 0;
     border-radius: 10px;
@@ -126,6 +151,142 @@ tbody tr:last-child td {
     border: 1px solid var(--border);
     border-radius: 14px;
     background: #ffffff;
+}
+
+.route-library-panel {
+    display: grid;
+    grid-template-columns: minmax(120px, 0.22fr) minmax(0, 1fr);
+    gap: 10px 16px;
+    margin: 12px 0;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.route-library-panel[hidden] {
+    display: none;
+}
+
+.route-library-heading,
+.route-library-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.route-library-heading {
+    justify-content: space-between;
+}
+
+.route-library-heading > div {
+    display: grid;
+    gap: 1px;
+}
+
+.route-library-kicker {
+    color: var(--primary);
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.route-library-heading strong {
+    color: var(--text);
+    font-size: 1rem;
+}
+
+.route-library-refresh,
+.route-library-text-action {
+    border: 0;
+    padding: 4px 6px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+}
+
+.route-library-refresh:hover,
+.route-library-text-action:hover {
+    color: var(--primary);
+}
+
+.route-library-text-action.danger:hover {
+    color: var(--danger);
+}
+
+.route-library-refresh:disabled,
+.route-library-text-action:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+.route-library-actions {
+    min-width: 0;
+}
+
+.route-library-actions select {
+    flex: 1 1 300px;
+    min-width: 200px;
+    height: 40px;
+    border-radius: 10px;
+}
+
+.route-library-primary-actions,
+.route-library-secondary-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.route-library-secondary-actions {
+    padding-left: 4px;
+    border-left: 1px solid var(--border);
+}
+
+.route-library-status {
+    grid-column: 2;
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+@media (max-width: 900px) {
+    .route-source-toolbar {
+        flex-direction: column;
+    }
+
+    .route-library-toggle {
+        width: 100%;
+    }
+
+    .route-library-panel {
+        grid-template-columns: 1fr;
+    }
+
+    .route-library-status {
+        grid-column: 1;
+    }
+
+    .route-library-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .route-library-actions select {
+        flex-basis: auto;
+        width: 100%;
+    }
+
+    .route-library-primary-actions,
+    .route-library-secondary-actions {
+        border-left: 0;
+        padding-left: 0;
+    }
 }
 
 .route-panel-head {

@@ -123,6 +123,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
         const completedSession = finalizeRideSync();
 
         if (completedSession) {
+            const completedDistanceMeters = (completedSession.summary?.metrics?.ride?.distanceKm ?? 0) * 1000;
             const completedRideId = completedSession.startedAt;
             const pendingActivity = buildPendingActivity(completedSession);
             store.setState((currentState) => ({
@@ -152,6 +153,12 @@ export function createRideService({ store, deviceService, exportService, routeSe
                             statusText: "骑行已结束，活动已保存。"
                         }
                         : currentState);
+                    return persistCompletedRouteProgress({
+                        routeService,
+                        completedSession,
+                        completedDistanceMeters,
+                        activityId: activity.id
+                    });
                 })
                 .catch((error) => {
                     console.warn("[RideService] 保存骑后报告失败:", error);
@@ -166,6 +173,11 @@ export function createRideService({ store, deviceService, exportService, routeSe
                             statusText: "骑行已结束，但 FIT 保存失败。"
                         }
                         : currentState);
+                    return persistCompletedRouteProgress({
+                        routeService,
+                        completedSession,
+                        completedDistanceMeters
+                    });
                 });
         }
     }
@@ -527,6 +539,24 @@ export function createRideService({ store, deviceService, exportService, routeSe
         }
         liveRideTimerId = null;
         liveRideTickIntervalMs = DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS;
+    }
+}
+
+async function persistCompletedRouteProgress({
+    routeService,
+    completedSession,
+    completedDistanceMeters,
+    activityId = null
+}) {
+    try {
+        await routeService?.updateSavedRouteProgress?.({
+            route: completedSession.route,
+            sessionDistanceMeters: completedDistanceMeters,
+            lastActivityId: activityId,
+            startedAt: completedSession.startedAt
+        });
+    } catch (error) {
+        console.warn("[RideService] 保存未完成路线进度失败:", error);
     }
 }
 

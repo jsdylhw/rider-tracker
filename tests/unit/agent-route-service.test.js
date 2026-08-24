@@ -11,12 +11,19 @@ export const suite = {
                 const state = { route: baseRoute(), liveRide: { isActive: false }, statusText: "" };
                 const chatMessages = [];
                 const commands = [];
+                const savedRoutes = [];
                 let chatCount = 0;
                 const service = createAgentRoutePreviewService({
                     store: { getState: () => state },
                     operations: createOperations(state),
                     invalidateExploration() {},
                     draftStorage: { load: () => null, save() {} },
+                    routeLibrary: {
+                        async saveRoute(input) {
+                            savedRoutes.push(input);
+                            return { id: "saved-agent-route", resumeDistanceMeters: 0 };
+                        }
+                    },
                     agentClient: {
                         async chat(message) {
                             chatMessages.push(message);
@@ -45,6 +52,10 @@ export const suite = {
                 assertEqual(state.route.isDraft, false);
                 assert(isRouteReadyForRide(state.route), "确认路线应允许开骑");
                 assertEqual(commands.join(","), "select,confirm");
+                assertEqual(savedRoutes.length, 1);
+                assertEqual(savedRoutes[0].agentPlanId, "plan-1");
+                assertEqual(savedRoutes[0].agentCandidateId, "candidate-1");
+                assertEqual(state.route.savedRouteId, "saved-agent-route");
             }
         },
         {

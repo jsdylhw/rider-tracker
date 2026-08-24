@@ -7,7 +7,9 @@ import dotenv from "dotenv";
 import { createConfigStore } from "./config-store.js";
 import { createTokenStore } from "./token-store.js";
 import { createActivityStore } from "./activity-store.js";
+import { createRouteLibraryStore } from "./route-library-store.js";
 import { createActivityRoutes } from "./routes/activity-routes.js";
+import { createRouteLibraryRoutes } from "./routes/route-library-routes.js";
 import { createStravaRoutes } from "./routes/strava-routes.js";
 import { createAgentRoutes } from "./routes/agent-routes.js";
 import { createPersonalFitAgentClient } from "./personal-fit-agent-client.js";
@@ -43,13 +45,15 @@ const PERSONAL_FIT_AGENT_TOKEN = process.env.PERSONAL_FIT_AGENT_TOKEN || "";
 const configStore = createConfigStore(CONFIG_STORE_PATH);
 const tokenStore = createTokenStore(TOKEN_STORE_PATH);
 const activityStore = createActivityStore();
+const routeLibraryStore = createRouteLibraryStore();
 const personalFitAgentClient = createPersonalFitAgentClient({
     baseUrl: PERSONAL_FIT_AGENT_URL,
     apiToken: PERSONAL_FIT_AGENT_TOKEN
 });
 activityStore.initialize();
+routeLibraryStore.initialize();
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use("/api", createLocalApiOriginGuard({
     allowedOrigins: buildAllowedLocalOrigins({
         host: HOST,
@@ -61,10 +65,12 @@ app.use("/src", express.static(path.join(PROJECT_ROOT, "src")));
 app.use("/vendor/@garmin/fitsdk", express.static(path.join(PROJECT_ROOT, "node_modules", "@garmin", "fitsdk")));
 app.use(createActivityRoutes({
     activityStore,
+    agentClient: personalFitAgentClient,
     upload,
     fitFileDir: FIT_FILE_DIR,
     projectRoot: PROJECT_ROOT
 }));
+app.use(createRouteLibraryRoutes({ routeLibraryStore }));
 app.use(createStravaRoutes({
     configStore,
     tokenStore,

@@ -64,6 +64,20 @@ export function advanceLiveRideSession({
         : 0;
     const nextRouteSample = getRouteSampleAtDistance(session.route, nextState.distanceMeters);
     const elevationMeters = nextRouteSample.elevationMeters ?? nextState.elevationMeters;
+    const hasRouteElevation = session.route?.hasElevationData !== false
+        && Number.isFinite(routeSample.elevationMeters)
+        && Number.isFinite(nextRouteSample.elevationMeters);
+    const ascentMeters = hasRouteElevation
+        ? session.physicsState.ascentMeters + Math.max(
+            0,
+            nextRouteSample.elevationMeters - routeSample.elevationMeters
+        )
+        : nextState.ascentMeters;
+    const resolvedNextState = {
+        ...nextState,
+        elevationMeters,
+        ascentMeters
+    };
 
     const record = {
         elapsedSeconds,
@@ -75,7 +89,7 @@ export function advanceLiveRideSession({
         heartRate: resolvedHeartRate,
         gradePercent,
         elevationMeters,
-        ascentMeters: nextState.ascentMeters,
+        ascentMeters,
         targetPowerWatts: workoutTarget?.targetPowerWatts ?? null,
         targetFtpPercent: workoutTarget?.ftpPercent ?? null,
         targetStepIndex: workoutTarget?.stepIndex ?? null,
@@ -100,7 +114,7 @@ export function advanceLiveRideSession({
     return {
         ...session,
         records,
-        physicsState: nextState,
+        physicsState: resolvedNextState,
         heartRateState: nextHeartRateState,
         npState: nextNpState,
         summary: nextSummary

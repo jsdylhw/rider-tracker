@@ -381,7 +381,7 @@ export function createRouteInputController({
         return null;
     }
 
-    return { bindEvents, render, getInputMode };
+    return { bindEvents, render, getInputMode, setInputMode: setRouteInputMode };
 }
 
 function buildMapRouteSignature(route) {

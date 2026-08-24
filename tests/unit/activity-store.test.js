@@ -75,6 +75,24 @@ export const suite = {
             }
         },
         {
+            name: "links a completed activity to a saved route distance window",
+            run() {
+                const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
+                const store = createActivityStore(path.join(tempDir, "activities.db"));
+                const saved = store.saveRiderSession(buildVirtualRideSession());
+
+                const linked = store.updateActivityRoute(saved.id, {
+                    savedRouteId: "route-1",
+                    routeStartDistanceMeters: 3200,
+                    routeEndDistanceMeters: 15540
+                });
+
+                assertEqual(linked.savedRouteId, "route-1");
+                assertEqual(linked.routeStartDistanceMeters, 3200);
+                assertEqual(store.getActivityDetail(saved.id).routeEndDistanceMeters, 15540);
+            }
+        },
+        {
             name: "saves imported fit activities as compact metadata",
             run() {
                 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));

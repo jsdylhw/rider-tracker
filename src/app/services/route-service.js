@@ -9,6 +9,15 @@ import { createRouteElevationService } from "./route-elevation-service.js";
 import { createMapDrawRouteService } from "./map-draw-route-service.js";
 import { createAgentRoutePreviewService } from "./agent-route-preview-service.js";
 import { createRouteOperationCoordinator } from "./route-operation-coordinator.js";
+import {
+    clearRouteProgress,
+    deleteSavedRoute,
+    listSavedRoutes,
+    loadSavedRoute,
+    renameSavedRoute,
+    saveRoute,
+    saveRouteProgress
+} from "../../adapters/storage/route-library-client.js";
 
 export function createRouteService({
     store,
@@ -16,7 +25,16 @@ export function createRouteService({
     fetchRoadNetwork = fetchOverpassRoadNetwork,
     fetchGoogleRoute = fetchGoogleBicycleRoute,
     loadGoogleMaps = loadGoogleMapsApi,
-    enrichElevation = enrichTrackPointsWithGoogleElevation
+    enrichElevation = enrichTrackPointsWithGoogleElevation,
+    routeLibrary = {
+        saveRoute,
+        listSavedRoutes,
+        loadSavedRoute,
+        renameSavedRoute,
+        deleteSavedRoute,
+        saveRouteProgress,
+        clearRouteProgress
+    }
 }) {
     const operations = createRouteOperationCoordinator({ store });
     let elevationService;
@@ -38,7 +56,8 @@ export function createRouteService({
         store,
         operations,
         defaultRouteSegments,
-        invalidateExploration: explorationService.clearActiveExploration
+        invalidateExploration: explorationService.clearActiveExploration,
+        routeLibrary
     });
     const mapDrawRouteService = createMapDrawRouteService({
         store,
@@ -50,7 +69,8 @@ export function createRouteService({
     const agentRoutePreviewService = createAgentRoutePreviewService({
         store,
         operations,
-        invalidateExploration: explorationService.clearActiveExploration
+        invalidateExploration: explorationService.clearActiveExploration,
+        routeLibrary
     });
 
     return {

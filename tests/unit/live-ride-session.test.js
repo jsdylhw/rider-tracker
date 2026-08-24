@@ -87,6 +87,30 @@ export const suite = {
             }
         },
         {
+            name: "advanceLiveRideSession accumulates ascent from route elevation differences",
+            run() {
+                let session = createLiveRideSession({
+                    route: createGeoRoute(),
+                    settings,
+                    startedAt: "2026-01-01T00:00:00.000Z"
+                });
+
+                for (let index = 0; index < 20; index += 1) {
+                    session = advanceLiveRideSession({
+                        session,
+                        power: 240,
+                        heartRate: 120,
+                        cadence: 88,
+                        dt: 1
+                    });
+                }
+
+                const expectedAscent = session.records.at(-1).elevationMeters - 10;
+                assertApprox(session.physicsState.ascentMeters, expectedAscent, 0.001);
+                assertApprox(session.summary.metrics.ride.ascentMeters, expectedAscent, 0.001);
+            }
+        },
+        {
             name: "advanceLiveRideSession keeps last known heart rate when no new sample arrives",
             run() {
                 let session = createLiveRideSession({

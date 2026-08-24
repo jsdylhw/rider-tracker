@@ -23,7 +23,6 @@ import { suite as simulatorSuite } from "./unit/simulator.test.js";
 import { suite as liveRideSuite } from "./unit/live-ride-session.test.js";
 import { suite as rideMetricsSuite } from "./unit/ride-metrics.test.js";
 import { suite as fitExporterSuite } from "./unit/fit-exporter.test.js";
-import { suite as fitImporterSuite } from "./unit/fit-importer.test.js";
 import { suite as gradeSimSuite } from "./unit/grade-sim-mode.test.js";
 import { suite as ergSuite } from "./unit/erg-mode.test.js";
 import { suite as resistanceSuite } from "./unit/resistance-mode.test.js";
@@ -50,6 +49,9 @@ import { suite as pipElevationChartSuite } from "./unit/pip-elevation-chart.test
 import { suite as pipPreferencesSuite } from "./unit/pip-preferences.test.js";
 import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js";
 import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
+import { suite as routeLibraryStoreSuite } from "./unit/route-library-store.test.js";
+import { suite as routeLibraryRendererSuite } from "./unit/route-library-renderer.test.js";
+import { suite as routeContinuationSuite } from "./unit/route-continuation.test.js";
 import { suite as activityHistoryRendererSuite } from "./unit/activity-history-renderer.test.js";
 import { suite as activityDetailRendererSuite } from "./unit/activity-detail-renderer.test.js";
 import { suite as activityDetailViewSuite } from "./unit/activity-detail-view.test.js";
@@ -93,7 +95,6 @@ const suites = [
     liveRideSuite,
     rideMetricsSuite,
     fitExporterSuite,
-    fitImporterSuite,
     gradeSimSuite,
     ergSuite,
     resistanceSuite,
@@ -120,6 +121,9 @@ const suites = [
     pipPreferencesSuite,
     rideSeriesChartSuite,
     activityStoreSuite,
+    routeLibraryStoreSuite,
+    routeLibraryRendererSuite,
+    routeContinuationSuite,
     activityHistoryRendererSuite,
     activityDetailRendererSuite,
     activityDetailViewSuite,

@@ -13,7 +13,8 @@ export function createAgentRoutePreviewService({
     operations,
     invalidateExploration,
     agentClient = createAgentApiClient(),
-    draftStorage = createAgentRouteDraftStorage()
+    draftStorage = createAgentRouteDraftStorage(),
+    routeLibrary = null
 }) {
     let currentDraft = draftStorage.load();
 
@@ -66,8 +67,22 @@ export function createAgentRoutePreviewService({
     async function confirmAgentRoute(candidateId) {
         ensureDraft();
         const draft = await runCommand("confirm", { candidate_id: candidateId });
-        const route = commitCandidateRoute(draft, candidateId, false, "已确认");
-        return { draft, route };
+        const built = buildRiderRouteFromAgentCandidate(draft, candidateId);
+        const saved = await saveConfirmedRoute(built);
+        const route = {
+            ...built,
+            isDraft: false,
+            savedRouteId: saved?.id ?? null,
+            savedRouteResumeDistanceMeters: saved?.resumeDistanceMeters ?? 0
+        };
+        operations.invalidateRequests();
+        operations.commitRoute(
+            route,
+            saved
+                ? `已确认并保存 AI 虚拟路线：${route.name}，${formatNumber(route.totalDistanceMeters / 1000, 1)} km。`
+                : `已确认 AI 虚拟路线，但路线库保存失败：${route.name}。本次仍可骑行。`
+        );
+        return { draft, route, savedRoute: saved };
     }
 
     async function exploreAgentRouteSegments(candidateId) {
@@ -147,6 +162,22 @@ export function createAgentRoutePreviewService({
 
     function ensureDraft() {
         if (!currentDraft?.planId) throw new Error("请先让 Agent 生成路线候选。");
+    }
+
+    async function saveConfirmedRoute(route) {
+        try {
+            return await routeLibrary?.saveRoute?.({
+                route,
+                source: "agent",
+                name: route.name,
+                agentPlanId: route.agentPlanId,
+                agentCandidateId: route.agentCandidateId,
+                metadata: route.agentMetadata ?? {}
+            }) ?? null;
+        } catch (error) {
+            console.warn("AI 路线保存失败", error);
+            return null;
+        }
     }
 
     return {

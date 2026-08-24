@@ -85,13 +85,42 @@
                                 <div><h2>路线轨迹设置</h2></div>
                             </div>
                             <div class="import-panel">
-                                <div class="route-mode-tabs" role="tablist" aria-label="路线来源">
-                                    <button id="routeModeAiBtn" class="route-mode-tab route-mode-tab-ai" type="button" data-route-mode="ai">AI 路线</button>
-                                    <button id="routeModeGpxBtn" class="route-mode-tab" type="button" data-route-mode="gpx">GPX 导入</button>
-                                    <button id="routeModeManualBtn" class="route-mode-tab" type="button" data-route-mode="manual">自定义线路</button>
-                                    <button id="routeModeDrawBtn" class="route-mode-tab" type="button" data-route-mode="draw">地图选择路线</button>
-                                    <button id="routeModeMapBtn" class="route-mode-tab" type="button" data-route-mode="map">地图探索</button>
+                                <div class="route-source-toolbar">
+                                    <div class="route-mode-tabs" role="tablist" aria-label="新建路线方式">
+                                        <button id="routeModeAiBtn" class="route-mode-tab route-mode-tab-ai" type="button" data-route-mode="ai">AI 路线</button>
+                                        <button id="routeModeGpxBtn" class="route-mode-tab" type="button" data-route-mode="gpx">GPX 导入</button>
+                                        <button id="routeModeManualBtn" class="route-mode-tab" type="button" data-route-mode="manual">自定义线路</button>
+                                        <button id="routeModeDrawBtn" class="route-mode-tab" type="button" data-route-mode="draw">地图选择路线</button>
+                                        <button id="routeModeMapBtn" class="route-mode-tab" type="button" data-route-mode="map">地图探索</button>
+                                    </div>
+                                    <button id="routeLibraryToggleBtn" class="btn route-library-toggle" type="button" aria-expanded="false">
+                                        我的路线
+                                    </button>
                                 </div>
+
+                                <section id="routeLibraryPanel" class="route-library-panel" aria-label="我的路线" hidden>
+                                    <div class="route-library-heading">
+                                        <div>
+                                            <span class="route-library-kicker">ROUTE LIBRARY</span>
+                                            <strong>我的路线</strong>
+                                        </div>
+                                        <button id="refreshSavedRoutesBtn" class="route-library-refresh" type="button" aria-label="刷新我的路线">刷新</button>
+                                    </div>
+                                    <div class="route-library-actions">
+                                        <select id="savedRouteSelect" aria-label="选择已保存路线">
+                                            <option value="">暂无已保存路线</option>
+                                        </select>
+                                        <div class="route-library-primary-actions">
+                                            <button id="loadSavedRouteBtn" class="btn secondary" type="button">从起点使用</button>
+                                            <button id="continueSavedRouteBtn" class="btn primary" type="button">从进度继续</button>
+                                        </div>
+                                        <div class="route-library-secondary-actions">
+                                            <button id="saveCurrentRouteBtn" class="route-library-text-action" type="button">保存当前</button>
+                                            <button id="deleteSavedRouteBtn" class="route-library-text-action danger" type="button">删除</button>
+                                        </div>
+                                    </div>
+                                    <div id="savedRouteLibraryStatus" class="route-library-status" aria-live="polite">正在读取已保存路线…</div>
+                                </section>
 
                                 <div id="aiRoutePanel" class="route-mode-panel ai-route-panel" hidden>
                                     <div class="ai-route-panel-heading">
