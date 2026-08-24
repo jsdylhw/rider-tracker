@@ -1,8 +1,5 @@
 import express from "express";
 import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { createStravaClient } from "../strava-client.js";
 import { buildStravaLoginPage } from "../pages/strava-login-page.js";
 import { sendOAuthResultPage } from "../pages/oauth-result-page.js";
 import { normalizeText, normalizeUserId, parseBoolean } from "../shared/http-utils.js";
@@ -16,43 +13,27 @@ export function createOAuthStateStore({
     clearTimeoutFn = clearTimeout
 } = {}) {
     const states = new Map();
-
     function deleteState(state) {
         const meta = states.get(state);
         if (!meta) return false;
-        if (meta.timer) {
-            clearTimeoutFn(meta.timer);
-        }
+        if (meta.timer) clearTimeoutFn(meta.timer);
         states.delete(state);
         return true;
     }
-
     function sweepExpired() {
         const currentTime = now();
         for (const [state, meta] of states.entries()) {
-            if (meta.expiresAtMs <= currentTime) {
-                deleteState(state);
-            }
+            if (meta.expiresAtMs <= currentTime) deleteState(state);
         }
     }
-
     function set(state, userId) {
         deleteState(state);
         const expiresAtMs = now() + ttlMs;
-        const timer = setTimeoutFn(() => {
-            states.delete(state);
-        }, ttlMs);
-        if (typeof timer?.unref === "function") {
-            timer.unref();
-        }
-        states.set(state, {
-            userId,
-            expiresAtMs,
-            timer
-        });
+        const timer = setTimeoutFn(() => states.delete(state), ttlMs);
+        if (typeof timer?.unref === "function") timer.unref();
+        states.set(state, { userId, expiresAtMs, timer });
         return states.get(state);
     }
-
     function consume(state) {
         sweepExpired();
         const meta = states.get(state);
@@ -60,191 +41,98 @@ export function createOAuthStateStore({
         deleteState(state);
         return meta;
     }
-
     function has(state) {
         sweepExpired();
         return states.has(state);
     }
-
     function size() {
         sweepExpired();
         return states.size;
     }
-
-    return {
-        set,
-        consume,
-        delete: deleteState,
-        sweepExpired,
-        has,
-        size
-    };
+    return { set, consume, delete: deleteState, sweepExpired, has, size };
 }
 
-export function createStravaRoutes({
-    configStore,
-    tokenStore,
-    activityStore,
-    upload,
-    projectRoot,
-    clientId,
-    clientSecret,
-    scopes,
-    redirectUri,
-    frontendRedirectUrl
-}) {
+export function createStravaRoutes({ agentClient, scopes, redirectUri, frontendRedirectUrl }) {
     const router = express.Router();
     const oauthStates = createOAuthStateStore();
 
-    async function getStravaConfig() {
-        if (clientId && clientSecret) {
-            return {
-                configured: true,
-                source: "env",
-                clientId,
-                clientSecret,
-                redirectUri,
-                scopes
-            };
-        }
-
-        const saved = await configStore.load();
-        return {
-            configured: Boolean(saved.clientId && saved.clientSecret),
-            source: saved.clientId && saved.clientSecret ? "local" : "none",
-            clientId: saved.clientId,
-            clientSecret: saved.clientSecret,
-            redirectUri,
-            scopes
-        };
+    async function getConfig() {
+        return agentClient.stravaConfig();
     }
 
-    function createClient(config) {
-        return createStravaClient({
-            clientId: config.clientId,
-            clientSecret: config.clientSecret,
-            redirectUri,
-            scopes
-        });
-    }
-
-    function ensureStravaConfig(res, config) {
-        if (config.configured) return true;
+    async function ensureConfigured(res) {
+        const config = await getConfig();
+        if (config.configured) return config;
         res.status(409).json({
             ok: false,
             configured: false,
             loginUrl: "/strava/login",
-            error: "Missing Strava credentials. Open /strava/login to save Client ID and Client Secret."
+            error: "Missing Strava credentials. Configure the strava section in config.yaml."
         });
-        return false;
+        return null;
     }
 
-    async function sendConfigSummary(res) {
-        const config = await getStravaConfig();
-        return res.json({
-            ok: true,
-            configured: config.configured,
-            source: config.source,
-            loginUrl: "/strava/login",
-            configPath: configStore.filePath,
-            redirectUri,
-            scopes
-        });
-    }
-
-    async function ensureValidAccessToken(userId) {
-        const config = await getStravaConfig();
-        const current = await tokenStore.get(userId);
-
-        if (!current) {
-            throw new Error(`User ${userId} has not connected Strava yet. Call /api/strava/auth/start first.`);
+    router.get("/api/strava/config", async (_req, res) => {
+        try {
+            const config = await getConfig();
+            res.json({ ok: true, ...config, loginUrl: "/strava/login", redirectUri, scopes });
+        } catch (error) {
+            res.status(502).json({ ok: false, error: error.message });
         }
-
-        const expiringSoon = Number(current.expires_at || 0) <= Math.floor(Date.now() / 1000) + 60;
-        if (!expiringSoon) {
-            return current.access_token;
-        }
-
-        const refreshed = await createClient(config).refreshToken(current.refresh_token);
-        const nextToken = {
-            ...toStoredTokenPayload(refreshed),
-            athlete: refreshed.athlete ?? current.athlete ?? null
-        };
-        await tokenStore.set(userId, nextToken);
-        return nextToken.access_token;
-    }
-
-    router.get("/api/strava/config", (_req, res) => {
-        sendConfigSummary(res);
     });
 
-    router.post("/api/strava/config", async (req, res) => {
-        const nextClientId = normalizeText(req.body.clientId);
-        const nextClientSecret = normalizeText(req.body.clientSecret);
-
-        if (!nextClientId || !nextClientSecret) {
-            return res.status(400).json({
-                ok: false,
-                error: "Client ID and Client Secret are required."
-            });
-        }
-
-        await configStore.save({
-            clientId: nextClientId,
-            clientSecret: nextClientSecret,
-            updatedAt: new Date().toISOString()
+    router.post("/api/strava/config", (_req, res) => {
+        res.status(409).json({
+            ok: false,
+            error: "Strava credentials have one owner. Update config.yaml and restart Rider."
         });
-
-        return sendConfigSummary(res);
     });
 
     router.get("/strava/login", async (req, res) => {
         const userId = normalizeUserId(req.query.userId);
-        const config = await getStravaConfig();
-        res.type("html").send(buildStravaLoginPage({
-            userId,
-            configured: config.configured,
-            hasEnvCredentials: config.source === "env",
-            redirectUri,
-            scopes,
-            configPath: configStore.filePath
-        }));
+        try {
+            const config = await getConfig();
+            res.type("html").send(buildStravaLoginPage({
+                userId,
+                configured: config.configured,
+                hasEnvCredentials: config.configured,
+                redirectUri,
+                scopes,
+                configPath: config.token_store || "config.yaml"
+            }));
+        } catch (error) {
+            res.status(502).send(error.message);
+        }
     });
 
     router.get("/api/strava/auth/start", async (req, res) => {
-        const config = await getStravaConfig();
-        if (!ensureStravaConfig(res, config)) return;
-
-        const userId = normalizeUserId(req.query.userId);
-        const state = `${userId}:${crypto.randomBytes(12).toString("hex")}`;
-        oauthStates.sweepExpired();
-        oauthStates.set(state, userId);
-
-        res.json({
-            ok: true,
-            authUrl: createClient(config).buildAuthorizeUrl({ state }),
-            state,
-            userId
-        });
+        try {
+            if (!await ensureConfigured(res)) return;
+            const userId = normalizeUserId(req.query.userId);
+            const state = `${userId}:${crypto.randomBytes(12).toString("hex")}`;
+            oauthStates.sweepExpired();
+            oauthStates.set(state, userId);
+            const result = await agentClient.stravaAuthorizeUrl({
+                redirect_uri: redirectUri,
+                scope: scopes,
+                state
+            });
+            res.json({ ok: true, authUrl: result.auth_url, state, userId });
+        } catch (error) {
+            res.status(502).json({ ok: false, error: error.message });
+        }
     });
 
     router.get("/api/strava/auth/callback", async (req, res) => {
-        const config = await getStravaConfig();
-        if (!ensureStravaConfig(res, config)) return;
-
         const { code, state, error, scope } = req.query;
-
         if (error) {
-            if (state) {
-                oauthStates.delete(String(state));
-            }
+            if (state) oauthStates.delete(String(state));
             return sendOAuthResultPage(res, {
                 ok: false,
                 title: "Strava authorization failed",
                 message: `Strava returned: ${String(error)}`
             });
         }
-
         const stateMeta = code && state ? oauthStates.consume(String(state)) : null;
         if (!code || !state || !stateMeta) {
             return sendOAuthResultPage(res, {
@@ -253,11 +141,8 @@ export function createStravaRoutes({
                 message: "Missing code/state, or the authorization state has expired. Please try connecting again."
             });
         }
-
         try {
-            const tokenResponse = await createClient(config).exchangeCode(String(code));
-            await tokenStore.set(stateMeta.userId, toStoredTokenPayload(tokenResponse));
-
+            await agentClient.stravaExchangeCode({ code: String(code) });
             if (frontendRedirectUrl) {
                 const redirectUrl = new URL(frontendRedirectUrl);
                 redirectUrl.searchParams.set("status", "connected");
@@ -265,7 +150,6 @@ export function createStravaRoutes({
                 redirectUrl.searchParams.set("scope", String(scope || ""));
                 return res.redirect(redirectUrl.toString());
             }
-
             return sendOAuthResultPage(res, {
                 ok: true,
                 title: "Strava connected",
@@ -276,191 +160,75 @@ export function createStravaRoutes({
                     scope: String(scope || "")
                 }
             });
-        } catch (err) {
+        } catch (exchangeError) {
             return sendOAuthResultPage(res, {
                 ok: false,
                 title: "Strava token exchange failed",
-                message: err.message
+                message: exchangeError.message
             });
         }
     });
 
     router.get("/api/strava/connection", async (req, res) => {
-        const userId = normalizeUserId(req.query.userId);
-        const token = await tokenStore.get(userId);
-        const config = await getStravaConfig();
-
-        if (!token) {
-            return res.json({
-                connected: false,
-                configured: config.configured,
-                userId
-            });
+        try {
+            const userId = normalizeUserId(req.query.userId);
+            const connection = await agentClient.stravaConnection();
+            res.json({ ...connection, userId, expiresAt: connection.expires_at ?? null });
+        } catch (error) {
+            res.status(502).json({ ok: false, error: error.message });
         }
+    });
 
-        return res.json({
-            connected: true,
-            configured: config.configured,
-            userId,
-            athlete: token.athlete ?? null,
-            expiresAt: token.expires_at ?? null
+    router.post("/api/strava/upload-fit", (_req, res) => {
+        res.status(410).json({
+            ok: false,
+            error: "Direct FIT upload is retired. Import the FIT into Rider before uploading it to Strava."
         });
     });
 
-    router.post("/api/strava/upload-fit", upload.single("file"), async (req, res) => {
-        const config = await getStravaConfig();
-        if (!ensureStravaConfig(res, config)) return;
-
-        const userId = normalizeUserId(req.body.userId);
-        const uploadedFile = req.file;
-
-        if (!uploadedFile) {
-            return res.status(400).json({
-                ok: false,
-                error: "Missing FIT file. Send multipart field named file."
-            });
-        }
-
-        try {
-            const accessToken = await ensureValidAccessToken(userId);
-            const sourceMessage = normalizeText(req.body.message);
-            const fitDescription = normalizeText(req.body.fitDescription);
-            const fullDescription = [fitDescription, sourceMessage].filter(Boolean).join("\n\n");
-
-            const uploadResponse = await createClient(config).createUpload({
-                accessToken,
-                fileBlob: new Blob([uploadedFile.buffer], { type: uploadedFile.mimetype || "application/vnd.ant.fit" }),
-                filename: uploadedFile.originalname || `ride-${Date.now()}.fit`,
-                dataType: "fit",
-                name: normalizeText(req.body.activityName),
-                description: fullDescription || undefined,
-                trainer: parseBoolean(req.body.trainer),
-                commute: parseBoolean(req.body.commute),
-                externalId: normalizeText(req.body.externalId),
-                sportType: normalizeText(req.body.sportType)
-            });
-
-            return res.json({
-                ok: true,
-                userId,
-                upload: uploadResponse
-            });
-        } catch (err) {
-            return res.status(500).json({
-                ok: false,
-                error: err.message
-            });
-        }
-    });
-
     router.post("/api/strava/upload-activity-fit", async (req, res) => {
-        const config = await getStravaConfig();
-        if (!ensureStravaConfig(res, config)) return;
-
-        const userId = normalizeUserId(req.body.userId);
-        const activityId = normalizeText(req.body.activityId);
-        const activity = activityStore?.getActivity?.(activityId);
-
-        if (!activity) {
-            return res.status(404).json({
-                ok: false,
-                error: "Activity not found."
-            });
-        }
-        if (!activity.fitFilePath) {
-            return res.status(409).json({
-                ok: false,
-                error: "Activity does not have an archived FIT file."
-            });
-        }
-
         try {
-            const accessToken = await ensureValidAccessToken(userId);
-            const fitPath = resolveActivityFitPath({ projectRoot, fitFilePath: activity.fitFilePath });
-            const fitBytes = await fs.readFile(fitPath);
+            if (!await ensureConfigured(res)) return;
+            const activityId = normalizeText(req.body.activityId);
+            if (!activityId) {
+                return res.status(400).json({ ok: false, error: "Activity id is required." });
+            }
             const sourceMessage = normalizeText(req.body.message || req.body.generatedMessage);
             const fitDescription = normalizeText(req.body.fitDescription);
-            const fullDescription = [fitDescription, sourceMessage].filter(Boolean).join("\n\n");
-
-            const uploadResponse = await createClient(config).createUpload({
-                accessToken,
-                fileBlob: new Blob([fitBytes], { type: "application/vnd.ant.fit" }),
-                filename: path.basename(activity.fitFilePath),
-                dataType: "fit",
-                name: normalizeText(req.body.activityName) || activity.name,
-                description: fullDescription || undefined,
+            const description = [fitDescription, sourceMessage].filter(Boolean).join("\n\n");
+            const result = await agentClient.stravaUploadActivity({
+                activity_key: activityId,
+                title: normalizeText(req.body.activityName) || null,
+                description: description || null,
                 trainer: parseBoolean(req.body.trainer),
                 commute: parseBoolean(req.body.commute),
-                externalId: activity.id,
-                sportType: normalizeText(req.body.sportType) || activity.sportType
+                sport_type: normalizeText(req.body.sportType) || null
             });
-
-            return res.json({
+            res.json({
                 ok: true,
-                userId,
-                activityId: activity.id,
-                upload: uploadResponse
+                userId: normalizeUserId(req.body.userId),
+                activityId,
+                upload: result.upload
             });
-        } catch (err) {
-            return res.status(500).json({
-                ok: false,
-                error: err.message
-            });
+        } catch (error) {
+            const status = /activity not found/i.test(error.message) ? 404
+                : /FIT path missing/i.test(error.message) ? 409 : 502;
+            res.status(status).json({ ok: false, error: error.message });
         }
     });
 
     router.get("/api/strava/upload-status/:uploadId", async (req, res) => {
-        const config = await getStravaConfig();
-        if (!ensureStravaConfig(res, config)) return;
-
-        const userId = normalizeUserId(req.query.userId);
-        const uploadId = String(req.params.uploadId || "");
-
-        if (!uploadId) {
-            return res.status(400).json({
-                ok: false,
-                error: "Missing uploadId."
-            });
-        }
-
         try {
-            const accessToken = await ensureValidAccessToken(userId);
-            const status = await createClient(config).getUploadStatus({
-                accessToken,
-                uploadId
-            });
-
-            return res.json({
+            const status = await agentClient.stravaUploadStatus(req.params.uploadId);
+            res.json({
                 ok: true,
-                userId,
+                userId: normalizeUserId(req.query.userId),
                 status
             });
-        } catch (err) {
-            return res.status(500).json({
-                ok: false,
-                error: err.message
-            });
+        } catch (error) {
+            res.status(502).json({ ok: false, error: error.message });
         }
     });
 
     return router;
-}
-
-function resolveActivityFitPath({ projectRoot, fitFilePath }) {
-    const root = path.resolve(projectRoot);
-    const fitPath = path.resolve(root, fitFilePath);
-    if (!fitPath.startsWith(`${root}${path.sep}`)) {
-        throw new Error("Activity FIT path is outside project root.");
-    }
-    return fitPath;
-}
-
-function toStoredTokenPayload(raw) {
-    return {
-        access_token: raw.access_token,
-        refresh_token: raw.refresh_token,
-        expires_at: raw.expires_at,
-        athlete: raw.athlete ?? null,
-        updated_at: new Date().toISOString()
-    };
 }

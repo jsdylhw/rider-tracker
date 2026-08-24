@@ -27,11 +27,16 @@ Python 在正常启动时只检查 schema，不各自执行隐式迁移。
 - `activities` 保存活动身份、摘要和原始 FIT 路径。
 - `activity_facts`、`activity_reports` 保存 Agent 生成的确定性特征和报告。
 - `activity_artifacts` 保存可重建的详情曲线/地图序列，避免每次打开活动都重新解码 FIT。
+- `athlete_profiles` 是 FTP、体重、最大/静息心率和骑行模拟参数的唯一事实源；Rider 设置页通过 Node 代理访问 Python，不再直接保存这些字段到 `user-profile.json`。
 - `route_plans`、`route_plan_revisions` 保存 Agent 路线草稿及修改历史。
 - `saved_routes` 保存 Rider 已确认的路线资产；`route_progress` 单独保存未完成进度。
 - `activities.saved_route_id` 及路线起止里程把完成活动关联到实际骑行路线。
 - `chat_sessions` 保存可恢复的对话状态。
 - 原始 FIT 文件统一保存在根目录 `data/files/fit/`，数据库只保存相对路径或必要的绝对路径。
+
+Strava 也由 Python 单独持有外部副作用：凭据来自 `config.yaml`，OAuth Token 默认保存在
+`data/strava-tokens.json`，Token 刷新、活动上传和状态查询都通过 Node 代理进入 Training Agent。
+旧 Node Token 文件的 `default` 包装格式会在首次读取时兼容，后续写入统一的单用户格式。
 
 共享数据库不等于允许任意跨层写入。Rider 负责实时骑行和文件接收，Agent 负责
 分析派生数据和路线计划；两边通过稳定的 `activity_id`、`plan_id` 关联。

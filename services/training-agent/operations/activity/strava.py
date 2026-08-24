@@ -11,6 +11,50 @@ from project_paths import resolve_project_path
 from integrations.strava import StravaSink
 
 
+def upload_stored_activity_fit(
+    activity_key: str,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    trainer: bool = False,
+    commute: bool = False,
+    sport_type: str | None = None,
+) -> dict[str, Any]:
+    """Upload one archived FIT without requiring an LLM-generated report."""
+    store = ActivityStore()
+    activity = store.get_activity(activity_key)
+    if activity is None:
+        raise KeyError(f"activity not found: {activity_key}")
+    stored_fit_path = str(activity.get("fit_path") or "")
+    if not stored_fit_path:
+        raise FileNotFoundError(f"FIT path missing for {activity_key}")
+    fit_path = resolve_project_path(stored_fit_path)
+    if not fit_path.exists():
+        raise FileNotFoundError(str(fit_path))
+    report = store.get_report(activity_key) or {}
+    resolved_description = str(
+        description if description is not None else report.get("strava_summary") or ""
+    ).strip()
+    upload = StravaSink().upload_fit(
+        str(fit_path),
+        title=title or str(activity.get("name") or fit_path.stem),
+        description=resolved_description or None,
+        trainer=trainer,
+        commute=commute,
+        external_id=activity_key,
+        sport_type=sport_type or str(activity.get("sport_type") or "") or None,
+    )
+    return {
+        "activity_key": activity_key,
+        "fit_path": str(fit_path),
+        "upload": upload,
+    }
+
+
+def get_strava_upload_status(upload_id: int | str) -> dict[str, Any]:
+    return StravaSink().get_upload(upload_id)
+
+
 def upload_activity_to_strava(
     activity_key: str,
     *,

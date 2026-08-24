@@ -24,6 +24,7 @@ REQUIRED_TABLES = {
     "activity_reports",
     "activity_facts",
     "activity_artifacts",
+    "athlete_profiles",
     "analysis_navigation",
     "analysis_results",
     "route_plans",

@@ -20,7 +20,6 @@ export function buildRuntimeEnv(projectRoot, unifiedConfig, baseEnv = process.en
     const { configPath, values } = unifiedConfig;
     const rider = objectValue(values.rider);
     const trainingAgent = objectValue(values.training_agent);
-    const strava = objectValue(values.strava);
     const env = { ...baseEnv };
 
     setDefault(env, "HOST", rider.host);
@@ -29,8 +28,6 @@ export function buildRuntimeEnv(projectRoot, unifiedConfig, baseEnv = process.en
     setDefault(env, "FRONTEND_REDIRECT_URL", rider.frontend_redirect_url);
     setDefault(env, "STRAVA_REDIRECT_URI", rider.strava_redirect_uri);
     setDefault(env, "STRAVA_SCOPES", rider.strava_scopes);
-    setDefault(env, "STRAVA_CLIENT_ID", strava.client_id);
-    setDefault(env, "STRAVA_CLIENT_SECRET", strava.client_secret);
     setPathDefault(
         env,
         "RIDER_TRACKER_DB_PATH",

@@ -16,7 +16,7 @@ from fit.analysis.sprints import detect_sprints
 from domain.analysis.artifacts import get_tss
 from storage.repositories.activity import ActivityStore
 from project_paths import resolve_project_path
-from fit.parser import parse_fit
+from services.activity.fit_loader import parse_activity_fit as parse_fit
 
 
 SEGMENT_TYPES = {"sprint", "interval", "effort", "climb", "fast_running_segment"}

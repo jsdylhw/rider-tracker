@@ -59,7 +59,7 @@ export function createExportService({ store }) {
                 } else {
                     window.location.href = loginUrl;
                 }
-                const message = "请在打开的 Strava 登录配置页面保存 Client ID / Secret，并继续授权。";
+                const message = "请先在 config.yaml 的 strava 区块配置 Client ID / Secret，重启 Rider 后继续授权。";
                 store.setState((state) => ({
                     ...state,
                     statusText: message
@@ -558,7 +558,7 @@ function resolveSessionTimestamp(session) {
 function buildMissingStravaConfigMessage(config) {
     const callback = config?.redirectUri || "http://localhost:8787/api/strava/auth/callback";
     return [
-        "Strava 尚未配置。请在项目根目录创建 .env，填写 STRAVA_CLIENT_ID 和 STRAVA_CLIENT_SECRET，然后重启 npm.cmd start。",
+        "Strava 尚未配置。请在项目根目录 config.yaml 的 strava 区块填写 client_id 和 client_secret，然后重启 npm start。",
         `Strava App 的 callback URL 设置为：${callback}`
     ].join(" ");
 }

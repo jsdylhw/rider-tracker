@@ -28,7 +28,7 @@ export const suite = {
                 assertEqual(env.PORT, "9000");
                 assertEqual(env.PERSONAL_FIT_AGENT_URL, "http://127.0.0.3:9100");
                 assertEqual(env.PERSONAL_FIT_AGENT_TOKEN, "shared-token");
-                assertEqual(env.STRAVA_CLIENT_ID, "client");
+                assertEqual(env.STRAVA_CLIENT_ID, undefined);
                 assertEqual(env.RIDER_TRACKER_DB_PATH, path.join(root, "runtime", "rider.db"));
                 assertEqual(env.TRAINING_AGENT_DB_PATH, path.join(root, "runtime", "rider.db"));
                 assertEqual(env.TRAINING_AGENT_MANAGED_DATABASE, "1");

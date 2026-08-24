@@ -139,6 +139,64 @@ def test_strava_upload_uses_activity_key(tmp_path, monkeypatch):
     assert calls == [("a1", {"title": None, "wait": True, "force": True})]
 
 
+def test_athlete_profile_api_returns_and_updates_rider_settings(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    saved = []
+    profile = {"cycling": {"ftp_w": 260}, "shared": {"max_heart_rate": 200}}
+    monkeypatch.setattr(api, "get_athlete_profile", lambda: profile)
+    monkeypatch.setattr(
+        api,
+        "update_athlete_profile",
+        lambda value: saved.append(value) or {
+            "cycling": {"ftp_w": value.get("ftp")},
+            "shared": {"weight_kg": value.get("mass")},
+        },
+    )
+
+    current = client.get("/api/athlete-profile")
+    updated = client.put("/api/athlete-profile", json={"profile": {"ftp": 275, "mass": 80}})
+
+    assert current.status_code == 200
+    assert current.json()["rider_settings"]["ftp"] == 260
+    assert updated.status_code == 200
+    assert saved == [{"ftp": 275, "mass": 80}]
+
+
+def test_strava_owner_endpoints_delegate_to_python_sink(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    monkeypatch.setattr(api, "load_config", lambda: {
+        "strava": {"client_id": "123", "client_secret": "secret"}
+    })
+
+    class FakeSink:
+        def __init__(self, require_access_token=True):
+            self.require_access_token = require_access_token
+
+        def connection_status(self):
+            return {"connected": True, "configured": True, "expires_at": 123}
+
+        def build_authorize_url(self, **kwargs):
+            return f"https://strava.test/auth?state={kwargs['state']}"
+
+        def exchange_authorization_code(self, code):
+            return {"access_token": "token", "athlete": {"id": 1}, "expires_at": 456}
+
+    monkeypatch.setattr(api, "StravaSink", FakeSink)
+
+    config = client.get("/api/strava/config")
+    connection = client.get("/api/strava/connection")
+    auth = client.post("/api/strava/auth-url", json={
+        "redirect_uri": "http://localhost/callback",
+        "state": "state-1",
+    })
+    exchange = client.post("/api/strava/exchange-code", json={"code": "code-1"})
+
+    assert config.json()["configured"] is True
+    assert connection.json()["connected"] is True
+    assert auth.json()["auth_url"].endswith("state=state-1")
+    assert exchange.json()["athlete"]["id"] == 1
+
+
 def test_route_candidate_click_persists_preview_without_archiving_chat_turn(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
     session = api.chat_sessions.get_or_create("route-session")

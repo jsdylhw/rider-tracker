@@ -32,11 +32,19 @@ export function createPersonalFitAgentClient({
     }
 
     async function post(pathname, body) {
+        return sendJson("POST", pathname, body);
+    }
+
+    async function put(pathname, body) {
+        return sendJson("PUT", pathname, body);
+    }
+
+    async function sendJson(method, pathname, body) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
         try {
             const response = await fetchImpl(`${normalizedBaseUrl}${pathname}`, {
-                method: "POST",
+                method,
                 headers: {
                     "Content-Type": "application/json",
                     ...(apiToken ? { "X-API-Token": apiToken } : {})
@@ -65,6 +73,16 @@ export function createPersonalFitAgentClient({
         ingestFit: (request) => post("/api/activities/ingest-fit", request),
         activityDetail: (activityId, { maxPoints = 700 } = {}) => get(
             `/api/activities/${encodeURIComponent(activityId)}/detail?max_points=${encodeURIComponent(maxPoints)}`
+        ),
+        athleteProfile: () => get("/api/athlete-profile"),
+        updateAthleteProfile: (profile) => put("/api/athlete-profile", { profile }),
+        stravaConfig: () => get("/api/strava/config"),
+        stravaConnection: () => get("/api/strava/connection"),
+        stravaAuthorizeUrl: (request) => post("/api/strava/auth-url", request),
+        stravaExchangeCode: (request) => post("/api/strava/exchange-code", request),
+        stravaUploadActivity: (request) => post("/api/strava/upload-activity", request),
+        stravaUploadStatus: (uploadId) => get(
+            `/api/strava/upload-status/${encodeURIComponent(uploadId)}`
         ),
         selectRouteCandidate: (request) => post("/api/route-plans/select", request),
         routePlanCommand: (request) => post("/api/route-plans/command", request)

@@ -27,23 +27,18 @@ export function buildStravaLoginPage({ userId, configured, hasEnvCredentials, re
 <body>
   <main>
     <h1>连接 Strava</h1>
-    <p>保存 Strava API 的 Client ID 和 Client Secret 后，Rider Tracker 会继续打开 Strava 授权页面。</p>
+    <p>Strava 凭据与 Token 由内嵌 Training Agent 统一管理。</p>
     <dl>
       <div class="row"><dt>Callback</dt><dd>${escapeHtml(redirectUri)}</dd></div>
       <div class="row"><dt>Scopes</dt><dd>${escapeHtml(scopes)}</dd></div>
       <div class="row"><dt>Config</dt><dd>${escapeHtml(configPath)}</dd></div>
     </dl>
-    ${hasEnvCredentials ? `<p id="status">已从 .env 读取 Strava 配置。</p><button id="connectBtn" class="secondary" type="button">继续授权 Strava</button>` : `
-    <form id="configForm">
-      <label>Client ID<input name="clientId" inputmode="numeric" autocomplete="off" placeholder="12345" ${configured ? "" : "required"}></label>
-      <label>Client Secret<input name="clientSecret" type="password" autocomplete="off" placeholder="Strava app client secret" ${configured ? "" : "required"}></label>
-      <button type="submit">${configured ? "更新配置并连接 Strava" : "保存配置并连接 Strava"}</button>
-    </form>
-    <p id="status">${configured ? "已保存本地 Strava 配置，可以继续授权。" : "等待保存 Strava 配置。"}</p>`}
+    ${configured || hasEnvCredentials
+        ? `<p id="status">已从统一配置读取 Strava 凭据。</p><button id="connectBtn" class="secondary" type="button">继续授权 Strava</button>`
+        : `<p id="status">请在 config.yaml 的 strava 区块配置 client_id 和 client_secret，然后重启 Rider。</p>`}
   </main>
   <script>
     const userId = ${JSON.stringify(userId)};
-    const form = document.getElementById("configForm");
     const connectBtn = document.getElementById("connectBtn");
     const statusEl = document.getElementById("status");
 
@@ -63,30 +58,6 @@ export function buildStravaLoginPage({ userId, configured, hasEnvCredentials, re
       }));
     }
 
-    if (form) {
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const data = new FormData(form);
-        statusEl.textContent = "正在保存配置...";
-        try {
-          const response = await fetch("/api/strava/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              clientId: data.get("clientId"),
-              clientSecret: data.get("clientSecret")
-            })
-          });
-          const body = await response.json().catch(() => null);
-          if (!response.ok || body?.ok === false) {
-            throw new Error(body?.error || response.statusText || "Failed to save Strava config.");
-          }
-          await connect();
-        } catch (error) {
-          statusEl.textContent = error.message;
-        }
-      });
-    }
   </script>
 </body>
 </html>`;

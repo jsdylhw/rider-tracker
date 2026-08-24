@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fit.parser import parse_fit
+from services.activity.fit_loader import parse_activity_fit as parse_fit
 from services.activity.catalog import persist_activity_facts
 from storage.repositories.activity import ActivityStore
 from project_paths import resolve_project_path

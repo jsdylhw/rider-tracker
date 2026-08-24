@@ -175,7 +175,7 @@ npm run agent:cli -- sync-garmin --count 10
 
 - 模拟或实时骑行结束后可以导出 FIT。
 - 可以连接 Strava 后上传 FIT。
-- Strava 配置可以通过本地页面保存。
+- Strava 凭据从统一 `config.yaml` 读取，OAuth Token 由 Training Agent 单独管理。
 
 ## 本地数据
 
@@ -188,10 +188,9 @@ data/
 常见文件：
 
 ```text
-user-profile.json             根目录个人基础数据，不提交到仓库
-data/rider-tracker.db       SQLite 活动历史数据库
+user-profile.json           仅兼容保存本地 Google Key，不再保存运动员参数
+data/rider-tracker.db       SQLite 活动、路线和运动员档案数据库
 data/files/fit/             本地保存的 FIT 文件
-data/strava-config.json     Strava app 配置
 data/strava-tokens.json     Strava OAuth token
 ```
 
@@ -208,6 +207,9 @@ http://127.0.0.1:8787/strava/login
 ```
 
 或在页面里点击连接 Strava。
+
+`client_id`、`client_secret` 只配置在根目录 `config.yaml`；浏览器授权、Token
+刷新、活动上传和 Agent 工作流共用同一份 `data/strava-tokens.json`。
 
 Strava callback URL：
 

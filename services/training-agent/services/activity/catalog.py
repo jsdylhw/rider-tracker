@@ -9,7 +9,7 @@ from typing import Any
 from domain.analysis.artifacts import get_index_load_label
 from fit.analysis.stats import _meters_to_km, _seconds_to_minutes, prune_empty_values
 from storage.repositories.activity import ActivityStore, entry_from_fit_summary, file_content_key
-from fit.parser import parse_fit
+from services.activity.fit_loader import parse_activity_fit as parse_fit
 from fit.analysis.features import build_activity_features
 from fit.analysis.metrics import build_activity_metrics
 from project_paths import project_relative_or_absolute, resolve_project_path

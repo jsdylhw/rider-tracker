@@ -18,7 +18,7 @@ from agent.tools.spec import ToolRegistry
 from fit.analysis.data import llm_safe_fit_summary
 from fit.analysis.features import build_activity_features
 from fit.analysis.metrics import build_activity_metrics
-from fit.parser import parse_fit
+from services.activity.fit_loader import parse_activity_fit as parse_fit
 from integrations.llm import AnthropicMessagesClient, build_tool_result_block, extract_text
 from settings import get_agent_config
 from project_paths import project_relative_or_absolute, resolve_project_path

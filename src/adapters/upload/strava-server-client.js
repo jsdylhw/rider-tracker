@@ -1,5 +1,3 @@
-import { uploadFitToEndpoint } from "./fit-upload-client.js";
-
 const DEFAULT_STRAVA_SERVER_URL = "http://localhost:8787";
 const DEFAULT_POLL_INTERVAL_MS = 1500;
 const DEFAULT_MAX_POLL_ATTEMPTS = 24;
@@ -49,57 +47,6 @@ export async function getStravaServerConfig({ serverUrl }) {
     }
 
     return body;
-}
-
-export async function uploadFitToStravaServer({
-    serverUrl,
-    userId,
-    fitBytes,
-    filename,
-    activityName,
-    fitDescription,
-    repositoryUrl,
-    generatedMessage,
-    trainer = true,
-    commute = false,
-    externalId,
-    sportType = "VirtualRide",
-    pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
-    maxPollAttempts = DEFAULT_MAX_POLL_ATTEMPTS
-}) {
-    const baseUrl = normalizeServerUrl(serverUrl);
-    const uploadResponse = await uploadFitToEndpoint({
-        endpointUrl: `${baseUrl}/api/strava/upload-fit`,
-        fitBytes,
-        filename,
-        activityName,
-        fitDescription,
-        repositoryUrl,
-        generatedMessage,
-        userId: userId || "default",
-        trainer,
-        commute,
-        externalId,
-        sportType
-    });
-
-    if (uploadResponse?.ok === false) {
-        throw new Error(uploadResponse.error || "Strava server upload failed.");
-    }
-
-    const upload = uploadResponse?.upload ?? uploadResponse;
-    const uploadId = upload?.id_str ?? upload?.id;
-    if (!uploadId) {
-        throw new Error("Strava server did not return an upload id.");
-    }
-
-    return pollStravaUploadStatus({
-        baseUrl,
-        userId: userId || "default",
-        uploadId,
-        pollIntervalMs,
-        maxPollAttempts
-    });
 }
 
 export async function uploadSavedActivityFitToStravaServer({

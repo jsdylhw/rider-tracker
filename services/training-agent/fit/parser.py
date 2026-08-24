@@ -35,7 +35,7 @@ def _field_dict(frame: fitdecode.FitDataMessage) -> dict[str, Any]:
     return values
 
 
-def parse_fit(path: str | Path) -> dict[str, Any]:
+def parse_fit(path: str | Path, *, athlete_profile: dict[str, Any] | None = None) -> dict[str, Any]:
     """解析 FIT 文件,返回标准化的活动数据结构.
 
     Args:
@@ -76,7 +76,7 @@ def parse_fit(path: str | Path) -> dict[str, Any]:
     summary = summarize_fit(records, laps, sessions, sports)
     training_metadata = summarize_training_metadata(training_messages)
     training_metadata = _enrich_with_athlete_profile(
-        training_metadata, sport_type=summary.get("sport_type"),
+        training_metadata, profile=athlete_profile, sport_type=summary.get("sport_type"),
     )
     return {
         "path": str(fit_path),
@@ -306,8 +306,9 @@ def _num(value: Any) -> float | None:
 
 
 def _enrich_with_athlete_profile(
-    metadata: dict[str, Any], *, sport_type: str | None = None,
+    metadata: dict[str, Any], *, profile: dict[str, Any] | None = None,
+    sport_type: str | None = None,
 ) -> dict[str, Any]:
-    """用 data/athlete.json 补全 FIT 中缺失的 FTP/心率/区间设定."""
+    """用共享数据库运动员档案补全 FIT 中缺失的 FTP/心率/区间设定."""
     from domain.athlete import enrich_training_metadata
-    return enrich_training_metadata(metadata, sport_type=sport_type)
+    return enrich_training_metadata(metadata, profile or {}, sport_type=sport_type)

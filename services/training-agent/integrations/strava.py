@@ -22,7 +22,7 @@ from settings import load_config
 STRAVA_API_BASE = "https://www.strava.com/api/v3"
 STRAVA_OAUTH_AUTHORIZE_URL = "https://www.strava.com/oauth/authorize"
 STRAVA_OAUTH_TOKEN_URL = "https://www.strava.com/oauth/token"
-DEFAULT_TOKEN_STORE = Path(".strava_tokens.json")
+DEFAULT_TOKEN_STORE = Path("data") / "strava-tokens.json"
 ACCESS_TOKEN_REFRESH_LEEWAY_SECONDS = 60
 
 
@@ -44,7 +44,10 @@ class StravaSink:
         root_config = config if config is not None else load_config()
         self.config = root_config.get("strava", root_config)
         self.token_store = Path(str(self.config.get("token_store") or DEFAULT_TOKEN_STORE)).expanduser()
+        self._legacy_token_envelope = False
         self._stored_tokens = self._load_token_store()
+        if self._legacy_token_envelope:
+            self._persist_token_response(self._stored_tokens)
         self.access_token: str | None = self._access_token() if require_access_token else None
 
     def upload_fit(
@@ -52,6 +55,7 @@ class StravaSink:
         title: str | None = None, description: str | None = None,
         trainer: bool = False, commute: bool = False,
         external_id: str | None = None,
+        sport_type: str | None = None,
     ) -> dict[str, Any]:
         """上传 FIT 文件到 Strava,返回 upload 对象(含 upload_id 用于轮询)."""
         path = Path(fit_path)
@@ -72,6 +76,8 @@ class StravaSink:
         if external_id:
             # 用于去重:同一 external_id 不会重复创建活动
             data["external_id"] = external_id
+        if sport_type:
+            data["sport_type"] = sport_type
 
         with path.open("rb") as f:
             response = requests.post(
@@ -114,6 +120,18 @@ class StravaSink:
             timeout=float(self.config.get("timeout_seconds", 120)),
         )
         return self._json_or_raise(response)
+
+    def connection_status(self) -> dict[str, Any]:
+        """Return non-secret local OAuth state for Rider's connection UI."""
+        token = self._stored_tokens
+        return {
+            "connected": bool(token.get("access_token") or self.config.get("access_token")),
+            "configured": bool(
+                self.config.get("client_id") and self.config.get("client_secret")
+            ),
+            "athlete": token.get("athlete"),
+            "expires_at": self._token_expiry(),
+        }
 
     def explore_segments(self, bounds: str) -> dict[str, Any]:
         """查询一个 WGS-84 矩形范围内的热门骑行 Segment 样本."""
@@ -179,6 +197,7 @@ class StravaSink:
         self, *, redirect_uri: str = "http://localhost",
         scope: str = "read,activity:read_all,activity:write",
         approval_prompt: str = "force",
+        state: str | None = None,
     ) -> str:
         """生成 Strava OAuth 授权 URL,用户在浏览器中打开以授权应用."""
         client_id = self.config.get("client_id")
@@ -188,6 +207,7 @@ class StravaSink:
             "client_id": client_id, "redirect_uri": redirect_uri,
             "response_type": "code", "approval_prompt": approval_prompt,
             "scope": scope,
+            **({"state": state} if state else {}),
         })
         return f"{STRAVA_OAUTH_AUTHORIZE_URL}?{query}"
 
@@ -259,7 +279,14 @@ class StravaSink:
             data = json.loads(self.token_store.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return {}
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return {}
+        # One-time compatibility with Rider's former per-user Node token file.
+        default_token = data.get("default")
+        if isinstance(default_token, dict):
+            self._legacy_token_envelope = True
+            return default_token
+        return data
 
     def _persist_token_response(self, data: dict[str, Any]) -> None:
         """Persist the latest OAuth tokens without rewriting config.yaml.
@@ -267,7 +294,7 @@ class StravaSink:
         Strava can rotate refresh_token responses. Keeping this independent
         local store preserves comments and hand-managed credentials in config.
         """
-        token_keys = ("access_token", "refresh_token", "expires_at", "expires_in")
+        token_keys = ("access_token", "refresh_token", "expires_at", "expires_in", "athlete")
         updated = {
             **self._stored_tokens,
             **{key: data[key] for key in token_keys if data.get(key) is not None},

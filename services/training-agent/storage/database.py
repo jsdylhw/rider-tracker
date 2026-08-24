@@ -14,7 +14,7 @@ from pathlib import Path
 DEFAULT_DATABASE_PATH = Path(
     os.environ.get("TRAINING_AGENT_DB_PATH", str(Path("data") / "personal-fit-agent.db"))
 )
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def database_path(path: str | Path | None = None) -> Path:
@@ -132,6 +132,16 @@ def initialize_database(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_activity_artifacts_schema_version
             ON activity_artifacts(artifact_type, schema_version, updated_at DESC);
+
+        -- One canonical athlete profile feeds both Rider simulation settings
+        -- and deterministic FIT analysis thresholds.
+        CREATE TABLE IF NOT EXISTS athlete_profiles (
+            id TEXT PRIMARY KEY,
+            schema_version TEXT NOT NULL,
+            profile_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
 
         -- Analysis navigation is intentionally separate from chat history.  It
         -- freezes concrete activity/segment targets so a later CLI process can

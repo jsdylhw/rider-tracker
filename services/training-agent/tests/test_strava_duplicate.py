@@ -3,7 +3,11 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from storage.repositories.activity import ActivityStore
-from operations.activity.strava import _parse_duplicate_activity_id, upload_activity_to_strava
+from operations.activity.strava import (
+    _parse_duplicate_activity_id,
+    upload_activity_to_strava,
+    upload_stored_activity_fit,
+)
 
 
 def _stored_activity(tmp_path, *, strava_activity_id: str | None = None) -> tuple[ActivityStore, str]:
@@ -81,3 +85,32 @@ def test_normal_upload_persists_remote_id(tmp_path, monkeypatch):
 
     assert result["upload_status"]["activity_id"] == 98765
     assert store.get_activity(key)["strava_activity_id"] == "98765"
+
+
+def test_stored_activity_upload_does_not_require_report_generation(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    fit = tmp_path / "ride.fit"
+    fit.write_bytes(b"fit")
+    ActivityStore().upsert_activity({
+        "activity_key": "rider-1",
+        "fit_path": str(fit),
+        "sport_type": "cycling",
+        "source": "rider-tracker",
+        "name": "Rider Session",
+    })
+    with patch("operations.activity.strava.StravaSink") as sink_class:
+        sink_class.return_value.upload_fit.return_value = {"id": 123}
+        result = upload_stored_activity_fit(
+            "rider-1", description="manual", trainer=True, sport_type="VirtualRide",
+        )
+
+    assert result["upload"]["id"] == 123
+    sink_class.return_value.upload_fit.assert_called_once_with(
+        str(fit),
+        title="Rider Session",
+        description="manual",
+        trainer=True,
+        commute=False,
+        external_id="rider-1",
+        sport_type="VirtualRide",
+    )

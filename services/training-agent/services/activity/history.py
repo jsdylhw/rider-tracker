@@ -16,7 +16,7 @@ from domain.analysis.artifacts import (
     get_tss_source,
     summary_schema_version,
 )
-from fit.parser import parse_fit
+from services.activity.fit_loader import parse_activity_fit as parse_fit
 from storage.repositories.activity import ActivityStore
 from project_paths import resolve_project_path
 

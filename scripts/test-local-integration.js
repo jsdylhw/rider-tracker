@@ -38,8 +38,6 @@ try {
             HOST: "127.0.0.1",
             PERSONAL_FIT_AGENT_URL: agentUrl,
             RIDER_TRACKER_DB_PATH: path.join(tempRoot, "rider-tracker.db"),
-            STRAVA_CONFIG_PATH: path.join(tempRoot, "strava-config.json"),
-            TOKEN_STORE_PATH: path.join(tempRoot, "strava-tokens.json"),
             FIT_FILE_DIR: path.join(tempRoot, "fit")
         }
     }));

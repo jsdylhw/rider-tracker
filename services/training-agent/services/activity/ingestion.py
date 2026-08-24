@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fit.parser import parse_fit
+from services.activity.fit_loader import parse_activity_fit as parse_fit
 from project_paths import resolve_project_path
 from services.activity.catalog import upsert_activity_from_fit
 from storage.repositories.activity import ActivityStore, file_content_key

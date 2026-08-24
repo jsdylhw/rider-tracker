@@ -128,6 +128,32 @@ class TestStravaSinkInit:
         assert sink.access_token == "cached_token"
         mock_post.assert_not_called()
 
+    def test_reads_legacy_rider_default_token_envelope(self, tmp_path):
+        token_store = tmp_path / "strava_tokens.json"
+        token_store.write_text(
+            json.dumps({
+                "default": {
+                    "access_token": "rider_token",
+                    "refresh_token": "rider_refresh",
+                    "expires_at": int(time.time()) + 3600,
+                    "athlete": {"id": 42},
+                }
+            }),
+            encoding="utf-8",
+        )
+
+        sink = StravaSink({"strava": {"token_store": str(token_store)}})
+
+        assert sink.access_token == "rider_token"
+        assert sink.connection_status()["athlete"]["id"] == 42
+        assert json.loads(token_store.read_text(encoding="utf-8")) == {
+            "access_token": "rider_token",
+            "refresh_token": "rider_refresh",
+            "expires_at": sink.connection_status()["expires_at"],
+            "athlete": {"id": 42},
+        }
+        assert token_store.stat().st_mode & 0o777 == 0o600
+
     @patch("integrations.strava.requests.post")
     def test_uses_still_valid_cached_token_when_refresh_network_fails(self, mock_post, tmp_path):
         token_store = tmp_path / "strava_tokens.json"
@@ -196,10 +222,13 @@ class TestStravaSinkUpload:
         fit_file.write_bytes(b"mock fit content")
 
         sink = _make_sink()
-        result = sink.upload_fit(str(fit_file), title="Test Ride", description="Test desc")
+        result = sink.upload_fit(
+            str(fit_file), title="Test Ride", description="Test desc", sport_type="VirtualRide",
+        )
 
         assert result["id"] == 12345
         mock_post.assert_called_once()
+        assert mock_post.call_args.kwargs["data"]["sport_type"] == "VirtualRide"
 
     def test_upload_nonexistent_file(self):
         sink = _make_sink()

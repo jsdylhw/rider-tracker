@@ -4,8 +4,6 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
-import { createConfigStore } from "./config-store.js";
-import { createTokenStore } from "./token-store.js";
 import { createActivityStore } from "./activity-store.js";
 import { createRouteLibraryStore } from "./route-library-store.js";
 import { createActivityRoutes } from "./routes/activity-routes.js";
@@ -26,8 +24,6 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "127.0.0.1";
-const CLIENT_ID = process.env.STRAVA_CLIENT_ID;
-const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
 const SCOPES = process.env.STRAVA_SCOPES || "activity:read_all,activity:write";
 const APP_BASE_URL = process.env.APP_BASE_URL || buildLocalBaseUrl({
     host: HOST === "127.0.0.1" ? "localhost" : HOST,
@@ -35,15 +31,11 @@ const APP_BASE_URL = process.env.APP_BASE_URL || buildLocalBaseUrl({
 });
 const REDIRECT_URI = process.env.STRAVA_REDIRECT_URI || `${APP_BASE_URL}/api/strava/auth/callback`;
 const FRONTEND_REDIRECT_URL = process.env.FRONTEND_REDIRECT_URL || "";
-const CONFIG_STORE_PATH = process.env.STRAVA_CONFIG_PATH;
-const TOKEN_STORE_PATH = process.env.TOKEN_STORE_PATH;
 const FIT_FILE_DIR = process.env.FIT_FILE_DIR || path.join(PROJECT_ROOT, "data", "files", "fit");
 const USER_PROFILE_PATH = path.join(PROJECT_ROOT, "user-profile.json");
 const PERSONAL_FIT_AGENT_URL = process.env.PERSONAL_FIT_AGENT_URL || "http://127.0.0.1:8000";
 const PERSONAL_FIT_AGENT_TOKEN = process.env.PERSONAL_FIT_AGENT_TOKEN || "";
 
-const configStore = createConfigStore(CONFIG_STORE_PATH);
-const tokenStore = createTokenStore(TOKEN_STORE_PATH);
 const activityStore = createActivityStore();
 const routeLibraryStore = createRouteLibraryStore();
 const personalFitAgentClient = createPersonalFitAgentClient({
@@ -72,13 +64,7 @@ app.use(createActivityRoutes({
 }));
 app.use(createRouteLibraryRoutes({ routeLibraryStore }));
 app.use(createStravaRoutes({
-    configStore,
-    tokenStore,
-    activityStore,
-    upload,
-    projectRoot: PROJECT_ROOT,
-    clientId: CLIENT_ID,
-    clientSecret: CLIENT_SECRET,
+    agentClient: personalFitAgentClient,
     scopes: SCOPES,
     redirectUri: REDIRECT_URI,
     frontendRedirectUrl: FRONTEND_REDIRECT_URL
@@ -91,8 +77,21 @@ app.get("/", (_req, res) => {
 
 app.get("/api/user-profile", async (_req, res) => {
     try {
-        const profile = await readUserProfile();
-        res.json({ ok: true, profile: sanitizeUserProfile(profile) });
+        const localProfile = sanitizeUserProfile(await readUserProfile());
+        let athlete = await personalFitAgentClient.athleteProfile();
+        if (!athlete?.configured) {
+            const legacyAthlete = withoutGoogleApi(localProfile);
+            if (Object.keys(legacyAthlete).length > 0) {
+                athlete = await personalFitAgentClient.updateAthleteProfile(legacyAthlete);
+            }
+        }
+        res.json({
+            ok: true,
+            profile: {
+                ...(athlete?.rider_settings ?? {}),
+                ...(localProfile.google_api ? { google_api: localProfile.google_api } : {})
+            }
+        });
     } catch (error) {
         res.status(500).json({ ok: false, error: error.message });
     }
@@ -100,13 +99,22 @@ app.get("/api/user-profile", async (_req, res) => {
 
 app.put("/api/user-profile", async (req, res) => {
     try {
-        const currentProfile = await readUserProfile();
-        const profile = {
-            ...currentProfile,
-            ...sanitizeUserProfile(req.body ?? {})
-        };
-        await fs.writeFile(USER_PROFILE_PATH, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
-        res.json({ ok: true, profile: sanitizeUserProfile(profile) });
+        const currentLocalProfile = sanitizeUserProfile(await readUserProfile());
+        const requested = sanitizeUserProfile(req.body ?? {});
+        const athlete = await personalFitAgentClient.updateAthleteProfile(withoutGoogleApi(requested));
+        const googleApi = requested.google_api ?? currentLocalProfile.google_api;
+        await fs.writeFile(
+            USER_PROFILE_PATH,
+            `${JSON.stringify(googleApi ? { google_api: googleApi } : {}, null, 2)}\n`,
+            { encoding: "utf8", mode: 0o600 }
+        );
+        res.json({
+            ok: true,
+            profile: {
+                ...(athlete?.rider_settings ?? {}),
+                ...(googleApi ? { google_api: googleApi } : {})
+            }
+        });
     } catch (error) {
         res.status(400).json({ ok: false, error: error.message });
     }
@@ -133,9 +141,6 @@ const server = app.listen(PORT, HOST, (err) => {
     }
 
     console.log(`[rider-tracker] listening on ${APP_BASE_URL}`);
-    if (!CLIENT_ID || !CLIENT_SECRET) {
-        console.warn(`[rider-tracker] Strava env credentials are not configured. Use ${APP_BASE_URL}/strava/login to save local credentials.`);
-    }
 });
 
 server.on("error", (err) => {
@@ -177,4 +182,9 @@ function sanitizeUserProfile(profile) {
     }
 
     return next;
+}
+
+function withoutGoogleApi(profile) {
+    const { google_api: _googleApi, ...athlete } = profile ?? {};
+    return athlete;
 }

@@ -21,7 +21,7 @@ from services.activity.catalog import (
     resolve_activity,
     upsert_activity_from_fit,
 )
-from fit.parser import parse_fit
+from services.activity.fit_loader import parse_activity_fit as parse_fit
 from storage.repositories.activity import ActivityStore
 
 app = typer.Typer(help="Personal FIT Agent debug CLI")

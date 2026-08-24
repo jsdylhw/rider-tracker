@@ -37,10 +37,20 @@ from integrations.garmin import DEFAULT_OUTPUT_DIR
 from storage.repositories.activity import ActivityStore, file_content_key
 from storage.repositories.route import RoutePlanStore
 from services.route.single_day import compact_route_plan
-from operations.activity.strava import upload_activity_to_strava
-from fit.parser import parse_fit
+from operations.activity.strava import (
+    get_strava_upload_status,
+    upload_activity_to_strava,
+    upload_stored_activity_fit,
+)
+from integrations.strava import StravaSink
+from services.activity.fit_loader import parse_activity_fit as parse_fit
 from project_paths import project_root
 from services.activity.ingestion import get_activity_detail, ingest_fit_activity
+from services.athlete.profile import (
+    athlete_profile_response,
+    get_athlete_profile,
+    update_athlete_profile,
+)
 
 
 app = FastAPI(title="Personal FIT Agent API")
@@ -69,11 +79,34 @@ class IngestFitRequest(BaseModel):
     max_points: int = Field(default=700, ge=2, le=2000)
 
 
+class AthleteProfileRequest(BaseModel):
+    profile: dict[str, Any]
+
+
 class UploadStravaRequest(BaseModel):
     activity_key: str
     title: str | None = None
     wait: bool = True
     force: bool = False
+
+
+class StravaAuthorizeRequest(BaseModel):
+    redirect_uri: str = Field(min_length=1, max_length=2000)
+    scope: str = Field(default="read,activity:read_all,activity:write", max_length=500)
+    state: str = Field(min_length=1, max_length=256)
+
+
+class StravaExchangeRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=512)
+
+
+class StravaStoredUploadRequest(BaseModel):
+    activity_key: str = Field(min_length=1, max_length=128)
+    title: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=20_000)
+    trainer: bool = False
+    commute: bool = False
+    sport_type: str | None = Field(default=None, max_length=64)
 
 
 class ChatRequest(BaseModel):
@@ -225,6 +258,21 @@ def activity_detail_endpoint(activity_id: str, request: Request, max_points: int
     return detail
 
 
+@app.get("/api/athlete-profile")
+def athlete_profile_endpoint(request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    return athlete_profile_response(get_athlete_profile())
+
+
+@app.put("/api/athlete-profile")
+def update_athlete_profile_endpoint(
+    request: AthleteProfileRequest,
+    http_request: Request,
+) -> dict[str, Any]:
+    _require_api_access(http_request)
+    return athlete_profile_response(update_athlete_profile(request.profile))
+
+
 @app.get("/api/summary")
 def summary_endpoint(activity_key: str, request: Request):
     """Return the current report body by stable activity key."""
@@ -244,6 +292,81 @@ def strava_upload_endpoint(request: UploadStravaRequest, http_request: Request) 
         wait=request.wait,
         force=request.force,
     )
+
+
+@app.get("/api/strava/config")
+def strava_config_endpoint(request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    config = load_config().get("strava") or {}
+    return {
+        "configured": bool(config.get("client_id") and config.get("client_secret")),
+        "source": "config.yaml" if config else "none",
+        "token_store": str(config.get("token_store") or "data/strava-tokens.json"),
+    }
+
+
+@app.get("/api/strava/connection")
+def strava_connection_endpoint(request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    return StravaSink(require_access_token=False).connection_status()
+
+
+@app.post("/api/strava/auth-url")
+def strava_auth_url_endpoint(
+    request: StravaAuthorizeRequest,
+    http_request: Request,
+) -> dict[str, Any]:
+    _require_api_access(http_request)
+    sink = StravaSink(require_access_token=False)
+    return {
+        "auth_url": sink.build_authorize_url(
+            redirect_uri=request.redirect_uri,
+            scope=request.scope,
+            approval_prompt="force",
+            state=request.state,
+        ),
+    }
+
+
+@app.post("/api/strava/exchange-code")
+def strava_exchange_code_endpoint(
+    request: StravaExchangeRequest,
+    http_request: Request,
+) -> dict[str, Any]:
+    _require_api_access(http_request)
+    result = StravaSink(require_access_token=False).exchange_authorization_code(request.code)
+    return {
+        "connected": bool(result.get("access_token")),
+        "athlete": result.get("athlete"),
+        "expires_at": result.get("expires_at"),
+    }
+
+
+@app.post("/api/strava/upload-activity")
+def strava_upload_activity_endpoint(
+    request: StravaStoredUploadRequest,
+    http_request: Request,
+) -> dict[str, Any]:
+    _require_api_access(http_request)
+    try:
+        return upload_stored_activity_fit(
+            request.activity_key,
+            title=request.title,
+            description=request.description,
+            trainer=request.trainer,
+            commute=request.commute,
+            sport_type=request.sport_type,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/strava/upload-status/{upload_id}")
+def strava_upload_status_endpoint(upload_id: str, request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    return get_strava_upload_status(upload_id)
 
 
 @app.post("/api/chat")

@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fit.parser import parse_fit, records_dataframe
+from fit.parser import records_dataframe
+from services.activity.fit_loader import parse_activity_fit as parse_fit
 from project_paths import resolve_project_path
 
 

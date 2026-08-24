@@ -24,7 +24,7 @@ from domain.analysis.artifacts import (
     analysis_summary_from_submission,
     get_analysis_summary,
 )
-from fit.parser import parse_fit
+from services.activity.fit_loader import parse_activity_fit as parse_fit
 
 STRAVA_SUMMARY_TONES: list[dict[str, str]] = [
     {

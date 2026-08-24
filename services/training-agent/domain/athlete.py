@@ -10,13 +10,16 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_ATHLETE_PATH = Path("data") / "athlete.json"
 
 
 def load_athlete_profile(path: str | Path = DEFAULT_ATHLETE_PATH) -> dict[str, Any]:
-    """加载运动员档案,文件不存在返回空 dict."""
-    target = Path(path)
+    """Load one explicit JSON profile; persistence ownership lives in services."""
+    return _load_profile_file(Path(path))
+
+
+def _load_profile_file(target: Path) -> dict[str, Any]:
+    target = Path(target)
     if not target.exists():
         return {}
     try:
@@ -27,11 +30,67 @@ def load_athlete_profile(path: str | Path = DEFAULT_ATHLETE_PATH) -> dict[str, A
 
 
 def save_athlete_profile(profile: dict[str, Any], path: str | Path = DEFAULT_ATHLETE_PATH) -> Path:
-    """保存运动员档案."""
+    """Save one explicit JSON profile; retained for fixtures and manual export."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
     return target
+
+
+def normalize_athlete_profile(profile: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize legacy flat and Rider fields into the shared profile contract."""
+    source = profile if isinstance(profile, dict) else {}
+    shared = dict(source.get("shared") or {}) if isinstance(source.get("shared"), dict) else {}
+    cycling = dict(source.get("cycling") or {}) if isinstance(source.get("cycling"), dict) else {}
+    running = dict(source.get("running") or {}) if isinstance(source.get("running"), dict) else {}
+    simulation = dict(source.get("simulation") or {}) if isinstance(source.get("simulation"), dict) else {}
+
+    _copy_number(shared, "weight_kg", source, "weight_kg", "weight", "mass")
+    _copy_number(shared, "height_cm", source, "height_cm", "height")
+    _copy_number(shared, "max_heart_rate", source, "max_heart_rate", "maxHr")
+    _copy_number(shared, "resting_heart_rate", source, "resting_heart_rate", "restingHr")
+    _copy_number(shared, "threshold_heart_rate", source, "threshold_heart_rate")
+    _copy_number(cycling, "ftp_w", source, "ftp_w", "ftp")
+    _copy_number(simulation, "default_power_w", source, "default_power_w", "power")
+    _copy_number(simulation, "cda", source, "cda")
+    _copy_number(simulation, "crr", source, "crr")
+    _copy_number(simulation, "wind_speed_mps", source, "wind_speed_mps", "windSpeed")
+
+    normalized = {}
+    for key, value in (("shared", shared), ("cycling", cycling), ("running", running), ("simulation", simulation)):
+        cleaned = {name: item for name, item in value.items() if item is not None}
+        if cleaned:
+            normalized[key] = cleaned
+    return normalized
+
+
+def athlete_profile_to_rider_settings(profile: dict[str, Any]) -> dict[str, float]:
+    normalized = normalize_athlete_profile(profile)
+    shared = normalized.get("shared") or {}
+    cycling = normalized.get("cycling") or {}
+    simulation = normalized.get("simulation") or {}
+    values = {
+        "mass": shared.get("weight_kg"),
+        "ftp": cycling.get("ftp_w"),
+        "restingHr": shared.get("resting_heart_rate"),
+        "maxHr": shared.get("max_heart_rate"),
+        "power": simulation.get("default_power_w"),
+        "cda": simulation.get("cda"),
+        "crr": simulation.get("crr"),
+        "windSpeed": simulation.get("wind_speed_mps"),
+    }
+    return {key: float(value) for key, value in values.items() if _number(value) is not None}
+
+
+def _copy_number(target: dict[str, Any], target_key: str, source: dict[str, Any], *source_keys: str) -> None:
+    if target.get(target_key) is not None:
+        target[target_key] = _number(target[target_key])
+        return
+    for key in source_keys:
+        value = _number(source.get(key))
+        if value is not None:
+            target[target_key] = value
+            return
 
 
 def get_ftp(profile: dict[str, Any], *, sport_type: str = "cycling") -> float | None:
@@ -257,8 +316,8 @@ def enrich_training_metadata(
     # 补 user_profile 基础字段
     profile_fields = {
         "resting_heart_rate": resting_hr,
-        "weight": profile.get("weight"),
-        "height": profile.get("height"),
+        "weight": _shared_or_sport_value(profile, sport, "weight_kg") or profile.get("weight"),
+        "height": _shared_or_sport_value(profile, sport, "height_cm") or profile.get("height"),
     }
     user_profile = enriched.setdefault("user_profile", {})
     for key, value in profile_fields.items():

@@ -126,6 +126,33 @@ export const suite = {
                 assertEqual(body.operation, "compose_segments");
                 assertEqual(body.segments[1].segment_id, 202);
             }
+        },
+        {
+            name: "forwards athlete profile and Strava ownership requests",
+            async run() {
+                const requests = [];
+                const client = createPersonalFitAgentClient({
+                    baseUrl: "http://127.0.0.1:8000",
+                    apiToken: "server-only-token",
+                    fetchImpl: async (url, options) => {
+                        requests.push({ url, options });
+                        return fakeResponse({ configured: true });
+                    }
+                });
+
+                await client.athleteProfile();
+                await client.updateAthleteProfile({ ftp: 275 });
+                await client.stravaAuthorizeUrl({ redirect_uri: "http://localhost/callback", state: "s1" });
+                await client.stravaUploadActivity({ activity_key: "a1" });
+                await client.stravaUploadStatus("upload-1");
+
+                assertEqual(requests[0].url, "http://127.0.0.1:8000/api/athlete-profile");
+                assertEqual(requests[1].options.method, "PUT");
+                assertEqual(JSON.parse(requests[1].options.body).profile.ftp, 275);
+                assertEqual(requests[2].url, "http://127.0.0.1:8000/api/strava/auth-url");
+                assertEqual(requests[3].url, "http://127.0.0.1:8000/api/strava/upload-activity");
+                assertEqual(requests[4].url, "http://127.0.0.1:8000/api/strava/upload-status/upload-1");
+            }
         }
     ]
 };

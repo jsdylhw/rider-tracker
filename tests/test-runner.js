@@ -58,7 +58,6 @@ import { suite as activityDetailViewSuite } from "./unit/activity-detail-view.te
 import { suite as activityRouteMapControllerSuite } from "./unit/activity-route-map-controller.test.js";
 import { suite as fitBeaconClientSuite } from "./unit/fit-beacon-client.test.js";
 import { suite as incrementalPowerMetricsSuite } from "./unit/incremental-power-metrics.test.js";
-import { suite as tokenStoreSuite } from "./unit/token-store.test.js";
 import { suite as oauthStateStoreSuite } from "./unit/oauth-state-store.test.js";
 import { suite as localApiSecuritySuite } from "./unit/local-api-security.test.js";
 import { suite as agentFloatingWindowSuite } from "./unit/agent-floating-window.test.js";
@@ -130,7 +129,6 @@ const suites = [
     activityRouteMapControllerSuite,
     fitBeaconClientSuite,
     incrementalPowerMetricsSuite,
-    tokenStoreSuite,
     oauthStateStoreSuite,
     localApiSecuritySuite,
     agentFloatingWindowSuite,

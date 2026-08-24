@@ -48,7 +48,7 @@ strava:
   client_id: "your-strava-client-id"
   client_secret: "your-strava-client-secret"
   refresh_token: "your-strava-refresh-token"
-  token_store: ".strava_tokens.json"
+  token_store: "data/strava-tokens.json"
   timeout_seconds: 120
 
 athlete:
