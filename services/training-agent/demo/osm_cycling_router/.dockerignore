@@ -1,0 +1,5 @@
+data/
+runtime/
+graphhopper-web-*.jar
+__pycache__/
+*.pyc

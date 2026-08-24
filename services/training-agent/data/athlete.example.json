@@ -1,0 +1,18 @@
+{
+  "shared": {
+    "max_heart_rate": null,
+    "resting_heart_rate": null,
+    "weight": null,
+    "height": null
+  },
+  "cycling": {
+    "ftp_w": null,
+    "threshold_heart_rate": null
+  },
+  "running": {
+    "threshold_heart_rate": null,
+    "threshold_power_w": null,
+    "threshold_pace_s_per_km": null,
+    "critical_speed_mps": null
+  }
+}
