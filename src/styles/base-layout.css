@@ -204,6 +204,40 @@ body {
     margin-top: 12px;
 }
 
+#deviceControlsPanel .device-status-item {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #f8fafc;
+}
+
+#deviceControlsPanel .device-status-item > span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+#deviceControlsPanel .device-status-item > strong {
+    color: var(--text);
+    font-size: 15px;
+}
+
+#deviceControlsPanel .device-status-item .device-meta {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#deviceControlsPanel .ride-readiness-message {
+    grid-column: 1 / -1;
+    color: var(--text);
+    line-height: 1.5;
+}
+
 #deviceControlsPanel .summary-card {
     padding: 12px;
 }
@@ -233,6 +267,23 @@ body {
 
 #view-live .live-setup-stack > .column {
     width: 100%;
+}
+
+#view-live .live-setup-stack > .pre-ride-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+    gap: 20px;
+    align-items: start;
+}
+
+#view-live .pre-ride-card-grid > .card,
+#view-live .pre-ride-card-grid > #preRideDeviceMount,
+#view-live #preRideDeviceMount > #deviceControlsPanel,
+#view-live #deviceControlsPanel > .column,
+#view-live #deviceControlsPanel .card {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
 }
 
 #view-home .hero {

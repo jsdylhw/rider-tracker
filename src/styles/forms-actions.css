@@ -107,7 +107,7 @@ tbody tr:last-child td {
     flex: 1 1 auto;
 }
 
-.route-library-toggle {
+.btn.route-library-toggle {
     flex: 0 0 auto;
     border: 1px solid var(--border);
     background: #ffffff;
@@ -115,8 +115,8 @@ tbody tr:last-child td {
     font-weight: 750;
 }
 
-.route-library-toggle:hover,
-.route-library-toggle.active {
+.btn.route-library-toggle:hover,
+.btn.route-library-toggle.active {
     border-color: var(--primary);
     background: #f0f7ff;
     color: var(--primary);

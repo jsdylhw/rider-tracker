@@ -19,7 +19,6 @@ export function createRouteRenderer({
     onDeleteSavedRoute,
     onCreateMapDrawRoute,
     onPlanAgentRoutes,
-    onRestoreAgentRouteDraft,
     onPreviewAgentRoute,
     onConfirmAgentRoute,
     onExploreAgentRouteSegments,
@@ -66,7 +65,6 @@ export function createRouteRenderer({
     const agentRoutePlanner = createAgentRoutePlanner({
         elements,
         onPlanAgentRoutes,
-        onRestoreAgentRouteDraft,
         onPreviewAgentRoute,
         onConfirmAgentRoute,
         onExploreAgentRouteSegments,

@@ -31,7 +31,7 @@ export function createWorkoutService({ store, deviceService = null }) {
                 : state.workout.modeTransition }
         }));
 
-        const debugVirtual = isStreetViewDebugEnabled() && before.rideInput?.powerSource !== "device";
+        const debugVirtual = isStreetViewDebugEnabled() && before.rideInput?.powerSource === "virtual";
         const prepared = debugVirtual || !deviceService?.prepareTrainerControlForWorkoutMode
             ? true
             : await deviceService.prepareTrainerControlForWorkoutMode(normalizedMode);

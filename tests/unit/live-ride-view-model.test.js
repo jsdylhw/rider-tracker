@@ -117,6 +117,11 @@ export const suite = {
                                 segments: []
                             },
                             settings: { power: 220, mass: 75, ftp: 250 },
+                            rideInput: {
+                                powerSource: "virtual",
+                                virtualPowerWatts: 220,
+                                virtualCadenceRpm: 85
+                            },
                             ble: {
                                 heartRate: { value: null },
                                 powerMeter: { power: null, cadence: null, sourceType: "none" },

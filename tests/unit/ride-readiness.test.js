@@ -1,9 +1,19 @@
-import { deriveRideReadiness } from "../../src/domain/ride/ride-readiness.js";
+import { deriveRideReadiness, formatReadinessMessages } from "../../src/domain/ride/ride-readiness.js";
 import { assert, assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
     name: "ride-readiness",
     tests: [
+        {
+            name: "formats multiple readiness reasons with one punctuation boundary",
+            run() {
+                assertEqual(formatReadinessMessages([
+                    { message: "请先设置一条有效路线。" },
+                    { message: "请连接骑行台功率或外置功率计。" },
+                    { message: "当前控制模式需要连接智能骑行台。" }
+                ]), "请先设置一条有效路线；请连接骑行台功率或外置功率计；当前控制模式需要连接智能骑行台。");
+            }
+        },
         {
             name: "debug virtual power only bypasses physical devices, not the route",
             run() {

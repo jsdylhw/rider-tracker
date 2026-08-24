@@ -219,10 +219,15 @@ export const suite = {
             }
         },
         {
-            name: "街景调试模式允许无功率源启动骑行预览",
+            name: "街景调试模式明确选择模拟功率后可启动骑行预览",
             run() {
                 const state = createState();
                 state.liveRide.canStart = false;
+                state.rideInput = {
+                    powerSource: "virtual",
+                    virtualPowerWatts: 220,
+                    virtualCadenceRpm: 85
+                };
                 state.ble.sampling = {
                     heartRate: { value: null, timestamp: null },
                     power: { value: null, timestamp: null, sourceType: "none" },
@@ -254,7 +259,7 @@ export const suite = {
                     service.startRide();
                     const startedState = store.getState();
                     assertEqual(startedState.liveRide.isActive, true);
-                    assertEqual(startedState.liveRide.session.sampledSensors.powerSourceType, "street-view-debug");
+                    assertEqual(startedState.liveRide.session.sampledSensors.powerSourceType, "virtual");
                     assertEqual(startedState.liveRide.session.sampledSensors.power, 220);
                     assertGreaterThan(timerCallbacks.length, 0);
                 } finally {

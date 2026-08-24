@@ -16,7 +16,7 @@ export function deriveRideReadiness({
         trainerControl: "ready"
     };
 
-    const virtualPower = debugEnabled && rideInput?.powerSource !== "device";
+    const virtualPower = debugEnabled && rideInput?.powerSource === "virtual";
     validateRoute(route, workout?.mode, blockers, requirements, { allowMissingElevation: virtualPower });
     if (virtualPower) {
         requirements.powerSource = "debug-virtual";
@@ -37,6 +37,13 @@ export function deriveRideReadiness({
         requirements,
         debugVirtualPower: virtualPower
     };
+}
+
+export function formatReadinessMessages(issues) {
+    const messages = (issues ?? [])
+        .map((item) => String(item?.message ?? "").trim().replace(/[。；;]+$/u, ""))
+        .filter(Boolean);
+    return messages.length > 0 ? `${messages.join("；")}。` : "";
 }
 
 function validateRoute(route, workoutMode, blockers, requirements, { allowMissingElevation = false } = {}) {

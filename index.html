@@ -278,7 +278,7 @@
                     </div>
                 </div>
 
-                <div class="column" id="live-col-2">
+                <div class="column pre-ride-card-grid" id="live-col-2">
                     <div id="rideInputCard" class="card" hidden>
                         <div class="section-title-row">
                             <div><h2>骑行输入</h2></div>
@@ -405,8 +405,8 @@
                             <div id="customWorkoutTargetStatus" class="route-summary">未启用自定义训练目标。</div>
                         </div>
                     </div>
+                    <div id="preRideDeviceMount" class="live-setup-full"></div>
                 </div>
-                <div id="preRideDeviceMount" class="live-setup-full"></div>
             </section>
         </div>
 
@@ -643,23 +643,29 @@
                         </div>
 
                         <div class="device-status-grid">
-                            <strong id="hrDeviceStatus">未连接</strong>
-                            <p class="device-meta" id="hrDeviceName">等待连接</p>
-                            <strong id="powerDeviceStatus">未连接</strong>
-                            <p class="device-meta" id="powerDeviceName">等待连接</p>
-                            <strong id="trainerDeviceStatus">未连接</strong>
-                            <p class="device-meta" id="trainerDeviceName">等待连接</p>
+                            <div class="device-status-item">
+                                <span>心率带</span>
+                                <strong id="hrDeviceStatus">未连接</strong>
+                                <p class="device-meta" id="hrDeviceName">等待连接</p>
+                            </div>
+                            <div class="device-status-item">
+                                <span>功率计</span>
+                                <strong id="powerDeviceStatus">未连接</strong>
+                                <p class="device-meta" id="powerDeviceName">等待连接</p>
+                            </div>
+                            <div class="device-status-item">
+                                <span>骑行台</span>
+                                <strong id="trainerDeviceStatus">未连接</strong>
+                                <p class="device-meta" id="trainerDeviceName">等待连接</p>
+                            </div>
                             <span id="rideStatusLabel" hidden>未开始</span>
-                            <span id="rideStatusMeta">连接功率计后即可开始骑行。</span>
+                            <span id="rideStatusMeta" class="ride-readiness-message">连接功率计后即可开始骑行。</span>
                             <span id="trainerPushGradeValue" hidden>0.0%</span>
                             <span id="trainerPushGradeMeta" hidden>等待骑行开始后推送</span>
                             <span id="rideSegmentLabel" hidden>等待开始</span>
                             <span id="rideSegmentMeta" hidden>速度将按当前路线坡度和实时功率计算。</span>
                         </div>
-                        <div class="controls">
-                            <button id="startRideBtn" class="btn primary" type="button">开始骑行</button>
-                            <span class="device-meta">路线、功率源和当前控制模式全部就绪后才可开始。</span>
-                        </div>
+                        <p class="device-meta">路线、功率源和当前控制模式全部就绪后，进入骑行界面开始骑行。</p>
                         
                         <div class="data-grid" style="display: none;">
                             <!-- Hidden redundant data grid for DOM compatibility -->

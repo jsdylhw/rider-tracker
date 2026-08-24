@@ -24,7 +24,7 @@ import { encodeFitSync } from "../../adapters/export/fit-exporter.js";
 import { sendFitBeacon } from "../../adapters/upload/fit-beacon-client.js";
 import { loadFitSdk } from "../../adapters/fit/fit-sdk-loader.js";
 import { buildRoute, isRouteReadyForRide } from "../../domain/route/route-builder.js";
-import { deriveRideReadiness } from "../../domain/ride/ride-readiness.js";
+import { deriveRideReadiness, formatReadinessMessages } from "../../domain/ride/ride-readiness.js";
 
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
@@ -51,7 +51,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
             store.setState((currentState) => ({
                 ...currentState,
                 statusText: readiness.blockers[0]?.message || "当前状态不能开始骑行。",
-                liveRide: { ...currentState.liveRide, statusMeta: readiness.blockers.map((item) => item.message).join("；") }
+                liveRide: { ...currentState.liveRide, statusMeta: formatReadinessMessages(readiness.blockers) }
             }));
             return;
         }

@@ -16,7 +16,7 @@ export function createRouteLibraryRenderer({
     function bindEvents() {
         elements.routeLibraryToggleBtn?.addEventListener("click", () => void toggleLibrary());
         elements.refreshSavedRoutesBtn?.addEventListener("click", () => void refresh());
-        elements.savedRouteSelect?.addEventListener("change", renderControls);
+        elements.savedRouteSelect?.addEventListener("change", () => renderControls());
         elements.loadSavedRouteBtn?.addEventListener("click", () => void loadSelected(false));
         elements.continueSavedRouteBtn?.addEventListener("click", () => void loadSelected(true));
         elements.saveCurrentRouteBtn?.addEventListener("click", () => void saveCurrent());

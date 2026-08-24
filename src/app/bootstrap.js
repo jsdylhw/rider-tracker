@@ -74,7 +74,6 @@ const mainView = createMainView({
             deleteSavedRoute: routeService.deleteSavedRoute,
             createMapDrawRoute: routeService.createMapDrawRoute,
             planAgentRoutes: routeService.planAgentRoutes,
-            restoreAgentRouteDraft: routeService.restoreAgentRouteDraft,
             previewAgentRoute: routeService.previewAgentRoute,
             confirmAgentRoute: routeService.confirmAgentRoute,
             exploreAgentRouteSegments: routeService.exploreAgentRouteSegments,

@@ -1,7 +1,7 @@
 import { formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
-import { deriveRideReadiness } from "../../domain/ride/ride-readiness.js";
+import { deriveRideReadiness, formatReadinessMessages } from "../../domain/ride/ride-readiness.js";
 
 export function createDeviceRenderer({
     elements,
@@ -9,7 +9,6 @@ export function createDeviceRenderer({
     onTogglePowerMeter,
     onToggleTrainer,
     onOpenRideDashboard,
-    onStartRide,
     onStopRide
 }) {
     function bindEvents() {
@@ -17,7 +16,6 @@ export function createDeviceRenderer({
         if (elements.connectPowerBtn) elements.connectPowerBtn.addEventListener("click", onTogglePowerMeter);
         if (elements.connectTrainerBtn) elements.connectTrainerBtn.addEventListener("click", onToggleTrainer);
         if (elements.openRideDashboardBtn) elements.openRideDashboardBtn.addEventListener("click", onOpenRideDashboard);
-        if (elements.startRideBtn) elements.startRideBtn.addEventListener("click", onStartRide);
         if (elements.stopRideBtn) elements.stopRideBtn.addEventListener("click", onStopRide);
     }
 
@@ -72,7 +70,6 @@ export function createDeviceRenderer({
             route: state.route, workout: state.workout, rideInput: state.rideInput,
             ble: state.ble, debugEnabled: streetViewDebugEnabled
         });
-        const canStartRide = readiness.canStart;
         if (elements.rideInputCard) {
             elements.rideInputCard.hidden = !streetViewDebugEnabled;
         }
@@ -81,7 +78,6 @@ export function createDeviceRenderer({
             if (elements.virtualPowerInput) elements.virtualPowerInput.value = state.rideInput?.virtualPowerWatts ?? 220;
             if (elements.virtualCadenceInput) elements.virtualCadenceInput.value = state.rideInput?.virtualCadenceRpm ?? 85;
         }
-        if (elements.startRideBtn) elements.startRideBtn.disabled = !canStartRide || liveRide.isActive;
         if (elements.stopRideBtn) elements.stopRideBtn.disabled = !liveRide.isActive;
         if (elements.openRideDashboardBtn) elements.openRideDashboardBtn.disabled = false;
 
@@ -97,8 +93,8 @@ export function createDeviceRenderer({
         if (elements.rideStatusMeta) elements.rideStatusMeta.textContent = liveRide.isActive
             ? liveRide.statusMeta
             : readiness.canStart
-                ? readiness.warnings.map((item) => item.message).join("；") || "设备和路线已就绪。"
-                : readiness.blockers.map((item) => item.message).join("；");
+                ? formatReadinessMessages(readiness.warnings) || "设备和路线已就绪。"
+                : formatReadinessMessages(readiness.blockers);
         if (elements.trainerPushGradeValue) {
             elements.trainerPushGradeValue.textContent = `${formatNumber(workoutRuntime.targetTrainerGradePercent ?? 0, 1)}%`;
         }

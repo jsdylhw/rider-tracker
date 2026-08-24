@@ -156,6 +156,89 @@ export const suite = {
             }
         },
         {
+            name: "debug 模拟功率可启动无海拔的地图探索路线",
+            run() {
+                const windowHarness = installWindow({ debugEnabled: true });
+                try {
+                    const store = createStore(createState({
+                        route: {
+                            totalDistanceMeters: 1800,
+                            source: "osm-exploration",
+                            name: "地图选点路线",
+                            hasElevationData: false,
+                            points: [
+                                { latitude: 31.1, longitude: 121.1, distanceMeters: 0, gradePercent: 0 },
+                                { latitude: 31.11, longitude: 121.11, distanceMeters: 1800, gradePercent: 0 }
+                            ],
+                            segments: []
+                        },
+                        rideInput: {
+                            powerSource: "virtual",
+                            virtualPowerWatts: 240,
+                            virtualCadenceRpm: 88
+                        }
+                    }));
+                    const service = createRideService({
+                        store,
+                        deviceService: createDeviceService({ grade: [], power: [], resistance: [] }),
+                        exportService: {},
+                        routeService: { ensureExplorationRouteAhead() {} }
+                    });
+
+                    service.startRide();
+
+                    assertEqual(store.getState().liveRide.isActive, true);
+                    assertEqual(store.getState().liveRide.session.route.source, "osm-exploration");
+                    assertEqual(store.getState().liveRide.session.sampledSensors.power, 240);
+                } finally {
+                    windowHarness.restore();
+                }
+            }
+        },
+        {
+            name: "debug 模拟功率可启动所有已完成路线来源",
+            run() {
+                const sources = ["manual", "gpx", "map-drawn", "osm-exploration", "agent-planned"];
+                for (const source of sources) {
+                    const windowHarness = installWindow({ debugEnabled: true });
+                    try {
+                        const store = createStore(createState({
+                            route: {
+                                totalDistanceMeters: 5000,
+                                source,
+                                name: `${source} 测试路线`,
+                                hasElevationData: source === "gpx",
+                                isDraft: false,
+                                isLoading: false,
+                                points: [
+                                    { latitude: 31.1, longitude: 121.1, distanceMeters: 0, gradePercent: 0 },
+                                    { latitude: 31.2, longitude: 121.2, distanceMeters: 5000, gradePercent: 0 }
+                                ],
+                                segments: []
+                            },
+                            rideInput: {
+                                powerSource: "virtual",
+                                virtualPowerWatts: 230,
+                                virtualCadenceRpm: 86
+                            }
+                        }));
+                        const service = createRideService({
+                            store,
+                            deviceService: createDeviceService({ grade: [], power: [], resistance: [] }),
+                            exportService: {},
+                            routeService: { ensureExplorationRouteAhead() {} }
+                        });
+
+                        service.startRide();
+
+                        assertEqual(store.getState().liveRide.isActive, true, `${source} 应允许 debug 模拟功率启动`);
+                    } finally {
+                        windowHarness.restore();
+                    }
+                }
+            }
+        },
+        {
             name: "非 debug 模式会拒绝虚拟功率输入并保持设备启动门槛",
             run() {
                 const windowHarness = installWindow({ debugEnabled: false });

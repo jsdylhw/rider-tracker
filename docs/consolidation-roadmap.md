@@ -30,7 +30,7 @@
 路线数据已经按四种生命周期拆开：
 
 - `route_plans` / `route_plan_revisions`：Agent 生成的候选、当前选择、语义修改和撤销历史。
-- 浏览器 `agent-route-draft`：当前 Agent 草稿的本地镜像，用于刷新后快速恢复。
+- 浏览器不再持久化 Agent 草稿；未确认候选只属于当前页面会话，避免刷新后的旧草稿覆盖用户新选择的路线。
 - Rider store 中的 route：当前地图预览或即将执行的运行时路线。
 - `saved_routes`：经用户确认或导入后可长期复用的路线资产。
 - `route_progress`：与路线几何分离的未完成进度，可关联最后一次骑行活动。
@@ -46,7 +46,7 @@ Agent 草稿仍不会直接进入路线库；最终确认会写入 `saved_routes
 - 历史 FIT：Python `fit_loader` 注入数据库运动员档案；JS 只负责实时采集、导出和展示适配。
 - 运动员档案：`athlete_profiles` 是 FTP、体重和心率阈值的唯一事实源。
 - Strava：Python 持有配置、OAuth Token、刷新、上传与状态查询；Node 只代理浏览器回调。
-- 路线：Agent plan/revision、浏览器草稿、Rider runtime 和 saved route 已按生命周期分离。
+- 路线：Agent plan/revision、页面内草稿、Rider runtime 和 saved route 已按生命周期分离。
 - 活动：Garmin、网页导入和 Rider 骑行结束统一进入同一 ingestion 与 artifact 链路。
 
 ### 骑行准备与设备控制
@@ -84,7 +84,7 @@ Agent RoutePlan draft -> confirmed candidate -> Rider SavedRoute -> Ride runtime
 1. 给 `saved_routes` 建立正式 repository 和 API，不让页面直接写 SQLite。
 2. 确认 Agent 候选时保存几何、名称、来源、距离、是否有海拔、Agent plan/candidate 关联信息和指纹。
 3. GPX 导入、地图选点、AI 路线最终都转换成同一个 `SavedRoute` 契约。
-4. 浏览器 localStorage 只保存未确认草稿或缓存键，不再作为已确认路线的事实源。
+4. 浏览器 localStorage 不保存 Agent 路线草稿，也不作为路线事实源。
 5. 开始骑行时从 `SavedRoute` 创建不可变 runtime snapshot；后续编辑路线不会改变已经开始的骑行。
 6. `route_progress` 独立保存中断位置；活动落库后记录 `saved_route_id`、起始里程和结束里程。
 
@@ -106,7 +106,7 @@ AI 虚拟路线继续允许无海拔并配合 ERG；GPX/Strava 路线可以携�
 4. 活动详情只消费统一的 activity detail/presentation contract；路线页面只消费 draft/saved/runtime 三种明确状态。
 5. 先保证桌面布局，再补响应式尺寸，不在领域契约仍变化时做大规模视觉重写。
 
-完成标准：刷新和跨页面导航不丢当前活动、路线草稿或已确认路线；页面不会出现两套地图或两套 Agent 对话；长活动报告不会撑开整体布局。
+完成标准：跨页面导航不丢当前活动和当前页面内路线草稿；刷新后从已确认路线库重新选择，不自动恢复未确认草稿；页面不会出现两套地图或两套 Agent 对话；长活动报告不会撑开整体布局。
 
 ## 为什么不是先改前端
 

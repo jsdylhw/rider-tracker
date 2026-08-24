@@ -69,7 +69,6 @@ export function createMainView({ store, pipController, actions }) {
         onDeleteSavedRoute: route.deleteSavedRoute,
         onCreateMapDrawRoute: route.createMapDrawRoute,
         onPlanAgentRoutes: route.planAgentRoutes,
-        onRestoreAgentRouteDraft: route.restoreAgentRouteDraft,
         onPreviewAgentRoute: route.previewAgentRoute,
         onConfirmAgentRoute: route.confirmAgentRoute,
         onExploreAgentRouteSegments: route.exploreAgentRouteSegments,
@@ -98,7 +97,6 @@ export function createMainView({ store, pipController, actions }) {
         onTogglePowerMeter: device.togglePowerMeter,
         onToggleTrainer: device.toggleTrainer,
         onOpenRideDashboard: ride.openRideDashboard,
-        onStartRide: ride.startRide,
         onStopRide: ride.stopRide
     });
     const workoutRenderer = createWorkoutRenderer({
@@ -151,7 +149,7 @@ export function createMainView({ store, pipController, actions }) {
             workoutRenderer.render(state);
             customWorkoutTargetRenderer.render(state);
         }
-        if (initialRender || state.ble !== previousState.ble || state.liveRide !== previousState.liveRide || state.rideInput !== previousState.rideInput || state.workout !== previousState.workout) {
+        if (shouldRenderDeviceReadiness(state, previousState)) {
             deviceRenderer.render(state);
         }
         if (initialRender || state.liveRide !== previousState.liveRide || state.session !== previousState.session || state.settings !== previousState.settings || state.statusText !== previousState.statusText || state.route !== previousState.route || state.workout !== previousState.workout) {
@@ -238,9 +236,19 @@ export function shouldRenderDashboard(state, previousState) {
         || state.liveRide !== previousState.liveRide
         || state.route !== previousState.route
         || state.ble !== previousState.ble
+        || state.rideInput !== previousState.rideInput
         || state.workout !== previousState.workout
         || state.settings !== previousState.settings
         || state.uiMode !== previousState.uiMode;
+}
+
+export function shouldRenderDeviceReadiness(state, previousState) {
+    return previousState === undefined
+        || state.route !== previousState.route
+        || state.ble !== previousState.ble
+        || state.liveRide !== previousState.liveRide
+        || state.rideInput !== previousState.rideInput
+        || state.workout !== previousState.workout;
 }
 
 export function hasRouteGeometryChanged(previousRoute, nextRoute) {

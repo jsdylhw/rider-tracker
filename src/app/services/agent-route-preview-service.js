@@ -1,5 +1,4 @@
 import { createAgentApiClient } from "../../adapters/agent/personal-fit-agent-client.js";
-import { createAgentRouteDraftStorage } from "../../adapters/storage/agent-route-draft-storage.js";
 import {
     buildRiderRouteFromAgentCandidate,
     isRouteActivationOnly,
@@ -13,10 +12,9 @@ export function createAgentRoutePreviewService({
     operations,
     invalidateExploration,
     agentClient = createAgentApiClient(),
-    draftStorage = createAgentRouteDraftStorage(),
     routeLibrary = null
 }) {
-    let currentDraft = draftStorage.load();
+    let currentDraft = null;
 
     async function planAgentRoutes(message) {
         if (!operations.ensureRouteEditingAllowed()) return null;
@@ -52,18 +50,6 @@ export function createAgentRoutePreviewService({
                 operations.clearRouteLoading(`AI 路线处理失败：${extractErrorMessage(error)}`);
             }
             throw error;
-        }
-    }
-
-    async function restoreAgentRouteDraft() {
-        if (!currentDraft?.planId) return null;
-        try {
-            const draft = await runCommand("get");
-            commitActiveRoute(draft, restoreStatus(draft));
-            return draft;
-        } catch {
-            commitActiveRoute(currentDraft, restoreStatus(currentDraft));
-            return currentDraft;
         }
     }
 
@@ -166,7 +152,6 @@ export function createAgentRoutePreviewService({
 
     function saveDraft(draft) {
         currentDraft = draft;
-        draftStorage.save(draft);
         return draft;
     }
 
@@ -192,7 +177,6 @@ export function createAgentRoutePreviewService({
 
     return {
         planAgentRoutes,
-        restoreAgentRouteDraft,
         previewAgentRoute,
         confirmAgentRoute,
         exploreAgentRouteSegments,
@@ -222,10 +206,4 @@ function buildRouteRefinementRequest(message, draft) {
         "保留未被用户否定的起点、终点和路线意图；不要重新进行宽泛路线发现，除非用户明确要求换区域或重新规划。",
         "这是无海拔 ERG 虚拟路线，include_elevation 必须为 false。修改后返回可预览的路线候选。"
     ].filter(Boolean).join("\n\n");
-}
-
-function restoreStatus(draft) {
-    return draft.planningStatus === "confirmed"
-        ? "已恢复上次确认的 AI 虚拟路线。"
-        : "已恢复上次未确认的 AI 路线草稿。";
 }

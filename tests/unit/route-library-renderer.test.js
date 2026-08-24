@@ -46,6 +46,24 @@ export const suite = {
             }
         },
         {
+            name: "changing the selected route keeps available load actions enabled",
+            async run() {
+                const elements = buildElements();
+                const renderer = createRouteLibraryRenderer({
+                    elements,
+                    onListSavedRoutes: async () => [savedRoute()]
+                });
+                renderer.bindEvents();
+                await renderer.refresh();
+
+                elements.savedRouteSelect.value = "route-1";
+                elements.savedRouteSelect.dispatch("change");
+
+                assertEqual(elements.loadSavedRouteBtn.disabled, false);
+                assertEqual(elements.continueSavedRouteBtn.disabled, false);
+            }
+        },
+        {
             name: "shows a terminal error instead of leaving a loading message",
             async run() {
                 const elements = buildElements();

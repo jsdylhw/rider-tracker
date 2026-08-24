@@ -15,7 +15,6 @@ export const suite = {
                 const planner = createAgentRoutePlanner({
                     elements,
                     onPlanAgentRoutes: async () => draft,
-                    onRestoreAgentRouteDraft: async () => null,
                     onPreviewAgentRoute: async () => draft,
                     onConfirmAgentRoute: async (candidateId) => {
                         confirmed.push(candidateId);

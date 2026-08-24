@@ -1,7 +1,6 @@
 export function createAgentRoutePlanner({
     elements,
     onPlanAgentRoutes,
-    onRestoreAgentRouteDraft,
     onPreviewAgentRoute,
     onConfirmAgentRoute,
     onExploreAgentRouteSegments,
@@ -12,7 +11,6 @@ export function createAgentRoutePlanner({
     const documentRef = elements.aiRoutePanel?.ownerDocument ?? globalThis.document;
     const listeners = [];
     let initialized = false;
-    let restoreStarted = false;
     let lastState = null;
     let currentDraft = null;
     let requestSequence = 0;
@@ -59,21 +57,7 @@ export function createAgentRoutePlanner({
         } else {
             updateCandidateSelection(state?.route?.agentCandidateId);
         }
-        if (!restoreStarted) {
-            restoreStarted = true;
-            void restoreDraft();
-        }
         updateDisabledState();
-    }
-
-    async function restoreDraft() {
-        const draft = await onRestoreAgentRouteDraft?.();
-        if (!draft) return;
-        currentDraft = draft;
-        addMessage("agent", draft.planningStatus === "confirmed"
-            ? "已恢复上次确认的 AI 路线。"
-            : "已恢复上次路线草稿，可以继续修改或确认。");
-        renderDraft();
     }
 
     async function sendMessage(text) {
