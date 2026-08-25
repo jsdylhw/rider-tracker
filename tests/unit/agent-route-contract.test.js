@@ -41,7 +41,7 @@ export const suite = {
             name: "detects a route skill activation response without route geometry",
             run() {
                 assertEqual(isRouteActivationOnly({
-                    skill_id: "discover-routes",
+                    skill_id: "plan-routes",
                     executions: [{ tool: "activate_skill" }],
                     presentations: []
                 }), true);

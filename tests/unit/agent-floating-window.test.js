@@ -84,6 +84,41 @@ export const suite = {
                 assertEqual(windowController.getState().open, false);
                 windowController.destroy();
             }
+        },
+        {
+            name: "sends activity questions to the real agent client and renders presentations",
+            async run() {
+                const { root, elements } = createAgentTestDom();
+                const messages = [];
+                const windowController = createAgentFloatingWindow({
+                    root,
+                    seedConversation: false,
+                    agentClient: {
+                        async chat(message) {
+                            messages.push(message);
+                            return {
+                                answer: "最近一次骑行负荷适中。",
+                                intent: "analyze_single",
+                                skill_id: "analyze-activity",
+                                presentations: [{
+                                    type: "metric_cards",
+                                    title: "活动概览",
+                                    data: { items: [{ metric: "distance_km", value: 42.1, unit: "km" }] }
+                                }]
+                            };
+                        }
+                    }
+                });
+
+                const result = await windowController.sendMessage("分析最近一次活动");
+
+                assertEqual(messages[0], "分析最近一次活动");
+                assertEqual(result.intent, "analyze_single");
+                assertEqual(elements.agentWorkspaceTitle.textContent, "活动概览");
+                assertEqual(elements.agentWorkspaceContent.children.length, 1);
+                assertEqual(windowController.getState().busy, false);
+                windowController.destroy();
+            }
         }
     ]
 };

@@ -28,7 +28,7 @@ export const suite = {
                             chatMessages.push(message);
                             chatCount += 1;
                             return chatCount === 1
-                                ? { skill_id: "discover-routes", executions: [{ tool: "activate_skill" }], presentations: [] }
+                                ? { skill_id: "plan-routes", executions: [{ tool: "activate_skill" }], presentations: [] }
                                 : routeResponse("awaiting_selection");
                         },
                         async routePlanCommand(operation) {

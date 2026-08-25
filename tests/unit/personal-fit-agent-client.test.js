@@ -1,4 +1,5 @@
 import { createPersonalFitAgentClient } from "../../src/server/personal-fit-agent-client.js";
+import { createAgentApiClient } from "../../src/adapters/agent/personal-fit-agent-client.js";
 import { canonicalDetailToRiderActivity } from "../../src/server/routes/activity-routes.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
@@ -152,6 +153,34 @@ export const suite = {
                 assertEqual(requests[2].url, "http://127.0.0.1:8000/api/strava/auth-url");
                 assertEqual(requests[3].url, "http://127.0.0.1:8000/api/strava/upload-activity");
                 assertEqual(requests[4].url, "http://127.0.0.1:8000/api/strava/upload-status/upload-1");
+            }
+        },
+        {
+            name: "can rotate a scoped browser chat session without affecting other surfaces",
+            async run() {
+                const values = new Map([["home-session", "rider-existing"]]);
+                const storage = {
+                    getItem(key) { return values.get(key) ?? null; },
+                    setItem(key, value) { values.set(key, value); }
+                };
+                let requestBody = null;
+                const client = createAgentApiClient({
+                    storage,
+                    sessionStorageKey: "home-session",
+                    fetchImpl: async (_url, options) => {
+                        requestBody = JSON.parse(options.body);
+                        return fakeResponse({ ok: true, result: { answer: "ok" } });
+                    }
+                });
+
+                const previousSession = client.sessionId;
+                const nextSession = client.resetSession();
+                await client.chat("分析活动");
+
+                assertEqual(previousSession, "rider-existing");
+                assertEqual(nextSession === previousSession, false);
+                assertEqual(values.get("home-session"), nextSession);
+                assertEqual(requestBody.session_id, nextSession);
             }
         }
     ]

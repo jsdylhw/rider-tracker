@@ -112,7 +112,7 @@ function resolveRouteWaypoints(routePath) {
 
 export function isRouteActivationOnly(turnResult) {
     const hasRouteMap = (turnResult?.presentations ?? []).some((item) => item?.type === "route_map");
-    const activatedRouteSkill = /^plan-|^discover-routes$/.test(String(turnResult?.skill_id || ""));
+    const activatedRouteSkill = /^plan-/.test(String(turnResult?.skill_id || ""));
     const activatedTool = (turnResult?.executions ?? []).some((item) => item?.tool === "activate_skill");
     return !hasRouteMap && (activatedRouteSkill || activatedTool);
 }

@@ -1,11 +1,12 @@
-const SESSION_STORAGE_KEY = "rider-tracker:agent-session-id";
+const DEFAULT_SESSION_STORAGE_KEY = "rider-tracker:agent-session-id";
 
 export function createAgentApiClient({
     baseUrl = "",
     fetchImpl = fetch,
-    storage = getLocalStorage()
+    storage = getLocalStorage(),
+    sessionStorageKey = DEFAULT_SESSION_STORAGE_KEY
 } = {}) {
-    const sessionId = loadOrCreateSessionId(storage);
+    let sessionId = loadOrCreateSessionId(storage, sessionStorageKey);
 
     async function post(pathname, body) {
         const response = await fetchImpl(`${baseUrl}${pathname}`, {
@@ -21,7 +22,7 @@ export function createAgentApiClient({
     }
 
     return {
-        sessionId,
+        get sessionId() { return sessionId; },
         chat(message) {
             return post("/api/agent/chat", {
                 session_id: sessionId,
@@ -42,20 +43,33 @@ export function createAgentApiClient({
                 operation,
                 ...input
             });
+        },
+        resetSession() {
+            sessionId = createSessionId();
+            try {
+                storage?.setItem(sessionStorageKey, sessionId);
+            } catch {
+                // The new in-memory session still clears context for this page.
+            }
+            return sessionId;
         }
     };
 }
 
-function loadOrCreateSessionId(storage) {
+function loadOrCreateSessionId(storage, storageKey) {
     try {
-        const stored = storage?.getItem(SESSION_STORAGE_KEY);
+        const stored = storage?.getItem(storageKey);
         if (/^[A-Za-z0-9_-]{1,128}$/.test(stored || "")) return stored;
-        const created = `rider-${crypto.randomUUID()}`;
-        storage?.setItem(SESSION_STORAGE_KEY, created);
+        const created = createSessionId();
+        storage?.setItem(storageKey, created);
         return created;
     } catch {
-        return `rider-${crypto.randomUUID()}`;
+        return createSessionId();
     }
+}
+
+function createSessionId() {
+    return `rider-${crypto.randomUUID()}`;
 }
 
 function getLocalStorage() {

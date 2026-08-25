@@ -769,7 +769,7 @@
                 <span class="agent-avatar" aria-hidden="true">AI</span>
                 <div>
                     <strong>Training Agent</strong>
-                    <span><i aria-hidden="true"></i> 前端交互原型</span>
+                    <span><i aria-hidden="true"></i> 本地活动分析</span>
                 </div>
             </div>
             <div class="agent-window-controls">
@@ -791,14 +791,14 @@
 
                 <div id="agentQuickPrompts" class="agent-quick-prompts" aria-label="示例问题">
                     <button type="button" data-agent-prompt="activity">分析最近活动</button>
-                    <button type="button" data-agent-prompt="live">查看实时强度</button>
+                    <button type="button" data-agent-prompt="history">分析四周趋势</button>
                 </div>
 
                 <form id="agentComposer" class="agent-composer">
                     <textarea id="agentMessageInput" rows="1" placeholder="询问活动或当前骑行……" aria-label="输入给 Training Agent 的消息"></textarea>
                     <button id="agentSendBtn" type="submit">发送</button>
                 </form>
-                <p class="agent-prototype-note">当前为假对话原型，不会请求 Agent 或修改骑行设置。</p>
+                <p class="agent-prototype-note">回答来自本地 Personal FIT Agent；不会自动修改骑行设置。</p>
             </div>
 
             <aside id="agentWorkspace" class="agent-workspace" aria-label="结构化结果预览">
@@ -807,7 +807,7 @@
                         <span>结构化结果</span>
                         <strong id="agentWorkspaceTitle">实时骑行快照</strong>
                     </div>
-                    <span class="agent-prototype-pill">模拟数据</span>
+                    <span class="agent-prototype-pill">PFA 结果</span>
                 </div>
                 <div id="agentWorkspaceContent" class="agent-workspace-content"></div>
             </aside>
