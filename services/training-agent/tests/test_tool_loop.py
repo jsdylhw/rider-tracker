@@ -8,6 +8,7 @@ from unittest.mock import patch
 from agent.main_agent.context import AgentContext
 from integrations.llm import LLMRequestError
 from agent.main_agent.loop import MAX_TOOL_STEPS, _build_state_preamble, _build_system_prompt, run_tool_loop
+from agent.main_agent.turn_policy import should_continue_route_skill
 
 
 def _activation_response(skill_id):
@@ -50,6 +51,49 @@ def test_ordinary_chat_answers_in_one_main_model_request():
     assert client.return_value.create_messages.call_count == 1
     tools = client.return_value.create_messages.call_args.kwargs["tools"]
     assert [tool["name"] for tool in tools] == ["activate_skill"]
+
+
+def test_explicit_route_followup_reuses_recent_skill_and_fails_closed_without_tool(monkeypatch):
+    context = AgentContext(
+        session_id="route-followup", workspace_id="workspace", last_used_skills=["plan-routes"],
+    )
+    monkeypatch.setattr("agent.main_agent.loop.should_continue_route_skill", lambda *_: True)
+    monkeypatch.setattr("agent.main_agent.turn_policy.should_continue_route_skill", lambda *_: True)
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.return_value = {
+            "id": "msg-route-text-only",
+            "content": [{"type": "text", "text": "已更新路线。"}],
+            "stop_reason": "end_turn",
+        }
+
+        result = run_tool_loop("在当前路线中增加一个途经点", context=context)
+
+    assert result["status"] == "action_not_executed"
+    assert "没有实际执行路线更新" in result["answer"]
+    assert context.active_skill_id == "plan-routes"
+    assert context.active_skill_reason == "continued_from_recent_skill"
+    assert context.last_used_skills == ["plan-routes"]
+    assert context.conversation_used_skills == ["plan-routes"]
+    tools = client.return_value.create_messages.call_args.kwargs["tools"]
+    names = {tool["name"] for tool in tools}
+    assert "update_route_plan" in names
+    assert "activate_skill" not in names
+
+
+def test_route_followup_recognizes_waypoint_language(monkeypatch):
+    class Store:
+        def get_latest(self, workspace_id):
+            assert workspace_id == "workspace"
+            return {"plan_id": "route_test"}
+
+    monkeypatch.setattr("storage.repositories.route.RoutePlanStore", Store)
+    context = AgentContext(
+        session_id="route-waypoint-followup",
+        workspace_id="workspace",
+        last_used_skills=["plan-routes"],
+    )
+
+    assert should_continue_route_skill("在第二个点位后加入 Lac Besson", context)
 
 
 def test_pure_sync_executes_without_starting_analysis_workflow(monkeypatch):

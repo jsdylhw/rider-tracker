@@ -5,10 +5,12 @@
 {"case_id":"skill_local_publish","mode":"skill","tags":["strava"],"input":"重新上传本地最近三个活动到 Strava","expected":{"skill_id":"publish-to-strava","intent":"upload"}}
 {"case_id":"skill_combined_workflow","mode":"skill","tags":["workflow"],"input":"同步最新的三个活动，分析并上传 Strava","expected":{"skill_id":"run-activity-workflow","intent":"mixed"}}
 {"case_id":"skill_training_coach","mode":"skill","tags":["coaching"],"input":"根据最近训练给我下一次训练建议","expected":{"skill_id":"coach-training","intent":"training_advice"}}
-{"case_id":"skill_route_discovery","mode":"skill","tags":["route","discovery"],"input":"推荐一条青浦两小时的有氧骑行路线","expected":{"skill_id":"discover-routes","intent":"route_advice"}}
-{"case_id":"skill_route_discovery_unnamed_loop","mode":"skill","tags":["route","discovery","loop"],"input":"从青浦新城地铁站出发骑一圈50km再回来，沿途风景好一点","expected":{"skill_id":"discover-routes","intent":"route_advice"}}
-{"case_id":"skill_route_popular_loop","mode":"skill","tags":["route","popular-loop"],"input":"规划一条从夫子庙出发环陵的路线","expected":{"skill_id":"plan-popular-loop","intent":"route_advice"}}
-{"case_id":"skill_route_waypoints","mode":"skill","tags":["route","waypoints"],"input":"规划一条夫子庙到中山陵再到玄武湖的路线","expected":{"skill_id":"plan-waypoint-route","intent":"route_advice"}}
+{"case_id":"skill_route_discovery","mode":"skill","tags":["route","discovery"],"input":"推荐一条青浦两小时的有氧骑行路线","expected":{"skill_id":"plan-routes","intent":"route_advice"}}
+{"case_id":"skill_route_discovery_unnamed_loop","mode":"skill","tags":["route","discovery","loop"],"input":"从青浦新城地铁站出发骑一圈50km再回来，沿途风景好一点","expected":{"skill_id":"plan-routes","intent":"route_advice"}}
+{"case_id":"skill_route_popular_loop","mode":"skill","tags":["route","popular-loop"],"input":"规划一条从夫子庙出发环陵的路线","expected":{"skill_id":"plan-routes","intent":"route_advice"}}
+{"case_id":"skill_route_waypoints","mode":"skill","tags":["route","waypoints"],"input":"规划一条夫子庙到中山陵再到玄武湖的路线","expected":{"skill_id":"plan-routes","intent":"route_advice"}}
+{"case_id":"skill_route_foreign_japan_scenic","mode":"skill","tags":["route","foreign","japan","discovery"],"input":"探索一条日本四国高松附近风景好的骑行环线，30km左右","expected":{"skill_id":"plan-routes","intent":"route_advice"}}
+{"case_id":"skill_route_foreign_france_waypoints","mode":"skill","tags":["route","foreign","france","waypoints"],"input":"规划一条从 Le Bourg-d'Oisans 到 Alpe d'Huez 再到 Col de Sarenne 的骑行路线","expected":{"skill_id":"plan-routes","intent":"route_advice"}}
 {"case_id":"skill_sync_latest_analyze","mode":"skill","tags":["sync","workflow","paraphrase"],"input":"同步 Garmin 的最后一个活动并分析","expected":{"skill_id":"run-activity-workflow","intent":"mixed"}}
 {"case_id":"skill_sync_latest_analyze_compact","mode":"skill","tags":["sync","workflow","paraphrase"],"input":"同步garmin的最后活动进行分析","expected":{"skill_id":"run-activity-workflow","intent":"mixed"}}
 {"case_id":"skill_sync_latest_analyze_typo","mode":"skill","tags":["sync","workflow","typo"],"input":"更同同步garmin的最后一个活动进行分析","expected":{"skill_id":"run-activity-workflow","intent":"mixed"}}

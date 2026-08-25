@@ -161,7 +161,6 @@ def test_replaces_one_stage_and_recomputes_aggregate():
             stage_id=stage_id,
             label="下午短线",
             waypoint_queries=["B", "C"],
-            route_type="point_to_point",
             target_distance_km=20,
             include_elevation=False,
         )

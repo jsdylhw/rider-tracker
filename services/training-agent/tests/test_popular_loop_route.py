@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from agent.main_agent.context import AgentContext
-from agent.tools.handlers.route import create_popular_loop_tool, update_route_plan_tool
+from agent.tools.handlers.route import create_route_plan_tool, update_route_plan_tool
 from services.route.popular_loop import _rank_closed_segments, create_popular_loop_plan
 from services.route.single_day import _encode_polyline
 from storage.repositories.route import RoutePlanStore
@@ -111,6 +111,25 @@ def test_popular_loop_accepts_descriptive_name_hint():
     assert plan["candidates"][0]["strava_segments"][0]["segment_id"] == 12108894
 
 
+def test_foreign_popular_loop_uses_google_connector_without_changing_segment_geometry():
+    def place(query: str, _key: str):
+        lon, lat = ((118.79, 32.02) if query == "高松站" else (118.85, 32.06))
+        return {"query": query, "name": query, "address": "Japan", "longitude": lon, "latitude": lat}
+
+    plan = create_popular_loop_plan(
+        workspace_id="workspace", title="高松热门环线", country_code="JP",
+        origin="高松站", area="屋岛", segment_name_hint="环陵", include_elevation=False,
+        config={"google": {"api_key": "test"}}, place_searcher=place,
+        segment_explorer=_explore, segment_fetcher=_detail, connector_router=_connector,
+    )
+
+    candidate = plan["candidates"][0]
+    assert plan["country_code"] == "JP"
+    assert candidate["provider"] == "google_routes+strava"
+    assert candidate["travel_mode"] == "DRIVE"
+    assert [118.88, 32.08] in candidate["geometry"]["coordinates"]
+
+
 def test_popular_loop_tries_next_candidate_when_first_detail_is_invalid():
     def explore(_bounds: str):
         return {"segments": [
@@ -210,9 +229,12 @@ def test_popular_loop_tool_persists_compact_result(monkeypatch):
     monkeypatch.setattr("agent.tools.handlers.route.create_popular_loop_plan", lambda **kwargs: plan)
     monkeypatch.setattr(RoutePlanStore, "save", lambda self, value: {**value, "revision": 1})
 
-    output = create_popular_loop_tool(
+    output = create_route_plan_tool(
         AgentContext(session_id="session", workspace_id="workspace"),
-        args={"title": "夫子庙环陵", "origin": "夫子庙", "area": "中山陵"},
+        args={
+            "title": "夫子庙环陵", "country_code": "CN", "segment_strategy": "complete_loop",
+            "origin": "夫子庙", "area": "中山陵",
+        },
     )
 
     assert output["status"] == "completed"
@@ -280,6 +302,6 @@ def test_popular_loop_rejects_generic_waypoint_edit(monkeypatch):
             args={"operation": "replace_waypoint", "waypoint_index": 2, "new_waypoint": "玄武湖"},
         )
     except ValueError as exc:
-        assert "create_popular_loop" in str(exc)
+        assert "create_route_plan" in str(exc)
     else:
         raise AssertionError("generic edits must not erase the selected complete Strava loop")

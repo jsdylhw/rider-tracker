@@ -4,6 +4,7 @@ from agent.main_agent.context import AgentContext
 from agent.main_agent.guard import guard_tool_call
 from agent.main_agent.turn_control import handle_control_turn
 from agent.main_agent.turn_policy import requires_raw_window_evidence, tools_for_skill
+from agent.tools.handlers.control import activate_skill
 from agent.skills.catalog import get_skill, list_skill_descriptors
 from agent.skills.loader import load_skill_instructions, load_sport_references
 from agent.tools.agent_tools import MAIN_AGENT_TOOLS
@@ -48,15 +49,41 @@ def test_no_conversation_skill_is_registered():
     assert get_skill("conversation") is None
 
 
+def test_skill_activation_records_last_and_conversation_skill_history():
+    context = AgentContext(session_id="recent-skill")
+
+    output = activate_skill({"skill_id": "plan-routes"}, context)
+
+    assert output["status"] == "activated"
+    assert context.active_skill_id == "plan-routes"
+    assert context.last_used_skills == ["plan-routes"]
+    assert context.conversation_used_skills == ["plan-routes"]
+
+    activate_skill({"skill_id": "analyze-activity"}, context)
+    assert context.last_used_skills == ["analyze-activity"]
+    assert context.conversation_used_skills == ["plan-routes", "analyze-activity"]
+
+
 def test_legacy_route_skill_restores_as_route_discovery():
-    assert get_skill("plan-routes").skill_id == "discover-routes"
+    assert get_skill("plan-routes").skill_id == "plan-routes"
 
 
 def test_route_discovery_creates_real_candidates_without_generic_advice_tool():
     tools = set(get_skill("discover-routes").tool_names)
 
     assert "generate_route_advice" not in tools
-    assert {"create_route_plan", "create_popular_loop", "create_itinerary_plan"} <= tools
+    assert {"create_route_plan", "create_itinerary_plan"} <= tools
+    assert "create_popular_loop" not in tools
+
+
+def test_route_tools_derive_closure_from_waypoint_order():
+    create_route = next(tool for tool in MAIN_AGENT_TOOLS if tool.name == "create_route_plan")
+    update_route = next(tool for tool in MAIN_AGENT_TOOLS if tool.name == "update_route_plan")
+    candidate = create_route.input_schema["properties"]["candidates"]["items"]
+
+    assert "route_type" not in candidate["required"]
+    assert "route_type" not in candidate["properties"]
+    assert "route_type" not in update_route.input_schema["properties"]
 
 
 def test_analysis_skills_keep_established_and_unified_tool_entry_points():

@@ -19,6 +19,14 @@ _DISTANCE_WINDOW_RE = re.compile(
     re.IGNORECASE,
 )
 
+_ROUTE_FOLLOWUP_ACTION_RE = re.compile(
+    r"(?:增加|加入|添加|插入|删除|去掉|移除|替换|改成|改为|改走|绕开|避开|"
+    r"反转|倒过来|调换|缩短|延长|确认|保存|撤销|预览|选择|选中)"
+)
+_ROUTE_REFERENCE_RE = re.compile(
+    r"(?:当前路线|这条路线|路线|候选|途经|点位|锚点|起点|终点|路段|第[一二两三四五六七八九十\d]+条|→|->)"
+)
+
 
 def requires_raw_window_evidence(message: str) -> bool:
     """Whether the user explicitly requested a bounded raw FIT window."""
@@ -34,6 +42,21 @@ def tools_for_skill(skill, message: str) -> set[str]:
         names.discard("analyze_selection")
         names.discard("analyze_activity")
     return names
+
+
+def should_continue_route_skill(message: str, context) -> bool:
+    """Reuse route capability only for an explicit edit of a persisted route."""
+    recent = [str(value) for value in getattr(context, "last_used_skills", []) if str(value)]
+    if not recent or recent[-1] != "plan-routes":
+        return False
+    if not getattr(context, "workspace_id", None):
+        return False
+    text = str(message or "").strip()
+    if not (_ROUTE_FOLLOWUP_ACTION_RE.search(text) and _ROUTE_REFERENCE_RE.search(text)):
+        return False
+    from storage.repositories.route import RoutePlanStore
+
+    return RoutePlanStore().get_latest(str(context.workspace_id)) is not None
 
 
 def activation_note(skill_id: str, message: str) -> str:
@@ -52,7 +75,7 @@ def is_terminal_tool_result(name: str, output: object) -> bool:
         "analyze_activity", "query_activity_detail", "summarize_activities",
         "compare_activities", "generate_training_advice", "summarize_recent_training_load",
         "calculate_history_metrics", "analyze_training_history", "inspect_selection",
-        "analyze_selection", "create_popular_loop", "create_route_plan", "create_itinerary_plan",
+        "analyze_selection", "create_route_plan", "create_itinerary_plan",
         "update_route_plan", "get_route_plan", "explore_route_segments", "sync_garmin_activities",
         "sync_and_run_activity_workflow", "run_activity_workflow", "get_activity_workflow",
         "retry_activity_workflow", "rebuild_activity_reports", "get_activity_report_job",

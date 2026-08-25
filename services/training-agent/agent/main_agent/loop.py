@@ -30,7 +30,8 @@ from agent.main_agent.result_builder import (
 from agent.tools.registry import TOOL_HANDLERS
 from agent.main_agent.turn_control import handle_control_turn
 from agent.main_agent.turn_policy import tools_for_skill
-from agent.skills import get_skill
+from agent.main_agent.turn_policy import should_continue_route_skill
+from agent.skills import get_skill, load_skill_instructions
 
 MAX_TOOL_STEPS = 10
 
@@ -60,11 +61,18 @@ def run_tool_loop(
     if control_result is not None:
         return control_result
 
+    continue_route_skill = should_continue_route_skill(message, context)
     # Skill authority and sport references are scoped to one user turn.
     context.active_skill_id = None
     context.active_skill_confidence = 0.0
     context.active_skill_reason = None
     context.pending_skill_reference = None
+    if continue_route_skill:
+        context.active_skill_id = "plan-routes"
+        context.active_skill_confidence = 1.0
+        context.active_skill_reason = "continued_from_recent_skill"
+        context.last_used_skills = ["plan-routes"]
+        context.conversation_used_skills.append("plan-routes")
 
     try:
         client = AnthropicMessagesClient()
@@ -147,7 +155,12 @@ def _execute_main_agent_turn(
     initial_names = allowed_tool_names()
     tool_categories = {tool.category for tool in MAIN_AGENT_TOOLS if tool.name in initial_names}
     handlers = TOOL_HANDLERS
-    system = build_system_prompt(skill_catalog=build_skill_catalog_prompt())
+    initial_skill = get_skill(context.active_skill_id)
+    system = build_system_prompt(
+        allow_side_effects=bool(initial_skill and initial_skill.allow_side_effects),
+        skill_instructions=load_skill_instructions(initial_skill) if initial_skill else "",
+        skill_catalog="" if initial_skill else build_skill_catalog_prompt(),
+    )
     # A frozen multi-activity collection is also a resolved target.  Basing
     # this guard solely on current_fit_file incorrectly blocked navigation
     # until the model redundantly resolved one activity again.
@@ -170,7 +183,7 @@ def _execute_main_agent_turn(
         verbose=verbose,
     )
     if verbose:
-        _log_hdr(message, "chat", len(initial_names), bool(context.current_fit_file), active_skill=None)
+        _log_hdr(message, "chat", len(initial_names), bool(context.current_fit_file), active_skill=initial_skill)
 
     try:
         # Skill activation is a control-plane round and must not consume one
@@ -190,7 +203,7 @@ def _execute_main_agent_turn(
 
     # The activation round belongs to the capability control plane, not the
     # user's business-step budget.  Keep MAX_TOOL_STEPS semantics unchanged.
-    business_step_count = step_count - (1 if context.active_skill_id else 0)
+    business_step_count = step_count - (1 if context.active_skill_id and initial_skill is None else 0)
     return max(0, business_step_count), steps_taken
 
 

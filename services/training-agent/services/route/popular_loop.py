@@ -11,7 +11,9 @@ from demo.gaode_cycling_router.amap import AmapCyclingRouter, AmapPoint
 from demo.gaode_cycling_router.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
 from demo.osm_cycling_router.segment_loop import haversine_m
 from demo.osm_cycling_router.strava_segments import segment_detail_feature
+from demo.global_cycling_router.google_places import GooglePlacesClient
 from integrations.strava import StravaSink
+from services.route.segment_aware import build_connector_router
 from services.route.single_day import _elevation_profile, _search_amap_place, create_single_day_plan
 from settings import load_config
 
@@ -27,6 +29,7 @@ def create_popular_loop_plan(
     *,
     workspace_id: str,
     title: str,
+    country_code: str = "CN",
     origin: str,
     area: str,
     segment_name_hint: str = "",
@@ -41,7 +44,7 @@ def create_popular_loop_plan(
     connector_router: ConnectorRouter | None = None,
     elevation_fetcher: ElevationFetcher | None = None,
 ) -> dict[str, Any]:
-    """Use one complete closed Segment as the route body and AMap for access.
+    """Use one complete closed Segment as the route body and map routing for access.
 
     Strava Explorer is deliberately used only for bounded discovery.  The
     chosen Segment detail supplies the actual loop geometry; AMap does not
@@ -49,6 +52,9 @@ def create_popular_loop_plan(
     """
     normalized_origin = str(origin or "").strip()
     normalized_area = str(area or "").strip()
+    normalized_country = str(country_code or "").strip().upper()
+    if len(normalized_country) != 2:
+        raise ValueError("country_code must be a two-letter ISO code")
     if not normalized_origin or not normalized_area:
         raise ValueError("origin and area are required")
     radius_km = float(search_radius_km)
@@ -56,12 +62,18 @@ def create_popular_loop_plan(
         raise ValueError("search_radius_km must be between 0.5 and 20")
     cfg = config if config is not None else load_config()
     amap = cfg.get("amap") if isinstance(cfg.get("amap"), dict) else {}
+    google = cfg.get("google") if isinstance(cfg.get("google"), dict) else {}
     amap_key = str(amap.get("web_service_key") or "")
-    if not amap_key:
-        raise ValueError("amap.web_service_key is not configured")
-    search = place_searcher or _search_amap_place
-    origin_place = search(normalized_origin, amap_key)
-    area_place = search(normalized_area, amap_key)
+    google_key = str(google.get("api_key") or "")
+    provider_key = amap_key if normalized_country == "CN" else google_key
+    if not provider_key:
+        setting = "amap.web_service_key" if normalized_country == "CN" else "google.api_key"
+        raise ValueError(f"{setting} is not configured")
+    search = place_searcher or (
+        _search_amap_place if normalized_country == "CN" else _google_place_searcher(normalized_country)
+    )
+    origin_place = search(normalized_origin, provider_key)
+    area_place = search(normalized_area, provider_key)
 
     try:
         sink = None
@@ -78,7 +90,9 @@ def create_popular_loop_plan(
             target_distance_km=target_distance_km,
             origin=origin_wgs,
         )
-        route_connector = connector_router or _amap_connector(amap_key)
+        route_connector = connector_router or build_connector_router(
+            country_code=normalized_country, amap_key=amap_key, google_key=google_key,
+        )
         last_candidate_error: Exception | None = None
         candidates: list[dict[str, Any]] = []
         target = float(target_distance_km) if target_distance_km is not None else None
@@ -114,8 +128,8 @@ def create_popular_loop_plan(
                     "route_type": "loop",
                     "waypoint_queries": [normalized_origin, normalized_area],
                     "waypoints": [origin_place, _segment_waypoint(normalized_area, area_place, coordinates[0]), dict(origin_place)],
-                    "provider": "amap+strava",
-                    "travel_mode": "BICYCLE",
+                    "provider": f"{'amap' if normalized_country == 'CN' else 'google_routes'}+strava",
+                    "travel_mode": "BICYCLE" if normalized_country != "JP" else "DRIVE",
                     "distance_m": distance_m,
                     "distance_km": round(distance_m / 1_000, 1),
                     "duration_s": duration_s,
@@ -125,7 +139,7 @@ def create_popular_loop_plan(
                     "geometry": {"type": "LineString", "coordinates": geometry},
                     # Elevation is fetched only after the rider confirms one candidate.
                     "elevation": None,
-                    "warnings": ["路线主体采用完整 Strava 热门环线；起点往返环线入口由高德骑行算路接驳。"],
+                    "warnings": ["路线主体采用完整 Strava 热门环线；起点往返环线入口由地图服务接驳。"],
                     "strava_segments": [segment],
                     "rationale": f"完整骑行 Strava 环线“{segment['name']}”",
                     "segment_evidence": {
@@ -147,7 +161,7 @@ def create_popular_loop_plan(
             candidates.sort(key=lambda item: abs(float(item.get("distance_km") or 0) - target))
         for index, candidate in enumerate(candidates, start=1):
             candidate["candidate_id"] = f"candidate_{index}"
-        plan = _plan(workspace_id, title, candidates[0], fallback=False)
+        plan = _plan(workspace_id, title, candidates[0], country_code=normalized_country, fallback=False)
         plan["candidates"] = candidates
         plan["active_candidate_id"] = candidates[0]["candidate_id"]
         plan["planning"] = {
@@ -161,6 +175,7 @@ def create_popular_loop_plan(
             "segment_name_hint": str(segment_name_hint or "").strip(),
             "target_distance_km": target_distance_km,
             "search_radius_km": radius_km,
+            "country_code": normalized_country,
         }
         return plan
     except Exception as exc:
@@ -169,11 +184,10 @@ def create_popular_loop_plan(
         fallback = create_single_day_plan(
             workspace_id=workspace_id,
             title=title,
-            country_code="CN",
+            country_code=normalized_country,
             candidates=[{
                 "name": f"{normalized_area}普通往返",
-                "waypoints": [normalized_origin, normalized_area],
-                "route_type": "loop",
+                "waypoints": [normalized_origin, normalized_area, normalized_origin],
                 "target_distance_km": target_distance_km,
             }],
             include_elevation=include_elevation,
@@ -255,7 +269,9 @@ def reverse_popular_loop_plan(plan: dict[str, Any], *, candidate_id: str | None 
     }
 
 
-def _plan(workspace_id: str, title: str, candidate: dict[str, Any], *, fallback: bool) -> dict[str, Any]:
+def _plan(
+    workspace_id: str, title: str, candidate: dict[str, Any], *, country_code: str, fallback: bool,
+) -> dict[str, Any]:
     return {
         "schema_version": "route_plan.v1",
         "plan_id": f"route_{uuid4().hex}",
@@ -263,7 +279,7 @@ def _plan(workspace_id: str, title: str, candidate: dict[str, Any], *, fallback:
         "revision": 0,
         "title": str(title or "热门环线"),
         "day_count": 1,
-        "country_code": "CN",
+        "country_code": country_code,
         "route_mode": "popular_loop_fallback" if fallback else "popular_loop",
         "segment_strategy": "complete_popular_loop",
         "active_candidate_id": candidate["candidate_id"],
@@ -358,6 +374,25 @@ def _amap_connector(key: str) -> ConnectorRouter:
         }
 
     return route
+
+
+def _google_place_searcher(country_code: str) -> PlaceSearcher:
+    def search(query: str, key: str) -> dict[str, Any]:
+        places = GooglePlacesClient(key).search(query, limit=5).get("places") or []
+        matching = [item for item in places if str(item.get("country_code") or "").upper() == country_code]
+        selected = (matching or places)[0] if (matching or places) else None
+        if not isinstance(selected, dict):
+            raise RuntimeError(f"地点检索没有结果：{query}")
+        location = selected.get("location") if isinstance(selected.get("location"), dict) else {}
+        return {
+            "query": query,
+            "name": selected.get("name") or query,
+            "address": selected.get("address") or "",
+            "latitude": float(location["latitude"]),
+            "longitude": float(location["longitude"]),
+        }
+
+    return search
 
 
 def _join_lines(*lines: Sequence[Sequence[float]]) -> list[list[float]]:

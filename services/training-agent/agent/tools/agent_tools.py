@@ -314,70 +314,56 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
         category=CATEGORY_COACHING,
     ),
     ToolDef(
-        name="create_popular_loop",
-        description=(
-            "创建并持久化国内热门闭合骑行环线候选：从指定起点用高德接驳到完整 Strava 环线，"
-            "骑完整环线后再接驳返回起点。返回最多三个真实闭环候选，等待用户选择和确认。"
-        ),
-        input_schema={
-            "type": "object",
-            "required": ["title", "origin", "area"],
-            "properties": {
-                "title": {"type": "string"},
-                "origin": {"type": "string", "description": "实际出发和返回地点，如南京夫子庙"},
-                "area": {"type": "string", "description": "环线所在区域或地标，如南京中山陵"},
-                "segment_name_hint": {
-                    "type": "string",
-                    "description": "用户提到的环线或道路名称片段，如环陵；不确定时可省略。",
-                },
-                "target_distance_km": {"type": "number", "minimum": 1},
-                "search_radius_km": {
-                    "type": "number", "minimum": 0.5, "maximum": 20, "default": 8,
-                },
-                "include_elevation": {"type": "boolean", "default": True},
-                "fallback_to_provider": {
-                    "type": "boolean", "default": True,
-                    "description": "找不到完整 Strava 环线时，是否明确降级为起点到区域的普通地图往返。",
-                },
-            },
-        },
-        category=CATEGORY_COACHING,
-    ),
-    ToolDef(
         name="create_route_plan",
         description=(
-            "创建并持久化一个经过地图服务验证的单日路线计划。国内使用高德骑行，"
-            "国外使用 Google Routes；可一次提供多个具有不同途经点骨架的候选。"
+            "统一创建并持久化单日路线。明确途经点时按给定骨架算路；开放需求由模型先给出至多三个"
+            "骨架。国内使用高德，国外使用 Google Routes；默认尝试用真实 Strava 路段增强，"
+            "失败时保留地图基线。complete_loop 用于围绕一个完整闭合 Strava 热门环线接驳往返。"
         ),
         input_schema={
             "type": "object",
-            "required": ["title", "country_code", "candidates"],
+            "required": ["title", "country_code"],
             "properties": {
                 "title": {"type": "string"},
                 "country_code": {"type": "string", "description": "ISO 两字母国家代码，如 CN、FR、JP"},
                 "include_elevation": {"type": "boolean", "default": True},
                 "segment_strategy": {
-                    "type": "string", "enum": ["auto", "ignore", "require"], "default": "auto",
-                    "description": "国内路线默认保留地图基准并建议独立 Strava 候选；auto 失败时仍保留基准路线。",
+                    "type": "string", "enum": ["auto", "ignore", "require", "complete_loop"], "default": "auto",
+                    "description": "auto 尝试 Strava 增强并在失败时保留地图基线；complete_loop 需要 origin 和 area。",
                 },
                 "segment_preferences": {
                     "type": "array", "items": {"type": "string"},
                     "description": "例如热门、湖景、少爬坡、经典爬坡。",
                 },
+                "origin": {"type": "string", "description": "complete_loop 的实际起终点。"},
+                "area": {"type": "string", "description": "complete_loop 的环线检索区域。"},
+                "segment_name_hint": {"type": "string", "description": "可选的热门环线名称片段。"},
+                "target_distance_km": {
+                    "type": "number", "minimum": 1,
+                    "description": "仅当用户明确给出目标距离或距离范围时填写，不得自行估算。",
+                },
+                "search_radius_km": {"type": "number", "minimum": 0.5, "maximum": 20, "default": 8},
+                "fallback_to_provider": {"type": "boolean", "default": True},
                 "candidates": {
                     "type": "array", "minItems": 1, "maxItems": 3,
                     "items": {
                         "type": "object",
-                        "required": ["name", "waypoints", "route_type"],
+                        "required": ["name", "waypoints"],
                         "properties": {
                             "name": {"type": "string"},
                             "waypoints": {
                                 "type": "array", "minItems": 2, "maxItems": 12,
                                 "items": {"type": "string"},
-                                "description": "按顺序排列的真实地点检索词；环线不必重复首点。",
+                                "description": (
+                                    "按顺序排列的真实地点检索词。用户明确给出 A 到 B 再到 C 时必须原样使用"
+                                    " [A,B,C]，不得擅自补回 A；只有用户明确要求环线、返回起点或骑一圈时，"
+                                    "才把起点原样重复为最后一点。"
+                                ),
                             },
-                            "route_type": {"type": "string", "enum": ["point_to_point", "loop"]},
-                            "target_distance_km": {"type": "number"},
+                            "target_distance_km": {
+                                "type": "number",
+                                "description": "仅当用户明确给出目标距离或距离范围时填写。",
+                            },
                         },
                     },
                 },
@@ -427,11 +413,9 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                                         "waypoints": {
                                             "type": "array", "minItems": 2, "maxItems": 12,
                                             "items": {"type": "string"},
-                                        },
-                                        "route_type": {
-                                            "type": "string",
-                                            "enum": ["point_to_point", "loop"],
-                                            "default": "point_to_point",
+                                            "description": (
+                                                "明确点位按用户顺序原样保留；只有明确要求闭环时才重复首点。"
+                                            ),
                                         },
                                         "target_distance_km": {"type": "number"},
                                     },
@@ -474,8 +458,13 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                     "description": "replace_waypoint 使用，按用户可见顺序从 1 开始",
                 },
                 "new_waypoint": {"type": "string", "description": "replace_waypoint 的新地点检索词"},
-                "waypoints": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 12},
-                "route_type": {"type": "string", "enum": ["point_to_point", "loop"]},
+                "waypoints": {
+                    "type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 12,
+                    "description": (
+                        "replace_waypoints/replace_stage 使用；按用户给出的完整顺序原样传递。"
+                        "首尾不同为单程，只有用户明确要求闭环时才重复首点。"
+                    ),
+                },
                 "target_distance_km": {"type": "number"},
                 "include_elevation": {"type": "boolean", "default": True},
                 "segment_strategy": {

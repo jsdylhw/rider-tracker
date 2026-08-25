@@ -10,7 +10,14 @@ from agent.runtime.models import ToolExecution
 from agent.runtime.presentation_projector import project_presentations
 from agent.main_agent.context import AgentContext
 from agent.tools.handlers.route import create_route_plan_tool, update_route_plan_tool
-from services.route.single_day import compact_route_plan, create_single_day_plan, edit_candidate_waypoints
+from services.route.single_day import (
+    RouteCandidateRejected,
+    _route_amap,
+    _route_google,
+    compact_route_plan,
+    create_single_day_plan,
+    edit_candidate_waypoints,
+)
 from storage.repositories.route import RoutePlanStore
 
 
@@ -43,7 +50,8 @@ def _places(queries):
 def test_create_loop_reuses_first_waypoint_and_compacts_geometry():
     captured = []
 
-    def route_google(queries, country_code, route_type, config):
+    def route_google(queries, country_code, is_closed, config, **kwargs):
+        assert is_closed is True
         captured.append(list(queries))
         return _places(queries), _route_result()
 
@@ -56,8 +64,7 @@ def test_create_loop_reuses_first_waypoint_and_compacts_geometry():
             country_code="FR",
             candidates=[{
                 "name": "湖区候选",
-                "waypoints": ["Annecy", "Doussard", "Talloires"],
-                "route_type": "loop",
+                "waypoints": ["Annecy", "Doussard", "Talloires", "Annecy"],
                 "target_distance_km": 40,
             }],
             include_elevation=False,
@@ -74,7 +81,8 @@ def test_create_loop_reuses_first_waypoint_and_compacts_geometry():
 def test_create_loop_ignores_explicit_duplicate_start_at_end():
     captured = []
 
-    def route_google(queries, country_code, route_type, config):
+    def route_google(queries, country_code, is_closed, config, **kwargs):
+        assert is_closed is True
         captured.append(list(queries))
         return _places(queries), _route_result()
 
@@ -85,12 +93,271 @@ def test_create_loop_ignores_explicit_duplicate_start_at_end():
             workspace_id="workspace", title="重复首点", country_code="FR",
             candidates=[{
                 "name": "环线", "waypoints": ["Annecy", "Talloires", " annecy "],
-                "route_type": "loop",
             }],
             include_elevation=False,
         )
 
     assert captured == [["Annecy", "Talloires"]]
+
+
+def test_waypoint_structure_overrides_legacy_route_type_hint():
+    captured = []
+
+    def route_google(queries, country_code, is_closed, config, **kwargs):
+        captured.append((list(queries), is_closed))
+        return _places(queries), _route_result()
+
+    with patch("services.route.single_day.load_config", return_value={}), patch(
+        "services.route.single_day._route_google", side_effect=route_google,
+    ):
+        plan = create_single_day_plan(
+            workspace_id="workspace", title="明确单程", country_code="FR",
+            candidates=[{
+                "name": "A 到 C", "waypoints": ["A", "B", "C"],
+                # Deprecated input must not override the waypoint structure.
+                "route_type": "loop",
+            }],
+            include_elevation=False,
+        )
+
+    candidate = plan["candidates"][0]
+    assert captured == [(["A", "B", "C"], False)]
+    assert candidate["is_closed"] is False
+    assert candidate["route_type"] == "point_to_point"
+    assert [item["query"] for item in candidate["waypoints"]] == ["A", "B", "C"]
+
+
+def test_google_loop_search_uses_first_place_as_bias_and_selects_nearest_match(monkeypatch):
+    searches = []
+
+    class PlacesClient:
+        def __init__(self, key):
+            assert key == "google-key"
+
+        def search(self, query, **kwargs):
+            searches.append((query, kwargs))
+            if query == "高松駅":
+                return {"places": [{
+                    "name": "高松駅", "address": "香川県高松市", "country_code": "JP",
+                    "location": {"latitude": 34.3507, "longitude": 134.0469},
+                }]}
+            return {"places": [
+                {
+                    "name": "Mure, Nagano", "address": "長野県", "country_code": "JP",
+                    "location": {"latitude": 36.7438, "longitude": 138.2363},
+                },
+                {
+                    "name": "高松市牟礼町", "address": "香川県高松市", "country_code": "JP",
+                    "location": {"latitude": 34.3370, "longitude": 134.1200},
+                },
+            ]}
+
+    class RoutesClient:
+        def __init__(self, key):
+            assert key == "google-key"
+
+        def route(self, points, *, country_code):
+            assert country_code == "JP"
+            return _route_result(distance_m=28_000)
+
+    monkeypatch.setattr("services.route.single_day.GooglePlacesClient", PlacesClient)
+    monkeypatch.setattr("services.route.single_day.GoogleRoutesClient", RoutesClient)
+
+    places, _ = _route_google(
+        ["高松駅", "牟礼"], "JP", True, {"google": {"api_key": "google-key"}},
+        target_distance_km=30,
+    )
+
+    assert searches[0][1]["near"] is None
+    assert searches[1][1]["near"] == (34.3507, 134.0469)
+    assert searches[1][1]["radius_m"] == 22_500
+    assert places[1]["name"] == "高松市牟礼町"
+
+
+def test_google_loop_rejects_ambiguous_waypoint_outside_target_radius(monkeypatch):
+    class PlacesClient:
+        def __init__(self, _key):
+            pass
+
+        def search(self, query, **kwargs):
+            if query == "鳴門駅":
+                return {"places": [{
+                    "name": "鳴門駅", "address": "徳島県", "country_code": "JP",
+                    "location": {"latitude": 34.1793, "longitude": 134.6086},
+                }]}
+            return {"places": [{
+                "name": "Utsumi Chidorigahama Beach", "address": "愛知県", "country_code": "JP",
+                "location": {"latitude": 34.7370, "longitude": 136.8674},
+            }]}
+
+    monkeypatch.setattr("services.route.single_day.GooglePlacesClient", PlacesClient)
+
+    with pytest.raises(RouteCandidateRejected, match="超过环线途经点上限"):
+        _route_google(
+            ["鳴門駅", "内海"], "JP", True, {"google": {"api_key": "google-key"}},
+            target_distance_km=30,
+        )
+
+
+def test_google_foreign_route_filters_country_and_chooses_nearest_same_country(monkeypatch):
+    class PlacesClient:
+        def __init__(self, _key):
+            pass
+
+        def search(self, query, **kwargs):
+            if query == "Le Bourg-d'Oisans":
+                return {"places": [{
+                    "name": "Le Bourg-d'Oisans", "address": "Isère, France", "country_code": "FR",
+                    "location": {"latitude": 45.054, "longitude": 6.031},
+                }]}
+            return {"places": [
+                {
+                    "name": "Alpe d'Huez, Quebec", "address": "Canada", "country_code": "CA",
+                    "location": {"latitude": 46.0, "longitude": -72.0},
+                },
+                {
+                    "name": "Alpe d'Huez", "address": "Isère, France", "country_code": "FR",
+                    "location": {"latitude": 45.091, "longitude": 6.068},
+                },
+                {
+                    "name": "Huez village", "address": "Isère, France", "country_code": "FR",
+                    "location": {"latitude": 45.083, "longitude": 6.058},
+                },
+            ]}
+
+    class RoutesClient:
+        def __init__(self, _key):
+            pass
+
+        def route(self, points, *, country_code):
+            assert country_code == "FR"
+            assert [(point.lat, point.lon) for point in points] == [
+                (45.054, 6.031), (45.091, 6.068),
+            ]
+            return _route_result(distance_m=14_000)
+
+    monkeypatch.setattr("services.route.single_day.GooglePlacesClient", PlacesClient)
+    monkeypatch.setattr("services.route.single_day.GoogleRoutesClient", RoutesClient)
+
+    places, _ = _route_google(
+        ["Le Bourg-d'Oisans", "Alpe d'Huez"], "FR", False,
+        {"google": {"api_key": "google-key"}},
+    )
+
+    assert [place["name"] for place in places] == ["Le Bourg-d'Oisans", "Alpe d'Huez"]
+
+
+def test_google_foreign_route_rejects_places_outside_requested_country(monkeypatch):
+    class PlacesClient:
+        def __init__(self, _key):
+            pass
+
+        def search(self, _query, **_kwargs):
+            return {"places": [{
+                "name": "Wrong-country result", "address": "Canada", "country_code": "CA",
+                "location": {"latitude": 46.0, "longitude": -72.0},
+            }]}
+
+    monkeypatch.setattr("services.route.single_day.GooglePlacesClient", PlacesClient)
+
+    with pytest.raises(RouteCandidateRejected, match="不在目标国家 FR"):
+        _route_google(
+            ["Le Bourg-d'Oisans", "Alpe d'Huez"], "FR", False,
+            {"google": {"api_key": "google-key"}},
+        )
+
+
+def test_amap_route_uses_anchor_search_and_prefers_matching_nearby_place(monkeypatch):
+    urls = []
+
+    def read(url, *, provider):
+        urls.append(url)
+        if "place/text" in url:
+            return {"pois": [{
+                "id": "origin", "name": "世博文化公园", "address": "浦东新区",
+                "location": "121.493000,31.188000", "adcode": "310115", "citycode": "021",
+            }]}
+        return {"pois": [
+            {
+                "id": "wrong", "name": "陆家嘴滨江中心", "address": "浦东新区",
+                "location": "121.505000,31.240000", "adcode": "310115", "citycode": "021",
+            },
+            {
+                "id": "right", "name": "后滩滨江", "address": "浦东新区",
+                "location": "121.480000,31.180000", "adcode": "310115", "citycode": "021",
+            },
+        ]}
+
+    class Router:
+        def __init__(self, key):
+            assert key == "amap-key"
+
+        def route_points(self, points):
+            return {
+                "provider": "amap", "distance_m": 5_000, "duration_s": 1_200,
+                "geometry": [(point.lon, point.lat) for point in points],
+            }
+
+    monkeypatch.setattr("services.route.single_day._read_json_url", read)
+    monkeypatch.setattr("services.route.single_day.AmapCyclingRouter", Router)
+
+    places, _ = _route_amap(
+        ["世博文化公园", "后滩滨江"], False,
+        {"amap": {"web_service_key": "amap-key"}},
+    )
+
+    assert places[1]["name"] == "后滩滨江"
+    assert places[1]["place_id"] == "right"
+    assert "place%2Faround" not in urls[1]
+    assert "/place/around?" in urls[1]
+    assert "location=121.493000%2C31.188000" in urls[1]
+    assert "region=310115" in urls[1]
+
+
+def test_semantic_waypoint_update_regenerates_candidate_name():
+    plan = {
+        "country_code": "FR", "active_candidate_id": "candidate_1",
+        "candidates": [{
+            "candidate_id": "candidate_1", "name": "A → B → C",
+            "route_type": "point_to_point", "waypoint_queries": ["A", "B", "C"],
+        }],
+    }
+
+    with patch("services.route.single_day.load_config", return_value={}), patch(
+        "services.route.single_day._route_google",
+        return_value=(_places(["A", "D", "C"]), _route_result()),
+    ):
+        updated = edit_candidate_waypoints(
+            plan, candidate_id=None, operation="replace_waypoint",
+            waypoint_index=2, new_waypoint="D", include_elevation=False,
+        )
+
+    assert updated["candidates"][0]["name"] == "A → D → C"
+    assert updated["title"] == "A → D → C"
+
+
+def test_route_plan_drops_only_candidates_outside_target_distance():
+    def route_google(queries, country_code, is_closed, config, **kwargs):
+        distance = 1_474_800 if queries[0] == "高松駅" else 22_000
+        return _places(queries), _route_result(distance_m=distance)
+
+    with patch("services.route.single_day.load_config", return_value={}), patch(
+        "services.route.single_day._route_google", side_effect=route_google,
+    ):
+        plan = create_single_day_plan(
+            workspace_id="workspace", title="四国候选", country_code="JP",
+            candidates=[
+                {"name": "异常高松环线", "waypoints": ["高松駅", "牟礼", "高松駅"], "target_distance_km": 30},
+                {"name": "松山环线", "waypoints": ["松山駅", "道後温泉", "松山駅"], "target_distance_km": 30},
+            ],
+            include_elevation=False,
+        )
+
+    assert [item["name"] for item in plan["candidates"]] == ["松山环线"]
+    assert plan["active_candidate_id"] == "candidate_2"
+    assert plan["rejected_candidates"][0]["name"] == "异常高松环线"
+    assert "允许范围 18.0-45.0 km" in plan["rejected_candidates"][0]["reason"]
+    assert compact_route_plan(plan)["rejected_candidates"] == plan["rejected_candidates"]
 
 
 def test_route_plan_store_persists_revision_and_latest_workspace(tmp_path):
@@ -187,12 +454,13 @@ def test_reverse_candidate_preserves_loop_anchor_and_replaces_one_waypoint():
             "candidate_id": "candidate_1",
             "name": "环线",
             "route_type": "loop",
-            "waypoint_queries": ["A", "B", "C"],
+            "waypoint_queries": ["A", "B", "C", "A"],
             "waypoints": _places(["A", "B", "C", "A"]),
         }],
     }
 
-    def route_google(queries, country_code, route_type, config):
+    def route_google(queries, country_code, is_closed, config, **kwargs):
+        assert is_closed is True
         captured.append(list(queries))
         return _places(queries), _route_result()
 

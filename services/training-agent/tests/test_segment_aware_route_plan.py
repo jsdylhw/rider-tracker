@@ -127,7 +127,7 @@ def test_auto_falls_back_to_baseline_when_selector_fails():
 
     route = plan["candidates"][0]
     assert route["provider"] == "amap"
-    assert any("保留高德基准路线" in warning for warning in route["warnings"])
+    assert any("保留地图基准路线" in warning for warning in route["warnings"])
     assert plan["segment_aware_summary"]["composed_target_count"] == 0
 
 
@@ -153,6 +153,42 @@ def test_proposal_mode_uses_discovered_segments_when_selector_output_fails():
     assert proposed["segment_evidence"]["segment_ids"] == [101]
     assert proposed["name"] == "经过 热门湖岸段"
     assert any("智能筛选不可用" in warning for warning in baseline["warnings"])
+
+
+def test_foreign_route_can_use_google_connectors_for_strava_composition():
+    plan = _baseline_plan()
+    plan["country_code"] = "JP"
+    baseline = plan["candidates"][0]
+    baseline["provider"] = "google_routes"
+    baseline["travel_mode"] = "DRIVE"
+
+    def connector(origin, destination):
+        return {
+            "provider": "google_routes", "travel_mode": "DRIVE",
+            "distance_m": 7_000, "duration_s": 1_200,
+            "geometry": {"type": "LineString", "coordinates": [list(origin), list(destination)]},
+        }
+
+    updated = apply_segment_aware_routing(
+        plan,
+        strategy="auto",
+        access_token="token",
+        connector_router=connector,
+        request_text="经过热门湖岸段",
+        include_elevation=False,
+        explorer=_explorer,
+        detail_fetcher=_detail,
+        selector=lambda _payload: {"selections": [{
+            "target_id": "candidate_1",
+            "segments": [{"segment_id": 101, "direction": "forward"}],
+        }]},
+    )
+
+    route = updated["candidates"][0]
+    assert route["provider"] == "google_routes+strava"
+    assert route["travel_mode"] == "DRIVE"
+    assert route["geometry"]["coordinates"][0] == [120.0, 30.0]
+    assert route["geometry"]["coordinates"][-1] == [120.2, 30.0]
 
 
 def test_require_rejects_empty_model_selection():
@@ -231,6 +267,28 @@ def test_proposal_mode_rejects_candidate_far_from_target_distance():
 
     assert len(plan["candidates"]) == 1
     assert plan["candidates"][0]["provider"] == "amap"
+    assert any("未通过真实算路校验" in warning for warning in plan["candidates"][0]["warnings"])
+
+
+def test_replacement_mode_keeps_baseline_when_strava_connectors_are_too_long():
+    def long_connector(origin, destination):
+        return {
+            "distance_m": 20_000, "duration_s": 3_600,
+            "geometry": {"type": "LineString", "coordinates": [list(origin), list(destination)]},
+        }
+
+    plan = apply_segment_aware_routing(
+        _baseline_plan(), strategy="auto", access_token="token",
+        connector_router=long_connector, request_text="参考热门路段", include_elevation=False,
+        explorer=_explorer, detail_fetcher=_detail,
+        selector=lambda _payload: {"selections": [{
+            "target_id": "candidate_1",
+            "segments": [{"segment_id": 101, "direction": "forward"}],
+        }]},
+    )
+
+    assert plan["candidates"][0]["provider"] == "amap"
+    assert plan["candidates"][0]["distance_km"] == 20.0
     assert any("未通过真实算路校验" in warning for warning in plan["candidates"][0]["warnings"])
 
 

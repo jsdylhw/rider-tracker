@@ -166,6 +166,8 @@ def _context_dict(context: AgentContext) -> dict[str, Any]:
         "last_tool_result": context.last_tool_result,
         "last_failed_action": context.last_failed_action,
         "last_llm_error": context.last_llm_error,
+        "last_used_skills": context.last_used_skills,
+        "conversation_used_skills": context.conversation_used_skills,
         "analysis_navigation": context.analysis_navigation,
         "selected_activities": context.selected_activities,
         "selected_activity_range": context.selected_activity_range,
@@ -182,6 +184,10 @@ def _restore_context(session_id: str, data: Any) -> AgentContext:
         last_tool_result=payload.get("last_tool_result"),
         last_failed_action=payload.get("last_failed_action"),
         last_llm_error=payload.get("last_llm_error"),
+        last_used_skills=[str(value) for value in payload.get("last_used_skills") or [] if str(value)],
+        conversation_used_skills=[
+            str(value) for value in payload.get("conversation_used_skills") or [] if str(value)
+        ],
         analysis_navigation=payload.get("analysis_navigation"),
     )
     selected = payload.get("selected_activities") or []

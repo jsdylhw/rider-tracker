@@ -52,9 +52,9 @@ def format_tool_args(block: dict[str, Any]) -> str:
         return f"专业历史分析 · {sport} · 按 {args.get('group_by') or 'week'} 对比"
     if name == "query_activity_detail":
         return f"FIT 定向问题：{str(args.get('question') or '').strip() or '未提供'}"
-    if name == "create_popular_loop":
-        return f"热门环线 · {args.get('origin') or '-'} → {args.get('area') or '-'} → 起点"
     if name == "create_route_plan":
+        if args.get("segment_strategy") == "complete_loop":
+            return f"完整热门环线 · {args.get('origin') or '-'} → {args.get('area') or '-'} → 起点"
         return f"单日路线 · {args.get('country_code') or '-'} · {len(args.get('candidates') or [])} 个候选"
     if name == "create_itinerary_plan":
         stage_count = sum(len(item.get("stages") or []) for item in args.get("candidates") or [] if isinstance(item, dict))
@@ -122,7 +122,7 @@ def summarize_tool_output(name: str, output: Any) -> str:
         coverage = payload.get("coverage") if isinstance(payload.get("coverage"), dict) else {}
         conclusion = payload.get("conclusion") if isinstance(payload.get("conclusion"), dict) else {}
         return f"已分析 {coverage.get('activity_count', 0)} 条活动（{conclusion.get('assessment') or 'insufficient_data'}，置信度 {conclusion.get('confidence') or 'low'}）"
-    if name in {"create_popular_loop", "create_route_plan", "create_itinerary_plan", "update_route_plan", "get_route_plan"}:
+    if name in {"create_route_plan", "create_itinerary_plan", "update_route_plan", "get_route_plan"}:
         candidates = payload.get("candidates") if isinstance(payload.get("candidates"), list) else []
         active_id = payload.get("active_candidate_id")
         active = next((item for item in candidates if item.get("candidate_id") == active_id), candidates[0] if candidates else {})
@@ -147,7 +147,7 @@ def tool_label(name: str) -> str:
         "inspect_selection": "初步检查", "analyze_selection": "分析当前焦点", "navigate_selection": "切换分析焦点",
         "analyze_activity": "查看活动报告", "query_activity_detail": "查询 FIT 细节", "summarize_activities": "汇总活动",
         "compare_activities": "对比活动", "calculate_history_metrics": "计算历史指标", "analyze_training_history": "分析训练历史",
-        "create_popular_loop": "创建热门环线", "create_route_plan": "创建单日路线", "create_itinerary_plan": "创建分段行程",
+        "create_route_plan": "创建单日路线", "create_itinerary_plan": "创建分段行程",
         "update_route_plan": "更新路线", "get_route_plan": "查看路线",
         "explore_route_segments": "查询 Strava 路段",
         "sync_garmin_activities": "同步 Garmin 活动", "sync_and_run_activity_workflow": "同步并处理活动",

@@ -20,7 +20,17 @@ from settings import load_config
 
 
 AMAP_PLACE_TEXT_URL = "https://restapi.amap.com/v5/place/text"
+AMAP_PLACE_AROUND_URL = "https://restapi.amap.com/v5/place/around"
 GOOGLE_ELEVATION_URL = "https://maps.googleapis.com/maps/api/elevation/json"
+MIN_TARGET_DISTANCE_RATIO = 0.60
+MAX_TARGET_DISTANCE_RATIO = 1.50
+LOOP_WAYPOINT_RADIUS_RATIO = 0.75
+MIN_LOOP_WAYPOINT_RADIUS_KM = 5.0
+MAX_GOOGLE_PLACE_BIAS_RADIUS_M = 50_000.0
+
+
+class RouteCandidateRejected(ValueError):
+    """A provider-resolved candidate that violates deterministic route bounds."""
 
 
 def create_single_day_plan(
@@ -41,16 +51,25 @@ def create_single_day_plan(
     if len(candidates) > 3:
         raise ValueError("at most three route candidates are supported")
     config = load_config()
-    routed = [
-        route_candidate(
-            candidate,
-            index=index,
-            country_code=normalized_country,
-            include_elevation=include_elevation,
-            config=config,
-        )
-        for index, candidate in enumerate(candidates, start=1)
-    ]
+    routed: list[dict[str, Any]] = []
+    rejected: list[dict[str, str]] = []
+    for index, candidate in enumerate(candidates, start=1):
+        try:
+            routed.append(route_candidate(
+                candidate,
+                index=index,
+                country_code=normalized_country,
+                include_elevation=include_elevation,
+                config=config,
+            ))
+        except RouteCandidateRejected as exc:
+            rejected.append({
+                "name": str(candidate.get("name") or f"候选路线 {index}"),
+                "reason": str(exc),
+            })
+    if not routed:
+        reasons = "；".join(f"{item['name']}：{item['reason']}" for item in rejected)
+        raise RouteCandidateRejected(f"所有路线候选均超出合理范围。{reasons}")
     return {
         "schema_version": "route_plan.v1",
         "plan_id": plan_id or f"route_{uuid4().hex}",
@@ -61,6 +80,7 @@ def create_single_day_plan(
         "country_code": normalized_country,
         "active_candidate_id": routed[0]["candidate_id"],
         "candidates": routed,
+        "rejected_candidates": rejected,
     }
 
 
@@ -70,7 +90,6 @@ def replace_candidate(
     candidate_id: str | None,
     name: str,
     waypoint_queries: Sequence[str],
-    route_type: str,
     target_distance_km: float | None,
     include_elevation: bool,
 ) -> dict[str, Any]:
@@ -82,10 +101,10 @@ def replace_candidate(
     )
     if selected_index < 0:
         raise ValueError("route candidate does not exist")
+    normalized_queries, _ = normalize_waypoint_queries(waypoint_queries)
     spec = {
-        "name": name or candidates[selected_index].get("name") or "更新路线",
-        "waypoints": list(waypoint_queries),
-        "route_type": route_type or candidates[selected_index].get("route_type") or "point_to_point",
+        "name": name or _waypoint_route_name(normalized_queries),
+        "waypoints": normalized_queries,
         "target_distance_km": (
             target_distance_km
             if target_distance_km is not None
@@ -108,6 +127,7 @@ def replace_candidate(
     })
     return {
         **plan,
+        "title": updated["name"] if len(candidates) == 1 else plan.get("title"),
         "candidates": [updated if index == selected_index else item for index, item in enumerate(candidates)],
         "planning": {
             **(plan.get("planning") if isinstance(plan.get("planning"), dict) else {}),
@@ -137,7 +157,7 @@ def edit_candidate_waypoints(
         raise ValueError("route candidate does not exist")
     queries = saved_waypoint_queries(selected)
     if operation == "reverse":
-        queries = reverse_waypoint_queries(queries, str(selected.get("route_type") or "point_to_point"))
+        queries = reverse_waypoint_queries(queries)
     elif operation == "replace_waypoint":
         if waypoint_index is None:
             raise ValueError("waypoint_index is required")
@@ -153,9 +173,8 @@ def edit_candidate_waypoints(
     return replace_candidate(
         plan,
         candidate_id=selected_id,
-        name=str(selected.get("name") or ""),
+        name="",
         waypoint_queries=queries,
-        route_type=str(selected.get("route_type") or "point_to_point"),
         target_distance_km=_optional_float(selected.get("target_distance_km")),
         include_elevation=include_elevation,
     )
@@ -169,17 +188,43 @@ def saved_waypoint_queries(route: dict[str, Any]) -> list[str]:
             for point in route.get("waypoints") or [] if isinstance(point, dict)
         ]
         queries = [value for value in queries if value]
-        if route.get("route_type") == "loop" and len(queries) > 1 and queries[-1] == queries[0]:
-            queries.pop()
+    # Migrate old persisted loops whose waypoint_queries omitted the repeated
+    # origin. New plans encode closure directly as A -> ... -> A.
+    if (
+        str(route.get("route_type") or "").lower() == "loop"
+        and len(queries) > 1
+        and _normalize_place_name(queries[-1]) != _normalize_place_name(queries[0])
+    ):
+        queries.append(queries[0])
     if len(queries) < 2:
         raise ValueError("saved route does not contain enough waypoint queries")
     return queries
 
 
-def reverse_waypoint_queries(queries: list[str], route_type: str) -> list[str]:
-    if str(route_type).lower() == "loop":
-        return [queries[0], *reversed(queries[1:])]
-    return list(reversed(queries))
+def reverse_waypoint_queries(queries: list[str]) -> list[str]:
+    normalized, is_closed = normalize_waypoint_queries(queries)
+    if is_closed:
+        return [normalized[0], *reversed(normalized[1:-1]), normalized[0]]
+    return list(reversed(normalized))
+
+
+def _waypoint_route_name(queries: Sequence[str]) -> str:
+    names, _ = normalize_waypoint_queries(queries)
+    if not names:
+        return "更新路线"
+    return " → ".join(names)
+
+
+def normalize_waypoint_queries(values: Sequence[str]) -> tuple[list[str], bool]:
+    """Return canonical ordered queries and whether they explicitly close."""
+    queries = [str(value).strip() for value in values if str(value).strip()]
+    is_closed = (
+        len(queries) >= 3
+        and _normalize_place_name(queries[0]) == _normalize_place_name(queries[-1])
+    )
+    if is_closed:
+        queries[-1] = queries[0]
+    return queries, is_closed
 
 
 def compact_route_plan(plan: dict[str, Any]) -> dict[str, Any]:
@@ -229,6 +274,7 @@ def compact_route_plan(plan: dict[str, Any]) -> dict[str, Any]:
         } if isinstance(plan.get("segment_pool"), dict) else {},
         "active_candidate_id": plan.get("active_candidate_id"),
         "candidates": candidates,
+        "rejected_candidates": plan.get("rejected_candidates") or [],
     }
 
 
@@ -240,6 +286,7 @@ def _compact_route_segment(item: dict[str, Any], *, id_key: str) -> dict[str, An
             item.get("name") if id_key == "candidate_id" else item.get("label")
         ),
         "route_type": item.get("route_type"),
+        "is_closed": bool(item.get("is_closed") or item.get("route_type") == "loop"),
         "waypoints": item.get("waypoints") or [],
         "distance_km": item.get("distance_km"),
         "duration_min": item.get("duration_min"),
@@ -275,26 +322,30 @@ def route_candidate(
     include_elevation: bool,
     config: dict[str, Any],
 ) -> dict[str, Any]:
-    queries = [str(value).strip() for value in candidate.get("waypoints") or [] if str(value).strip()]
-    route_type = str(candidate.get("route_type") or "point_to_point").strip().lower()
-    if route_type not in {"point_to_point", "loop"}:
-        raise ValueError("route_type must be point_to_point or loop")
-    # A loop closes itself at the provider boundary.  Models and users still
-    # occasionally repeat the start explicitly (A -> B -> A); keeping it would
-    # ask AMap for an extra A -> A leg and may return RESULTS_ARE_EMPTY.
-    if route_type == "loop" and len(queries) >= 2 and queries[-1].casefold() == queries[0].casefold():
-        queries.pop()
+    waypoint_queries, is_closed = normalize_waypoint_queries(candidate.get("waypoints") or [])
+    queries = waypoint_queries[:-1] if is_closed else waypoint_queries
     if len(queries) < 2:
         raise ValueError("each candidate requires at least two distinct waypoint queries")
+    target = _optional_float(candidate.get("target_distance_km"))
     if country_code == "CN":
-        places, route = _route_amap(queries, route_type, config)
+        places, route = _route_amap(queries, is_closed, config)
     else:
-        places, route = _route_google(queries, country_code, route_type, config)
-    if route_type == "loop":
+        places, route = _route_google(
+            queries, country_code, is_closed, config,
+            target_distance_km=target,
+        )
+    if is_closed:
         places = [*places, dict(places[0])]
     geometry = route["geometry"]
-    target = _optional_float(candidate.get("target_distance_km"))
     distance_km = round(float(route.get("distance_m") or 0) / 1000, 1)
+    if target is not None:
+        minimum_km = target * MIN_TARGET_DISTANCE_RATIO
+        maximum_km = target * MAX_TARGET_DISTANCE_RATIO
+        if not minimum_km <= distance_km <= maximum_km:
+            raise RouteCandidateRejected(
+                f"实际 {distance_km:.1f} km，目标 {target:.1f} km，"
+                f"允许范围 {minimum_km:.1f}-{maximum_km:.1f} km"
+            )
     warnings = list(route.get("warnings") or [])
     if route.get("warning"):
         warnings.append(str(route["warning"]))
@@ -307,8 +358,11 @@ def route_candidate(
     return {
         "candidate_id": str(candidate.get("candidate_id") or f"candidate_{index}"),
         "name": str(candidate.get("name") or f"候选路线 {index}"),
-        "route_type": route_type,
-        "waypoint_queries": queries,
+        # Compatibility field for existing persistence/UI readers. Closure is
+        # derived from waypoint structure and this field is never model-owned.
+        "route_type": "loop" if is_closed else "point_to_point",
+        "is_closed": is_closed,
+        "waypoint_queries": waypoint_queries,
         "waypoints": places,
         "provider": route.get("provider"),
         "travel_mode": route.get("travel_mode") or route.get("profile"),
@@ -326,16 +380,20 @@ def route_candidate(
 
 def _route_amap(
     queries: list[str],
-    route_type: str,
+    is_closed: bool,
     config: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     amap = config.get("amap") if isinstance(config.get("amap"), dict) else {}
     key = str(amap.get("web_service_key") or "")
     if not key:
         raise ValueError("amap.web_service_key is not configured")
-    places = [_search_amap_place(query, key) for query in queries]
+    places: list[dict[str, Any]] = []
+    for query in queries:
+        anchor = places[-1] if places else None
+        region = str((places[0] if places else {}).get("adcode") or "")
+        places.append(_search_amap_place(query, key, anchor=anchor, region=region))
     points = [AmapPoint(place["latitude"], place["longitude"]) for place in places]
-    if route_type == "loop":
+    if is_closed:
         points.append(points[0])
     route = AmapCyclingRouter(key).route_points(points)
     display_coordinates = [list(gcj02_to_wgs84(lon, lat)) for lon, lat in route["geometry"]]
@@ -349,42 +407,145 @@ def _route_amap(
 def _route_google(
     queries: list[str],
     country_code: str,
-    route_type: str,
+    is_closed: bool,
     config: dict[str, Any],
+    *,
+    target_distance_km: float | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     google = config.get("google") if isinstance(config.get("google"), dict) else {}
     key = str(google.get("api_key") or "")
     if not key:
         raise ValueError("google.api_key is not configured")
     client = GooglePlacesClient(key)
-    places = []
+    places: list[dict[str, Any]] = []
+    # The caller validates the final routed distance. This local search radius
+    # prevents an ambiguous place name from escaping to another prefecture
+    # before the expensive route request is made.
+    target = target_distance_km if is_closed else None
+    maximum_radius_km = (
+        max(MIN_LOOP_WAYPOINT_RADIUS_KM, target * LOOP_WAYPOINT_RADIUS_RATIO)
+        if target is not None else None
+    )
     for query in queries:
-        results = client.search(query, limit=1).get("places") or []
+        anchor = places[0] if places else None
+        near = (
+            (float(anchor["latitude"]), float(anchor["longitude"]))
+            if anchor is not None and maximum_radius_km is not None else None
+        )
+        search_radius_m = min(
+            MAX_GOOGLE_PLACE_BIAS_RADIUS_M,
+            maximum_radius_km * 1_000 if maximum_radius_km is not None else 20_000,
+        )
+        results = client.search(query, near=near, radius_m=search_radius_m, limit=5).get("places") or []
         if not results:
             raise RuntimeError(f"地点检索没有结果：{query}")
-        raw = results[0]
+        raw = _select_google_place(results, query=query, country_code=country_code, anchor=anchor)
         location = raw["location"]
-        places.append({
+        place = {
             "query": query,
             "name": raw.get("name") or query,
             "address": raw.get("address") or "",
             "latitude": float(location["latitude"]),
             "longitude": float(location["longitude"]),
-        })
+        }
+        if anchor is not None and maximum_radius_km is not None:
+            distance_km = _haversine_km(
+                float(anchor["latitude"]), float(anchor["longitude"]),
+                place["latitude"], place["longitude"],
+            )
+            if distance_km > maximum_radius_km:
+                raise RouteCandidateRejected(
+                    f"地点“{query}”解析为“{place['name']}”，距起点 {distance_km:.1f} km，"
+                    f"超过环线途经点上限 {maximum_radius_km:.1f} km"
+                )
+        places.append(place)
     points = [WgsPoint(place["latitude"], place["longitude"]) for place in places]
-    if route_type == "loop" and points[-1] != points[0]:
+    if is_closed and points[-1] != points[0]:
         points.append(points[0])
     route = GoogleRoutesClient(key).route(points, country_code=country_code)
     return places, route
 
 
-def _search_amap_place(query: str, key: str) -> dict[str, Any]:
-    url = AMAP_PLACE_TEXT_URL + "?" + urlencode({"key": key, "keywords": query, "page_size": 1})
-    payload = _read_json_url(url, provider="AMap Places")
+def _select_google_place(
+    results: Sequence[dict[str, Any]],
+    *,
+    query: str,
+    country_code: str,
+    anchor: dict[str, Any] | None,
+) -> dict[str, Any]:
+    matching_country = [
+        item for item in results
+        if not item.get("country_code") or str(item.get("country_code")).upper() == country_code
+    ]
+    if not matching_country:
+        resolved_countries = sorted({
+            str(item.get("country_code") or "unknown").upper() for item in results
+        })
+        raise RouteCandidateRejected(
+            f"地点检索结果不在目标国家 {country_code}（返回 {', '.join(resolved_countries)}）"
+        )
+    normalized_query = _normalize_place_name(query)
+
+    def score(item: dict[str, Any]) -> tuple[int, float]:
+        name = _normalize_place_name(str(item.get("name") or ""))
+        if normalized_query and (normalized_query in name or name in normalized_query):
+            match = 3
+        else:
+            match = 2 if _character_pairs(normalized_query) & _character_pairs(name) else 0
+        distance = 0.0 if anchor is None else _haversine_km(
+            float(anchor["latitude"]), float(anchor["longitude"]),
+            float(item["location"]["latitude"]), float(item["location"]["longitude"]),
+        )
+        return match, -distance
+
+    return max(matching_country, key=score)
+
+
+def _haversine_km(first_lat: float, first_lon: float, second_lat: float, second_lon: float) -> float:
+    radius_km = 6_371.0088
+    lat1, lat2 = math.radians(first_lat), math.radians(second_lat)
+    delta_lat = lat2 - lat1
+    delta_lon = math.radians(second_lon - first_lon)
+    value = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
+    )
+    return radius_km * 2 * math.atan2(math.sqrt(value), math.sqrt(max(0.0, 1 - value)))
+
+
+def _search_amap_place(
+    query: str,
+    key: str,
+    *,
+    anchor: dict[str, Any] | None = None,
+    region: str = "",
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"key": key, "keywords": query, "page_size": 10}
+    endpoint = AMAP_PLACE_TEXT_URL
+    if anchor is not None:
+        endpoint = AMAP_PLACE_AROUND_URL
+        params.update({
+            "location": f"{float(anchor['longitude']):.6f},{float(anchor['latitude']):.6f}",
+            "radius": 50_000,
+            "sortrule": "distance",
+        })
+        if region:
+            params["region"] = region
+    elif region:
+        params["region"] = region
+    payload = _read_json_url(endpoint + "?" + urlencode(params), provider="AMap Places")
     pois = payload.get("pois") or []
+    if not pois and anchor is not None:
+        fallback = {"key": key, "keywords": query, "page_size": 10}
+        if region:
+            fallback["region"] = region
+        payload = _read_json_url(
+            AMAP_PLACE_TEXT_URL + "?" + urlencode(fallback), provider="AMap Places",
+        )
+        pois = payload.get("pois") or []
     if not pois:
         raise RuntimeError(f"地点检索没有结果：{query}")
-    poi = pois[0]
+    poi = _select_amap_poi(query, pois, anchor=anchor)
     try:
         lon, lat = (float(value) for value in str(poi["location"]).split(",", 1))
     except (KeyError, TypeError, ValueError) as exc:
@@ -398,7 +559,49 @@ def _search_amap_place(query: str, key: str) -> dict[str, Any]:
         "longitude": lon,
         "display_latitude": wgs_lat,
         "display_longitude": wgs_lon,
+        "adcode": str(poi.get("adcode") or ""),
+        "citycode": str(poi.get("citycode") or ""),
+        "place_id": str(poi.get("id") or ""),
     }
+
+
+def _select_amap_poi(
+    query: str, pois: Sequence[dict[str, Any]], *, anchor: dict[str, Any] | None,
+) -> dict[str, Any]:
+    normalized_query = _normalize_place_name(query)
+
+    def score(poi: dict[str, Any]) -> tuple[int, float]:
+        name = _normalize_place_name(str(poi.get("name") or ""))
+        if normalized_query and (normalized_query in name or name in normalized_query):
+            match = 3
+        else:
+            query_pairs = _character_pairs(normalized_query)
+            name_pairs = _character_pairs(name)
+            match = 2 if query_pairs & name_pairs else 0
+        distance = _amap_poi_distance_km(poi, anchor)
+        return match, -distance
+
+    return max((poi for poi in pois if isinstance(poi, dict)), key=score)
+
+
+def _normalize_place_name(value: str) -> str:
+    return "".join(character.casefold() for character in str(value) if character.isalnum())
+
+
+def _character_pairs(value: str) -> set[str]:
+    return {value[index:index + 2] for index in range(max(0, len(value) - 1))}
+
+
+def _amap_poi_distance_km(poi: dict[str, Any], anchor: dict[str, Any] | None) -> float:
+    if anchor is None:
+        return 0.0
+    try:
+        lon, lat = (float(value) for value in str(poi["location"]).split(",", 1))
+        return _haversine_km(
+            float(anchor["latitude"]), float(anchor["longitude"]), lat, lon,
+        )
+    except (KeyError, TypeError, ValueError):
+        return float("inf")
 
 
 def _elevation_profile(

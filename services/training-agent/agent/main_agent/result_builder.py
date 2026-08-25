@@ -30,6 +30,18 @@ def build_completed_result(
             f"达到最大步数 ({max_tool_steps}), 已执行 {len(steps)} 步, 但未完成。",
         )
 
+    if not context.execution_trace:
+        from agent.main_agent.turn_policy import should_continue_route_skill
+
+        if should_continue_route_skill(message, context):
+            return build_turn_result(
+                "action_not_executed",
+                "route_advice",
+                context,
+                steps,
+                "本轮没有实际执行路线更新，当前已保存路线保持不变。请重试这次修改。",
+            )
+
     final_answer = _current_terminal_answer(context)
     if not final_answer:
         for item in context.messages:

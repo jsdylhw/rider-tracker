@@ -17,6 +17,7 @@ from services.route.itinerary import (
 )
 from services.route.segment_aware import (
     apply_segment_aware_routing,
+    build_connector_router,
     compose_route_with_segments,
     reverse_segment_candidate,
 )
@@ -39,10 +40,6 @@ def generate_route_advice(args: dict[str, Any], context: AgentContext) -> dict[s
 
 def create_route_plan(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
     return create_route_plan_tool(context, args=args, name="create_route_plan")
-
-
-def create_popular_loop(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
-    return create_popular_loop_tool(context, args=args, name="create_popular_loop")
 
 
 def create_itinerary_plan(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
@@ -86,13 +83,34 @@ def create_route_plan_tool(
     args = args or {}
     segment_strategy = str(args.get("segment_strategy") or "auto").lower()
     country_code = str(args.get("country_code") or "")
-    segment_active = country_code.upper() == "CN" and segment_strategy != "ignore"
+    if segment_strategy == "complete_loop":
+        plan = create_popular_loop_plan(
+            workspace_id=_workspace_id(context),
+            title=str(args.get("title") or "热门环线"),
+            country_code=country_code,
+            origin=str(args.get("origin") or ""),
+            area=str(args.get("area") or ""),
+            segment_name_hint=str(args.get("segment_name_hint") or ""),
+            target_distance_km=args.get("target_distance_km"),
+            search_radius_km=float(args.get("search_radius_km", 8.0)),
+            include_elevation=bool(args.get("include_elevation", True)),
+            fallback_to_provider=bool(args.get("fallback_to_provider", True)),
+        )
+        stored = RoutePlanStore().save(plan)
+        compact = compact_route_plan(stored)
+        prefix = "已生成热门环线" if stored.get("route_mode") == "popular_loop" else "已降级生成普通地图路线"
+        return {
+            "step": name,
+            "status": "completed",
+            "answer": _plan_answer(compact, prefix=prefix),
+            "result": compact,
+        }
+    segment_active = segment_strategy != "ignore"
     candidates = args.get("candidates") if isinstance(args.get("candidates"), list) else []
     if not candidates and isinstance(args.get("waypoints"), list):
         candidates = [{
             "name": args.get("candidate_name") or "推荐路线",
             "waypoints": args["waypoints"],
-            "route_type": args.get("route_type") or "point_to_point",
             "target_distance_km": args.get("target_distance_km"),
         }]
     plan = create_single_day_plan(
@@ -109,45 +127,14 @@ def create_route_plan_tool(
             strategy=segment_strategy,
             preferences=args.get("segment_preferences") or [],
             include_elevation=bool(args.get("include_elevation", True)),
-            proposal_mode=True,
         )
-    else:
-        plan = _mark_route_proposed(plan, include_elevation=bool(args.get("include_elevation", True)))
+    plan = _mark_route_proposed(plan, include_elevation=bool(args.get("include_elevation", True)))
     stored = RoutePlanStore().save(plan)
     compact = compact_route_plan(stored)
     return {
         "step": name,
         "status": "completed",
         "answer": _plan_answer(compact, prefix="已生成"),
-        "result": compact,
-    }
-
-
-def create_popular_loop_tool(
-    context: AgentContext,
-    *,
-    args: dict[str, Any] | None = None,
-    name: str = "create_popular_loop",
-) -> dict[str, Any]:
-    args = args or {}
-    plan = create_popular_loop_plan(
-        workspace_id=_workspace_id(context),
-        title=str(args.get("title") or "热门环线"),
-        origin=str(args.get("origin") or ""),
-        area=str(args.get("area") or ""),
-        segment_name_hint=str(args.get("segment_name_hint") or ""),
-        target_distance_km=args.get("target_distance_km"),
-        search_radius_km=float(args.get("search_radius_km", 8.0)),
-        include_elevation=bool(args.get("include_elevation", True)),
-        fallback_to_provider=bool(args.get("fallback_to_provider", True)),
-    )
-    stored = RoutePlanStore().save(plan)
-    compact = compact_route_plan(stored)
-    prefix = "已生成热门环线" if stored.get("route_mode") == "popular_loop" else "已降级生成普通往返路线"
-    return {
-        "step": name,
-        "status": "completed",
-        "answer": _plan_answer(compact, prefix=prefix),
         "result": compact,
     }
 
@@ -161,7 +148,7 @@ def create_itinerary_plan_tool(
     args = args or {}
     segment_strategy = str(args.get("segment_strategy") or "auto").lower()
     country_code = str(args.get("country_code") or "")
-    segment_active = country_code.upper() == "CN" and segment_strategy != "ignore"
+    segment_active = segment_strategy != "ignore"
     candidates = args.get("candidates") if isinstance(args.get("candidates"), list) else []
     plan = create_itinerary_plan_service(
         workspace_id=_workspace_id(context),
@@ -219,12 +206,11 @@ def update_route_plan_tool(
     if plan.get("route_mode") == "popular_loop" and operation not in {
         "reverse_candidate", "select_candidate", "confirm_candidate",
     }:
-        raise ValueError("热门环线更换起点、区域或名称时请重新调用 create_popular_loop")
+        raise ValueError("热门环线更换起点、区域或名称时请重新调用 create_route_plan，并使用 complete_loop 策略")
     segment_strategy = str(args.get("segment_strategy") or plan.get("segment_strategy") or "ignore").lower()
     staged_plan = plan.get("schedule_type") in {"multi_day", "day_parts"}
     segment_active = (
-        str(plan.get("country_code") or "").upper() == "CN"
-        and segment_strategy != "ignore"
+        segment_strategy != "ignore"
         and operation not in {"select_candidate", "confirm_candidate", "compose_segments"}
         and (staged_plan or "segment_strategy" in args)
     )
@@ -255,16 +241,19 @@ def update_route_plan_tool(
             raise ValueError("compose_segments currently supports single-day routes only")
         config = load_config()
         amap = config.get("amap") if isinstance(config.get("amap"), dict) else {}
-        amap_key = str(amap.get("web_service_key") or "")
-        if not amap_key:
-            raise ValueError("amap.web_service_key is not configured")
+        google = config.get("google") if isinstance(config.get("google"), dict) else {}
+        country_code = str(plan.get("country_code") or "").upper()
         sink = StravaSink(config)
         segment_args = args.get("segments") if isinstance(args.get("segments"), list) else []
         plan = compose_route_with_segments(
             plan,
             candidate_id=str(args.get("candidate_id") or "") or None,
             segments=segment_args,
-            amap_key=amap_key,
+            connector_router=build_connector_router(
+                country_code=country_code,
+                amap_key=str(amap.get("web_service_key") or ""),
+                google_key=str(google.get("api_key") or ""),
+            ),
             detail_fetcher=lambda segment_id: sink.get_segment(segment_id),
             target_distance_km=args.get("target_distance_km"),
             name=str(args.get("candidate_name") or ""),
@@ -278,7 +267,6 @@ def update_route_plan_tool(
             candidate_id=str(args.get("candidate_id") or "") or None,
             name=str(args.get("candidate_name") or ""),
             waypoint_queries=[str(value) for value in waypoints],
-            route_type=str(args.get("route_type") or ""),
             target_distance_km=args.get("target_distance_km"),
             include_elevation=route_include_elevation,
         )
@@ -292,7 +280,6 @@ def update_route_plan_tool(
             stage_id=str(args.get("stage_id") or ""),
             label=str(args.get("stage_label") or ""),
             waypoint_queries=[str(value) for value in waypoints],
-            route_type=str(args.get("route_type") or ""),
             target_distance_km=args.get("target_distance_km"),
             include_elevation=route_include_elevation,
         )
@@ -465,6 +452,13 @@ def _plan_answer(plan: dict[str, Any], *, prefix: str) -> str:
         answer += f" 当前共有 {len(candidates)} 条候选，尚未最终确认；可以选择候选或继续按语义修改。"
     elif planning.get("status") == "confirmed":
         answer += " 该候选已确认保存。"
+    rejected = [item for item in plan.get("rejected_candidates") or [] if isinstance(item, dict)]
+    if rejected:
+        details = "；".join(
+            f"{item.get('name') or '未命名候选'}：{item.get('reason') or '超出合理范围'}"
+            for item in rejected
+        )
+        answer += f" 已淘汰 {len(rejected)} 条异常候选（{details}）。"
     return answer
 
 
@@ -490,6 +484,8 @@ def _apply_segment_strategy(
 ) -> dict[str, Any]:
     config = load_config()
     amap = config.get("amap") if isinstance(config.get("amap"), dict) else {}
+    google = config.get("google") if isinstance(config.get("google"), dict) else {}
+    country_code = str(plan.get("country_code") or "").upper()
     normalized_preferences = [str(value) for value in preferences if str(value).strip()] if isinstance(preferences, list) else []
     elevation_builder = lambda coordinates, distance_m: _elevation_profile(coordinates, distance_m, config)
     try:
@@ -499,6 +495,12 @@ def _apply_segment_strategy(
             strategy=strategy,
             access_token=str(sink.access_token or ""),
             amap_key=str(amap.get("web_service_key") or ""),
+            google_key=str(google.get("api_key") or ""),
+            connector_router=build_connector_router(
+                country_code=country_code,
+                amap_key=str(amap.get("web_service_key") or ""),
+                google_key=str(google.get("api_key") or ""),
+            ),
             request_text=_latest_user_message(context),
             preferences=normalized_preferences,
             include_elevation=include_elevation,
@@ -511,19 +513,7 @@ def _apply_segment_strategy(
     except Exception as exc:  # noqa: BLE001 - auto deliberately retains the provider baseline
         if strategy == "require":
             raise
-        fallback = apply_segment_aware_routing(
-            plan,
-            strategy="ignore",
-            access_token="",
-            amap_key=str(amap.get("web_service_key") or ""),
-            request_text=_latest_user_message(context),
-            preferences=normalized_preferences,
-            include_elevation=include_elevation,
-            explorer=lambda _bounds, _token: {},
-            detail_fetcher=lambda _segment_id: {},
-            selector=lambda _payload: {},
-            elevation_builder=elevation_builder,
-        )
+        fallback = {**plan}
         fallback["segment_strategy"] = "auto"
         fallback["segment_aware_summary"] = {
             "target_count": 0,
@@ -645,7 +635,6 @@ def _latest_user_message(context: AgentContext) -> str:
 
 
 HANDLERS = {
-    "create_popular_loop": create_popular_loop,
     "create_route_plan": create_route_plan,
     "create_itinerary_plan": create_itinerary_plan,
     "update_route_plan": update_route_plan,

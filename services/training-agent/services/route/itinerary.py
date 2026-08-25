@@ -75,7 +75,6 @@ def replace_itinerary_stage(
     stage_id: str,
     label: str,
     waypoint_queries: Sequence[str],
-    route_type: str,
     target_distance_km: float | None,
     include_elevation: bool,
 ) -> dict[str, Any]:
@@ -100,7 +99,6 @@ def replace_itinerary_stage(
         "candidate_id": previous["stage_id"],
         "name": label or previous.get("label") or previous.get("name"),
         "waypoints": list(waypoint_queries),
-        "route_type": route_type or previous.get("route_type") or "point_to_point",
         "target_distance_km": (
             target_distance_km
             if target_distance_km is not None
@@ -164,7 +162,7 @@ def edit_itinerary_stage_waypoints(
         raise ValueError("itinerary stage does not exist")
     queries = saved_waypoint_queries(stage)
     if operation == "reverse":
-        queries = reverse_waypoint_queries(queries, str(stage.get("route_type") or "point_to_point"))
+        queries = reverse_waypoint_queries(queries)
     elif operation == "replace_waypoint":
         if waypoint_index is None:
             raise ValueError("waypoint_index is required")
@@ -183,7 +181,6 @@ def edit_itinerary_stage_waypoints(
         stage_id=str(stage["stage_id"]),
         label=str(stage.get("label") or ""),
         waypoint_queries=queries,
-        route_type=str(stage.get("route_type") or "point_to_point"),
         target_distance_km=stage.get("target_distance_km"),
         include_elevation=include_elevation,
     )
@@ -237,7 +234,6 @@ def _route_itinerary_candidate(
                 "candidate_id": spec["stage_id"],
                 "name": spec["label"],
                 "waypoints": spec["waypoints"],
-                "route_type": spec["route_type"],
                 "target_distance_km": spec.get("target_distance_km"),
             },
             index=index,
@@ -278,7 +274,6 @@ def _normalize_stage(spec: dict[str, Any], *, stage_index: int, candidate_index:
         "day": day,
         "period": period,
         "waypoints": waypoints,
-        "route_type": str(spec.get("route_type") or "point_to_point"),
     }
 
 

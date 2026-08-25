@@ -19,6 +19,8 @@ def activate_skill(args: dict[str, Any], context: AgentContext) -> dict[str, Any
             "message": f"Unknown skill: {skill_id}",
         }
     context.active_skill_id = skill.skill_id
+    context.last_used_skills = [skill.skill_id]
+    context.conversation_used_skills.append(skill.skill_id)
     context.active_skill_confidence = 1.0
     context.active_skill_reason = "activated_by_main_agent"
     latest_message = next((

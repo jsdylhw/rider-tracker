@@ -8,15 +8,18 @@ from uuid import uuid4
 
 from demo.gaode_cycling_router.amap import AmapCyclingRouter, AmapPoint
 from demo.gaode_cycling_router.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
+from demo.global_cycling_router.google_routes import GoogleRoutesClient, WgsPoint
 from demo.osm_cycling_router.segment_loop import haversine_m
 from demo.osm_cycling_router.strava_segments import segment_detail_feature
 from services.route.segments import enrich_route_plan_with_segments
+from services.route.single_day import normalize_waypoint_queries, reverse_waypoint_queries
 
 
 Explorer = Callable[[str, str], dict[str, Any]]
 DetailFetcher = Callable[[int], dict[str, Any]]
 Selector = Callable[[dict[str, Any]], dict[str, Any]]
 ElevationBuilder = Callable[[Sequence[Sequence[float]], float], dict[str, Any]]
+ConnectorRouter = Callable[[Sequence[float], Sequence[float]], dict[str, Any]]
 
 
 def apply_segment_aware_routing(
@@ -24,7 +27,9 @@ def apply_segment_aware_routing(
     *,
     strategy: str,
     access_token: str,
-    amap_key: str,
+    amap_key: str = "",
+    google_key: str = "",
+    connector_router: ConnectorRouter | None = None,
     request_text: str,
     preferences: Sequence[str] = (),
     include_elevation: bool = True,
@@ -40,8 +45,9 @@ def apply_segment_aware_routing(
     """Enrich and optionally replace each baseline target with a Segment route.
 
     Explicit waypoints stay as hard anchors. Strava Segments are route material
-    between those anchors; AMap still validates every connector. ``auto`` falls
-    back to the baseline target, while ``require`` refuses an unverified target.
+    between those anchors; the country-specific map provider validates every
+    connector. ``auto`` falls back to the baseline target, while ``require``
+    refuses an unverified target.
     """
     normalized_strategy = str(strategy or "auto").strip().lower()
     if normalized_strategy not in {"auto", "ignore", "require"}:
@@ -51,12 +57,12 @@ def apply_segment_aware_routing(
     updated["segment_preferences"] = [str(value) for value in preferences if str(value).strip()]
     if normalized_strategy == "ignore":
         return _add_final_elevation(updated, include_elevation, elevation_builder)
-    if str(updated.get("country_code") or "").upper() != "CN":
-        if normalized_strategy == "require":
-            raise ValueError("segment_strategy=require is currently supported only for mainland China")
-        return _add_final_elevation(updated, include_elevation, elevation_builder)
-    if not amap_key:
-        raise ValueError("amap.web_service_key is not configured")
+    country_code = str(updated.get("country_code") or "").upper()
+    router = connector_router or build_connector_router(
+        country_code=country_code,
+        amap_key=amap_key,
+        google_key=google_key,
+    )
 
     targets = _plan_targets(updated)
     available: dict[str, list[dict[str, Any]]] = {}
@@ -89,6 +95,7 @@ def apply_segment_aware_routing(
             "target_id": target_id,
             "label": target.get("label") or target.get("name") or target_id,
             "route_type": target.get("route_type"),
+            "is_closed": bool(target.get("is_closed") or target.get("route_type") == "loop"),
             "target_distance_km": target.get("target_distance_km"),
             "baseline_distance_km": target.get("distance_km"),
             "anchors": [
@@ -133,9 +140,8 @@ def apply_segment_aware_routing(
                     f"Strava 智能筛选不可用，已用真实路段排序生成候选：{type(exc).__name__}",
                 )
             else:
-                _append_warning(target, f"Strava 路段选择失败，保留高德基准路线：{type(exc).__name__}")
+                _append_warning(target, f"Strava 路段选择失败，保留地图基准路线：{type(exc).__name__}")
 
-    router = AmapCyclingRouter(amap_key)
     composed_count = 0
     proposed_candidates: list[dict[str, Any]] = []
     for target_id, target in targets:
@@ -143,7 +149,7 @@ def apply_segment_aware_routing(
         if not target_proposals:
             if normalized_strategy == "require":
                 raise RuntimeError(f"Strava did not produce a usable selection for {target_id}")
-            _append_warning(target, "未选择到适合当前锚点顺序的 Strava 路段，保留高德基准路线")
+            _append_warning(target, "未选择到适合当前锚点顺序的 Strava 路段，保留地图基准路线")
             continue
         successful: list[dict[str, Any]] = []
         for proposal_index, proposal in enumerate(target_proposals[:max_proposals], start=1):
@@ -152,8 +158,11 @@ def apply_segment_aware_routing(
                     proposal["segments"], available.get(target_id) or [], detail_fetcher,
                 )
                 composed = _compose_target(target, selected, router=router)
-                if preserve_baseline:
-                    _validate_automatic_candidate(target, composed)
+                # An automatically selected Segment must never turn a bounded
+                # map baseline into an implausibly long connector route. This
+                # applies whether the enhanced result replaces the baseline or
+                # is shown beside it.
+                _validate_automatic_candidate(target, composed)
                 if preserve_baseline:
                     composed.update({
                         "candidate_id": f"{target_id}_segment_{proposal_index}",
@@ -344,7 +353,9 @@ def compose_route_with_segments(
     *,
     candidate_id: str | None,
     segments: Sequence[dict[str, Any]],
-    amap_key: str,
+    amap_key: str = "",
+    google_key: str = "",
+    connector_router: ConnectorRouter | None = None,
     detail_fetcher: DetailFetcher,
     target_distance_km: float | None = None,
     name: str = "",
@@ -381,7 +392,11 @@ def compose_route_with_segments(
     composed = _compose_target(
         composition_base,
         selected,
-        router=AmapCyclingRouter(amap_key),
+        router=connector_router or build_connector_router(
+            country_code=str(updated.get("country_code") or "").upper(),
+            amap_key=amap_key,
+            google_key=google_key,
+        ),
         preserve_segment_order=True,
     )
     baseline_distance = float(baseline.get("distance_m") or 0)
@@ -435,16 +450,24 @@ def reverse_segment_candidate(
     if selected is None:
         raise ValueError("route candidate does not exist")
     coordinates = _coordinates(selected.get("geometry"))
-    route_type = str(selected.get("route_type") or "point_to_point")
     queries = [str(value) for value in selected.get("waypoint_queries") or []]
     waypoints = [dict(value) for value in selected.get("waypoints") or [] if isinstance(value, dict)]
-    if route_type == "loop":
-        reversed_queries = [queries[0], *reversed(queries[1:])] if queries else []
+    normalized_queries, query_closed = normalize_waypoint_queries(queries)
+    waypoint_closed = len(waypoints) > 1 and waypoints[0] == waypoints[-1]
+    geometry_closed = (
+        len(coordinates) > 1
+        and haversine_m(coordinates[0], coordinates[-1]) <= 20.0
+    )
+    is_closed = bool(selected.get("is_closed") or query_closed or waypoint_closed or geometry_closed)
+    if is_closed:
+        if normalized_queries and not query_closed:
+            normalized_queries.append(normalized_queries[0])
+        reversed_queries = reverse_waypoint_queries(normalized_queries) if normalized_queries else []
         core = waypoints[:-1] if len(waypoints) > 1 and waypoints[0] == waypoints[-1] else waypoints
         reversed_core = [core[0], *reversed(core[1:])] if core else []
         reversed_waypoints = [*reversed_core, dict(reversed_core[0])] if reversed_core else []
     else:
-        reversed_queries = list(reversed(queries))
+        reversed_queries = reverse_waypoint_queries(normalized_queries)
         reversed_waypoints = list(reversed(waypoints))
     reversed_segments = []
     for segment in reversed([item for item in selected.get("strava_segments") or [] if isinstance(item, dict)]):
@@ -464,6 +487,8 @@ def reverse_segment_candidate(
         evidence["segment_ids"] = list(reversed(evidence["segment_ids"]))
     reversed_candidate = {
         **selected,
+        "is_closed": is_closed,
+        "route_type": "loop" if is_closed else "point_to_point",
         "waypoint_queries": reversed_queries,
         "waypoints": reversed_waypoints,
         "geometry": {"type": "LineString", "coordinates": list(reversed(coordinates))},
@@ -487,7 +512,7 @@ def _compose_target(
     baseline: dict[str, Any],
     selected: list[dict[str, Any]],
     *,
-    router: AmapCyclingRouter,
+    router: ConnectorRouter,
     preserve_segment_order: bool = False,
 ) -> dict[str, Any]:
     if not selected:
@@ -563,16 +588,16 @@ def _compose_target(
         ))
     ]
     warnings.extend([
-        "路线包含 Strava 热门路段，路段之间由高德骑行连接",
-        "Strava 路段上的预计时间按高德基准路线平均速度估算",
+        "路线包含 Strava 热门路段，路段之间由地图服务连接",
+        "Strava 路段上的预计时间按地图基准路线平均速度估算",
     ])
     distance_km = round(distance_m / 1000, 1)
     target_distance = baseline.get("target_distance_km")
     return {
         **baseline,
         "name": str(baseline.get("name") or baseline.get("label") or "路线"),
-        "provider": "amap+strava",
-        "travel_mode": "BICYCLE",
+        "provider": f"{baseline.get('provider') or 'map'}+strava",
+        "travel_mode": baseline.get("travel_mode") or "BICYCLE",
         "distance_m": distance_m,
         "distance_km": distance_km,
         "duration_s": duration_s,
@@ -622,23 +647,61 @@ def _anchor_events(target: dict[str, Any], route: Sequence[Sequence[float]]) -> 
 def _connector(
     origin: Sequence[float],
     destination: Sequence[float],
-    router: AmapCyclingRouter,
+    router: ConnectorRouter,
 ) -> dict[str, Any]:
     straight = haversine_m(origin, destination)
     if straight <= 30:
         return {"coordinates": [list(origin), list(destination)], "distance_m": straight, "duration_s": 0.0}
-    origin_gcj = wgs84_to_gcj02(float(origin[0]), float(origin[1]))
-    destination_gcj = wgs84_to_gcj02(float(destination[0]), float(destination[1]))
-    routed = router.route(
-        AmapPoint(origin_gcj[1], origin_gcj[0]),
-        AmapPoint(destination_gcj[1], destination_gcj[0]),
-    )
-    coordinates = [list(gcj02_to_wgs84(lon, lat)) for lon, lat in routed["geometry"]]
+    routed = router(origin, destination)
+    geometry = routed.get("geometry") if isinstance(routed.get("geometry"), dict) else {}
+    coordinates = geometry.get("coordinates") if isinstance(geometry.get("coordinates"), list) else []
+    if len(coordinates) < 2:
+        raise ValueError("map connector returned no usable geometry")
     return {
-        "coordinates": coordinates,
+        "coordinates": [list(point) for point in coordinates],
         "distance_m": float(routed.get("distance_m") or 0),
         "duration_s": float(routed.get("duration_s") or 0),
     }
+
+
+def build_connector_router(
+    *, country_code: str, amap_key: str = "", google_key: str = "",
+) -> ConnectorRouter:
+    """Return one WGS-84 connector independent of the composition algorithm."""
+    if str(country_code or "").upper() == "CN":
+        if not amap_key:
+            raise ValueError("amap.web_service_key is not configured")
+        amap_router = AmapCyclingRouter(amap_key)
+
+        def route_amap(origin: Sequence[float], destination: Sequence[float]) -> dict[str, Any]:
+            origin_gcj = wgs84_to_gcj02(float(origin[0]), float(origin[1]))
+            destination_gcj = wgs84_to_gcj02(float(destination[0]), float(destination[1]))
+            routed = amap_router.route(
+                AmapPoint(origin_gcj[1], origin_gcj[0]),
+                AmapPoint(destination_gcj[1], destination_gcj[0]),
+            )
+            return {
+                **routed,
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [
+                        list(gcj02_to_wgs84(lon, lat)) for lon, lat in routed["geometry"]
+                    ],
+                },
+            }
+
+        return route_amap
+    if not google_key:
+        raise ValueError("google.api_key is not configured")
+    google_router = GoogleRoutesClient(google_key)
+
+    def route_google(origin: Sequence[float], destination: Sequence[float]) -> dict[str, Any]:
+        return google_router.route([
+            WgsPoint(float(origin[1]), float(origin[0])),
+            WgsPoint(float(destination[1]), float(destination[0])),
+        ], country_code=str(country_code or "").upper())
+
+    return route_google
 
 
 def _summary_feature(summary: dict[str, Any]) -> dict[str, Any]:

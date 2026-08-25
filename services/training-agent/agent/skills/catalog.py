@@ -129,45 +129,26 @@ SKILL_CATALOG: tuple[SkillSpec, ...] = (
         library_path="coaching/coach-training.md",
     ),
     SkillSpec(
-        skill_id="plan-popular-loop",
+        skill_id="plan-routes",
         description=(
-            "Build a domestic ride around a named or area-specific complete popular closed loop, "
-            "with map-routed access from and back to the rider's origin. Use for classic loops such as 环陵 or 环湖."
-        ),
-        tool_names=("create_popular_loop", "update_route_plan", "get_route_plan", "explore_route_segments"),
-        public_intent="route_advice",
-        library_path="route/plan-popular-loop.md",
-    ),
-    SkillSpec(
-        skill_id="plan-waypoint-route",
-        description=(
-            "Create, persist, inspect, or conversationally edit routes whose endpoints, waypoints, days, or day parts are explicit. "
-            "Use for direct routes, ordinary loops, multi-day trips, reversals, and waypoint replacements."
+            "Create, discover, persist, inspect, or conversationally edit a real cycling route. Use for explicit "
+            "waypoints, open-ended route ideas, complete popular loops, multi-day trips, and day-part plans."
         ),
         tool_names=(
-            "create_route_plan", "create_itinerary_plan", "update_route_plan",
-            "get_route_plan", "explore_route_segments",
-        ),
-        public_intent="route_advice",
-        library_path="route/plan-waypoint-route.md",
-    ),
-    SkillSpec(
-        skill_id="discover-routes",
-        description=(
-            "Create real route candidates when the rider gives a start or region plus time, distance, direction, "
-            "terrain, scenery, or training intent but has not fixed a complete waypoint sequence."
-        ),
-        tool_names=(
-            "create_popular_loop", "create_route_plan", "create_itinerary_plan",
+            "create_route_plan", "create_itinerary_plan",
             "update_route_plan", "get_route_plan", "explore_route_segments",
         ),
         public_intent="route_advice",
-        library_path="route/discover-routes.md",
+        library_path="route/plan-routes.md",
     ),
 )
 
 _BY_ID = {skill.skill_id: skill for skill in SKILL_CATALOG}
-_LEGACY_ALIASES = {"plan-routes": "discover-routes"}
+_LEGACY_ALIASES = {
+    "discover-routes": "plan-routes",
+    "plan-waypoint-route": "plan-routes",
+    "plan-popular-loop": "plan-routes",
+}
 
 
 def get_skill(skill_id: str | None) -> SkillSpec | None:

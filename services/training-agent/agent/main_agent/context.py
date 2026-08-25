@@ -42,6 +42,10 @@ class AgentContext:
 
     # 当前用户轮次激活的领域 Skill；每个新请求都会重新选择，不跨轮授权。
     active_skill_id: str | None = None
+    # Skill history is diagnostic/routing context only. Tool authorization is
+    # still owned exclusively by the turn-scoped active_skill_id.
+    last_used_skills: list[str] = field(default_factory=list)
+    conversation_used_skills: list[str] = field(default_factory=list)
     active_skill_confidence: float = 0.0
     active_skill_reason: str | None = None
     pending_skill_reference: str | None = None
