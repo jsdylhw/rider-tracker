@@ -1,3 +1,5 @@
+import { replaceWithSafeMarkdown } from "../shared/safe-markdown-renderer.js";
+
 const METRIC_LABELS = {
     activity_count: "活动数量",
     sport_type: "运动类型",
@@ -29,6 +31,18 @@ const COLUMN_LABELS = {
     main_stimulus: "主要刺激",
     load_label: "负荷"
 };
+
+const DIMENSION_LABELS = {
+    volume: "训练量",
+    intensity: "强度",
+    consistency: "规律性",
+    performance: "表现",
+    efficiency: "效率",
+    recovery: "恢复"
+};
+
+const CONFIDENCE_LABELS = { low: "低", medium: "中", high: "高" };
+const UNIT_LABELS = { min: "分钟", count: "次", day: "天" };
 
 export function createAgentPresentationRenderer({ root = document, container, titleElement }) {
     function render(presentations, { fallbackText = "" } = {}) {
@@ -135,10 +149,10 @@ export function createAgentPresentationRenderer({ root = document, container, ti
             ? `${formatValue(numeric[0], series.unit)} → ${formatValue(numeric.at(-1), series.unit)}`
             : "暂无数据";
         heading.append(name, range);
-        const svg = root.createElement("svg");
+        const svg = createSvgElement(root, "svg");
         svg.setAttribute("viewBox", "0 0 560 120");
         svg.setAttribute("preserveAspectRatio", "none");
-        const polyline = root.createElement("polyline");
+        const polyline = createSvgElement(root, "polyline");
         polyline.setAttribute("points", buildPolyline(values, 560, 120));
         polyline.setAttribute("fill", "none");
         polyline.setAttribute("stroke", "currentColor");
@@ -160,7 +174,7 @@ export function createAgentPresentationRenderer({ root = document, container, ti
         const section = createSection(block.title);
         const content = root.createElement("div");
         content.className = "agent-markdown-result";
-        content.textContent = String(block.data?.markdown || "");
+        replaceWithSafeMarkdown(root, content, block.data?.markdown || "");
         section.append(content);
         return section;
     }
@@ -184,6 +198,12 @@ export function createAgentPresentationRenderer({ root = document, container, ti
     }
 
     return { clear, render };
+}
+
+function createSvgElement(root, tagName) {
+    return typeof root.createElementNS === "function"
+        ? root.createElementNS("http://www.w3.org/2000/svg", tagName)
+        : root.createElement(tagName);
 }
 
 function buildPolyline(values, width, height) {
@@ -210,11 +230,15 @@ function formatCell(value, column) {
     if (value === null || value === undefined || value === "") return "--";
     if (typeof value === "boolean") return value ? "是" : "否";
     if (column === "change" && Number.isFinite(Number(value))) return `${Number(value).toFixed(1)}%`;
+    if (column === "dimension") return DIMENSION_LABELS[value] || String(value);
+    if (column === "metric") return METRIC_LABELS[value] || humanizeKey(value);
+    if (column === "confidence") return CONFIDENCE_LABELS[value] || String(value);
+    if (column === "unit") return UNIT_LABELS[value] || String(value);
     return String(value);
 }
 
 function formatValue(value, unit) {
-    return `${value}${unit ? ` ${unit}` : ""}`;
+    return `${value}${unit ? ` ${UNIT_LABELS[unit] || unit}` : ""}`;
 }
 
 function humanizeKey(value) {

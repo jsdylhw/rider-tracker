@@ -31,6 +31,12 @@ def _history_execution() -> ToolExecution:
                     ],
                 },
                 "view": {"chart_metrics": ["duration_min", "distance_km", "tss"]},
+                "conclusion": {
+                    "summary": "训练量有所增加，但暂不能判断体能变化。",
+                    "confidence": "low",
+                },
+                "warnings": ["缺少匹配路线或标准化训练证据。"],
+                "recommended_next_check": "继续积累可比训练。",
             },
         },
     )
@@ -39,8 +45,17 @@ def _history_execution() -> ToolExecution:
 def test_history_projector_uses_deterministic_result_values():
     blocks = project_presentations([_history_execution()])
 
-    assert [block.type for block in blocks] == ["table", "line_chart"]
-    assert blocks[0].data["rows"] == [{
+    assert [block.type for block in blocks] == ["markdown", "table", "line_chart"]
+    assert blocks[0].data["markdown"] == (
+        "## 结论\n"
+        "训练量有所增加，但暂不能判断体能变化。\n"
+        "**可信度：** 低\n\n"
+        "## 注意事项\n"
+        "- 缺少匹配路线或标准化训练证据。\n\n"
+        "## 下一步\n"
+        "继续积累可比训练。"
+    )
+    assert blocks[1].data["rows"] == [{
         "dimension": "volume",
         "metric": "duration_min",
         "baseline": 120,
@@ -49,7 +64,7 @@ def test_history_projector_uses_deterministic_result_values():
         "unit": "min",
         "confidence": "medium",
     }]
-    assert blocks[1].data == {
+    assert blocks[2].data == {
         "x_label": "训练周期",
         "labels": ["2026-W19", "2026-W20"],
         "series": [
@@ -67,8 +82,20 @@ def test_history_projector_omits_dimensions_without_evidence():
 
     blocks = project_presentations([execution])
 
-    assert len(blocks[0].data["rows"]) == 1
-    assert all(row["dimension"] != "recovery" for row in blocks[0].data["rows"])
+    assert len(blocks[1].data["rows"]) == 1
+    assert all(row["dimension"] != "recovery" for row in blocks[1].data["rows"])
+
+
+def test_history_projector_omits_empty_summary_block():
+    execution = _history_execution()
+    payload = execution.result["result"]
+    payload["conclusion"] = {}
+    payload["warnings"] = []
+    payload["recommended_next_check"] = ""
+
+    blocks = project_presentations([execution])
+
+    assert [block.type for block in blocks] == ["table", "line_chart"]
 
 
 def test_public_turn_result_excludes_internal_state_and_raw_tool_values():

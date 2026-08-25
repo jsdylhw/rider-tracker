@@ -1,5 +1,6 @@
 import { createAgentApiClient } from "../../adapters/agent/personal-fit-agent-client.js";
 import { createAgentPresentationRenderer } from "./agent-presentation-renderer.js";
+import { replaceWithSafeMarkdown } from "../shared/safe-markdown-renderer.js";
 
 const QUICK_PROMPTS = {
     activity: "详细分析我最近一次活动",
@@ -69,8 +70,13 @@ export function createAgentFloatingWindow({
         article.className = `agent-message is-${role}${error ? " is-error" : ""}`;
         const label = root.createElement("span");
         label.textContent = role === "user" ? "你" : "Agent";
-        const body = root.createElement("p");
-        body.textContent = text;
+        const body = root.createElement("div");
+        body.className = "agent-message-body";
+        if (role === "agent" && !error) {
+            replaceWithSafeMarkdown(root, body, text);
+        } else {
+            body.textContent = text;
+        }
         article.append(label, body);
         elements.messages.append(article);
         scrollMessages(elements.messages);
@@ -83,7 +89,8 @@ export function createAgentFloatingWindow({
         article.dataset.sequence = String(sequence);
         const label = root.createElement("span");
         label.textContent = "Agent";
-        const body = root.createElement("p");
+        const body = root.createElement("div");
+        body.className = "agent-message-body";
         body.textContent = "正在查询本地活动与分析上下文";
         const dots = root.createElement("i");
         dots.setAttribute("aria-hidden", "true");

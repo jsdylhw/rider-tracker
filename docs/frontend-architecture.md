@@ -36,6 +36,10 @@
 - “清除上下文”会同时轮换 session ID，并清空当前回答和结构化结果。
 - 回答正文显示在对话区；`metric_cards`、`table`、`line_chart` 和 `markdown`
   presentation 显示在浮窗工作区。
+- Agent 回答与 Markdown presentation 共用 `safe-markdown-renderer.js`。它只用 DOM 节点和
+  `textContent` 渲染标题、段落、列表、表格、粗体及代码，不接受模型输出中的原始 HTML、图片或链接。
+- 训练历史 presentation 按“确定性总结、趋势对比表、周期曲线”展示；总结直接来自
+  `training_history_analysis.v1` 的结论、警告和下一步检查，不由前端重新解释指标。
 - 路线请求仍引导到“实时骑行设置 → AI 路线”，候选选择、地图预览和最终确认不塞进首页小浮窗。
 - Agent 请求期间禁止重复发送；晚到的旧请求结果不会覆盖清除上下文后的新会话。
 

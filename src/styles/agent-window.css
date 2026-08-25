@@ -274,7 +274,7 @@
     text-transform: uppercase;
 }
 
-.agent-message p {
+.agent-message-body {
     margin: 0;
     padding: 10px 12px;
     color: #334155;
@@ -287,7 +287,35 @@
     white-space: pre-wrap;
 }
 
-.agent-message.is-error p {
+.agent-message-body > :first-child {
+    margin-top: 0;
+}
+
+.agent-message-body > :last-child {
+    margin-bottom: 0;
+}
+
+.agent-message-body p,
+.agent-message-body ul,
+.agent-message-body ol,
+.agent-message-body pre {
+    margin: 0 0 8px;
+    white-space: normal;
+}
+
+.agent-message-body ul,
+.agent-message-body ol {
+    padding-left: 20px;
+}
+
+.agent-message-body h1,
+.agent-message-body h2,
+.agent-message-body h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+}
+
+.agent-message.is-error .agent-message-body {
     color: #991b1b;
     background: #fff1f2;
     border-color: #fecdd3;
@@ -298,14 +326,14 @@
     align-items: flex-end;
 }
 
-.agent-message.is-user p {
+.agent-message.is-user .agent-message-body {
     color: #fff;
     background: linear-gradient(135deg, #3346c8, #4968e8);
     border-color: transparent;
     border-radius: 15px 6px 15px 15px;
 }
 
-.agent-message.is-thinking p {
+.agent-message.is-thinking .agent-message-body {
     color: #64748b;
 }
 
@@ -603,7 +631,78 @@
     color: #475569;
     font-size: 12px;
     line-height: 1.65;
-    white-space: pre-wrap;
+}
+
+.agent-markdown-result h1,
+.agent-markdown-result h2,
+.agent-markdown-result h3 {
+    margin: 14px 0 6px;
+    color: #1e293b;
+}
+
+.agent-markdown-result h1 { font-size: 17px; }
+.agent-markdown-result h2 { font-size: 15px; }
+.agent-markdown-result h3 { font-size: 13px; }
+
+.agent-markdown-result p,
+.agent-markdown-result ul,
+.agent-markdown-result ol,
+.agent-markdown-result pre {
+    margin: 0 0 9px;
+}
+
+.agent-markdown-result ul,
+.agent-markdown-result ol {
+    padding-left: 21px;
+}
+
+.agent-markdown-table-shell {
+    max-width: 100%;
+    margin: 0 0 9px;
+    overflow-x: auto;
+}
+
+.agent-markdown-table-shell table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92em;
+    white-space: nowrap;
+}
+
+.agent-markdown-table-shell th,
+.agent-markdown-table-shell td {
+    padding: 5px 7px;
+    border: 1px solid #dfe6f0;
+    text-align: left;
+}
+
+.agent-markdown-table-shell th {
+    background: #f1f5f9;
+    font-weight: 700;
+}
+
+.agent-markdown-result code,
+.agent-message-body code {
+    padding: 1px 4px;
+    background: #eef2f7;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.92em;
+}
+
+.agent-markdown-result pre,
+.agent-message-body pre {
+    padding: 9px 10px;
+    overflow-x: auto;
+    background: #f1f5f9;
+    border-radius: 7px;
+    white-space: pre;
+}
+
+.agent-markdown-result pre code,
+.agent-message-body pre code {
+    padding: 0;
+    background: transparent;
 }
 
 .agent-result-table-shell {

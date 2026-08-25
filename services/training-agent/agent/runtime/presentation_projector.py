@@ -377,6 +377,15 @@ def _training_history_blocks(
 ) -> list[PresentationBlock]:
     source = _source(execution, payload)
     blocks = []
+    summary = _training_history_summary(payload)
+    if summary:
+        blocks.append(PresentationBlock(
+            presentation_id=f"execution-{execution.index}-history-summary",
+            type="markdown",
+            title="训练趋势总结",
+            data={"markdown": summary},
+            source=source,
+        ))
     rows = _history_rows(payload.get("dimensions"))
     if rows:
         blocks.append(PresentationBlock(
@@ -402,6 +411,37 @@ def _training_history_blocks(
             source=source,
         ))
     return blocks
+
+
+def _training_history_summary(payload: dict[str, Any]) -> str:
+    conclusion = payload.get("conclusion") if isinstance(payload.get("conclusion"), dict) else {}
+    summary = str(conclusion.get("summary") or "").strip()
+    confidence = _confidence_label(conclusion.get("confidence"))
+    warnings = [
+        str(value).strip()
+        for value in payload.get("warnings") or []
+        if str(value).strip()
+    ]
+    recommendation = str(payload.get("recommended_next_check") or "").strip()
+    if not any((summary, confidence, warnings, recommendation)):
+        return ""
+
+    lines: list[str] = []
+    if summary:
+        lines.extend(["## 结论", summary])
+    if confidence:
+        lines.append(f"**可信度：** {confidence}")
+    if warnings:
+        lines.extend(["", "## 注意事项"])
+        lines.extend(f"- {warning}" for warning in warnings)
+    if recommendation:
+        lines.extend(["", "## 下一步", recommendation])
+    return "\n".join(lines).strip()
+
+
+def _confidence_label(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    return {"low": "低", "medium": "中", "high": "高"}.get(normalized, normalized)
 
 
 def _history_rows(value: Any) -> list[dict[str, Any]]:
