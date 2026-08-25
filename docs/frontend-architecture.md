@@ -26,6 +26,19 @@
 
 地图/街景同步、训练目标图和指标渲染已经分别由既有 controller/renderer 承担。下一步若继续拆分，应优先提取沉浸街景状态机，不要把实时 store 订阅重新塞回 DOM View。
 
+## 首页 Agent
+
+首页右下角 Agent 浮窗是活动分析与训练建议的通用入口，只在首页显示。它通过
+`personal-fit-agent-client.js` 请求 Rider Node，再由 Node 代理到内置 Python Training Agent；
+不在浏览器中复制活动查询或分析逻辑。
+
+- 首页对话使用独立的本地 session key，避免与“AI 路线”页面互相污染上下文。
+- “清除上下文”会同时轮换 session ID，并清空当前回答和结构化结果。
+- 回答正文显示在对话区；`metric_cards`、`table`、`line_chart` 和 `markdown`
+  presentation 显示在浮窗工作区。
+- 路线请求仍引导到“实时骑行设置 → AI 路线”，候选选择、地图预览和最终确认不塞进首页小浮窗。
+- Agent 请求期间禁止重复发送；晚到的旧请求结果不会覆盖清除上下文后的新会话。
+
 ## DOM 与 CSS 约束
 
 - 设备设置 DOM 直接位于骑行前页面，禁止启动后使用 `append()` 把 Dashboard 子树搬到其他区域。

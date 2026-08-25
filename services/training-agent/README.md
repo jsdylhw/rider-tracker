@@ -91,13 +91,17 @@ python -m app.debug_cli rebuild-v2-reports --scope all
 
 ## Agent 路线规划
 
-路线能力由三个互斥的入口组织：
+路线能力统一由 `plan-routes` Skill 组织。用户明确起终点或途经点时直接保留骨架；只有起点、区域、方向、距离、地形或风景要求时，由 Agent 先生成一至三条可检索骨架。多日和上下午行程仍使用独立的分段计划服务。
 
-- `discover-routes`：用户给出起点或区域、方向、距离、地形、风景等条件，但没有完整途经点；Agent 创建一至三条经过地图服务验证的真实候选。无名称的“从 A 出发骑一圈 50km 再回来”属于此类。
-- `plan-waypoint-route`：用户明确起终点、途经点、多日或上下午阶段；也负责后续的途经点替换、路线反转、候选切换、撤销和指定 Strava 路段组合。
-- `plan-popular-loop`：用户明确经典完整环线；系统用普通地图路线连接实际起点与完整 Strava 闭合路段，再返回起点。
+单日路线统一调用 `create_route_plan`：普通路线默认先生成地图基线，再尝试用已发现的真实 Strava 路段替换增强；任何发现、选择或拼接失败都会保留地图基线。明确要求完整经典环线时使用同一工具的 `segment_strategy=complete_loop`，由地图服务连接实际起点与完整 Strava 闭合路段后返回起点。后续选择、语义修改、反转、撤销和指定路段组合都通过 `update_route_plan` 完成。
 
-首次生成的是待选择草稿，不会自动视为最终路线。国内使用高德骑行算路，国外使用 Google；海拔仅作为参考信息。Strava 路段用于路线证据与组合，不代表实时路况、安全、道路开放状态或精确坡度。
+首次生成的是待选择草稿，不会自动视为最终路线。国内使用高德骑行算路，国外使用 Google；两者都可尝试 Strava 路段增强。海拔仅作为参考信息。Strava 路段用于路线证据与组合，不代表实时路况、安全、道路开放状态或精确坡度。
+
+`active_skill_id` 仍只授权当前一轮。会话上下文另外记录 `last_used_skills` 和 `conversation_used_skills`；当上一领域是 `plan-routes`、当前确有已保存路线且用户明确要求增加、删除、替换、反转、选择或确认时，可直接续接路线 Skill，但具体更新操作仍由 Agent 从白名单工具中选择。没有成功执行路线工具时，结果层不会声称路线已经更新。
+
+路线 Tool 不再要求模型声明 `route_type`。首尾地点不同表示单程，首尾地点相同表示闭环；服务端只检索一次重复起点，并用第一次解析出的精确坐标闭合。内部仍写入派生的 `is_closed` 和兼容 `route_type`，用于读取旧路线及现有 UI。明确给出的 A→B→C 必须保持原顺序，只有用户明确要求环线或返回起点时才允许生成 A→B→C→A。
+
+国内地点按路线顺序解析：首点使用高德关键字搜索，后续点优先在前一点周边检索并结合名称匹配和距离选择，周边无结果才降级到带行政区偏置的关键字搜索。语义修改途经点后，候选名称会根据新的途经顺序重新生成。
 
 `demo/gaode_cycling_router/`、`demo/global_cycling_router/` 和 `demo/osm_cycling_router/` 保留为供应商接入与算法实验；主 Agent 使用 `services/route/` 下的持久化路线服务。
 
@@ -106,11 +110,12 @@ python -m app.debug_cli rebuild-v2-reports --scope all
 项目提供 Skill 选择和真实模型工具选择评测。真实模型工具模式使用无副作用 Sandbox，不会访问 Garmin 或写入 Strava：
 
 ```bash
-python -m evaluation.cli run --cases evaluation/cases/skills.jsonl --mode skill
-python -m evaluation.cli run --cases evaluation/cases/live.jsonl --mode live --repeats 3
+TRAINING_AGENT_CONFIG_PATH=../../config.yaml python -m evaluation.cli run --cases evaluation/cases/skills.jsonl --mode skill
+TRAINING_AGENT_CONFIG_PATH=../../config.yaml python -m evaluation.cli run --cases evaluation/cases/live.jsonl --mode live --repeats 3
 ```
 
 评测输出工具选择成功率、任务完成率、回答一致性、响应时间、Token 用量和可选的估算成本。用例格式与报告说明见 [`evaluation/README.md`](evaluation/README.md)。
+以上命令从 `services/training-agent` 目录执行；通过 npm 启动 Rider/Agent 时，启动脚本会自动注入同一个根配置路径。
 
 如果要从代码层理解 Garmin 同步、活动身份、ActivityRun、断线恢复和多层测试，请阅读 [`docs/garmin-sync-workflow-guide.md`](docs/garmin-sync-workflow-guide.md)。
 

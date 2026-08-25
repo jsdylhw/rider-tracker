@@ -10,10 +10,12 @@
 ## 运行
 
 ```bash
-python -m evaluation.cli list-cases
-python -m evaluation.cli run --cases evaluation/cases/skills.jsonl --mode skill
-python -m evaluation.cli run --cases evaluation/cases/live.jsonl --mode live --repeats 3
+TRAINING_AGENT_CONFIG_PATH=../../config.yaml python -m evaluation.cli list-cases
+TRAINING_AGENT_CONFIG_PATH=../../config.yaml python -m evaluation.cli run --cases evaluation/cases/skills.jsonl --mode skill
+TRAINING_AGENT_CONFIG_PATH=../../config.yaml python -m evaluation.cli run --cases evaluation/cases/live.jsonl --mode live --repeats 3
 ```
+
+这些命令从 `services/training-agent` 目录执行，并读取 Rider Tracker 根目录的统一 `config.yaml`。
 
 报告默认写入 `evaluation/artifacts/<UTC timestamp>/`：
 
