@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+import requests
+
 from storage.repositories.activity import ActivityStore
 from operations.activity.strava import (
+    StravaUploadStatusError,
     _parse_duplicate_activity_id,
     upload_activity_to_strava,
     upload_stored_activity_fit,
@@ -84,6 +88,35 @@ def test_normal_upload_persists_remote_id(tmp_path, monkeypatch):
         result = upload_activity_to_strava(key)
 
     assert result["upload_status"]["activity_id"] == 98765
+    assert store.get_activity(key)["strava_activity_id"] == "98765"
+
+
+def test_upload_status_failure_preserves_pending_upload_id(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _, key = _stored_activity(tmp_path)
+    with patch("operations.activity.strava.StravaSink") as sink_class:
+        sink = sink_class.return_value
+        sink.upload_fit.return_value = {"id": 12345}
+        sink.wait_for_upload.side_effect = requests.ConnectionError("TLS EOF")
+
+        with pytest.raises(StravaUploadStatusError) as exc_info:
+            upload_activity_to_strava(key)
+
+    assert exc_info.value.upload_id == "12345"
+
+
+def test_pending_upload_retry_only_polls_existing_upload(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    store, key = _stored_activity(tmp_path)
+    with patch("operations.activity.strava.StravaSink") as sink_class:
+        sink = sink_class.return_value
+        sink.wait_for_upload.return_value = {"activity_id": 98765, "status": "ready"}
+
+        result = upload_activity_to_strava(key, pending_upload_id="12345")
+
+    sink.upload_fit.assert_not_called()
+    sink.wait_for_upload.assert_called_once_with("12345")
+    assert result["upload"]["resumed"] is True
     assert store.get_activity(key)["strava_activity_id"] == "98765"
 
 

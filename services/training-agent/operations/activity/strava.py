@@ -6,9 +6,19 @@ import re
 from pathlib import Path
 from typing import Any
 
+import requests
+
 from storage.repositories.activity import ActivityStore
 from project_paths import resolve_project_path
 from integrations.strava import StravaSink
+
+
+class StravaUploadStatusError(RuntimeError):
+    """The FIT POST succeeded, but the resulting upload could not be polled."""
+
+    def __init__(self, upload_id: int | str, cause: Exception):
+        self.upload_id = str(upload_id)
+        super().__init__(str(cause))
 
 
 def upload_stored_activity_fit(
@@ -61,6 +71,7 @@ def upload_activity_to_strava(
     title: str | None = None,
     wait: bool = True,
     force: bool = False,
+    pending_upload_id: int | str | None = None,
 ) -> dict[str, Any]:
     """Upload the FIT referenced by one persisted V2 report."""
     store = ActivityStore()
@@ -97,11 +108,15 @@ def upload_activity_to_strava(
             "message": f"已更新 Strava 活动 {known_activity_id} 的描述。",
         }
 
-    upload = sink.upload_fit(
-        str(fit_path),
-        title=upload_title,
-        description=description,
-        external_id=activity_key,
+    upload = (
+        {"id": pending_upload_id, "resumed": True}
+        if pending_upload_id is not None
+        else sink.upload_fit(
+            str(fit_path),
+            title=upload_title,
+            description=description,
+            external_id=activity_key,
+        )
     )
     result: dict[str, Any] = {
         "activity_key": activity_key,
@@ -112,7 +127,12 @@ def upload_activity_to_strava(
     }
     upload_id = upload.get("id")
     if wait and upload_id is not None:
-        result["upload_status"] = sink.wait_for_upload(upload_id)
+        try:
+            result["upload_status"] = sink.wait_for_upload(upload_id)
+        except (requests.RequestException, TimeoutError) as exc:
+            # Preserve the remote upload identity. Retrying may poll this ID,
+            # but must not submit the FIT again.
+            raise StravaUploadStatusError(upload_id, exc) from exc
     elif not wait and upload_id is None:
         result["upload_status"] = upload
 

@@ -9,23 +9,38 @@ from operations.activity.service import upload_to_strava_tool
 from project_paths import resolve_project_path
 
 
-def upload_activity(fit_path: str | Path, *, force: bool = False) -> dict[str, Any]:
+def upload_activity(
+    fit_path: str | Path,
+    *,
+    force: bool = False,
+    pending_upload_id: int | str | None = None,
+) -> dict[str, Any]:
     """上传一个已分析 FIT。"""
     path = resolve_project_path(fit_path)
     if not path.exists():
         return _failed(path, "fit_not_found", f"FIT file does not exist: {path}")
     try:
-        result = upload_to_strava_tool(str(path), force=force)
+        kwargs: dict[str, Any] = {"force": force}
+        if pending_upload_id is not None:
+            kwargs["pending_upload_id"] = pending_upload_id
+        result = upload_to_strava_tool(str(path), **kwargs)
     except Exception as exc:
         return _failed(path, type(exc).__name__, str(exc))
 
     if result.get("error"):
-        return _failed(path, str(result.get("error")), str(result.get("message") or "Strava upload failed"), raw_result=result)
+        failed = _failed(
+            path,
+            str(result.get("error")),
+            str(result.get("message") or "Strava upload failed"),
+            raw_result=result,
+        )
+        if result.get("pending_upload_id") is not None:
+            failed["pending_upload_id"] = result.get("pending_upload_id")
+        return failed
     outcome = str(result.get("status") or "")
     if outcome not in {"uploaded", "duplicate", "description_updated"}:
         return _failed(path, "upload_not_completed", str(result.get("message") or outcome or "Upload was not executed"), raw_result=result)
     return {
-        "schema_version": "activity_operation_strava_upload.v1",
         "operation": "upload_activity",
         "status": "completed",
         "outcome": outcome,
@@ -37,7 +52,6 @@ def upload_activity(fit_path: str | Path, *, force: bool = False) -> dict[str, A
 
 def _failed(path: Path, error: str, message: str, *, raw_result: dict[str, Any] | None = None) -> dict[str, Any]:
     response: dict[str, Any] = {
-        "schema_version": "activity_operation_strava_upload.v1",
         "operation": "upload_activity",
         "status": "failed",
         "fit_path": str(path),

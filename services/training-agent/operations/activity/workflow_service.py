@@ -29,6 +29,7 @@ from storage.repositories.workflow import (
     save_workflow,
     workflow_path,
 )
+from storage.repositories.activity import ActivityStore
 
 
 def start_local_activity_workflow(
@@ -77,7 +78,7 @@ def sync_and_start_activity_workflow(
     sync = sync_recent(count=count, force_download=force_download)
     if sync.get("status") == "failed":
         return {
-            "schema_version": "activity_workflow_service.v1",
+            "operation": "sync_and_start_activity_workflow",
             "status": "failed",
             "error": sync.get("error") or "garmin_sync_failed",
             "message": sync.get("message") or "Garmin 同步失败",
@@ -88,7 +89,7 @@ def sync_and_start_activity_workflow(
     if not activities:
         index_failed = int(sync.get("index_failed") or 0)
         response = {
-            "schema_version": "activity_workflow_service.v1",
+            "operation": "sync_and_start_activity_workflow",
             "status": "failed" if index_failed else "no_activities",
             "message": (
                 f"Garmin FIT 已获取，但有 {index_failed} 个文件索引失败；未创建工作流。"
@@ -104,7 +105,6 @@ def sync_and_start_activity_workflow(
     created = create_activity_run_from_activities(
         activities,
         request={
-            "schema_version": "activity_workflow_request.v1",
             "source": "garmin_sync",
             "selection": {
                 "kind": "garmin_sync_result",
@@ -171,7 +171,7 @@ def retry_activity_workflow(
                 revived_task_ids = retry_failed_tasks(run, task_ids=task_ids)
             except WorkflowStateError as exc:
                 return {
-                    "schema_version": "activity_workflow_service.v1",
+                    "operation": "retry_activity_workflow",
                     "status": "failed",
                     "error": "retry_not_available",
                     "message": str(exc),
@@ -207,7 +207,7 @@ def _response(
 ) -> dict[str, Any]:
     overview = workflow_overview(run)
     response = {
-        "schema_version": "activity_workflow_service.v1",
+        "operation": "activity_workflow",
         "status": overview["status"],
         "created": created,
         "workflow_id": run.get("workflow_id"),
@@ -224,7 +224,7 @@ def _response(
 
 def _not_found(workflow_id: str) -> dict[str, Any]:
     return {
-        "schema_version": "activity_workflow_service.v1",
+        "operation": "activity_workflow",
         "status": "not_found",
         "error": "workflow_not_found",
         "message": f"找不到活动工作流: {workflow_id}",
@@ -250,7 +250,17 @@ def _workflow_answer(run: dict[str, Any]) -> str:
     else:
         heading = f"处理状态为 {status}：{target}。"
 
-    details = [_task_outcome(task) for task in run.get("tasks") or [] if isinstance(task, dict)]
+    activity_labels = {
+        str(activity.get("activity_key") or ""): _activity_label(activity)
+        for activity in activities
+    }
+    details = [
+        _task_outcome(
+            task,
+            activity_label=activity_labels.get(str(task.get("activity_key") or "")),
+        )
+        for task in run.get("tasks") or [] if isinstance(task, dict)
+    ]
     return "\n".join([heading, *(f"- {detail}" for detail in details if detail)])
 
 
@@ -260,7 +270,7 @@ def _activity_label(activity: dict[str, Any]) -> str:
     return " ".join(str(value) for value in (started, name) if value) or str(activity.get("activity_key") or "")
 
 
-def _task_outcome(task: dict[str, Any]) -> str:
+def _task_outcome(task: dict[str, Any], *, activity_label: str | None = None) -> str:
     kind = str(task.get("kind") or "task")
     status = str(task.get("status") or "pending")
     if kind == "ensure_summary":
@@ -280,22 +290,30 @@ def _task_outcome(task: dict[str, Any]) -> str:
         suffix = ""
         if kind == "upload_strava" and task.get("strava_activity_id"):
             suffix = f"（activity_id={task['strava_activity_id']}）"
-        return f"{label}{success}{suffix}。"
+        if kind == "upload_strava" and task.get("outcome") == "duplicate":
+            outcome = f"{label}活动已存在，未重复上传{suffix}。"
+        else:
+            outcome = f"{label}{success}{suffix}。"
+        return f"{activity_label}：{outcome}" if activity_label else outcome
     if status == "failed":
         message = task.get("message") or task.get("error") or "未知错误"
-        return f"{label}失败：{message}。"
+        outcome = f"{label}失败：{message}。"
+        return f"{activity_label}：{outcome}" if activity_label else outcome
     if status == "skipped":
         reason = str(task.get("reason") or "")
         if reason == "existing_report":
-            return f"{label}复用已有报告。"
-        if reason == "already_uploaded":
+            outcome = f"{label}复用已有报告。"
+        elif reason == "already_uploaded":
             activity_id = task.get("strava_activity_id")
             suffix = f"（activity_id={activity_id}）" if activity_id else ""
-            return f"{label}已存在，未重复上传{suffix}。"
-        if reason == "dependency_failed":
-            return f"{label}未执行：前置任务失败。"
-        return f"{label}已跳过{f'：{reason}' if reason else ''}。"
-    return f"{label}尚未完成（{status}）。"
+            outcome = f"{label}已存在，未重复上传{suffix}。"
+        elif reason == "dependency_failed":
+            outcome = f"{label}未执行：前置任务失败。"
+        else:
+            outcome = f"{label}已跳过{f'：{reason}' if reason else ''}。"
+        return f"{activity_label}：{outcome}" if activity_label else outcome
+    outcome = f"{label}尚未完成（{status}）。"
+    return f"{activity_label}：{outcome}" if activity_label else outcome
 
 
 def _append_sync_warning(answer: Any, sync: dict[str, Any]) -> str:
@@ -310,9 +328,10 @@ def _directory(directory: str | Path | None) -> Path:
 
 
 def _synced_activities(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    """将 Garmin 索引结果转为 Run 快照，保留本次同步的精确活动集合。"""
+    """冻结同步选中的精确集合，并从 SQLite 补齐当前权威状态。"""
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
+    store = ActivityStore()
     for item in items:
         if not isinstance(item, dict) or not item.get("activity_key") or not item.get("path"):
             continue
@@ -320,19 +339,20 @@ def _synced_activities(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         if key in seen:
             continue
         seen.add(key)
-        rows.append({
+        synced = {
             "activity_key": key,
             "fit_path": str(item["path"]),
             "source_activity_id": str(item["activity_id"]) if item.get("activity_id") is not None else None,
             "sport_type": item.get("sport_type"),
             "start_time_local": item.get("start_time_local"),
-        })
+        }
+        stored = store.get_activity(key) or {}
+        rows.append({**synced, **stored, "activity_key": key})
     return rows
 
 
 def _sync_overview(sync: dict[str, Any], *, requested_count: int) -> dict[str, Any]:
     return {
-        "schema_version": "activity_workflow_sync.v1",
         "requested_count": requested_count,
         "status": sync.get("status"),
         "downloaded": int(sync.get("downloaded") or 0),

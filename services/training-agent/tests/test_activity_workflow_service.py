@@ -3,6 +3,7 @@ from __future__ import annotations
 from operations.activity.workflow_executor import execute_activity_run
 from operations.activity.workflow_factory import TASK_UPLOAD_STRAVA, create_activity_run_from_activities
 from operations.activity.workflow_service import (
+    _synced_activities,
     get_activity_workflow,
     retry_activity_workflow,
     sync_and_start_activity_workflow,
@@ -48,6 +49,47 @@ def test_service_runs_and_retries_persisted_upload_run(monkeypatch, tmp_path):
     assert upload["attempts"] == 2
     assert retried["activities"][0]["strava_activity_id"] == "456"
     assert "Strava 上传已完成（activity_id=456）" in retried["answer"]
+
+
+def test_service_retry_polls_pending_strava_upload_without_reposting(monkeypatch, tmp_path):
+    fit = tmp_path / "a1.fit"
+    fit.write_bytes(b"fit")
+    created = create_activity_run_from_activities(
+        [{"activity_key": "a1", "fit_path": str(fit)}],
+        request={"source": "test", "goals": [TASK_UPLOAD_STRAVA], "force": False},
+        directory=tmp_path,
+    )
+    run = created["run"]
+    workflow_id = run["workflow_id"]
+    calls: list[dict] = []
+    monkeypatch.setattr("operations.activity.workflow_handlers._has_existing_report", lambda activity: True)
+
+    def fail_after_post(_fit_path, **kwargs):
+        calls.append(kwargs)
+        return {
+            "status": "failed",
+            "error": "upload_status_unavailable",
+            "message": "TLS EOF",
+            "pending_upload_id": "upload-123",
+        }
+
+    monkeypatch.setattr("operations.activity.workflow_handlers.upload_activity", fail_after_post)
+    failed = execute_activity_run(run, directory=tmp_path)
+    assert failed["workflow"]["status"] == "partial"
+
+    def complete_poll(_fit_path, **kwargs):
+        calls.append(kwargs)
+        assert kwargs["pending_upload_id"] == "upload-123"
+        return {"status": "completed", "outcome": "uploaded", "strava_activity_id": "456"}
+
+    monkeypatch.setattr("operations.activity.workflow_handlers.upload_activity", complete_poll)
+    retried = retry_activity_workflow(workflow_id, directory=tmp_path)
+
+    assert retried["workflow"]["status"] == "completed"
+    assert calls == [
+        {"force": False},
+        {"force": False, "pending_upload_id": "upload-123"},
+    ]
 
 
 def test_service_reports_missing_run_and_nothing_to_retry(tmp_path):
@@ -160,7 +202,7 @@ def test_sync_service_freezes_exact_indexed_items_and_persists_sync_metadata(mon
     assert run["request"]["source"] == "garmin_sync"
     assert run["request"]["selection"]["activity_keys"] == ["a1", "a2"]
     assert run["request"]["sync"] == {
-        "schema_version": "activity_workflow_sync.v1", "requested_count": 5, "status": "partial",
+        "requested_count": 5, "status": "partial",
         "downloaded": 1, "skipped": 1, "failed": 1, "indexed_activity_keys": ["a1", "a2"],
         "failed_items": [{"id": "remote-failed"}], "index_failed": 0,
         "index_errors": [], "force_download": False,
@@ -185,3 +227,54 @@ def test_sync_service_surfaces_index_failure_without_creating_workflow(monkeypat
     assert result["sync"]["index_failed"] == 1
     assert result["sync"]["index_errors"][0]["error"] == "FitParseError"
     assert list(tmp_path.glob("*.json")) == []
+
+
+def test_synced_activities_hydrates_mutable_state_from_sqlite(monkeypatch):
+    class Store:
+        def get_activity(self, activity_key):
+            assert activity_key == "a1"
+            return {
+                "activity_key": "a1",
+                "fit_path": "data/activities/a1.fit",
+                "strava_activity_id": "19903437481",
+                "file_name": "a1.fit",
+            }
+
+    monkeypatch.setattr("operations.activity.workflow_service.ActivityStore", Store)
+
+    activities = _synced_activities([{
+        "activity_key": "a1",
+        "activity_id": 1001,
+        "path": "/absolute/download/a1.fit",
+        "sport_type": "cycling",
+        "start_time_local": "2026-08-26T08:36:30",
+    }])
+
+    assert activities == [{
+        "activity_key": "a1",
+        "source_activity_id": "1001",
+        "fit_path": "data/activities/a1.fit",
+        "sport_type": "cycling",
+        "start_time_local": "2026-08-26T08:36:30",
+        "strava_activity_id": "19903437481",
+        "file_name": "a1.fit",
+    }]
+
+
+def test_workflow_answer_distinguishes_duplicate_upload(tmp_path):
+    created = create_activity_run_from_activities(
+        [{"activity_key": "a1", "fit_path": str(tmp_path / "a1.fit")}],
+        request={"source": "test", "goals": [TASK_UPLOAD_STRAVA], "force": False},
+        directory=tmp_path,
+    )
+    run = created["run"]
+    for task in run["tasks"]:
+        task["status"] = "skipped" if task["kind"] != TASK_UPLOAD_STRAVA else "completed"
+        if task["kind"] == TASK_UPLOAD_STRAVA:
+            task["outcome"] = "duplicate"
+            task["strava_activity_id"] = "456"
+    save_workflow(run, directory=tmp_path)
+
+    result = get_activity_workflow(run["workflow_id"], directory=tmp_path)
+
+    assert "a1：Strava 上传活动已存在，未重复上传（activity_id=456）" in result["answer"]

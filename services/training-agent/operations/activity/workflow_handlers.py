@@ -43,12 +43,15 @@ def _ensure_summary(run: dict[str, Any], task: dict[str, Any]) -> TaskExecution:
             status="failed",
             details={"error": result.get("error"), "message": result.get("message")},
         )
+    details = {
+        "report_schema_version": result.get("report_schema_version"),
+        "result_status": result.get("result_status"),
+    }
+    if status == "skipped":
+        details["reason"] = str(result.get("reason") or "existing_report")
     return TaskExecution(
         status="skipped" if status == "skipped" else "completed",
-        details={
-            "report_schema_version": result.get("report_schema_version"),
-            "result_status": result.get("result_status"),
-        },
+        details=details,
     )
 
 
@@ -65,23 +68,35 @@ def _upload_strava(run: dict[str, Any], task: dict[str, Any]) -> TaskExecution:
     if activity is None:
         return TaskExecution(status="failed", details={"error": "missing_activity"})
     request = run.get("request") or {}
-    if activity.get("strava_activity_id") and not bool(request.get("force_upload")):
+    # A Run freezes the selected activities, but mutable remote state remains
+    # authoritative in SQLite. Re-read it immediately before the side effect so
+    # a previous workflow cannot make this run upload the same FIT again.
+    stored = ActivityStore().get_activity(str(activity.get("activity_key") or "")) or {}
+    strava_activity_id = stored.get("strava_activity_id") or activity.get("strava_activity_id")
+    if strava_activity_id and not bool(request.get("force_upload")):
         return TaskExecution(
             status="skipped",
             details={
                 "reason": "already_uploaded",
-                "strava_activity_id": activity.get("strava_activity_id"),
+                "strava_activity_id": strava_activity_id,
             },
+            activity_update={"strava_activity_id": strava_activity_id},
         )
-    fit_path = activity.get("fit_path")
+    fit_path = stored.get("fit_path") or activity.get("fit_path")
     if not fit_path:
         return TaskExecution(status="failed", details={"error": "missing_fit_path"})
 
-    result = upload_activity(str(fit_path), force=bool(request.get("force_upload")))
+    upload_kwargs: dict[str, Any] = {"force": bool(request.get("force_upload"))}
+    if task.get("pending_upload_id") is not None:
+        upload_kwargs["pending_upload_id"] = task.get("pending_upload_id")
+    result = upload_activity(str(fit_path), **upload_kwargs)
     if result.get("status") != "completed":
+        details = {"error": result.get("error"), "message": result.get("message")}
+        if result.get("pending_upload_id") is not None:
+            details["pending_upload_id"] = result.get("pending_upload_id")
         return TaskExecution(
             status="failed",
-            details={"error": result.get("error"), "message": result.get("message")},
+            details=details,
         )
     strava_activity_id = result.get("strava_activity_id")
     activity_update = {"strava_activity_id": strava_activity_id} if strava_activity_id is not None else {}

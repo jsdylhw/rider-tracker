@@ -163,6 +163,12 @@ aggregate_report 依赖多个 ensure_summary
 
 每个任务都有状态和尝试次数。执行器在状态变化后立即保存检查点，因此进程退出后仍能审计已经发生了什么。
 
+ActivityRun 冻结的是“本次处理哪几条活动”，但 Strava 远端身份属于可变化的业务状态。同步结果转成 Run 时会按精确的 `activity_key` 从 SQLite 补齐 `strava_activity_id`；真正上传前还必须再次读取 SQLite。这样另一个 Run 已完成上传后，旧快照也会确定性跳过，而不会再次发送上传请求。
+
+如果 FIT POST 已返回 `upload_id`，但随后查询处理状态时发生 TLS/网络错误，失败任务会保存该 `pending_upload_id`。显式重试只继续轮询这个 upload，不重新 POST FIT；取得最终 `activity_id` 后再写回 SQLite。
+
+最终说明按活动标注每个 `ensure_summary` 和 `upload_strava` 结果，并区分新报告、复用报告、新上传、Strava 重复活动、已知远端活动和失败。不能把多个活动的任务压成无法对应来源的泛化句子。
+
 ### 为什么需要锁
 
 两个执行器同时推进同一个 Run 可能重复上传或重复分析。正确顺序是：

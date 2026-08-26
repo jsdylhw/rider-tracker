@@ -211,7 +211,12 @@ def analyze_fit_file_tool(
     }
 
 
-def upload_to_strava_tool(fit_path: str, *, force: bool = False) -> dict[str, Any]:
+def upload_to_strava_tool(
+    fit_path: str,
+    *,
+    force: bool = False,
+    pending_upload_id: int | str | None = None,
+) -> dict[str, Any]:
     """上传 FIT 文件到 Strava 并写入描述。
 
     Args:
@@ -225,7 +230,7 @@ def upload_to_strava_tool(fit_path: str, *, force: bool = False) -> dict[str, An
 
     path = resolve_project_path(fit_path)
     from storage.repositories.activity import ActivityStore, file_content_key
-    from operations.activity.strava import upload_activity_to_strava
+    from operations.activity.strava import StravaUploadStatusError, upload_activity_to_strava
 
     store = ActivityStore()
     indexed = store.get_activity_by_fit_path(str(path))
@@ -241,7 +246,19 @@ def upload_to_strava_tool(fit_path: str, *, force: bool = False) -> dict[str, An
     pending_activity = _pending_strava_activity_info(path, summary)
 
     try:
-        result = upload_activity_to_strava(activity_key, wait=True, force=force)
+        result = upload_activity_to_strava(
+            activity_key,
+            wait=True,
+            force=force,
+            pending_upload_id=pending_upload_id,
+        )
+    except StravaUploadStatusError as exc:
+        return {
+            "error": "upload_status_unavailable",
+            "message": f"Strava 已接收 FIT，但状态查询失败：{exc}",
+            "pending_upload_id": exc.upload_id,
+            "pending_activity": pending_activity,
+        }
     except requests.RequestException as exc:
         return {
             "error": "network_error",
@@ -281,7 +298,11 @@ def upload_to_strava_tool(fit_path: str, *, force: bool = False) -> dict[str, An
     upload_status = result.get("upload_status") or {}
     activity_id = upload_status.get("activity_id")
     if not activity_id:
-        return {"error": "upload_processing_failed", "status": result}
+        return {
+            "error": "upload_processing_failed",
+            "status": result,
+            "pending_upload_id": (result.get("upload") or {}).get("id"),
+        }
     return {
         "status": "uploaded",
         "strava_activity_id": activity_id,

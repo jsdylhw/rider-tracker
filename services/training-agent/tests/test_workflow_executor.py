@@ -164,3 +164,63 @@ def test_activity_upload_task_skips_known_remote_activity(tmp_path, monkeypatch)
     upload = next(task for task in run["tasks"] if task["kind"] == TASK_UPLOAD_STRAVA)
     assert upload["status"] == "skipped"
     assert upload["reason"] == "already_uploaded"
+
+
+def test_activity_upload_task_rechecks_sqlite_before_upload(tmp_path, monkeypatch):
+    fit = tmp_path / "a1.fit"
+    fit.write_bytes(b"fit")
+    created = create_activity_run_from_activities(
+        [{"activity_key": "a1", "fit_path": str(fit)}],
+        request={"source": "test", "goals": [TASK_UPLOAD_STRAVA], "force": False},
+        directory=tmp_path,
+    )
+    run = created["run"]
+    calls: list[str] = []
+
+    class Store:
+        def get_activity(self, activity_key):
+            assert activity_key == "a1"
+            return {
+                "activity_key": "a1",
+                "fit_path": str(fit),
+                "strava_activity_id": "db-456",
+            }
+
+    monkeypatch.setattr("operations.activity.workflow_handlers._has_existing_report", lambda activity: True)
+    monkeypatch.setattr("operations.activity.workflow_handlers.ActivityStore", Store)
+    monkeypatch.setattr(
+        "operations.activity.workflow_handlers.upload_activity",
+        lambda *args, **kwargs: calls.append("uploaded") or {"status": "completed"},
+    )
+
+    result = execute_activity_run(run, directory=tmp_path)
+
+    upload = next(task for task in run["tasks"] if task["kind"] == TASK_UPLOAD_STRAVA)
+    assert result["workflow"]["status"] == "completed"
+    assert upload["status"] == "skipped"
+    assert upload["reason"] == "already_uploaded"
+    assert upload["strava_activity_id"] == "db-456"
+    assert run["activities"][0]["strava_activity_id"] == "db-456"
+    assert calls == []
+
+
+def test_activity_summary_normalizes_cached_result_reason(monkeypatch, tmp_path):
+    fit = tmp_path / "a1.fit"
+    fit.write_bytes(b"fit")
+    created = create_activity_run_from_activities(
+        [{"activity_key": "a1", "fit_path": str(fit)}],
+        request={"source": "test", "goals": [TASK_ENSURE_SUMMARY], "force": False},
+        directory=tmp_path,
+    )
+    run = created["run"]
+    monkeypatch.setattr("operations.activity.workflow_handlers._has_existing_report", lambda activity: False)
+    monkeypatch.setattr(
+        "operations.activity.workflow_handlers.ensure_summary",
+        lambda *args, **kwargs: {"status": "skipped", "result_status": "cached"},
+    )
+
+    execute_activity_run(run, directory=tmp_path)
+
+    task = run["tasks"][0]
+    assert task["status"] == "skipped"
+    assert task["reason"] == "existing_report"
