@@ -85,7 +85,8 @@ export function createPersonalFitAgentClient({
             `/api/strava/upload-status/${encodeURIComponent(uploadId)}`
         ),
         selectRouteCandidate: (request) => post("/api/route-plans/select", request),
-        routePlanCommand: (request) => post("/api/route-plans/command", request)
+        routePlanCommand: (request) => post("/api/route-plans/command", request),
+        prepareRouteNarration: (request) => post("/api/route-narrations/prepare", request)
     };
 }
 

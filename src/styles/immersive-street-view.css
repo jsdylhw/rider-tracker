@@ -24,6 +24,72 @@
     font-size: 14px;
 }
 
+.ride-dashboard.immersive-street-view .route-narration-card {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    width: min(350px, 31vw);
+    height: min(560px, 70vh);
+    min-height: 400px;
+    padding: 18px;
+    pointer-events: auto;
+    background: linear-gradient(145deg, rgba(15, 23, 42, 0.62), rgba(17, 94, 89, 0.48));
+    border-color: rgba(153, 246, 228, 0.24);
+    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(10px);
+}
+
+.ride-dashboard.immersive-street-view .route-narration-card[hidden] {
+    display: none;
+}
+
+.route-narration-heading,
+.route-narration-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.route-narration-heading {
+    color: #99f6e4;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.ride-dashboard.immersive-street-view .route-narration-card h3 {
+    margin: 12px 0 8px;
+    color: #f8fafc;
+    font-size: 20px;
+}
+
+.route-narration-card p {
+    flex: 1;
+    margin: 0;
+    color: #e2e8f0;
+    font-size: 14px;
+    line-height: 1.7;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+.route-narration-actions {
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+
+.route-narration-actions .btn {
+    min-height: 32px;
+    padding: 6px 10px;
+    color: #e2e8f0;
+    border-color: rgba(153, 246, 228, 0.36);
+    background: rgba(15, 23, 42, 0.42);
+}
+
 .ride-dashboard.immersive-street-view #rideStreetViewStage {
     min-height: 100%;
     border-radius: 0;
@@ -239,6 +305,7 @@
 
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #immersiveMetricsCard,
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #workoutTargetHudCard,
+.ride-dashboard.immersive-street-view.immersive-ui-hidden #routeNarrationHudCard,
 .ride-dashboard.immersive-street-view.immersive-ui-hidden .exploration-turn-controls,
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #rideDashboardMap,
 .ride-dashboard.immersive-street-view.immersive-ui-hidden #liveElevationCard {
@@ -378,6 +445,25 @@ body.immersive-street-view-active {
 }
 
 @media (max-width: 640px) {
+    .ride-dashboard.immersive-street-view .route-narration-card {
+        top: 108px;
+        right: 8px;
+        transform: none;
+        width: min(58vw, 300px);
+        height: min(430px, 58vh);
+        min-height: 300px;
+        padding: 12px;
+    }
+
+    .ride-dashboard.immersive-street-view .route-narration-card h3 {
+        font-size: 16px;
+    }
+
+    .route-narration-card p {
+        font-size: 12px;
+        line-height: 1.55;
+    }
+
     .ride-dashboard.immersive-street-view #immersiveMetricsCard {
         width: min(38vw, 148px);
         padding: 0;

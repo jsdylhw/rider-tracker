@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from agent.main_agent.loop import run_tool_loop
+from agent.narration import run_route_narration_agent
 from agent.runtime.models import public_turn_dict
 from agent.runtime.models import ToolExecution
 from agent.runtime.presentation_projector import project_presentations
@@ -131,6 +132,25 @@ class RoutePlanCommandRequest(BaseModel):
     segments: list[dict[str, Any]] = Field(default_factory=list, max_length=3)
     corridor_km: float = Field(default=5.0, ge=0.1, le=20)
     max_segments: int = Field(default=12, ge=1, le=20)
+
+
+class RouteNarrationSample(BaseModel):
+    sample_id: str = Field(min_length=1, max_length=64)
+    route_distance_m: float = Field(ge=0)
+    estimated_elapsed_s: float | None = Field(default=None, ge=0)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    elevation_m: float | None = None
+    grade_percent: float | None = None
+
+
+class RouteNarrationRequest(BaseModel):
+    route_fingerprint: str = Field(pattern=r"^route_[a-f0-9]{8}$")
+    route_name: str = Field(min_length=1, max_length=200)
+    total_distance_m: float = Field(gt=0, le=1_000_000)
+    estimated_duration_min: float = Field(gt=0, le=10_000)
+    locale: str = Field(default="zh-CN", max_length=16)
+    samples: list[RouteNarrationSample] = Field(min_length=2, max_length=64)
 
 
 @app.get("/")
@@ -385,6 +405,16 @@ def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]
         response = public_turn_dict(result)
         session.cache_response(request.request_id, request.message, response)
         return response
+
+
+@app.post("/api/route-narrations/prepare")
+def prepare_route_narration_endpoint(
+    request: RouteNarrationRequest,
+    http_request: Request,
+) -> dict[str, Any]:
+    """Run one independent RouteNarrationAgent session for a route snapshot."""
+    _require_api_access(http_request)
+    return run_route_narration_agent(request.model_dump())
 
 
 @app.post("/api/route-plans/select")

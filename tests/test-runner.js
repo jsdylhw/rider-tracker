@@ -68,6 +68,11 @@ import { suite as personalFitAgentClientSuite } from "./unit/personal-fit-agent-
 import { suite as agentRouteServiceSuite } from "./unit/agent-route-service.test.js";
 import { suite as agentRoutePlannerSuite } from "./unit/agent-route-planner.test.js";
 import { suite as localConfigSuite } from "./unit/local-config.test.js";
+import { suite as narrationPlanSuite } from "./unit/narration-plan.test.js";
+import { suite as narrationTimelineSuite } from "./unit/narration-timeline.test.js";
+import { suite as routeNarrationServiceSuite } from "./unit/route-narration-service.test.js";
+import { suite as routeNarrationRendererSuite } from "./unit/route-narration-renderer.test.js";
+import { suite as routeNarrationClientSuite } from "./unit/route-narration-client.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
@@ -139,7 +144,12 @@ const suites = [
     personalFitAgentClientSuite,
     agentRouteServiceSuite,
     agentRoutePlannerSuite,
-    localConfigSuite
+    localConfigSuite,
+    narrationPlanSuite,
+    narrationTimelineSuite,
+    routeNarrationServiceSuite,
+    routeNarrationRendererSuite,
+    routeNarrationClientSuite
 ];
 
 runSuites(suites).then((results) => {

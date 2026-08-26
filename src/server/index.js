@@ -10,6 +10,7 @@ import { createActivityRoutes } from "./routes/activity-routes.js";
 import { createRouteLibraryRoutes } from "./routes/route-library-routes.js";
 import { createStravaRoutes } from "./routes/strava-routes.js";
 import { createAgentRoutes } from "./routes/agent-routes.js";
+import { createNarrationRoutes } from "./routes/narration-routes.js";
 import { createPersonalFitAgentClient } from "./personal-fit-agent-client.js";
 import { buildAllowedLocalOrigins, buildLocalBaseUrl, createLocalApiOriginGuard } from "./local-api-security.js";
 
@@ -70,6 +71,7 @@ app.use(createStravaRoutes({
     frontendRedirectUrl: FRONTEND_REDIRECT_URL
 }));
 app.use(createAgentRoutes({ agentClient: personalFitAgentClient }));
+app.use(createNarrationRoutes({ agentClient: personalFitAgentClient }));
 
 app.get("/", (_req, res) => {
     res.sendFile(path.join(PROJECT_ROOT, "index.html"));

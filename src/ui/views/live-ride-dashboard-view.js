@@ -11,7 +11,10 @@ const DASHBOARD_ELEMENT_IDS = [
     "loadStreetViewBtn", "requestRouteElevationBtn", "explorationTurnControls",
     "explorationTurnStatus", "explorationTurnLeftBtn", "explorationTurnStraightBtn",
     "explorationTurnRightBtn", "streetViewContainer", "svPano1", "svPano2",
-    "workoutTargetHudCard", "workoutTargetHudGrid", "workoutTargetChart", "liveWorkoutTargetCard"
+    "workoutTargetHudCard", "workoutTargetHudGrid", "workoutTargetChart", "liveWorkoutTargetCard",
+    "routeNarrationHudCard", "routeNarrationStatus", "routeNarrationTitle", "routeNarrationSummary",
+    "routeNarrationPosition", "routeNarrationCloseBtn", "routeNarrationLoadBtn", "routeNarrationRetryBtn",
+    "routeNarrationPreviousBtn", "routeNarrationNextBtn"
 ];
 
 export function createLiveRideDashboard({ onClose, onStart, onStop } = {}) {

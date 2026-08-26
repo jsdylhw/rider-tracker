@@ -1,5 +1,8 @@
 # Rider 前端视图边界
 
+本文重点说明 View、renderer 和页面 DOM 的边界。`src/domain`、`src/app`、`src/adapters`
+与 `src/ui` 的整体依赖方向和代码归属规则见 [`source-architecture.md`](./source-architecture.md)。
+
 ## 目标
 
 前端继续使用原生 ES Modules，不引入新框架。页面结构按业务能力拆分，同时保留 `createLiveView()` 作为 `main-view` 的稳定门面，避免一次重构同时改动所有 renderer。
@@ -25,6 +28,11 @@
 - `dashboard/ride-alert-presenter.js`：半程及终点提醒的 DOM 生命周期。
 
 地图/街景同步、训练目标图和指标渲染已经分别由既有 controller/renderer 承担。下一步若继续拆分，应优先提取沉浸街景状态机，不要把实时 store 订阅重新塞回 DOM View。
+
+路线文字讲解也是独立子系统：`route-narration-service.js` 管理用户确认、路线身份、异步准备和本次骑行内存缓存，
+`narration-timeline.js` 进行本地里程匹配，`route-narration-renderer.js` 只维护街景 HUD 右侧卡片。
+它只在用户点击“加载讲解”后请求独立 RouteNarrationAgent，并复用实时骑行的 `distanceKm`；它不写入 `street-view-controller.js`，也不进入 FTMS 控制循环。
+详细契约与后续地点检索/TTS 边界见 [`route-narration.md`](./route-narration.md)。
 
 ## 首页 Agent
 

@@ -10,6 +10,9 @@ import { WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 import { createDashboardMetricCustomizer } from "./dashboard/dashboard-metric-customizer.js";
 import { createDashboardRoutePresentation } from "./dashboard/dashboard-route-presentation.js";
 import { showRideAlert } from "./dashboard/ride-alert-presenter.js";
+import { createRouteNarrationService } from "../../app/services/route-narration-service.js";
+import { createRouteNarrationRenderer } from "./route-narration-renderer.js";
+import { createRouteNarrationClient } from "../../adapters/narration/route-narration-client.js";
 
 const LIVE_VISUAL_UPDATE_INTERVAL_MS = 1000;
 
@@ -62,6 +65,7 @@ export function createDashboardRenderer({
     let previousImmersiveStreetViewMode = false;
     let previousDashboardOpen = false;
     let previousRideActive = false;
+    let narrationRouteObject = null;
     let boundStore = null;
     let dashboardMapRefreshScheduled = false;
     const visualRenderState = {
@@ -90,6 +94,40 @@ export function createDashboardRenderer({
         elements,
         onMapShown: scheduleDashboardMapRefresh
     });
+    const routeNarrationClient = createRouteNarrationClient();
+    const routeNarrationService = createRouteNarrationService({
+        preparePlan: routeNarrationClient.prepare
+    });
+    const routeNarrationRenderer = createRouteNarrationRenderer({
+        elements,
+        onLoad: () => {
+            const route = boundStore?.getState?.().route;
+            if (!route) return;
+            void routeNarrationService.load(route).then(renderNarrationState);
+            renderNarrationState();
+        },
+        onClose: () => renderNarrationState(routeNarrationService.dismiss()),
+        onPrevious: () => {
+            routeNarrationRenderer.render(routeNarrationService.previous(), {
+                visible: immersiveStreetViewMode
+            });
+        },
+        onNext: () => {
+            routeNarrationRenderer.render(routeNarrationService.next(), {
+                visible: immersiveStreetViewMode
+            });
+        },
+        onRetry: () => {
+            const route = boundStore?.getState?.().route;
+            if (!route) return;
+            void routeNarrationService.retry(route).then(renderNarrationState);
+            renderNarrationState();
+        }
+    });
+
+    function renderNarrationState(state = routeNarrationService.getState()) {
+        routeNarrationRenderer.render(state, { visible: immersiveStreetViewMode });
+    }
 
     function resetVisualRenderState() {
         Object.values(visualRenderState).forEach((slot) => {
@@ -120,6 +158,9 @@ export function createDashboardRenderer({
 
     function exitImmersiveStreetView() {
         immersiveStreetViewMode = false;
+        narrationRouteObject = null;
+        routeNarrationService.leave();
+        renderNarrationState();
         setImmersiveUiHidden(false);
         elements.rideDashboard?.classList.remove("immersive-street-view");
         document.body.classList.remove("immersive-street-view-active");
@@ -136,6 +177,8 @@ export function createDashboardRenderer({
         exitImmersiveStreetView();
         googleMapsRideActions.resetStreetViewPresentation();
         visuals.resetStreetView?.();
+        routeNarrationService.reset();
+        routeNarrationRenderer.render(routeNarrationService.getState());
         resetVisualRenderState();
     }
 
@@ -154,6 +197,8 @@ export function createDashboardRenderer({
             });
         }
         immersiveStreetViewMode = true;
+        narrationRouteObject = store.getState().route;
+        routeNarrationService.enter(store.getState().route);
         resetVisualRenderState();
         if (elements.metricsCustomizer) {
             elements.metricsCustomizer.hidden = true;
@@ -226,6 +271,17 @@ export function createDashboardRenderer({
         });
         const { ride, training, metricsData, enabledMetricKeys } = viewModel;
         const { session, currentRecord, route, records, distanceKm } = ride;
+        if (immersiveStreetViewMode && narrationRouteObject !== route) {
+            narrationRouteObject = route;
+            routeNarrationService.enter(route);
+        }
+        const narrationState = routeNarrationService.update({
+            distanceMeters: (currentRecord?.distanceKm ?? 0) * 1000,
+            elapsedSeconds: currentRecord?.elapsedSeconds ?? 0
+        });
+        routeNarrationRenderer.render(narrationState, {
+            visible: immersiveStreetViewMode && ride.dashboardOpen
+        });
         const isGradeSimulation = training.mode === WORKOUT_MODES.GRADE_SIM;
         const modeChanged = previousImmersiveStreetViewMode !== immersiveStreetViewMode;
         const dashboardOpenChanged = previousDashboardOpen !== ride.dashboardOpen;
@@ -240,6 +296,9 @@ export function createDashboardRenderer({
         }
         if (rideActiveChanged) {
             resetVisualRenderState();
+            if (previousRideActive && !ride.isActive) {
+                routeNarrationService.clear();
+            }
             previousRideActive = ride.isActive;
         }
 
