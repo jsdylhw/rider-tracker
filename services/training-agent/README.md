@@ -1,8 +1,9 @@
 # Training Agent service
 
-![Personal FIT Agent — 运动分析助手主视觉](figure.png)
-
 一个以本地 FIT 运动数据为中心的个人运动助手。它把 Garmin 活动整理为可查询的本地记录，用自然语言回答训练问题、生成活动分析，并可按需上传到 Strava。
+
+Rider Tracker 是唯一浏览器入口。该目录只提供 Python Backend、Agent、CLI 和 Rider 内部 API，
+不再维护第二套独立 Web 页面。
 
 ## 能做什么
 
@@ -13,7 +14,7 @@
 - 批量生成活动报告、上传 Strava；中断或失败后可继续处理。
 - 规划国内外单日、多日或上下午分段骑行路线，并通过对话选择、修改、反转、撤销和确认候选。
 - 在国内路线中展示并组合真实 Strava 路段；支持经典完整环线以及开放式距离、方向、地形和风景发现。
-- 在 Web UI 中查看活动报告、训练曲线、路线候选、参考海拔和 Strava 路段叠加图。
+- 通过 Rider 页面查看活动报告、训练曲线、路线候选和 Strava 路段。
 
 ## 它如何工作
 
@@ -36,12 +37,12 @@ npm start
 cp config.yaml.example config.yaml
 ```
 
-编辑根目录 `config.yaml` 并填入所需凭据：`agent` 用于对话和分析；Garmin 配置仅在同步时需要；Strava 配置用于活动发布和国内热门路段；高德与 Google 配置用于路线规划。若要通过局域网或反向代理访问 Web UI，请设置随机的 `web_api_token`。`config.yaml` 不会提交到 Git。
+编辑根目录 `config.yaml` 并填入所需凭据：`agent` 用于对话和分析；Garmin 配置仅在同步时需要；Strava 配置用于活动发布和国内热门路段；高德与 Google 配置用于路线规划。`web_api_token` 用于保护 Rider Node 到 Python Backend 的内部 API。`config.yaml` 不会提交到 Git。
 
 启动对话：
 
 ```bash
-python -m app.cli chat
+npm run agent:cli -- chat
 ```
 
 可以直接这样提问：
@@ -57,34 +58,34 @@ python -m app.cli chat
 从夫子庙出发骑完整环陵路线
 ```
 
-启动 Web UI：
+只启动 Python Backend 进行诊断：
 
 ```bash
-python -m uvicorn app.api:app --reload --host 127.0.0.1 --port 8000
+npm run start:agent
 ```
 
-打开 <http://127.0.0.1:8000>。Web 对话、候选预览和请求幂等状态会持久化到本地 SQLite；路线图中可切换候选，并在同一张地图上按顺序选择最多三个 Strava 路段生成新候选。
+该端口只提供 Rider 内部 API，不提供产品页面。日常使用请运行 `npm start` 并访问 Rider Node 页面。
 
 也可直接分析一个本地文件：
 
 ```bash
-python -m app.cli analyze-file "garmin_cn_fit_files/path/to/activity.fit"
+npm run agent:cli -- analyze-file "garmin_cn_fit_files/path/to/activity.fit"
 ```
 
 ## 本地活动数据库
 
-`data/personal-fit-agent.db` 是活动与报告的唯一运行时存储：`activities` 一条记录对应一个真实 FIT，`activity_reports` 只接受 `llm_fit_file_analysis.v2` 与 `activity_metrics.v2`。活动选择、历史上下文、Web 报告读取和 Strava 上传均按 `activity_key` 查询数据库，不会回读旧索引、JSONL 历史或 summary JSON。
+仓库根目录 `data/rider-tracker.db` 是活动与报告的唯一运行时存储：`activities` 一条记录对应一个真实 FIT，`activity_reports` 只接受 `llm_fit_file_analysis.v2` 与 `activity_metrics.v2`。活动选择、历史上下文、报告读取和 Strava 上传均按稳定活动 ID 查询数据库，不会回读旧索引、JSONL 历史或 summary JSON。
 
 可检查当前数据库状态：
 
 ```bash
-python -m app.debug_cli storage-status
+npm run agent:cli -- debug storage-status
 ```
 
 聊天中的“重新分析所有活动”会提交内存后台任务并立即返回任务 ID；也可在调试 CLI 中等待全量 V2 重建完成：
 
 ```bash
-python -m app.debug_cli rebuild-v2-reports --scope all
+npm run agent:cli -- debug rebuild-v2-reports --scope all
 ```
 
 如需给外部程序查看 JSON，使用 `ActivityStore.export_report(activity_key, path)` 显式导出；导出文件不是缓存，也不参与后续状态判断。

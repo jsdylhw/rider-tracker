@@ -11,14 +11,17 @@ const agentRoot = trainingAgentRoot(projectRoot);
 dotenv.config({ path: path.join(projectRoot, ".env"), quiet: true });
 const runtimeEnv = buildRuntimeEnv(projectRoot, loadUnifiedConfig(projectRoot), process.env);
 const python = resolvePythonExecutable(projectRoot, runtimeEnv);
-const args = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+const useDebugCli = rawArgs[0] === "debug";
+const args = useDebugCli ? rawArgs.slice(1) : rawArgs;
 
 if (args.length === 0) {
-    console.error("Usage: npm run agent:cli -- <command> [arguments]");
+    console.error("Usage: npm run agent:cli -- [debug] <command> [arguments]");
     process.exit(2);
 }
 
-const result = spawnSync(python, ["-m", "app.cli", ...args], {
+const moduleName = useDebugCli ? "app.debug_cli" : "app.cli";
+const result = spawnSync(python, ["-m", moduleName, ...args], {
     cwd: agentRoot,
     env: { ...runtimeEnv, PYTHONPATH: agentRoot },
     stdio: "inherit"

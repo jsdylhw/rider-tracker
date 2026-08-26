@@ -6,14 +6,14 @@ FIT 文件仍是磁盘上的不可变原始数据；SQLite 是可重建的派生
 默认数据库路径：
 
 ```text
-data/personal-fit-agent.db
+data/rider-tracker.db
 ```
 
 从项目根目录查看表结构：
 
 ```bash
-sqlite3 data/personal-fit-agent.db ".tables"
-sqlite3 data/personal-fit-agent.db ".schema activity_facts"
+sqlite3 data/rider-tracker.db ".tables"
+sqlite3 data/rider-tracker.db ".schema activity_facts"
 ```
 
 ## 数据关系
@@ -151,13 +151,13 @@ result = ActivityResolver().resolve(request)
 旧数据库可执行一次只读 FIT 的本地回填：
 
 ```bash
-python -m app.cli rebuild-facts
+npm run agent:cli -- rebuild-facts
 ```
 
 该命令只会解析 FIT 并写入 `activity_facts`；不调用远程模型、不生成报告、不上传 Strava。算法更新后使用：
 
 ```bash
-python -m app.cli rebuild-facts --force
+npm run agent:cli -- rebuild-facts --force
 ```
 
 ## 读取策略

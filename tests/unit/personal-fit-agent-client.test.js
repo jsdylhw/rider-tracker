@@ -84,6 +84,11 @@ export const suite = {
                         load: { power_stress: { tss: null } }
                     },
                     settings: { resting_hr: 50, max_hr: 190 },
+                    report: {
+                        schema_version: "llm_fit_file_analysis.v2",
+                        revision: 2,
+                        markdown_report: "# Morning Run\n\n保持恢复。"
+                    },
                     series: {
                         records: [
                             { elapsed_seconds: 0, distance_km: 0, elevation_m: 10, latitude: 31, longitude: 121 },
@@ -98,6 +103,19 @@ export const suite = {
                 assertEqual(activity.rawSession.records.at(-1).ascentMeters, 5);
                 assertEqual(activity.rawSession.summary.metrics.ride.ascentMeters, 42);
                 assertEqual(activity.rawSession.route.points.length, 3);
+                assertEqual(activity.analysisReport.revision, 2);
+                assertEqual(activity.analysisReport.markdown_report, "# Morning Run\n\n保持恢复。");
+            }
+        },
+        {
+            name: "clears a stale Rider report when the canonical backend reports none",
+            run() {
+                const activity = canonicalDetailToRiderActivity(
+                    { activity: { activity_key: "fit-a" }, report: null },
+                    { id: "fit-a", analysisReport: { markdown_report: "# 旧报告" } }
+                );
+
+                assertEqual(activity.analysisReport, null);
             }
         },
         {

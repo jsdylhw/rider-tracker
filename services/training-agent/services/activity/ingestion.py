@@ -57,11 +57,12 @@ def ingest_fit_activity(
         input_hash=input_hash,
         payload=detail,
     )
+    presented_detail = _attach_activity_report(detail, store=store, activity_key=stable_key)
     return {
         "schema_version": FIT_INGESTION_V1,
         "status": "completed",
         "activity": activity,
-        "detail": detail,
+        "detail": presented_detail,
         "input_hash": input_hash,
     }
 
@@ -79,10 +80,18 @@ def get_activity_detail(
         return None
     fit_path = activity.get("fit_path")
     if not fit_path:
-        return {"schema_version": DETAIL_SCHEMA_VERSION, "activity": activity, "series": {"records": []}}
+        return _attach_activity_report(
+            {"schema_version": DETAIL_SCHEMA_VERSION, "activity": activity, "series": {"records": []}},
+            store=store,
+            activity_key=activity_key,
+        )
     resolved = resolve_project_path(str(fit_path))
     if not resolved.is_file():
-        return {"schema_version": DETAIL_SCHEMA_VERSION, "activity": activity, "series": {"records": []}}
+        return _attach_activity_report(
+            {"schema_version": DETAIL_SCHEMA_VERSION, "activity": activity, "series": {"records": []}},
+            store=store,
+            activity_key=activity_key,
+        )
     input_hash = file_content_key(resolved)
     cached = store.get_artifact(activity_key, DETAIL_ARTIFACT_TYPE)
     if (
@@ -96,9 +105,13 @@ def get_activity_detail(
         original_count = int(series.get("original_record_count") or sample_count)
         requested_count = min(max(2, int(max_points)), original_count) if original_count else 0
         if sample_count >= requested_count:
-            return _limit_detail_records(
-                {**payload, "activity": activity},
-                max_points=max_points,
+            return _attach_activity_report(
+                _limit_detail_records(
+                    {**payload, "activity": activity},
+                    max_points=max_points,
+                ),
+                store=store,
+                activity_key=activity_key,
             )
     parsed = parse_fit(resolved)
     facts = store.get_facts(activity_key) or {}
@@ -113,7 +126,30 @@ def get_activity_detail(
         input_hash=input_hash,
         payload=detail,
     )
-    return detail
+    return _attach_activity_report(detail, store=store, activity_key=activity_key)
+
+
+def _attach_activity_report(
+    detail: dict[str, Any],
+    *,
+    store: ActivityStore,
+    activity_key: str,
+) -> dict[str, Any]:
+    """Attach the latest report without making generated prose part of FIT artifact caching."""
+    report = store.get_report(activity_key)
+    if not report:
+        return {**detail, "report": None}
+    record = store.get_report_record(activity_key) or {}
+    return {
+        **detail,
+        "report": {
+            "schema_version": report.get("schema_version"),
+            "status": report.get("status"),
+            "markdown_report": str(report.get("markdown_report") or ""),
+            "revision": record.get("revision"),
+            "updated_at": record.get("updated_at"),
+        },
+    }
 
 
 def _limit_detail_records(detail: dict[str, Any], *, max_points: int) -> dict[str, Any]:

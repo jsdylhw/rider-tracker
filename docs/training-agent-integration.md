@@ -10,6 +10,9 @@ Rider Tracker 是唯一面向浏览器的产品入口。Node 服务负责页面�
 Browser -> Rider Node -> Training Agent Python
 ```
 
+Rider 是唯一浏览器入口。Python Backend 的 `/` 只返回服务元信息，`/health` 用于启动检查；
+它不再提供独立 HTML、CSS 或浏览器 JavaScript。
+
 这一边界可以避免慢速模型或地图请求阻塞实时骑行控制，也允许 Python 分析代码继续使用现有库。
 
 ## 浏览器入口

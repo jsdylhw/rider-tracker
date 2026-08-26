@@ -45,6 +45,21 @@ export const suite = {
             }
         },
         {
+            name: "exposes a safe-rendering target for a stored activity report",
+            run() {
+                const html = buildActivityDetailPageHtml({
+                    ...buildActivity(),
+                    analysisReport: {
+                        markdown_report: "# 训练结论\n\n<script>alert('x')</script>"
+                    }
+                });
+
+                assert(html.includes("活动分析报告"), "stored report should have a Rider detail section");
+                assert(html.includes("data-activity-analysis-report"), "report should expose a safe DOM rendering target");
+                assert(!html.includes("<script>"), "raw report markdown must not be interpolated into HTML");
+            }
+        },
+        {
             name: "hides the map card for manual activity routes",
             run() {
                 const activity = buildActivity();

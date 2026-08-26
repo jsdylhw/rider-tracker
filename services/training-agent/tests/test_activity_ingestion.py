@@ -38,6 +38,21 @@ def test_ingestion_reuses_existing_rider_identity_and_caches_detail(
     cached = get_activity_detail("rt-existing", max_points=20, path=database)
     assert cached["series"] == artifact["payload"]["series"]
     assert cached["activity"]["name"] == "保留名称"
+    assert cached["report"] is None
+
+    store.save_report({
+        "schema_version": "llm_fit_file_analysis.v2",
+        "status": "analyzed",
+        "activity_key": "rt-existing",
+        "activity_metrics": {"schema_version": "activity_metrics.v2"},
+        "analysis_summary": {"schema_version": "activity_analysis_summary.v1"},
+        "markdown_report": "# 新生成的报告\n\n保持有氧训练。",
+        "strava_summary": "保持有氧训练。",
+    })
+    with_report = get_activity_detail("rt-existing", max_points=20, path=database)
+    assert with_report["report"]["markdown_report"].startswith("# 新生成的报告")
+    assert with_report["report"]["revision"] == 1
+    assert "report" not in store.get_artifact("rt-existing", "activity_detail")["payload"]
 
     store.upsert_activity({
         **cached["activity"],

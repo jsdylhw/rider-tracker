@@ -21,53 +21,52 @@ def _prepare_api(tmp_path, monkeypatch, *, web_api_token: str = ""):
     return api, TestClient(api.app), fit_dir
 
 
-def test_configured_api_token_is_required_for_dashboard(tmp_path, monkeypatch):
-    _, client, _ = _prepare_api(tmp_path, monkeypatch, web_api_token="review-token")
+def test_service_root_returns_metadata_instead_of_a_second_web_ui(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch)
 
-    assert client.get("/api/dashboard/status").status_code == 401
-    assert client.get("/api/dashboard/status", headers={"X-API-Token": "review-token"}).status_code == 200
-
-
-def test_analyze_accepts_only_managed_fit_path(tmp_path, monkeypatch):
-    api, client, fit_dir = _prepare_api(tmp_path, monkeypatch)
-    managed_fit = fit_dir / "managed.fit"
-    managed_fit.write_bytes(b"fit")
-    outside_fit = tmp_path / "outside.fit"
-    outside_fit.write_bytes(b"fit")
-    calls = []
-
-    def fake_analyze(path, **kwargs):
-        calls.append((path, kwargs))
-        return {"status": "ok"}
-
-    monkeypatch.setattr(api, "analyze_fit_document", fake_analyze)
-
-    allowed = client.post("/api/fit-files/analyze", json={"path": str(managed_fit)})
-    denied = client.post("/api/fit-files/analyze", json={"path": str(outside_fit)})
-
-    assert allowed.status_code == 200
-    assert calls == [(managed_fit, {"use_history": False, "force": False})]
-    assert denied.status_code == 403
-
-
-def test_analyze_history_must_be_explicitly_enabled(tmp_path, monkeypatch):
-    api, client, fit_dir = _prepare_api(tmp_path, monkeypatch)
-    managed_fit = fit_dir / "managed.fit"
-    managed_fit.write_bytes(b"fit")
-    calls = []
-    monkeypatch.setattr(
-        api,
-        "analyze_fit_document",
-        lambda path, **kwargs: calls.append((path, kwargs)) or {"status": "ok"},
-    )
-
-    response = client.post(
-        "/api/fit-files/analyze",
-        json={"path": str(managed_fit), "history": True},
-    )
+    response = client.get("/")
 
     assert response.status_code == 200
-    assert calls == [(managed_fit, {"use_history": True, "force": False})]
+    assert response.json() == {"service": "rider-training-backend", "status": "ok"}
+    assert client.get("/static/app.js").status_code == 404
+
+
+def test_legacy_web_ui_routes_are_not_exposed(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch)
+
+    calls = [
+        ("get", "/api/dashboard/status"),
+        ("post", "/api/garmin/connect"),
+        ("post", "/api/garmin/download"),
+        ("get", "/api/fit-files"),
+        ("post", "/api/fit-files/analyze"),
+        ("get", "/api/summary"),
+        ("post", "/api/strava/upload"),
+    ]
+
+    for method, path in calls:
+        assert getattr(client, method)(path).status_code == 404
+
+
+def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch)
+    paths = {path for path in client.get("/openapi.json").json()["paths"] if path.startswith("/api/")}
+
+    assert paths == {
+        "/api/activities/ingest-fit",
+        "/api/activities/{activity_id}/detail",
+        "/api/athlete-profile",
+        "/api/chat",
+        "/api/route-narrations/prepare",
+        "/api/route-plans/command",
+        "/api/route-plans/select",
+        "/api/strava/auth-url",
+        "/api/strava/config",
+        "/api/strava/connection",
+        "/api/strava/exchange-code",
+        "/api/strava/upload-activity",
+        "/api/strava/upload-status/{upload_id}",
+    }
 
 
 def test_route_narration_endpoint_runs_independent_agent(tmp_path, monkeypatch):
@@ -126,6 +125,15 @@ def test_ingest_fit_uses_deterministic_managed_file_service(tmp_path, monkeypatc
         "max_points": 500,
     })]
 
+    outside = tmp_path / "outside.fit"
+    outside.write_bytes(b"fit")
+    denied = client.post("/api/activities/ingest-fit", json={
+        "path": str(outside),
+        "activity_id": "outside-fit",
+    })
+    assert denied.status_code == 403
+    assert len(calls) == 1
+
 
 def test_activity_detail_endpoint_returns_cached_contract(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
@@ -142,25 +150,6 @@ def test_activity_detail_endpoint_returns_cached_contract(tmp_path, monkeypatch)
 
     assert response.status_code == 200
     assert response.json()["activity"]["activity_key"] == "a1"
-
-
-def test_strava_upload_uses_activity_key(tmp_path, monkeypatch):
-    api, client, _ = _prepare_api(tmp_path, monkeypatch)
-    calls = []
-
-    def fake_upload(activity_key, **kwargs):
-        calls.append((activity_key, kwargs))
-        return {"status": "uploaded"}
-
-    monkeypatch.setattr(api, "upload_activity_to_strava", fake_upload)
-
-    response = client.post(
-        "/api/strava/upload",
-        json={"activity_key": "a1", "force": True},
-    )
-
-    assert response.status_code == 200
-    assert calls == [("a1", {"title": None, "wait": True, "force": True})]
 
 
 def test_athlete_profile_api_returns_and_updates_rider_settings(tmp_path, monkeypatch):
@@ -219,6 +208,41 @@ def test_strava_owner_endpoints_delegate_to_python_sink(tmp_path, monkeypatch):
     assert connection.json()["connected"] is True
     assert auth.json()["auth_url"].endswith("state=state-1")
     assert exchange.json()["athlete"]["id"] == 1
+
+
+def test_strava_activity_upload_and_status_delegate_to_owner_service(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    uploads = []
+    monkeypatch.setattr(
+        api,
+        "upload_stored_activity_fit",
+        lambda activity_key, **kwargs: uploads.append((activity_key, kwargs)) or {
+            "status": "processing", "upload_id": "upload-7",
+        },
+    )
+    monkeypatch.setattr(
+        api,
+        "get_strava_upload_status",
+        lambda upload_id: {"status": "completed", "upload_id": upload_id, "activity_id": "strava-9"},
+    )
+
+    uploaded = client.post("/api/strava/upload-activity", json={
+        "activity_key": "fit-7",
+        "title": "晨骑",
+        "trainer": True,
+    })
+    status = client.get("/api/strava/upload-status/upload-7")
+
+    assert uploaded.status_code == 200
+    assert uploaded.json()["upload_id"] == "upload-7"
+    assert uploads == [("fit-7", {
+        "title": "晨骑",
+        "description": None,
+        "trainer": True,
+        "commute": False,
+        "sport_type": None,
+    })]
+    assert status.json() == {"status": "completed", "upload_id": "upload-7", "activity_id": "strava-9"}
 
 
 def test_route_candidate_click_persists_preview_without_archiving_chat_turn(tmp_path, monkeypatch):
@@ -299,33 +323,6 @@ def test_route_command_rejects_unsupported_operation(tmp_path, monkeypatch):
         "operation": "delete_everything",
     })
     assert response.status_code == 400
-
-
-def test_garmin_download_delegates_to_activity_operation(tmp_path, monkeypatch):
-    api, client, fit_dir = _prepare_api(tmp_path, monkeypatch)
-    calls = []
-
-    def fake_sync(*, count, force_download=False):
-        calls.append((count, force_download))
-        return {
-            "fit_dir": str(fit_dir),
-            "downloaded": 1,
-            "skipped": 1,
-            "failed": 0,
-            "downloaded_items": [{"activity_id": 1, "paths": ["new.fit"]}],
-            "skipped_items": [{"activity_id": 2, "paths": ["old.fit"]}],
-            "failed_items": [],
-            "index_errors": [],
-        }
-
-    monkeypatch.setattr(api, "sync_garmin_activities_tool", fake_sync)
-
-    response = client.post("/api/garmin/download", json={"count": 2, "force_download": True})
-
-    assert response.status_code == 200
-    assert calls == [(2, True)]
-    assert response.json()["status"] == "ok"
-    assert [item["status"] for item in response.json()["results"]] == ["downloaded", "skipped_existing"]
 
 
 def test_chat_reuses_context_and_deduplicates_request_id(tmp_path, monkeypatch):

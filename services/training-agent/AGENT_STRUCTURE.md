@@ -22,13 +22,13 @@ data/          本地数据库和运行状态
 聊天主链路从 CLI 进入：
 
 ```text
-python -m app.cli chat
+npm run agent:cli -- chat
   -> app.cli.chat_command
   -> AgentContext + AnalysisNavigationService
   -> agent.main_agent.loop.run_tool_loop
 ```
 
-`analyze-file`、`sync-garmin`、`rebuild-facts`、`upload-strava` 等 CLI 命令是确定性运维入口，不经过主聊天 Agent。`app/api.py` 当前提供 Dashboard、Garmin、FIT 分析、报告和 Strava HTTP 接口，但尚未提供 `/api/chat`，所以 Web UI 还没有进入 Main Agent/Skill 链路。
+`analyze-file`、`sync-garmin`、`rebuild-facts`、`upload-strava` 等 CLI 命令是确定性运维入口，不经过主聊天 Agent。`app/api.py` 提供 Rider Node 使用的内部 HTTP API；Rider 是唯一浏览器入口，`/api/chat` 已进入 Main Agent/Skill 链路。
 
 ## 对话与分析链路
 
@@ -183,7 +183,7 @@ FIT 文件
   -> analysis_results（定向问答/比较等分析产物）
 ```
 
-`data/personal-fit-agent.db` 是活动和报告的唯一运行时事实源。新报告必须是 `llm_fit_file_analysis.v2`，历史数值从 `activity_metrics.v2` 读取，不从 Markdown 正则提取。
+仓库根目录 `data/rider-tracker.db` 是活动和报告的唯一运行时事实源。新报告必须是 `llm_fit_file_analysis.v2`，历史数值从 `activity_metrics.v2` 读取，不从 Markdown 正则提取。
 
 ## 评测链路
 
@@ -203,11 +203,11 @@ live:  activate_skill -> Skill tools -> Sandbox handlers
 - `integrations/garmin.py`：认证与下载。
 - `integrations/strava.py`：OAuth、上传与描述更新 HTTP 客户端。
 - `integrations/llm.py`：Anthropic Messages API 兼容客户端，不导入 Agent Tool 或 Skill。
-- `services/route/advice.py`：当前路线建议用例；路线计算 Demo 仍独立在 `demo/`，未接入主 Agent。
+- `services/route/`：主 Agent 使用的持久化路线规划服务；当前仍有部分 provider 从 `demo/` 导入，后续应迁入正式 integrations。
 
 ## 当前边界
 
-- Web API 尚无 `/api/chat`，现有 Web 页面仍是文件操作面板。
+- Rider 是唯一 Web 页面；Python API 只作为 Rider Node 的内部服务。
 - `casual_chat` 与 `ask_user_clarification` Tool 当前没有 Skill 暴露，普通聊天直接由模型回答；可在后续清理不可达注册项。
 - `agent_loop` 是 `execute_tool_loop` 的兼容包装，评测迁移完成后可进一步收紧。
-- 路线地图、活动图表和 Artifact 渲染协议尚未进入主线。
+- 路线地图、活动图表和 Artifact 已通过 `presentation.v1` 与 Rider 展示层进入主线。

@@ -24,8 +24,39 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/training-agent/requirements.txt
+
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Training Backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r services/training-agent/requirements.txt
+
       - name: Run tests
         run: npm test
+
+      - name: Run Training Backend tests
+        run: npm run test:agent
+
+      - name: Validate Training Backend evaluation cases
+        working-directory: services/training-agent
+        run: python -m evaluation.cli list-cases --cases evaluation/cases/skills.jsonl
+
+      - name: Compile Training Backend Python modules
+        working-directory: services/training-agent
+        run: python -m compileall -q agent app domain evaluation fit integrations operations services storage
+
+      - name: Check route demo JavaScript syntax
+        run: |
+          node --check services/training-agent/demo/global_cycling_router/web/app.js
+          node --check services/training-agent/demo/gaode_cycling_router/web/app.js
+          node --check services/training-agent/demo/gaode_cycling_router/web/bootstrap.js
+          node --check services/training-agent/demo/osm_cycling_router/web/app.js
+
+      - name: Run Rider to Training Backend integration test
+        run: npm run test:integration

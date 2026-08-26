@@ -12,15 +12,16 @@ Personal FIT Agent is a local sports data assistant: download Garmin China FIT f
 pip install -r requirements.txt
 python -m pytest
 
-python -m app.cli chat
-python -m app.cli chat "分析最新的活动"
-python -m app.cli analyze-file latest --force
-python -m app.cli sync-garmin --count 5
-python -m app.cli upload-strava ACTIVITY_KEY
+# Run these from the Rider repository root so config and database paths stay unified.
+npm run agent:cli -- chat
+npm run agent:cli -- chat "分析最新的活动"
+npm run agent:cli -- analyze-file latest --force
+npm run agent:cli -- sync-garmin --count 5
+npm run agent:cli -- upload-strava ACTIVITY_KEY
 
-python -m app.debug_cli list-activities --limit 10
-python -m app.debug_cli inspect-fit latest
-python -m app.debug_cli storage-status
+npm run agent:cli -- debug list-activities --limit 10
+npm run agent:cli -- debug inspect-fit latest
+npm run agent:cli -- debug storage-status
 ```
 
 ## Architecture

@@ -15,6 +15,7 @@ import { createExportView } from "../views/export-view.js";
 import { createActivityDetailView } from "../views/activity-detail-view.js";
 import { buildActivityDetailPageHtml } from "./activity-detail-renderer.js";
 import { buildRouteGeometryKey, collectRouteMapLatLngs } from "../map/map-controller.js";
+import { replaceWithSafeMarkdown } from "../shared/safe-markdown-renderer.js";
 
 export function createMainView({ store, pipController, actions }) {
     const { navigation, workout, route, ride, device, export: exportActions, googleMaps, pip } = actions;
@@ -192,7 +193,9 @@ export function createMainView({ store, pipController, actions }) {
                 state.settings?.restingHr ?? "",
                 state.settings?.maxHr ?? "",
                 activity.isSaving === true,
-                activity.saveError ?? ""
+                activity.saveError ?? "",
+                activity.analysisReport?.revision ?? "",
+                activity.analysisReport?.updated_at ?? ""
             ].join("|")
             : "empty";
         if (signature === lastRenderedActivityDetailSignature) return;
@@ -200,6 +203,10 @@ export function createMainView({ store, pipController, actions }) {
         elements.activityDetailContent.innerHTML = buildActivityDetailPageHtml(activity, {
             fallbackSettings: state.settings
         });
+        const reportContainer = elements.activityDetailContent.querySelector("[data-activity-analysis-report]");
+        if (reportContainer) {
+            replaceWithSafeMarkdown(document, reportContainer, activity?.analysisReport?.markdown_report ?? "");
+        }
         activityDetailView.setActivity(activity);
     }
 

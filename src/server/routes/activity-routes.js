@@ -327,6 +327,9 @@ export function canonicalDetailToRiderActivity(detail, fallback = {}) {
     const heartRate = metrics.heart_rate ?? {};
     const cadence = metrics.cadence ?? {};
     const performance = metrics.performance ?? {};
+    const analysisReport = Object.prototype.hasOwnProperty.call(detail ?? {}, "report")
+        ? detail.report
+        : (fallback.analysisReport ?? null);
     const records = buildRiderRecords(detail?.series?.records ?? []);
     const points = records
         .filter((record) => Number.isFinite(record.positionLat) && Number.isFinite(record.positionLong))
@@ -415,6 +418,7 @@ export function canonicalDetailToRiderActivity(detail, fallback = {}) {
         averageHr: heartRate.avg_hr_bpm ?? fallback.averageHr,
         estimatedTss: metrics.load?.power_stress?.tss ?? fallback.estimatedTss,
         fitFilePath: activity.fit_path ?? fallback.fitFilePath,
+        analysisReport,
         rawSession
     };
 }

@@ -3,6 +3,7 @@ import { createAgentPresentationRenderer } from "./agent-presentation-renderer.j
 import { replaceWithSafeMarkdown } from "../shared/safe-markdown-renderer.js";
 
 const QUICK_PROMPTS = {
+    sync: "同步 Garmin 最新一个活动并分析，不要上传 Strava",
     activity: "详细分析我最近一次活动",
     history: "分析我最近四周的训练趋势"
 };

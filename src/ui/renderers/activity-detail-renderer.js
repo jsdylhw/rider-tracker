@@ -78,6 +78,7 @@ export function buildActivityDetailHtml(activity, {
             <div class="activity-detail-insight">
                 ${escapeHtml(buildPlainSummary({ activity, records, ftp, averagePower, normalizedPower, intensityFactor }))}
             </div>
+            ${buildActivityReportHtml(activity.analysisReport)}
             ${actionsHtml}
             <div class="activity-detail-analysis-layout${hasRouteMap ? " has-route-map" : ""}">
                 <div class="activity-detail-card activity-series-panel">
@@ -113,6 +114,17 @@ export function buildActivityDetailHtml(activity, {
                 </div>
             </div>
         </section>
+    `;
+}
+
+function buildActivityReportHtml(report) {
+    const markdown = String(report?.markdown_report ?? "").trim();
+    if (!markdown) return "";
+    return `
+        <div class="activity-detail-card activity-detail-card-wide activity-report-panel">
+            <div class="activity-detail-card-title">活动分析报告</div>
+            <div class="agent-markdown-result" data-activity-analysis-report></div>
+        </div>
     `;
 }
 

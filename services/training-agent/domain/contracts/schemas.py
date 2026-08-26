@@ -48,7 +48,8 @@ PRESENTATION_V1 = "presentation.v1"
 # Rider/Node 请求 Python 导入一个 FIT 后得到的跨进程响应。
 FIT_INGESTION_V1 = "fit_ingestion.v1"
 
-# 可重建但会持久化缓存的活动详情，包括地图/图表需要的采样时序。
+# 可重建但会持久化缓存的活动详情，包括地图/图表需要的采样时序。HTTP 返回可动态
+# 附加可选 ``report``，但生成报告不写入该 FIT artifact，避免报告晚于缓存生成时陈旧。
 ACTIVITY_DETAIL_V1 = "activity_detail.v1"
 
 # ---------------------------- 活动持久化协议 ----------------------------

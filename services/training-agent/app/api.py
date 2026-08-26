@@ -7,13 +7,10 @@
 from __future__ import annotations
 
 import hmac
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from agent.main_agent.loop import run_tool_loop
@@ -28,23 +25,13 @@ from agent.tools.handlers.route import (
 )
 from app.chat_sessions import ChatSessionStore
 from settings import cfg_get, load_config
-from domain.analysis.artifacts import get_analysis_summary, summary_schema_version
-from operations.activity.service import (
-    analyze_fit_document,
-    check_garmin_connection,
-    sync_garmin_activities_tool,
-)
-from integrations.garmin import DEFAULT_OUTPUT_DIR
-from storage.repositories.activity import ActivityStore, file_content_key
 from storage.repositories.route import RoutePlanStore
 from services.route.single_day import compact_route_plan
 from operations.activity.strava import (
     get_strava_upload_status,
-    upload_activity_to_strava,
     upload_stored_activity_fit,
 )
 from integrations.strava import StravaSink
-from services.activity.fit_loader import parse_activity_fit as parse_fit
 from project_paths import project_root
 from services.activity.ingestion import get_activity_detail, ingest_fit_activity
 from services.athlete.profile import (
@@ -56,19 +43,6 @@ from services.athlete.profile import (
 
 app = FastAPI(title="Personal FIT Agent API")
 chat_sessions = ChatSessionStore()
-STATIC_DIR = Path(__file__).resolve().parent / "static"
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-
-class DownloadGarminRequest(BaseModel):
-    count: int | None = None
-    force_download: bool = False
-
-
-class AnalyzeFitRequest(BaseModel):
-    path: str
-    history: bool = False
-    force: bool = False
 
 
 class IngestFitRequest(BaseModel):
@@ -82,13 +56,6 @@ class IngestFitRequest(BaseModel):
 
 class AthleteProfileRequest(BaseModel):
     profile: dict[str, Any]
-
-
-class UploadStravaRequest(BaseModel):
-    activity_key: str
-    title: str | None = None
-    wait: bool = True
-    force: bool = False
 
 
 class StravaAuthorizeRequest(BaseModel):
@@ -154,95 +121,13 @@ class RouteNarrationRequest(BaseModel):
 
 
 @app.get("/")
-def index():
-    return FileResponse(STATIC_DIR / "index.html")
+def service_info() -> dict[str, str]:
+    return {"service": "rider-training-backend", "status": "ok"}
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-@app.get("/api/dashboard/status")
-def dashboard_status_endpoint(request: Request) -> dict[str, Any]:
-    _require_api_access(request)
-    config = load_config()
-    output_dir = _fit_output_dir(config)
-    return {
-        "garmin_configured": bool(config.get("garmin_username") and config.get("garmin_password")),
-        "strava_configured": bool(
-            config.get("strava", {}).get("access_token")
-            or (
-                config.get("strava", {}).get("client_id")
-                and config.get("strava", {}).get("client_secret")
-                and config.get("strava", {}).get("refresh_token")
-            )
-        ),
-        "fit_dir": str(output_dir),
-        "fit_count": len(_fit_files(output_dir)),
-    }
-
-
-@app.post("/api/garmin/connect")
-def garmin_connect_endpoint(request: Request) -> dict[str, Any]:
-    _require_api_access(request)
-    return check_garmin_connection()
-
-
-@app.post("/api/garmin/download")
-def garmin_download_endpoint(request: DownloadGarminRequest, http_request: Request) -> dict[str, Any]:
-    _require_api_access(http_request)
-    config = load_config()
-    output_dir = _fit_output_dir(config)
-    count = request.count or int(cfg_get(config, "download_count", 5))
-
-    result = sync_garmin_activities_tool(count=count, force_download=request.force_download)
-    results = [
-        {**item, "status": "downloaded"}
-        for item in result.get("downloaded_items") or []
-    ]
-    results.extend(
-        {**item, "status": "skipped_existing"}
-        for item in result.get("skipped_items") or []
-    )
-    results.extend(
-        {**item, "status": "failed"}
-        for item in result.get("failed_items") or []
-    )
-
-    return {
-        "status": "partial" if result.get("failed") or result.get("index_errors") else "ok",
-        "fit_dir": result.get("fit_dir") or str(output_dir),
-        "count": len(results),
-        "downloaded": int(result.get("downloaded") or 0),
-        "skipped": int(result.get("skipped") or 0),
-        "failed": int(result.get("failed") or 0),
-        "index_errors": result.get("index_errors") or [],
-        "results": results,
-    }
-
-
-@app.get("/api/fit-files")
-def fit_files_endpoint(request: Request) -> dict[str, Any]:
-    _require_api_access(request)
-    config = load_config()
-    output_dir = _fit_output_dir(config)
-    files = [_fit_file_info(path) for path in _fit_files(output_dir)]
-    files.sort(key=_activity_sort_key, reverse=True)
-    return {"fit_dir": str(output_dir), "files": files}
-
-
-@app.post("/api/fit-files/analyze")
-def analyze_fit_endpoint(request: AnalyzeFitRequest, http_request: Request) -> dict[str, Any]:
-    _require_api_access(http_request)
-    config = load_config()
-    fit_path = _require_managed_path(
-        request.path,
-        allowed_root=_fit_output_dir(config),
-        suffix=".fit",
-        label="FIT file",
-    )
-    return analyze_fit_document(fit_path, use_history=request.history, force=request.force)
 
 
 @app.post("/api/activities/ingest-fit")
@@ -291,27 +176,6 @@ def update_athlete_profile_endpoint(
 ) -> dict[str, Any]:
     _require_api_access(http_request)
     return athlete_profile_response(update_athlete_profile(request.profile))
-
-
-@app.get("/api/summary")
-def summary_endpoint(activity_key: str, request: Request):
-    """Return the current report body by stable activity key."""
-    _require_api_access(request)
-    data = ActivityStore().get_report(activity_key)
-    if data is None:
-        raise HTTPException(status_code=404, detail="Activity report does not exist.")
-    return {"activity_key": activity_key, "markdown_report": data.get("markdown_report", "")}
-
-
-@app.post("/api/strava/upload")
-def strava_upload_endpoint(request: UploadStravaRequest, http_request: Request) -> dict[str, Any]:
-    _require_api_access(http_request)
-    return upload_activity_to_strava(
-        request.activity_key,
-        title=request.title,
-        wait=request.wait,
-        force=request.force,
-    )
 
 
 @app.get("/api/strava/config")
@@ -505,12 +369,6 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
     }
 
 
-def _fit_output_dir(config: dict[str, Any]) -> Path:
-    from settings import resolve_project_path
-
-    return resolve_project_path(cfg_get(config, "output_dir", DEFAULT_OUTPUT_DIR))
-
-
 def _require_api_access(request: Request) -> None:
     """Keep the local control plane local unless a configured token is supplied.
 
@@ -552,113 +410,3 @@ def _require_managed_path(
     if not candidate.is_file():
         raise HTTPException(status_code=404, detail=f"{label} does not exist.")
     return candidate
-
-
-def _fit_files(output_dir: Path) -> list[Path]:
-    if not output_dir.exists():
-        return []
-    return sorted(output_dir.glob("*.fit"), key=lambda path: path.name)
-
-
-def _fit_file_info(path: Path) -> dict[str, Any]:
-    activity_key = file_content_key(path)
-    store = ActivityStore()
-    summary = store.get_report(activity_key)
-    info: dict[str, Any] = {
-        "activity_key": activity_key,
-        "name": path.name,
-        "path": str(path),
-        "size_bytes": path.stat().st_size,
-        "mtime": path.stat().st_mtime,
-        "has_summary": summary is not None,
-    }
-
-    if summary is not None:
-        try:
-            info["fit_summary"] = summary.get("fit_summary")
-            info["analysis_summary"] = get_analysis_summary(summary)
-            info["summary_schema_version"] = summary_schema_version(summary)
-            info["display_summary"] = _display_summary_from_analysis(summary)
-            info["strava_summary"] = summary.get("strava_summary")
-            info["strava_summary_tone"] = summary.get("strava_summary_tone")
-        except (TypeError, ValueError):
-            info["summary_error"] = "Failed to read activity report"
-    else:
-        try:
-            fit_summary = parse_fit(path).get("summary")
-            info["fit_summary"] = fit_summary
-            info["display_summary"] = _display_summary_from_fit(fit_summary)
-        except Exception as exc:
-            info["parse_error"] = str(exc)
-
-    return info
-
-
-def _display_summary_from_analysis(summary: dict[str, Any]) -> dict[str, Any]:
-    fit_summary = summary.get("fit_summary") or {}
-    analysis_summary = get_analysis_summary(summary)
-    activity_metrics = summary.get("activity_metrics") if isinstance(summary.get("activity_metrics"), dict) else {}
-    scale = activity_metrics.get("scale") if isinstance(activity_metrics.get("scale"), dict) else {}
-    return {
-        "start_time": (
-            fit_summary.get("start_time_local")
-            or fit_summary.get("start_time")
-        ),
-        "sport_type": fit_summary.get("sport_type"),
-        "sub_sport": fit_summary.get("sub_sport"),
-        "distance_km": scale.get("distance_km") or _meters_to_km(fit_summary.get("distance_m")),
-        "duration_min": scale.get("duration_min") or _seconds_to_min(fit_summary.get("duration_s")),
-        "summary_label": analysis_summary.get("summary_label") or "",
-        "main_stimulus": analysis_summary.get("main_stimulus") or "",
-        "load_label": analysis_summary.get("load_label") or "",
-        "brief": analysis_summary.get("brief") or "",
-    }
-
-
-def _display_summary_from_fit(fit_summary: dict[str, Any] | None) -> dict[str, Any]:
-    fit_summary = fit_summary or {}
-    return {
-        "start_time": fit_summary.get("start_time_local") or fit_summary.get("start_time"),
-        "sport_type": fit_summary.get("sport_type"),
-        "sub_sport": fit_summary.get("sub_sport"),
-        "distance_km": _meters_to_km(fit_summary.get("distance_m")),
-        "duration_min": _seconds_to_min(fit_summary.get("duration_s")),
-        "summary_label": "",
-        "main_stimulus": "",
-        "load_label": "",
-        "brief": "",
-    }
-
-
-def _activity_sort_key(item: dict[str, Any]) -> float | str:
-    display = item.get("display_summary") or {}
-    fit_summary = item.get("fit_summary") or {}
-    value = display.get("start_time") or fit_summary.get("start_time")
-    parsed = _parse_datetime(value)
-    if parsed:
-        return parsed.timestamp()
-    return str(value or item.get("name") or "")
-
-
-def _parse_datetime(value: Any) -> datetime | None:
-    if not value:
-        return None
-    text = str(value)
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
-def _meters_to_km(value: Any) -> float | None:
-    try:
-        return round(float(value) / 1000, 2)
-    except (TypeError, ValueError):
-        return None
-
-
-def _seconds_to_min(value: Any) -> float | None:
-    try:
-        return round(float(value) / 60, 1)
-    except (TypeError, ValueError):
-        return None

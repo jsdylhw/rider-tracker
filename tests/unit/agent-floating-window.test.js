@@ -119,6 +119,32 @@ export const suite = {
                 assertEqual(windowController.getState().busy, false);
                 windowController.destroy();
             }
+        },
+        {
+            name: "offers Garmin sync through the Rider agent instead of a second web dashboard",
+            async run() {
+                const { root, elements } = createAgentTestDom();
+                const syncButton = createElement({ dataset: { agentPrompt: "sync" } });
+                elements.agentQuickPrompts.querySelectorAll = () => [syncButton];
+                const messages = [];
+                const windowController = createAgentFloatingWindow({
+                    root,
+                    seedConversation: false,
+                    agentClient: {
+                        async chat(message) {
+                            messages.push(message);
+                            return { answer: "同步完成。", presentations: [] };
+                        }
+                    }
+                });
+
+                syncButton.dispatch("click");
+                await Promise.resolve();
+                await Promise.resolve();
+
+                assertEqual(messages[0], "同步 Garmin 最新一个活动并分析，不要上传 Strava");
+                windowController.destroy();
+            }
         }
     ]
 };
