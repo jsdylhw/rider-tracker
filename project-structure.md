@@ -108,10 +108,6 @@
 - `cycling-model.js`
   - 功率、速度、坡度、阻力的近似物理模型
 
-### `src/domain/physiology`
-- `heart-rate-model.js`
-  - 心率估算与训练强度相关模型
-
 ### `src/domain/workout`
 - `workout-mode.js`
   - 训练模式枚举与标签

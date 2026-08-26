@@ -1,6 +1,5 @@
 import { getForwardRouteSpeedLimitAhead, getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
 import { simulateStep } from "../physics/cycling-model.js";
-import { estimateHeartRate } from "../physiology/heart-rate-model.js";
 import { buildRideMetrics, createEmptyRideMetrics } from "../metrics/ride-metrics.js";
 
 export function simulateRide({ route, settings }) {
@@ -27,8 +26,6 @@ export function simulateRide({ route, settings }) {
         elevationMeters: 0,
         ascentMeters: 0
     };
-    let currentHeartRate = settings.restingHr;
-
     for (let elapsedSeconds = 1; elapsedSeconds <= maxSimulationSeconds; elapsedSeconds += 1) {
         const routeSample = getRouteSampleAtDistance(route, state.distanceMeters);
         const gradePercent = routeSample.gradePercent ?? 0;
@@ -51,16 +48,6 @@ export function simulateRide({ route, settings }) {
             nextState: state,
             route
         });
-        currentHeartRate = estimateHeartRate({
-            currentHeartRate,
-            power: settings.power,
-            elapsedSeconds,
-            durationSeconds: maxSimulationSeconds,
-            restingHr: settings.restingHr,
-            maxHr: settings.maxHr,
-            dt: 1
-        });
-
         const progressRatio = route.totalDistanceMeters > 0
             ? Math.min(1, state.distanceMeters / route.totalDistanceMeters)
             : 0;
@@ -73,7 +60,9 @@ export function simulateRide({ route, settings }) {
             power: settings.power,
             speedKph: state.speed * 3.6,
             distanceKm: state.distanceMeters / 1000,
-            heartRate: Math.round(currentHeartRate),
+            // Offline simulation has no heart-rate sensor. Do not synthesize a
+            // physiological value from power; downstream metrics treat null as unavailable.
+            heartRate: null,
             gradePercent,
             speedLimitKph: routeSpeedLimit.speedLimitKph,
             curveSpeedLimitKph: routeSpeedLimit.curveSpeedLimitKph,

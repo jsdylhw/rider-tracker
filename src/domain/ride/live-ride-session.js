@@ -1,13 +1,9 @@
 import { getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
 import { simulateStep } from "../physics/cycling-model.js";
-import {
-    advanceLiveHeartRateState,
-    createInitialLiveHeartRateState
-} from "../physiology/heart-rate-model.js";
 import { buildRideMetrics, createEmptyRideMetrics } from "../metrics/ride-metrics.js";
 import { createIncrementalPowerState, advanceIncrementalPowerState, readIncrementalPowerMetrics } from "../metrics/power-metrics.js";
 
-export function createLiveRideSession({ route, settings, startedAt, initialHeartRate = null }) {
+export function createLiveRideSession({ route, settings, startedAt }) {
     return {
         createdAt: startedAt,
         startedAt,
@@ -21,10 +17,6 @@ export function createLiveRideSession({ route, settings, startedAt, initialHeart
             elevationMeters: 0,
             ascentMeters: 0
         },
-        heartRateState: createInitialLiveHeartRateState({
-            initialHeartRate,
-            restingHr: settings.restingHr
-        }),
         npState: createIncrementalPowerState()
     };
 }
@@ -42,12 +34,6 @@ export function advanceLiveRideSession({
     const elapsedSeconds = (summary.metrics?.ride?.elapsedSeconds ?? 0) + dt;
     const routeSample = getRouteSampleAtDistance(session.route, session.physicsState.distanceMeters);
     const gradePercent = routeSample.gradePercent ?? 0;
-    const nextHeartRateState = advanceLiveHeartRateState({
-        currentState: session.heartRateState,
-        sampledHeartRate: heartRate,
-        restingHr: session.settings.restingHr
-    });
-    
     const nextState = simulateStep({
         ...session.physicsState,
         power,
@@ -58,7 +44,7 @@ export function advanceLiveRideSession({
         dt
     });
 
-    const resolvedHeartRate = nextHeartRateState.currentHeartRate;
+    const resolvedHeartRate = Number.isFinite(heartRate) ? Math.round(heartRate) : null;
     const progressRatio = session.route.totalDistanceMeters > 0
         ? Math.min(1, nextState.distanceMeters / session.route.totalDistanceMeters)
         : 0;
@@ -115,7 +101,6 @@ export function advanceLiveRideSession({
         ...session,
         records,
         physicsState: resolvedNextState,
-        heartRateState: nextHeartRateState,
         npState: nextNpState,
         summary: nextSummary
     };
@@ -124,7 +109,9 @@ export function advanceLiveRideSession({
 export function stripLiveRideSessionHistory(session) {
     if (!session) return null;
 
-    const { records, summary, ...currentSession } = session;
+    // heartRateState may exist in sessions saved by older releases. Drop it so
+    // the removed local heart-rate model cannot leak into new ride state.
+    const { records, summary, heartRateState: _legacyHeartRateState, ...currentSession } = session;
     return currentSession;
 }
 

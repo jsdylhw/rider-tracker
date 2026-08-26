@@ -31,7 +31,6 @@ const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
 const TRAINER_COMMAND_MIN_INTERVAL_MS = 500;
 const STREET_VIEW_DEBUG_POWER_WATTS = 180;
 const STREET_VIEW_DEBUG_CADENCE_RPM = 85;
-const STREET_VIEW_DEBUG_HEART_RATE_BPM = 130;
 const DEFAULT_ACTIVITY_NAME = "Rider Tracker Virtual Ride";
 
 export function createRideService({ store, deviceService, exportService, routeService = null }) {
@@ -76,8 +75,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
         const baseSession = createLiveRideSession({
             route: state.route,
             settings: state.settings,
-            startedAt,
-            initialHeartRate: sampledSensors.heartRate
+            startedAt
         });
 
         baseSession.exportMetadata = buildRideExportMetadata(state.exportMetadata, state.route);
@@ -664,10 +662,8 @@ function resolveStartRideSensorSnapshot({ sampling, settings, rideInput, streetV
         ...sampledSensors,
         power,
         cadence: sampledSensors.cadence ?? STREET_VIEW_DEBUG_CADENCE_RPM,
-        heartRate: sampledSensors.heartRate ?? STREET_VIEW_DEBUG_HEART_RATE_BPM,
         powerSourceType: "street-view-debug",
         powerTimestamp: now,
-        heartRateTimestamp: sampledSensors.heartRateTimestamp ?? now,
         powerSignal: {
             observedIntervalMs: DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS,
             estimatedIntervalMs: DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS,

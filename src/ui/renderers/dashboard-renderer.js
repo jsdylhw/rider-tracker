@@ -534,7 +534,7 @@ function buildDebugStreetViewRecord(route) {
         speedKph: 0,
         power: 0,
         cadence: 0,
-        heartRate: 0,
+        heartRate: null,
         segmentName: "街景调试起点"
     };
 }

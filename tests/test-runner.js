@@ -14,7 +14,6 @@ import { suite as homeViewModalSuite } from "./unit/home-view-modal.test.js";
 import { suite as routeServiceElevationSuite } from "./unit/route-service-elevation.test.js";
 import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
-import { suite as heartRateModelSuite } from "./unit/heart-rate-model.test.js";
 import { suite as initialStateSuite } from "./unit/initial-state.test.js";
 import { suite as appStoreSuite } from "./unit/app-store.test.js";
 import { suite as mainViewRenderingSuite } from "./unit/main-view-rendering.test.js";
@@ -91,7 +90,6 @@ const suites = [
     routeServiceElevationSuite,
     gpxSuite,
     physicsSuite,
-    heartRateModelSuite,
     initialStateSuite,
     appStoreSuite,
     mainViewRenderingSuite,

@@ -41,12 +41,11 @@ export const suite = {
                 const session = createLiveRideSession({
                     route: createGeoRoute(),
                     settings,
-                    startedAt: "2026-01-01T00:00:00.000Z",
-                    initialHeartRate: 95
+                    startedAt: "2026-01-01T00:00:00.000Z"
                 });
 
                 assertEqual(session.records.length, 0);
-                assertEqual(session.heartRateState.currentHeartRate, 95);
+                assertEqual("heartRateState" in session, false);
                 assertEqual(session.summary.metrics.ride.elapsedSeconds, 0);
             }
         },
@@ -56,8 +55,7 @@ export const suite = {
                 let session = createLiveRideSession({
                     route: createGeoRoute(),
                     settings,
-                    startedAt: "2026-01-01T00:00:00.000Z",
-                    initialHeartRate: 100
+                    startedAt: "2026-01-01T00:00:00.000Z"
                 });
 
                 session = advanceLiveRideSession({
@@ -111,13 +109,12 @@ export const suite = {
             }
         },
         {
-            name: "advanceLiveRideSession keeps last known heart rate when no new sample arrives",
+            name: "advanceLiveRideSession leaves heart rate unavailable without a sensor sample",
             run() {
                 let session = createLiveRideSession({
                     route: createGeoRoute(),
                     settings,
-                    startedAt: "2026-01-01T00:00:00.000Z",
-                    initialHeartRate: 102
+                    startedAt: "2026-01-01T00:00:00.000Z"
                 });
 
                 session = advanceLiveRideSession({
@@ -136,8 +133,8 @@ export const suite = {
                     dt: 1
                 });
 
-                assertEqual(session.records.at(-1).heartRate, 118);
-                assertEqual(session.heartRateState.currentHeartRate, 118);
+                assertEqual(session.records.at(-1).heartRate, null);
+                assertEqual(session.summary.metrics.heartRate.averageBpm, 118);
             }
         },
         {
@@ -146,8 +143,7 @@ export const suite = {
                 let session = createLiveRideSession({
                     route: createGeoRoute(),
                     settings,
-                    startedAt: "2026-01-01T00:00:00.000Z",
-                    initialHeartRate: 100
+                    startedAt: "2026-01-01T00:00:00.000Z"
                 });
 
                 for (let index = 0; index < 4; index += 1) {
