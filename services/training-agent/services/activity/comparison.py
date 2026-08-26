@@ -96,7 +96,7 @@ def _build_comparison(reports: list[dict[str, Any]]) -> dict[str, Any]:
     longest_duration = max(reports, key=lambda item: float(item.get("duration_min") or 0))
     higher_load = _higher_load_report(reports)
     return {
-        "schema_version": "activity_comparison.v1",
+        "kind": "activity_comparison",
         "count": len(reports),
         "activities": reports,
         "totals": {

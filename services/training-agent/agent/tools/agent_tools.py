@@ -61,11 +61,17 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                 "kind": {
                     "type": "string",
                     "enum": ["current", "recent", "date", "range", "all", "key", "index", "name"],
-                    "description": "选择类型；必须显式提供。",
+                    "description": (
+                        "选择类型；必须显式提供。recent 只表示最近 N 条并搭配 limit；"
+                        "最近 N 天、最近一个月等时间范围必须使用 range。"
+                    ),
                 },
                 "activity_key": {"type": "string"},
                 "activity_index": {"type": "integer"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 1},
+                "limit": {
+                    "type": "integer", "minimum": 1, "maximum": 50, "default": 1,
+                    "description": "结果条数上限；recent 用它表达最近 N 条，range 时在日期过滤后应用。",
+                },
                 "order": {
                     "type": "string",
                     "enum": ["latest", "earliest", "longest"],
@@ -81,14 +87,18 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                     "description": "按本地开始时间过滤；morning 为 04:00-11:59。",
                 },
                 "match": {"type": "string", "enum": ["latest", "earliest"], "default": "latest"},
-                "start_date": {"type": "string", "description": "ISO date"},
-                "end_date": {"type": "string", "description": "ISO date"},
-                "relative_range": {"type": "string", "enum": ["this_week", "this_month", "last_week", "last_month"]},
+                "start_date": {"type": "string", "description": "仅 kind=range；范围起始 ISO date。"},
+                "end_date": {"type": "string", "description": "仅 kind=range；范围结束 ISO date。"},
+                "relative_range": {
+                    "type": "string",
+                    "enum": ["this_week", "this_month", "last_week", "last_month"],
+                    "description": "仅 kind=range；预定义日历范围。",
+                },
                 "days": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 3650,
-                    "description": "最近 N 天（含今天），例如最近一个月可传 30。",
+                    "description": "仅 kind=range；最近 N 天（含今天），例如最近一个月传 days=30。",
                 },
             },
             "required": ["kind"],
@@ -107,11 +117,17 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                 "kind": {
                     "type": "string",
                     "enum": ["current", "recent", "date", "range", "all", "key", "index", "name"],
-                    "description": "选择类型；必须显式提供。",
+                    "description": (
+                        "选择类型；必须显式提供。recent 只表示最近 N 条并搭配 limit；"
+                        "最近 N 天、最近一个月等时间范围必须使用 range。"
+                    ),
                 },
                 "activity_key": {"type": "string"},
                 "activity_index": {"type": "integer"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 1},
+                "limit": {
+                    "type": "integer", "minimum": 1, "maximum": 50, "default": 1,
+                    "description": "结果条数上限；recent 用它表达最近 N 条，range 时在日期过滤后应用。",
+                },
                 "order": {
                     "type": "string",
                     "enum": ["latest", "earliest", "longest"],
@@ -122,10 +138,17 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                 "name": {"type": "string"},
                 "sport_type": {"type": "string", "description": "可传 cycling/running/walking，也接受常见别名。"},
                 "time_of_day": {"type": "string", "enum": ["morning", "afternoon", "evening", "night"]},
-                "start_date": {"type": "string", "description": "ISO date"},
-                "end_date": {"type": "string", "description": "ISO date"},
-                "relative_range": {"type": "string", "enum": ["this_week", "this_month", "last_week", "last_month"]},
-                "days": {"type": "integer", "minimum": 1, "maximum": 3650},
+                "start_date": {"type": "string", "description": "仅 kind=range；范围起始 ISO date。"},
+                "end_date": {"type": "string", "description": "仅 kind=range；范围结束 ISO date。"},
+                "relative_range": {
+                    "type": "string",
+                    "enum": ["this_week", "this_month", "last_week", "last_month"],
+                    "description": "仅 kind=range；预定义日历范围。",
+                },
+                "days": {
+                    "type": "integer", "minimum": 1, "maximum": 3650,
+                    "description": "仅 kind=range；最近 N 天（含今天）。",
+                },
             },
             "required": ["kind"],
         },
@@ -281,7 +304,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
         name="analyze_training_history",
         description=(
             "对已定位的多条活动生成专业、保守且可视化友好的历史分析。"
-            "输出 training_history_analysis.v1，包含当前期/基线期、覆盖率、训练量/强度/规律性证据、"
+            "输出训练历史分析，包含当前期/基线期、覆盖率、训练量/强度/规律性证据、"
             "不可用维度、置信度和趋势序列；不从报告文本提取数值。"
         ),
         input_schema={

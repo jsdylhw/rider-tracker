@@ -128,7 +128,7 @@ def test_key_index_name_and_all_use_uniform_list_result(tmp_path):
     ]
     for arguments, expected in cases:
         result, _ = _resolve(database, arguments)
-        assert result["result"]["schema_version"] == "activity_selection.v2"
+        assert result["result"]["kind"] == "activity_selection"
         assert [item["activity_key"] for item in result["result"]["activities"]] == expected
 
 

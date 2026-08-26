@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from domain.contracts.schemas import ACTIVITY_METRICS_V2
 from fit.analysis.data import get_activity_overview_tool, get_activity_summary_tool
 from fit.analysis.profiles import is_running
 
@@ -81,7 +82,7 @@ def build_activity_metrics(
         for value in (garmin_training_load, aerobic_training_effect, anaerobic_training_effect)
     )
     return {
-        "schema_version": "activity_metrics.v2",
+        "schema_version": ACTIVITY_METRICS_V2,
         "activity_key": activity_key,
         "fit_path": fit_path or identity.get("source_file") or parsed.get("path"),
         "identity": {

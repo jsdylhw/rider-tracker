@@ -27,7 +27,7 @@ def analyze_activity(args: dict[str, Any], context: AgentContext) -> dict[str, A
             "status": "completed",
             "answer": empty_answer,
             "result": {
-                "schema_version": "activity_analysis_skipped.v1",
+                "kind": "activity_analysis_skipped",
                 "reason": "empty_activity_selection",
             },
         }
@@ -102,7 +102,7 @@ def show_selected_activity_report_tool(
         "status": "completed",
         "answer": report,
         "result": {
-            "schema_version": "activity_report.v1",
+            "kind": "activity_report",
             "activity_key": summary.get("activity_key") or activity.get("activity_key"),
             "fit_path": summary.get("fit_path") or activity.get("fit_path"),
             "source": "existing_report",
@@ -168,7 +168,7 @@ def _answer_targeted_question(
         "status": "completed",
         "answer": answer,
         "result": {
-            "schema_version": "activity_report.v1",
+            "kind": "activity_report",
             "activity_key": analysis.get("activity_key") or activity.get("activity_key"),
             "fit_path": analysis.get("fit_path") or fit_path,
             "source": "targeted_query",
@@ -217,7 +217,7 @@ def _analyze_missing_summary(
         "status": "completed",
         "answer": report,
         "result": {
-            "schema_version": "activity_report.v1",
+            "kind": "activity_report",
             "activity_key": analysis.get("activity_key") or activity.get("activity_key"),
             "fit_path": analysis.get("fit_path") or fit_path,
             "source": source,

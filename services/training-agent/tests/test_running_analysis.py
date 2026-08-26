@@ -109,7 +109,7 @@ def test_running_efficiency_rejects_non_running_activity():
     result = get_running_efficiency_tool(parsed)
 
     assert result == {
-        "schema_version": "running_efficiency.v1",
+        "kind": "running_efficiency",
         "available": False,
         "reason": "running_efficiency is only applicable to running activities.",
     }

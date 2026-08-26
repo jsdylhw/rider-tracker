@@ -622,7 +622,7 @@ def _json_object(text: str) -> dict[str, Any]:
 def _training_load(context: AgentContext) -> dict[str, Any] | None:
     last = context.last_tool_result
     result = last.get("result") if isinstance(last, dict) else None
-    if isinstance(result, dict) and result.get("schema_version") == "training_load_summary.v1":
+    if isinstance(result, dict) and result.get("kind") == "training_load_summary":
         return result
     return None
 

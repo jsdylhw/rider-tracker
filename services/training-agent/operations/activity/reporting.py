@@ -33,7 +33,6 @@ def ensure_summary(fit_path: str | Path, *, force: bool = False) -> dict[str, An
         )
     status = "skipped" if result.get("status") == "skipped_existing_summary" else "completed"
     return {
-        "schema_version": "activity_operation_analysis.v1",
         "operation": "ensure_summary",
         "status": status,
         "activity_key": result.get("activity_key"),
@@ -46,7 +45,6 @@ def ensure_summary(fit_path: str | Path, *, force: bool = False) -> dict[str, An
 
 def _failed(path: Path, error: str, message: str, *, raw_result: dict[str, Any] | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {
-        "schema_version": "activity_operation_analysis.v1",
         "operation": "ensure_summary",
         "status": "failed",
         "fit_path": str(path),

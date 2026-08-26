@@ -15,7 +15,6 @@ def resolve_recent(*, limit: int = 5, order: str = "latest", sport_type: str | N
         return _failed("invalid_order", "order must be latest or earliest")
     result = list_activities(limit=limit, order=order, sport_type=sport_type)
     return {
-        "schema_version": "activity_operation_selection.v1",
         "operation": "resolve_recent",
         "status": "completed",
         "selection": {"kind": "recent", "limit": limit, "order": order, "sport_type": sport_type},
@@ -26,7 +25,6 @@ def resolve_recent(*, limit: int = 5, order: str = "latest", sport_type: str | N
 
 def _failed(error: str, message: str) -> dict[str, Any]:
     return {
-        "schema_version": "activity_operation_selection.v1",
         "operation": "resolve_recent",
         "status": "failed",
         "error": error,

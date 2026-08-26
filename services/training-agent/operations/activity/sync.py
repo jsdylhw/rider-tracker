@@ -13,7 +13,6 @@ def sync_recent(*, count: int = 5, force_download: bool = False) -> dict[str, An
         result = sync_garmin_activities_tool(count=count, force_download=force_download)
     except Exception as exc:
         return {
-            "schema_version": "activity_operation_garmin_sync.v1",
             "operation": "sync_recent",
             "status": "failed",
             "error": type(exc).__name__,
@@ -24,7 +23,6 @@ def sync_recent(*, count: int = 5, force_download: bool = False) -> dict[str, An
     failed = int(result.get("failed") or 0)
     index_errors = [item for item in result.get("index_errors") or [] if isinstance(item, dict)]
     return {
-        "schema_version": "activity_operation_garmin_sync.v1",
         "operation": "sync_recent",
         "status": "partial" if failed or index_errors else "completed",
         "activities": result.get("indexed_items") or [],

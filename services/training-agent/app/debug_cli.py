@@ -115,7 +115,7 @@ def storage_status_command() -> None:
     """检查 SQLite 中的活动数和各报告版本数量。"""
     store = ActivityStore()
     _echo_json({
-        "schema_version": "activity_storage_status.v1",
+        "kind": "activity_storage_status",
         "activity_count": store.count_activities(),
         "report_counts": store.report_counts(),
     })

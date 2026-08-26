@@ -19,9 +19,33 @@ Python 返回的公开结果由 `answer` 和 `presentations` 组成：正文进�
 趋势曲线和 Markdown 进入结果工作区。首页 Agent 与路线规划使用不同 session；路线候选仍在
 专用路线页面完成预览、语义修改和确认。
 
+单活动定位可能先产生轻量 `kind=activity_selection`，随后产生完整报告或确定性检查结果。
+Presentation 投影采用“更完整结果覆盖定位预览”的规则：存在 `kind=activity_report` 或
+`inspect_selection` 的持久化 `analysis_result.v1` 时，不再重复投影 selection 的指标卡和活动过程曲线。
+
+### Schema 与内部结果边界
+
+稳定契约统一登记在
+[`domain/contracts/schemas.py`](../services/training-agent/domain/contracts/schemas.py)。只有跨进程、
+持久化、缓存恢复或重放的数据才使用 `schema_version`。普通 Python 函数和 Agent 工具的临时结果
+使用 `kind` 或 `operation`，不再为每个函数创建独立版本协议。
+
+当前浏览器只需要理解 `agent_turn.v1` 和 `presentation.v1`。活动定位、完整报告、训练趋势和
+Strava 路段发现是 Python 投影层内部的 result kind；投影层仍兼容旧日志中的
+`activity_selection.v2`、`activity_report.v1` 等名称，但新结果不再生成这些伪 schema。
+
+SQLite 与可恢复状态暂时保留现有格式，包括 `activity_metrics.v2`、`activity_features.v1`、
+`llm_fit_file_analysis.v2`、`workflow_run.v1`、`analysis_result.v1` 和 `route_plan.v1`。这些格式
+只有在提供显式迁移和兼容验证后才能改名或合并。
+
 后续语音能力沿用同一边界，但拆成两条输入链路：训练播报读取已经存储的活动、课表和路线状态，
 不强制依赖功率计实时数据；地点介绍从 GPX/当前路线抽取少量代表坐标，查询地点资料后交给模型
 整理成短播报稿，最后由本地 TTS 合成。地点查询、文案生成和 TTS 都不得进入实时 FTMS 控制循环。
+
+路线讲解的前端契约和本地时间线已按 [`route_narration_plan.v1`](./route-narration.md)
+建立。进入街景后由用户决定是否启动独立 RouteNarrationAgent；Agent 通过 Google Places
+搜索和来源读取工具生成有来源的结构化卡片。浏览器只缓存本次骑行，同一路线返回街景不会
+重复请求。当前尚未接入通用网页搜索、持久化讲解计划和本地 TTS。
 
 国外环线地点检索采用首个已解析地点作为局部锚点，后续 Google Places 查询带位置偏置，并按
 直线距离选择同一国家内最近的结果。存在目标距离时，途经点不得超过

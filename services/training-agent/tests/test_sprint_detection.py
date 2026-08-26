@@ -32,7 +32,7 @@ def _parsed_with_sprints() -> dict:
 def test_short_sprint_detector_returns_concrete_windows():
     result = detect_sprints(_parsed_with_sprints())
 
-    assert result["schema_version"] == "sprint_detection.v1"
+    assert result["kind"] == "sprint_detection"
     assert result["count"] == 2
     assert result["segments"][0]["start_s"] == 10.0
     assert result["segments"][0]["duration_s"] == 7.0

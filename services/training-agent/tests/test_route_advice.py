@@ -74,7 +74,7 @@ def test_generate_route_advice_basic():
 
     assert result["status"] == "completed"
     assert "有氧耐力" in result["answer"]
-    assert result["result"]["schema_version"] == "route_advice.v1"
+    assert result["result"]["kind"] == "route_advice"
     assert result["result"]["route_request"]["location"] == "上海青浦区"
     assert result["result"]["route_request"]["duration_min"] == 120
     assert result["result"]["strategy"]["ride_type"] == "有氧耐力"
@@ -130,7 +130,7 @@ def test_generate_route_advice_with_training_load():
             "step_name": "summarize_recent_training_load",
             "status": "completed",
             "result": {
-                "schema_version": "training_load_summary.v1",
+                "kind": "training_load_summary",
                 "activity_count": 3,
                 "intensity": {"total_tss": 280, "avg_if": 0.82},
                 "recency": {"days_since_last_activity": 1},

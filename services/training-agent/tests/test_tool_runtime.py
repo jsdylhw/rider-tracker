@@ -178,6 +178,8 @@ def test_main_agent_exposes_explicit_detail_query_instead_of_implicit_targeted_a
     assert "analyze_training_history" in names
     resolver_schema = next(tool for tool in MAIN_AGENT_TOOLS if tool.name == "resolve_activities").input_schema
     assert resolver_schema["properties"]["days"]["minimum"] == 1
+    assert "仅 kind=range" in resolver_schema["properties"]["days"]["description"]
+    assert "recent 只表示最近 N 条" in resolver_schema["properties"]["kind"]["description"]
     assert "longest" in resolver_schema["properties"]["order"]["enum"]
     assert resolver_schema["required"] == ["kind"]
     assert "user_request" not in next(tool for tool in MAIN_AGENT_TOOLS if tool.name == "analyze_activity").input_schema["properties"]

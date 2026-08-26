@@ -95,7 +95,7 @@ def calculate_history_metrics(
     })
 
     result = {
-        "schema_version": "training_history_metrics.v1",
+        "kind": "training_history_metrics",
         "scope": scope or {},
         "group_by": group_by,
         "coverage": {

@@ -74,7 +74,7 @@ def discover_activity_segments(activity_id: str, arguments: dict[str, Any]) -> d
             "segments": candidates,
         }
     return {
-        "schema_version": "segment_selection.v1",
+        "kind": "segment_selection",
         "activity_id": activity_id,
         "segment_type": segment_type,
         "count": len(candidates),
@@ -209,7 +209,7 @@ def _inspect_collection_with_atomic_tools(activities: list[dict[str, Any]]) -> d
             "source": source,
         })
     return {
-        "schema_version": "activity_collection_inspection.v1",
+        "kind": "activity_collection_inspection",
         "status": "completed" if rows else "unavailable",
         "selected_count": len(activities),
         "included_count": len(rows),
@@ -253,7 +253,7 @@ def _inspect_segments_with_atomic_tools(
 
 def _compare_segments(segments: list[dict[str, Any]]) -> dict[str, Any]:
     return {
-        "schema_version": "analysis_comparison.v1",
+        "kind": "analysis_comparison",
         "status": "completed" if len(segments) >= 2 else "unavailable",
         "comparison_type": "segments",
         "segments": segments,
@@ -268,7 +268,7 @@ def _compare_activities_with_atomic_tools(activities: list[dict[str, Any]]) -> d
     inspection = _inspect_collection_with_atomic_tools(activities)
     rows = inspection.get("activities") or []
     return {
-        "schema_version": "analysis_comparison.v1",
+        "kind": "analysis_comparison",
         "status": "completed" if len(rows) >= 2 else "unavailable",
         "comparison_type": "activities",
         "activities": rows,

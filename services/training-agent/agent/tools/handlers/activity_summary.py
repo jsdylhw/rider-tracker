@@ -39,7 +39,7 @@ def execute_summarize_activity_range(
             "status": "completed",
             "answer": answer,
             "result": {
-                "schema_version": "activity_range_summary.v1",
+                "kind": "activity_range_summary",
                 "count": 0,
                 "scope": scope,
                 "activities": [],
@@ -50,7 +50,7 @@ def execute_summarize_activity_range(
     total_distance = round(sum(float(item.get("distance_km") or 0) for item in normalized), 2)
     total_duration = round(sum(float(item.get("duration_min") or 0) for item in normalized), 1)
     result = {
-        "schema_version": "activity_range_summary.v1",
+        "kind": "activity_range_summary",
         "count": len(normalized),
         "scope": scope,
         "totals": {

@@ -126,6 +126,6 @@ def test_history_uses_v2_report_only_as_legacy_fallback(tmp_path):
 
     history = store.query_history(before="2026-08-14T00:00:00", days=7)
 
-    assert history["schema_version"] == "activity_facts_history.v1"
+    assert history["kind"] == "activity_facts_history"
     assert history["count"] == 1
     assert history["activities"][0]["summary_label"] == "晨间骑行"

@@ -70,6 +70,30 @@ def test_analyze_history_must_be_explicitly_enabled(tmp_path, monkeypatch):
     assert calls == [(managed_fit, {"use_history": True, "force": False})]
 
 
+def test_route_narration_endpoint_runs_independent_agent(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(
+        api,
+        "run_route_narration_agent",
+        lambda request: calls.append(request) or {"schema_version": "route_narration_plan.v1"},
+    )
+    response = client.post("/api/route-narrations/prepare", json={
+        "route_fingerprint": "route_1234abcd",
+        "route_name": "测试路线",
+        "total_distance_m": 10000,
+        "estimated_duration_min": 30,
+        "samples": [
+            {"sample_id": "sample_1", "route_distance_m": 0, "latitude": 30, "longitude": 120},
+            {"sample_id": "sample_2", "route_distance_m": 10000, "latitude": 30.1, "longitude": 120.1},
+        ],
+    })
+
+    assert response.status_code == 200
+    assert response.json()["schema_version"] == "route_narration_plan.v1"
+    assert calls[0]["route_fingerprint"] == "route_1234abcd"
+
+
 def test_ingest_fit_uses_deterministic_managed_file_service(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
     rider_root = tmp_path / "rider"
@@ -393,7 +417,8 @@ def test_chat_returns_only_public_execution_and_presentation_fields(tmp_path, mo
     body = response.json()
 
     assert response.status_code == 200
-    assert set(body) == {"answer", "status", "intent", "skill_id", "executions", "presentations"}
+    assert set(body) == {"schema_version", "answer", "status", "intent", "skill_id", "executions", "presentations"}
+    assert body["schema_version"] == "agent_turn.v1"
     assert body["executions"] == [{
         "index": 0,
         "tool": "analyze_training_history",

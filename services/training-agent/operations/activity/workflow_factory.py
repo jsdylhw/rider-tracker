@@ -35,7 +35,7 @@ def create_local_activity_run(
     resolution = resolve_recent(limit=limit, order=order, sport_type=sport_type)
     if resolution.get("status") != "completed":
         return {
-            "schema_version": "activity_run_factory.v1",
+            "operation": "create_activity_run",
             "status": "failed",
             "error": resolution.get("error") or "activity_selection_failed",
             "message": resolution.get("message") or "无法定位本地活动",
@@ -43,7 +43,7 @@ def create_local_activity_run(
     activities = resolution.get("activities") or []
     if not activities:
         return {
-            "schema_version": "activity_run_factory.v1",
+            "operation": "create_activity_run",
             "status": "no_activities",
             "selection": resolution.get("selection"),
             "message": "没有符合条件的本地活动；未创建工作流。",
@@ -73,7 +73,7 @@ def create_activity_run_from_activities(
     rows = [dict(activity) for activity in activities if isinstance(activity, dict) and activity.get("activity_key")]
     if not rows:
         return {
-            "schema_version": "activity_run_factory.v1",
+            "operation": "create_activity_run",
             "status": "no_activities",
             "message": "没有带 activity_key 的活动；未创建工作流。",
         }
@@ -111,7 +111,7 @@ def create_activity_run_from_activities(
     overview = workflow_overview(run)
     path = save_workflow(run, directory=target_directory)
     return {
-        "schema_version": "activity_run_factory.v1",
+        "operation": "create_activity_run",
         "status": "created",
         "run": run,
         "run_path": str(path),

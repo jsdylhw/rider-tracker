@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from agent.runtime.presentations import PresentationBlock
+from domain.contracts.schemas import AGENT_TURN_V1
 
 
 @dataclass(frozen=True)
@@ -121,6 +122,7 @@ def public_turn_dict(value: dict[str, Any]) -> dict[str, Any]:
         if isinstance(item, dict)
     ]
     return {
+        "schema_version": AGENT_TURN_V1,
         "answer": str(value.get("answer") or ""),
         "status": str(value.get("status") or ""),
         "intent": str(value.get("intent") or ""),

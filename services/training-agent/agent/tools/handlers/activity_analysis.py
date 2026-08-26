@@ -7,6 +7,7 @@ from typing import Any
 from agent.main_agent.context import AgentContext
 from agent.analysis.workspace import AnalysisNavigationService
 from domain.analysis.models import AnalysisRequest
+from domain.contracts.schemas import ANALYSIS_RESULT_V1
 from services.activity.analysis import analyze_resolved_target, discover_activity_segments
 from storage.repositories.analysis import AnalysisStore
 
@@ -76,7 +77,7 @@ def navigate_selection(arguments: dict[str, Any], context: AgentContext) -> dict
         "step": "navigate_selection",
         "status": "completed",
         "result": {
-            "schema_version": "analysis_navigation_result.v1",
+            "kind": "analysis_navigation_result",
             "workspace_id": navigation.get("workspace_id"),
             "current_focus": (navigation.get("focus_stack") or [None])[-1],
             "root_scope": navigation.get("root_scope"),
@@ -108,7 +109,7 @@ def _execute_and_store(request: AnalysisRequest, context: AgentContext) -> dict[
     )
     navigation.set_last_result(context, stored["id"])
     payload = {
-        "schema_version": "analysis_result.v1",
+        "schema_version": ANALYSIS_RESULT_V1,
         "result_id": stored["id"],
         "workspace_id": workspace_id,
         "request": service_result.get("request") or {},

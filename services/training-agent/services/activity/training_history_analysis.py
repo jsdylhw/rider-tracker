@@ -114,7 +114,7 @@ def _analysis_document(
         )
 
     return {
-        "schema_version": "training_history_analysis.v1",
+        "kind": "training_history_analysis",
         "scope": {
             "sport_type": sport_type,
             "group_by": metrics.get("group_by"),

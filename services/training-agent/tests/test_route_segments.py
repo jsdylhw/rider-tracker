@@ -81,7 +81,7 @@ def test_enriches_route_with_nearby_segment_and_filters_far_sample():
     assert [item["segment_id"] for item in segments] == [101]
     assert segments[0]["average_grade_percent"] == 2.4
     assert segments[0]["geometry"]["type"] == "LineString"
-    assert result["schema_version"] == "route_segment_discovery.v1"
+    assert result["kind"] == "route_segment_discovery"
     assert result["segment_count"] == 1
     assert "geometry" not in result["segments"][0]
 

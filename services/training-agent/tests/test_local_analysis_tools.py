@@ -337,7 +337,7 @@ class TestCallFitAnalysisTool:
         result = call_fit_analysis_tool("scan_activity_segments", {}, parsed=sample_parsed_fit, history_before=None)
         assert result["tool"] == "scan_activity_segments"
         assert result["result"]["available"] is True
-        assert result["result"]["schema_version"] == "activity_scan.v1"
+        assert result["result"]["kind"] == "activity_scan"
 
     def test_get_history_disabled(self, sample_parsed_fit):
         result = call_fit_analysis_tool("get_history", {}, parsed=sample_parsed_fit, history_before=None)
@@ -665,7 +665,7 @@ class TestAnalyzeFitFileResultTimes:
         monkeypatch.setattr(
             "storage.repositories.activity.ActivityStore.query_history",
             lambda self, **kwargs: {
-                "schema_version": "activity_report_history.v1",
+                "kind": "activity_report_history",
                 "count": 1,
                 "activities": [
                     {

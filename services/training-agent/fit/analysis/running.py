@@ -52,7 +52,7 @@ def analyze_running_efficiency(records: list[dict[str, Any]]) -> dict[str, Any]:
     speed_column = "enhanced_speed" if "enhanced_speed" in df.columns else "speed"
     if df.empty or "elapsed_s" not in df.columns or speed_column not in df.columns:
         return {
-            "schema_version": "running_efficiency.v1",
+            "kind": "running_efficiency",
             "available": False,
             "reason": "Running efficiency requires timestamped speed records.",
         }
@@ -60,7 +60,7 @@ def analyze_running_efficiency(records: list[dict[str, Any]]) -> dict[str, Any]:
     active = df[df[speed_column].notna() & (df[speed_column].astype(float) > 0)].copy()
     if len(active) < 12:
         return {
-            "schema_version": "running_efficiency.v1",
+            "kind": "running_efficiency",
             "available": False,
             "reason": "Too few active running records for an early/late comparison.",
             "active_record_count": int(len(active)),
@@ -71,7 +71,7 @@ def analyze_running_efficiency(records: list[dict[str, Any]]) -> dict[str, Any]:
     span = end - start
     if span <= 0:
         return {
-            "schema_version": "running_efficiency.v1",
+            "kind": "running_efficiency",
             "available": False,
             "reason": "Running records have no usable elapsed-time span.",
         }
@@ -80,7 +80,7 @@ def analyze_running_efficiency(records: list[dict[str, Any]]) -> dict[str, Any]:
     late = active[active["elapsed_s"] >= start + span * 0.70]
     if len(early) < 4 or len(late) < 4:
         return {
-            "schema_version": "running_efficiency.v1",
+            "kind": "running_efficiency",
             "available": False,
             "reason": "Too few records in the early or late comparison window.",
         }
@@ -91,7 +91,7 @@ def analyze_running_efficiency(records: list[dict[str, Any]]) -> dict[str, Any]:
     late_pace = late_metrics.get("avg_pace_s_per_km")
     pace_change = _difference(late_pace, early_pace)
     return _drop_none({
-        "schema_version": "running_efficiency.v1",
+        "kind": "running_efficiency",
         "available": True,
         "comparison_basis": "first_last_active_30_percent",
         "active_record_count": int(len(active)),

@@ -56,7 +56,7 @@ def generate_route_advice(
             "status": "completed",
             "answer": raw or "暂时无法生成路线建议，请确认位置和骑行目标后再试。",
             "result": {
-                "schema_version": "route_advice.v1",
+                "kind": "route_advice",
                 "error": "unparseable_llm_response",
                 "raw": raw,
             },
@@ -67,7 +67,7 @@ def generate_route_advice(
         "status": "completed",
         "answer": _answer_text(parsed, raw),
         "result": {
-            "schema_version": "route_advice.v1",
+            "kind": "route_advice",
             "route_request": {
                 "location": location,
                 "duration_min": duration,

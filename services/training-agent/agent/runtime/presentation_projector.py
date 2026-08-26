@@ -12,32 +12,55 @@ from services.activity.presentation import build_activity_profile
 def project_presentations(executions: list[ToolExecution]) -> list[PresentationBlock]:
     """Return deterministic UI blocks for the tool schemas understood by the UI."""
     blocks: list[PresentationBlock] = []
-    has_activity_report = any(
-        str(_schema_payload(execution.result).get("schema_version") or "") == "activity_report.v1"
+    has_detailed_single_activity = any(
+        _result_kind(_schema_payload(execution.result)) == "activity_report"
+        or (
+            execution.tool == "inspect_selection"
+            and _result_kind(_schema_payload(execution.result)) == "analysis_result"
+        )
         for execution in executions
     )
     for execution in executions:
         payload = _schema_payload(execution.result)
-        schema_version = str(payload.get("schema_version") or "")
-        if schema_version == "training_history_analysis.v1":
+        result_kind = _result_kind(payload)
+        if result_kind == "training_history_analysis":
             blocks.extend(_training_history_blocks(execution, payload))
-        elif schema_version == "activity_report.v1":
+        elif result_kind == "activity_report":
             blocks.extend(_activity_report_blocks(execution, payload))
-        elif schema_version == "analysis_result.v1":
+        elif result_kind == "analysis_result":
             blocks.extend(_inspection_blocks(execution, payload))
-        elif schema_version == "activity_comparison.v1":
+        elif result_kind == "activity_comparison":
             blocks.extend(_activity_comparison_blocks(execution, payload))
-        elif schema_version == "route_plan.v1":
+        elif result_kind == "route_plan":
             blocks.extend(_route_plan_blocks(execution, payload))
-        elif schema_version == "route_segment_discovery.v1":
+        elif result_kind == "route_segment_discovery":
             blocks.extend(_route_segment_blocks(execution, payload))
         elif (
-            schema_version == "activity_selection.v2"
+            result_kind == "activity_selection"
             and execution.tool == "resolve_activities"
-            and not has_activity_report
+            and not has_detailed_single_activity
         ):
             blocks.extend(_resolved_activity_blocks(execution, payload))
     return blocks
+
+
+_LEGACY_RESULT_KINDS = {
+    "training_history_analysis.v1": "training_history_analysis",
+    "activity_report.v1": "activity_report",
+    "analysis_result.v1": "analysis_result",
+    "activity_comparison.v1": "activity_comparison",
+    "route_plan.v1": "route_plan",
+    "route_segment_discovery.v1": "route_segment_discovery",
+    "activity_selection.v2": "activity_selection",
+}
+
+
+def _result_kind(payload: dict[str, Any]) -> str:
+    """Use an internal discriminator while accepting old logged payloads."""
+    kind = str(payload.get("kind") or "")
+    if kind:
+        return kind
+    return _LEGACY_RESULT_KINDS.get(str(payload.get("schema_version") or ""), "")
 
 
 def _route_plan_blocks(
@@ -366,7 +389,7 @@ def _schema_payload(result: Any) -> dict[str, Any]:
     if not isinstance(result, dict):
         return {}
     nested = result.get("result")
-    if isinstance(nested, dict) and nested.get("schema_version"):
+    if isinstance(nested, dict) and (nested.get("kind") or nested.get("schema_version")):
         return nested
     return result
 
@@ -667,7 +690,7 @@ def _source(execution: ToolExecution, payload: dict[str, Any]) -> dict[str, Any]
     return {
         "execution_index": execution.index,
         "tool": execution.tool,
-        "result_schema": payload.get("schema_version"),
+        "result_kind": _result_kind(payload),
     }
 
 

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from domain.contracts.schemas import ACTIVITY_FEATURES_V1, ACTIVITY_METRICS_V2
 from domain.analysis.artifacts import (
     SUMMARY_SCHEMA_V2,
     build_history_view,
@@ -211,10 +212,10 @@ class ActivityStore:
         activity_id = str(activity_id).strip()
         if self.get_activity(activity_id) is None:
             raise KeyError(f"activity must be indexed before saving facts: {activity_id}")
-        if metrics.get("schema_version") != "activity_metrics.v2":
-            raise ValueError("metrics must use activity_metrics.v2")
-        if features.get("schema_version") != "activity_features.v1":
-            raise ValueError("features must use activity_features.v1")
+        if metrics.get("schema_version") != ACTIVITY_METRICS_V2:
+            raise ValueError(f"metrics must use {ACTIVITY_METRICS_V2}")
+        if features.get("schema_version") != ACTIVITY_FEATURES_V1:
+            raise ValueError(f"features must use {ACTIVITY_FEATURES_V1}")
 
         now = _now()
         extractor_version = str(features.get("extractor_version") or "unknown")
@@ -304,8 +305,8 @@ class ActivityStore:
             raise ValueError(f"unsupported report schema: {document.get('schema_version')!r}")
         now = _now()
         metrics = document.get("activity_metrics") if isinstance(document.get("activity_metrics"), dict) else {}
-        if metrics.get("schema_version") != "activity_metrics.v2":
-            raise ValueError("report activity_metrics must use activity_metrics.v2")
+        if metrics.get("schema_version") != ACTIVITY_METRICS_V2:
+            raise ValueError(f"report activity_metrics must use {ACTIVITY_METRICS_V2}")
         analysis = get_analysis_summary(document)
         canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
         input_hash = str(document.get("input_hash") or hashlib.sha256(canonical.encode("utf-8")).hexdigest())
@@ -457,7 +458,7 @@ class ActivityStore:
         if limit:
             rows = rows[-int(limit):]
         return {
-            "schema_version": "activity_facts_history.v1",
+            "kind": "activity_facts_history",
             "before": before,
             "days": days,
             "limit": limit,
@@ -657,7 +658,7 @@ def _history_view_from_metrics(activity: dict[str, Any], metrics: dict[str, Any]
     power = metrics.get("power") if isinstance(metrics.get("power"), dict) else {}
     heart_rate = metrics.get("heart_rate") if isinstance(metrics.get("heart_rate"), dict) else {}
     return _without_none({
-        "schema_version": "activity_facts_history.v1",
+        "kind": "activity_facts_history",
         "activity_key": metrics.get("activity_key") or activity.get("activity_key"),
         "file_path": activity.get("fit_path"),
         "start_time": identity.get("start_time_local") or activity.get("start_time_local"),
@@ -743,7 +744,7 @@ def _now() -> str:
 
 def _same_path(left: Any, right: Any) -> bool:
     try:
-        return Path(str(left)).expanduser().resolve() == Path(str(right)).expanduser().resolve()
+        return resolve_project_path(str(left)) == resolve_project_path(str(right))
     except (OSError, ValueError):
         return str(left).replace("\\", "/") == str(right).replace("\\", "/")
 

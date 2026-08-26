@@ -42,7 +42,7 @@ def test_professional_history_analysis_returns_stable_ui_contract(tmp_path, monk
 
     assert output["status"] == "completed"
     result = output["result"]
-    assert result["schema_version"] == "training_history_analysis.v1"
+    assert result["kind"] == "training_history_analysis"
     assert result["scope"]["sport_type"] == "cycling"
     assert result["scope"]["baseline_period"]["label"] == "2026-W19"
     assert result["scope"]["current_period"]["label"] == "2026-W20"

@@ -65,7 +65,7 @@ def _default_output(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "completed",
             "result": {
-                "schema_version": "activity_selection.v2",
+                "kind": "activity_selection",
                 "request": dict(arguments),
                 "count": limit,
                 "activities": activities,
@@ -115,7 +115,7 @@ def _default_output(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "completed",
             "result": {
-                "schema_version": "training_history_metrics.v1",
+                "kind": "training_history_metrics",
                 "group_by": arguments.get("group_by") or "week",
                 "coverage": {"included_activity_count": 8, "missing_activity_count": 0},
                 "comparison": {
@@ -131,7 +131,7 @@ def _default_output(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "completed",
             "result": {
-                "schema_version": "training_history_analysis.v1",
+                "kind": "training_history_analysis",
                 "coverage": {"activity_count": 8, "comparable_session_count": 0},
                 "conclusion": {
                     "assessment": "mixed", "confidence": "low",

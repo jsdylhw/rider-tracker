@@ -54,7 +54,7 @@ def submit_activity_report_rebuild(
         job_id = uuid4().hex
         now = _now()
         job = {
-            "schema_version": "activity_report_job.v1",
+            "kind": "activity_report_job",
             "job_id": job_id,
             "signature": signature,
             "scope": scope,
@@ -88,7 +88,7 @@ def get_activity_report_job(job_id: str) -> dict[str, Any]:
         job = _JOBS.get(str(job_id))
         if job is None:
             return {
-                "schema_version": "activity_report_job.v1",
+                "kind": "activity_report_job",
                 "status": "not_found",
                 "job_id": str(job_id),
             }

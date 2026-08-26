@@ -83,7 +83,7 @@ def test_history_metrics_groups_by_week_and_uses_weighted_averages(tmp_path, mon
 
     assert output["status"] == "completed"
     result = output["result"]
-    assert result["schema_version"] == "training_history_metrics.v1"
+    assert result["kind"] == "training_history_metrics"
     assert result["coverage"]["source_counts"] == {"stored_report_v2": 3}
     assert result["coverage"]["metric_counts"]["tss"] == 3
     assert result["overall"]["totals"]["duration_min"] == 240.0

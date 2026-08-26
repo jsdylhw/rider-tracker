@@ -1,6 +1,6 @@
 # Training history output contract
 
-Use `training_history_analysis.v1` as the evidence source. Present:
+Use the internal `kind=training_history_analysis` result as the evidence source. The presentation layer owns conversion to the versioned Web UI schema. Present:
 
 1. A direct conclusion naming the current and baseline periods and its confidence.
 2. A compact evidence table by dimension, with current value, baseline value, change and interpretation.

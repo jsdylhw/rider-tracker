@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from domain.activity.models import ActivityHandle
+from domain.contracts.schemas import ANALYSIS_WORKSPACE_V1
 from agent.main_agent.context import AgentContext
 from storage.repositories.activity import ActivityStore
 from storage.repositories.analysis import AnalysisStore
@@ -166,7 +167,7 @@ class AnalysisNavigationService:
 
 def _empty_navigation(workspace_id: str) -> dict[str, Any]:
     return {
-        "schema_version": "analysis_navigation.v1",
+        "schema_version": ANALYSIS_WORKSPACE_V1,
         "workspace_id": workspace_id,
         "root_scope": None,
         "focus_stack": [],

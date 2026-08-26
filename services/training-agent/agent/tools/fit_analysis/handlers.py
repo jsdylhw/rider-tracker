@@ -83,7 +83,7 @@ def build_tool_handlers(
 
     def _history():
         return llm_safe_history(history_before) or {
-            "schema_version": "file_training_history.v1",
+            "kind": "file_training_history",
             "count": 0,
             "activities": [],
             "note": "History was not enabled or no previous activities exist.",

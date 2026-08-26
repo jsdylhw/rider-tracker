@@ -26,7 +26,7 @@ def scan_activity_segments(
     df = records_dataframe(parsed.get("records", []))
     if df.empty or "elapsed_s" not in df.columns:
         return {
-            "schema_version": "activity_scan.v1",
+            "kind": "activity_scan",
             "available": False,
             "reason": "No records or elapsed_s data available.",
         }
@@ -34,7 +34,7 @@ def scan_activity_segments(
     df = _normalize_scan_columns(df)
     if df.empty:
         return {
-            "schema_version": "activity_scan.v1",
+            "kind": "activity_scan",
             "available": False,
             "reason": "No usable scan columns available.",
         }
@@ -50,7 +50,7 @@ def scan_activity_segments(
     quality = _build_data_quality(parsed, df, baselines=baselines)
 
     return prune_empty_values({
-        "schema_version": "activity_scan.v1",
+        "kind": "activity_scan",
         "available": True,
         "settings": {
             "window_seconds": window_seconds,

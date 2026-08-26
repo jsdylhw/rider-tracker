@@ -123,7 +123,7 @@ def run_activity_query_agent(fit_path: str | Path, *, question: str) -> dict[str
         exact_window=raw_evidence is not None,
     )
     result.update({
-        "schema_version": "activity_query_answer.v1",
+        "kind": "activity_query_answer",
         "status": "answered_query",
         "activity_key": activity_key,
         "fit_path": project_relative_or_absolute(path),

@@ -41,7 +41,7 @@ def detect_sprints(parsed: dict[str, Any], *, max_segments: int = 12) -> dict[st
     ]
     candidates = sorted(candidates, key=lambda item: float(item.get("start_s") or 0))
     return {
-        "schema_version": "sprint_detection.v1",
+        "kind": "sprint_detection",
         "available": True,
         "detector": "cycling_power_sprint_v1",
         "settings": {
@@ -143,7 +143,7 @@ def _speed_column(df: Any) -> str | None:
 
 def _unavailable(reason: str) -> dict[str, Any]:
     return {
-        "schema_version": "sprint_detection.v1",
+        "kind": "sprint_detection",
         "available": False,
         "reason": reason,
         "count": 0,

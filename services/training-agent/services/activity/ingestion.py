@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from domain.contracts.schemas import ACTIVITY_DETAIL_V1, FIT_INGESTION_V1
 from services.activity.fit_loader import parse_activity_fit as parse_fit
 from project_paths import resolve_project_path
 from services.activity.catalog import upsert_activity_from_fit
@@ -13,7 +14,7 @@ from storage.repositories.activity import ActivityStore, file_content_key
 
 
 DETAIL_ARTIFACT_TYPE = "activity_detail"
-DETAIL_SCHEMA_VERSION = "activity_detail.v1"
+DETAIL_SCHEMA_VERSION = ACTIVITY_DETAIL_V1
 SEMICIRCLES_TO_DEGREES = 180 / 2147483648
 
 
@@ -57,7 +58,7 @@ def ingest_fit_activity(
         payload=detail,
     )
     return {
-        "schema_version": "fit_ingestion.v1",
+        "schema_version": FIT_INGESTION_V1,
         "status": "completed",
         "activity": activity,
         "detail": detail,

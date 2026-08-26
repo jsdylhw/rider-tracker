@@ -18,7 +18,7 @@ def load_activity_index(path: str | Path | None = None) -> dict[str, Any]:
     """Return the catalogue shape expected by existing selection handlers."""
     rows = ActivityStore(path).list_activity_entries()
     return {
-        "schema_version": "activity_catalog.v1",
+        "kind": "activity_catalog",
         "storage": "sqlite",
         "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "activities": _with_activity_indices(rows),
@@ -150,7 +150,7 @@ def list_activities(
         rows = rows[-max(1, int(limit)) :] if limit else rows
         rows = list(reversed(rows))
     return {
-        "schema_version": "activity_list.v1",
+        "kind": "activity_list",
         "count": len(rows),
         "order": order_key,
         "time_of_day": _normalize_time_of_day(time_of_day),
@@ -191,11 +191,11 @@ def resolve_activity(
         ]
 
     if not rows:
-        return {"schema_version": "activity_resolve.v1", "matched_count": 0, "activity": None, "candidates": []}
+        return {"kind": "activity_resolve", "matched_count": 0, "activity": None, "candidates": []}
 
     chosen = rows[0] if _activity_order_key(match) == "earliest" else rows[-1]
     return {
-        "schema_version": "activity_resolve.v1",
+        "kind": "activity_resolve",
         "matched_count": len(rows),
         "activity": _compact_activity(chosen),
         "candidates": [_compact_activity(row) for row in rows[-10:]],
@@ -219,7 +219,7 @@ def get_activities_in_range(
     total_duration_s = sum(float(row.get("duration_s") or 0) for row in rows)
     total_distance_m = sum(float(row.get("distance_m") or 0) for row in rows)
     return {
-        "schema_version": "activity_range.v1",
+        "kind": "activity_range",
         "start_date": start_date,
         "end_date": end_date,
         "sport_type": sport_type,

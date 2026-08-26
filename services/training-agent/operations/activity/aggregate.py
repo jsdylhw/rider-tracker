@@ -34,7 +34,6 @@ def aggregate_summaries(activities: Iterable[dict[str, Any]]) -> dict[str, Any]:
             "load_label": analysis.get("load_label"),
         })
     return {
-        "schema_version": "activity_operation_aggregate.v1",
         "operation": "aggregate_summaries",
         "status": "partial" if omitted else "completed",
         "included_count": len(included),

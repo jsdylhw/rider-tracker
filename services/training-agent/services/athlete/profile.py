@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from domain.contracts.schemas import ATHLETE_PROFILE_V1
 from domain.athlete import (
     DEFAULT_ATHLETE_PATH,
     athlete_profile_to_rider_settings,
@@ -37,7 +38,7 @@ def update_athlete_profile(patch: dict[str, Any]) -> dict[str, Any]:
 def athlete_profile_response(profile: dict[str, Any] | None = None) -> dict[str, Any]:
     resolved = profile if profile is not None else get_athlete_profile()
     return {
-        "schema_version": "athlete_profile.v1",
+        "schema_version": ATHLETE_PROFILE_V1,
         "configured": bool(resolved),
         "profile": resolved,
         "rider_settings": athlete_profile_to_rider_settings(resolved),

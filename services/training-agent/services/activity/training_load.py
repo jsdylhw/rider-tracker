@@ -115,7 +115,7 @@ def _build_training_load_summary(
     avg_if = round(sum(if_values) / len(if_values), 3) if if_values else None
     recency = _recency(sorted_reports)
     return {
-        "schema_version": "training_load_summary.v1",
+        "kind": "training_load_summary",
         "scope": scope,
         "activity_count": len(sorted_reports),
         "missing_summary_count": len(missing),

@@ -56,7 +56,7 @@ def test_scan_activity_segments_detects_key_segments():
     result = scan_activity_segments(_parsed_for_scan(), window_seconds=30, step_seconds=10, max_segments=10)
 
     assert result["available"] is True
-    assert result["schema_version"] == "activity_scan.v1"
+    assert result["kind"] == "activity_scan"
     assert result["baselines"]["ftp_w"] == 240.0
 
     effort_types = {effort["type"] for effort in result["efforts"]}
@@ -69,7 +69,7 @@ def test_scan_activity_segments_handles_empty_records():
     result = scan_activity_segments({"records": []})
 
     assert result["available"] is False
-    assert result["schema_version"] == "activity_scan.v1"
+    assert result["kind"] == "activity_scan"
 
 
 def test_scan_activity_segments_handles_records_without_altitude():

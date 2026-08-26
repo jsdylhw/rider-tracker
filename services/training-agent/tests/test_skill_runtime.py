@@ -43,6 +43,8 @@ def test_history_skill_loads_professional_methodology_and_output_contract():
     assert "# Endurance history methodology" in body
     assert "# Training history output contract" in body
     assert "two aligned evidence lanes" in body
+    assert '"最近 30 天" or "最近一个月" must be `kind=range, days=30`' in body
+    assert "training_history_analysis.v1" not in body
 
 
 def test_no_conversation_skill_is_registered():

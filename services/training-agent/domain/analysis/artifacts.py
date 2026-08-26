@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from domain.contracts.schemas import ACTIVITY_REPORT_V2
 
-SUMMARY_SCHEMA_V2 = "llm_fit_file_analysis.v2"
+
+# 保留旧常量名供现有报告代码使用；实际版本值由稳定契约注册表统一定义。
+SUMMARY_SCHEMA_V2 = ACTIVITY_REPORT_V2
 ANALYSIS_SUMMARY_SCHEMA_V1 = "activity_analysis_summary.v1"
 
 
@@ -43,7 +46,7 @@ def build_history_view(document: dict[str, Any]) -> dict[str, Any]:
     duration_s = _number(fit_summary.get("duration_s"))
     distance_m = _number(fit_summary.get("distance_m"))
     return {
-        "schema_version": "activity_report_history.v1",
+        "kind": "activity_report_history",
         "activity_key": document.get("activity_key"),
         "file_path": document.get("fit_path"),
         "start_time": fit_summary.get("start_time_local"),

@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from domain.contracts.schemas import ACTIVITY_FEATURES_V1
 from fit.analysis.segments import scan_activity_segments
 from fit.analysis.sprints import detect_sprints
 from fit.analysis.stats import prune_empty_values
 
 
-FEATURES_SCHEMA_VERSION = "activity_features.v1"
+FEATURES_SCHEMA_VERSION = ACTIVITY_FEATURES_V1
 FEATURE_EXTRACTOR_VERSION = "fit_features.v1"
 
 

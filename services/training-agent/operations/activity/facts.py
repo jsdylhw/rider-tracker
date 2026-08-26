@@ -48,7 +48,7 @@ def rebuild_activity_facts(*, force: bool = False, path: str | Path | None = Non
         else:
             rebuilt.append(activity_key)
     return {
-        "schema_version": "activity_facts_rebuild.v1",
+        "operation": "rebuild_activity_facts",
         "status": "partial" if failed else "completed",
         "rebuilt": len(rebuilt),
         "skipped": len(skipped),

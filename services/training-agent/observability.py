@@ -16,6 +16,7 @@ from time import perf_counter
 from typing import Any, Iterator
 from uuid import uuid4
 
+from domain.contracts.schemas import AGENT_TRACE_V1
 
 _CURRENT_TRACE: ContextVar["AgentTrace | None"] = ContextVar("agent_trace", default=None)
 
@@ -53,7 +54,7 @@ class AgentTrace:
     def to_dict(self) -> dict[str, Any]:
         self.finish()
         return {
-            "schema_version": "agent_trace.v1",
+            "schema_version": AGENT_TRACE_V1,
             "trace_id": self.trace_id,
             "started_at": self.started_at,
             "elapsed_ms": self.elapsed_ms,

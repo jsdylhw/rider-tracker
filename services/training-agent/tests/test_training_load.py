@@ -60,7 +60,7 @@ def test_summarize_recent_training_load_outputs_structured_metrics_only(tmp_path
     assert result["status"] == "completed"
     assert "answer" not in result
     summary = result["result"]
-    assert summary["schema_version"] == "training_load_summary.v1"
+    assert summary["kind"] == "training_load_summary"
     assert summary["activity_count"] == 2
     assert summary["totals"]["distance_km"] == 73.2
     assert summary["totals"]["duration_min"] == 191.3

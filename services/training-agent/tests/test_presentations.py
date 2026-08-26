@@ -12,7 +12,7 @@ def _history_execution() -> ToolExecution:
         result={
             "status": "completed",
             "result": {
-                "schema_version": "training_history_analysis.v1",
+                "kind": "training_history_analysis",
                 "dimensions": [{
                     "name": "volume",
                     "confidence": "medium",
@@ -127,7 +127,7 @@ def test_activity_report_projects_markdown_without_exposing_report_metadata():
             "status": "completed",
             "answer": "# 骑行报告\n\n状态良好。",
             "result": {
-                "schema_version": "activity_report.v1",
+                "kind": "activity_report",
                 "fit_path": "/private/activity.fit",
                 "activity_key": "activity-1",
                 "fit_summary": {
@@ -170,7 +170,7 @@ def test_activity_report_projects_local_profile_after_llm_execution(monkeypatch)
         result={
             "answer": "活动完成。",
             "result": {
-                "schema_version": "activity_report.v1",
+                "kind": "activity_report",
                 "fit_path": "/private/activity.fit",
             },
         },
@@ -199,7 +199,7 @@ def test_single_resolved_activity_projects_details_without_analyze_tool(monkeypa
         index=0,
         tool="resolve_activities",
         result={"result": {
-            "schema_version": "activity_selection.v2",
+            "kind": "activity_selection",
             "count": 1,
             "activities": [{
                 "summary_label": "长距离骑行",
@@ -231,7 +231,7 @@ def test_activity_report_replaces_resolved_activity_preview(monkeypatch):
         index=0,
         tool="resolve_activities",
         result={"result": {
-            "schema_version": "activity_selection.v2",
+            "kind": "activity_selection",
             "activities": [{"summary_label": "长距离骑行", "duration_min": 105.5}],
         }},
     )
@@ -240,7 +240,7 @@ def test_activity_report_replaces_resolved_activity_preview(monkeypatch):
         tool="analyze_activity",
         result={
             "answer": "# 完整报告",
-            "result": {"schema_version": "activity_report.v1"},
+            "result": {"kind": "activity_report"},
         },
     )
 
@@ -286,12 +286,58 @@ def test_inspect_selection_projects_single_activity_facts_and_profile(monkeypatc
     assert "/private/selected.fit" not in str([block.to_dict() for block in blocks])
 
 
+def test_inspection_replaces_resolved_activity_preview(monkeypatch):
+    monkeypatch.setattr(
+        "agent.runtime.presentation_projector.build_activity_profile",
+        lambda path: {
+            "x_label": "经过时间",
+            "labels": ["0:00", "30:00"],
+            "series": [{"metric": "heart_rate_bpm", "unit": "bpm", "values": [110, 145]}],
+        },
+    )
+    resolved = ToolExecution(
+        index=0,
+        tool="resolve_activities",
+        result={"result": {
+            "kind": "activity_selection",
+            "count": 1,
+            "activities": [{
+                "summary_label": "短时骑行",
+                "fit_path": "/private/selected.fit",
+                "distance_km": 12.5,
+            }],
+        }},
+    )
+    inspection = ToolExecution(
+        index=1,
+        tool="inspect_selection",
+        result={"result": {
+            "schema_version": "analysis_result.v1",
+            "analysis": {
+                "source": "activity_facts",
+                "metrics": {
+                    "schema_version": "activity_metrics.v2",
+                    "fit_path": "/private/selected.fit",
+                    "identity": {"sport_type": "cycling"},
+                    "scale": {"duration_min": 30, "distance_km": 12.5},
+                },
+            },
+        }},
+    )
+
+    blocks = project_presentations([resolved, inspection])
+
+    assert [block.type for block in blocks] == ["metric_cards", "line_chart"]
+    assert sum(block.title == "活动过程曲线" for block in blocks) == 1
+    assert all(block.source["tool"] == "inspect_selection" for block in blocks)
+
+
 def test_activity_comparison_projects_totals_and_nonempty_columns():
     execution = ToolExecution(
         index=5,
         tool="compare_activities",
         result={"result": {
-            "schema_version": "activity_comparison.v1",
+            "kind": "activity_comparison",
             "count": 2,
             "totals": {"duration_min": 90, "distance_km": 42.5},
             "activities": [

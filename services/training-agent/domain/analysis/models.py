@@ -82,7 +82,7 @@ class ResolvedTarget:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": "resolved_analysis_target.v1",
+            "kind": "resolved_analysis_target",
             "activity_ids": list(self.activity_ids),
             "segments": [segment.to_dict() for segment in self.segments],
             "objective": self.objective,

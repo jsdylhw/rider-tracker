@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from domain.contracts.schemas import ANALYSIS_WORKSPACE_V1
 from storage.database import connect_database
 
 
@@ -27,7 +28,7 @@ class AnalysisStore:
         if row is None:
             return None
         return {
-            "schema_version": "analysis_navigation.v1",
+            "schema_version": ANALYSIS_WORKSPACE_V1,
             "workspace_id": str(row["workspace_id"]),
             "root_scope": _json_value(row["root_scope_json"], default=None),
             "focus_stack": _json_value(row["focus_stack_json"], default=[]),

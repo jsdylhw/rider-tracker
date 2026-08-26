@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from domain.contracts.schemas import PRESENTATION_V1
+
 
 @dataclass(frozen=True)
 class PresentationBlock:
@@ -15,7 +17,7 @@ class PresentationBlock:
     title: str
     data: dict[str, Any] = field(default_factory=dict)
     source: dict[str, Any] = field(default_factory=dict)
-    schema_version: str = "presentation.v1"
+    schema_version: str = PRESENTATION_V1
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

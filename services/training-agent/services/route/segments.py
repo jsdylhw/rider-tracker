@@ -104,7 +104,7 @@ def enrich_route_plan_with_segments(
         for item in selected_segments
     ]
     result = {
-        "schema_version": "route_segment_discovery.v1",
+        "kind": "route_segment_discovery",
         "plan_id": updated.get("plan_id"),
         "candidate_id": selected_id,
         "stage_id": str(stage_id or "") or None,

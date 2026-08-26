@@ -113,7 +113,7 @@ def apply_segment_aware_routing(
         for target_id, segments in available.items()
     }
     package = {
-        "schema_version": "route_segment_selection_request.v1",
+        "kind": "route_segment_selection_request",
         "request": request_text,
         "preferences": updated["segment_preferences"],
         "rules": {

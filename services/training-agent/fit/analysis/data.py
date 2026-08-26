@@ -115,7 +115,7 @@ def get_activity_overview_tool(parsed: dict[str, Any]) -> dict[str, Any]:
         basic_metrics["avg_cadence_rpm"] = _round_float(avg_cadence, 1)
 
     return {
-        "schema_version": "activity_overview.v1",
+        "kind": "activity_overview",
         "activity_identity": {
             "sport_type": summary.get("sport_type"),
             "sub_sport": summary.get("sub_sport"),
@@ -178,7 +178,7 @@ def get_activity_summary_tool(parsed: dict[str, Any], *, sections: Any = None) -
         "device_profile": lambda: _build_device_profile(metadata),
     }
 
-    result: dict[str, Any] = {"schema_version": "activity_summary.v1", "sections": requested}
+    result: dict[str, Any] = {"kind": "activity_summary", "sections": requested}
     for section in requested:
         builder = section_builders.get(section)
         if builder:
@@ -270,7 +270,7 @@ def get_running_efficiency_tool(parsed: dict[str, Any]) -> dict[str, Any]:
     """返回跑步前后段配速、心率、步频与跑姿稳定性输入。"""
     if not _is_running(parsed):
         return {
-            "schema_version": "running_efficiency.v1",
+            "kind": "running_efficiency",
             "available": False,
             "reason": "running_efficiency is only applicable to running activities.",
         }

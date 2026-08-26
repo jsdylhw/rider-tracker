@@ -642,7 +642,7 @@ def _elevation_profile(
         for index in range(len(elevations) - span)
     ]
     return {
-        "schema_version": "route_elevation.v1",
+        "kind": "route_elevation",
         "summary": {
             "samples": len(elevations),
             "sample_spacing_m": round(step_m),

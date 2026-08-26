@@ -69,7 +69,7 @@ def test_local_factory_propagates_resolution_failure(monkeypatch, tmp_path):
     result = create_local_activity_run(directory=tmp_path)
 
     assert result == {
-        "schema_version": "activity_run_factory.v1",
+        "operation": "create_activity_run",
         "status": "failed",
         "error": "invalid_limit",
         "message": "bad limit",

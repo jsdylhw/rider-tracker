@@ -132,7 +132,7 @@ class ActivitySelectionResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": "activity_selection.v2",
+            "kind": "activity_selection",
             "request": self.request,
             "count": len(self.activities),
             "activities": self.activities,

@@ -38,7 +38,7 @@ def test_v2_summary_keeps_qualitative_and_numeric_load_fields_separate():
     assert get_analysis_summary(document)["load_label"] == "低总量，有氧维持"
     assert get_tss(document["activity_metrics"]) == 14.5
     history = build_history_view(document)
-    assert history["schema_version"] == "activity_report_history.v1"
+    assert history["kind"] == "activity_report_history"
     assert history["duration_min"] == 20.0
     assert history["distance_km"] == 9.0
     assert "training_load" not in history

@@ -10,7 +10,10 @@ from datetime import datetime
 from typing import Any, Iterable
 from uuid import uuid4
 
-WORKFLOW_SCHEMA_VERSION = "workflow_run.v1"
+from domain.contracts.schemas import WORKFLOW_RUN_V1
+
+
+WORKFLOW_SCHEMA_VERSION = WORKFLOW_RUN_V1
 RUN_STATUSES = {"active", "paused", "completed", "partial", "cancelled"}
 TASK_STATUSES = {"pending", "running", "completed", "skipped", "failed"}
 TERMINAL_TASK_STATUSES = {"completed", "skipped", "failed"}
