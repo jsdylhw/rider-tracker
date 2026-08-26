@@ -95,8 +95,8 @@ FIT 历史解析也只有一个生产入口：`services/activity/fit_loader.py` 
 
 ## 后续整理
 
-FIT 处理、路线持久化和前端外壳的下一阶段整理顺序及验收边界见
-[`consolidation-roadmap.md`](./consolidation-roadmap.md)。工作流恢复状态机暂不在该轮整理范围内。
+最终目标、阶段编号与执行顺序见
+[`rider-final-architecture-and-python-migration.md`](./rider-final-architecture-and-python-migration.md)。
 
 实时骑行的准备规则、debug 边界、FTMS capability 和模式切换见
 [`ride-readiness-and-control.md`](./ride-readiness-and-control.md)。

@@ -3,6 +3,10 @@
 - 状态：已接受
 - 日期：2026-08-26
 
+具体目录、阶段编号、执行顺序和完成标准统一见
+[`../rider-final-architecture-and-python-migration.md`](../rider-final-architecture-and-python-migration.md)；
+本 ADR 只固定不可轻易改变的架构决策。
+
 ## 背景
 
 Rider Tracker 当前同时运行 Node/Express 与 Python/FastAPI。浏览器通过 Node 同源 API 访问页面，
