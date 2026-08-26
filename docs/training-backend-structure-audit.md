@@ -11,11 +11,12 @@ services/training-agent/
 审计快照：
 
 - 分支：`feat/embedded-training-agent`
-- 基线提交：`1f8f46d refactor(ride): remove synthetic heart-rate model`
+- 初次基线提交：`1f8f46d refactor(ride): remove synthetic heart-rate model`
 - 审计方式：目录、导入关系、HTTP 消费方、运行时路径、文档和测试的只读检查
 - 初次审计本身不执行目录迁移、API 删除、数据库迁移或用户数据移动；补充复核只记录当前工作区结果
-- 补充复核日期：2026-08-26；复核基于当前开发工作区，包含尚未提交的旧 Python Web UI 删除结果
-- 补充复核时 `npm test` 为 `335 / 335` 通过；当前系统 Python 未安装 `pytest`，因此该次复核不能代替 Python 回归与真实双进程集成验收
+- 补充复核日期：2026-08-26；旧 Python Web UI 已由提交 `c9b4f35` 删除
+- 补充复核已使用 Conda `py311` 完成 `335 / 335` Node 测试、`608 / 608` Python 测试、双进程
+  health 集成、临时 schema v9 数据库检查和 Rider 页面启动冒烟
 
 初次审计时该目录包含约 310 个受版本控制文件。主要代码规模如下：
 
@@ -33,7 +34,7 @@ services/training-agent/
 | `evaluation/` | 10 | 968 | Skill/Tool 评测 |
 | `tests/` | 64 | 10,738 | Python 回归测试 |
 
-> 行数用于定位热点，不应作为机械拆文件的依据。表中保留初次审计快照；当前开发工作区已删除
+> 行数用于定位热点，不应作为机械拆文件的依据。表中保留初次审计快照；提交 `c9b4f35` 已删除
 > `app/static/`、`tests/test_web_ui.py` 等遗留 Web UI 资产，因此文件数和 `app/` 行数已经下降。
 
 ## 2. 总体判断
@@ -53,9 +54,10 @@ services/training-agent/
 **单仓库、双运行时、双进程的模块化单体**：Rider 与 Python Backend 共用配置、SQLite、FIT
 文件目录和启动生命周期，但通过内部 HTTP 保持进程隔离。
 
-### 2.1 关于“Rider 后端是否整体改成 Python”的结论
+### 2.1 最终运行边界
 
-不建议现在把 Rider Node 后端整体重写为 Python。推荐目标是：
+正式决策见 [ADR 0001](./adr/0001-python-backend-consolidation.md)。目标不是把整个项目改成单一语言，
+而是让 Python 成为唯一业务后端，JavaScript 专注浏览器应用和实时骑行：
 
 ```text
 Browser JavaScript
@@ -64,38 +66,34 @@ Browser JavaScript
           |
           | 同源 /api/*
           v
-Rider Node BFF :8787
-  - 静态资源、同源入口和本地安全边界
-  - Python API Token 隔离
-  - 必要的文件接收、OAuth callback 和短代理
-          |
-          | HTTP + X-API-Token
-          v
-Rider Training Backend Python :8000
-  - Agent / FIT / 活动与路线后台业务
-  - Garmin / Strava / 地图 provider / LLM
-  - SQLite migration、repository 和长任务
+Rider Python Backend :8787
+  - 正式 Rider 页面与 FastAPI
+  - Activity / Route / Athlete / Workflow
+  - SQLite / FIT / Garmin / Strava / 地图 provider / LLM
+  - Training Agent / Skill / Tool adapter / Presentation
 ```
 
-这里的收敛方向是“后台业务与持久化逐步 Python 化”，不是一次性删除 Node：
+Node/Express 在迁移期继续作为 BFF，逐个代理已经迁到 Python 的浏览器 API；它不是目标结构中的
+长期业务层。只有完成同源安全、OAuth、文件接收和所有数据库 API 的等价迁移后，FastAPI 才接管
+`:8787` 和正式 Rider 页面，Node 退出生产运行时。
+
+这不是一次性重写：
 
 - Web Bluetooth、FTMS 和实时骑行本来就在浏览器，改服务端语言不能减少这部分 JavaScript。
-- Node server 只占 Rider JavaScript 的较小部分；即使重写它，浏览器领域代码、JS 测试和
-  `@garmin/fitsdk` 工具链仍然存在。
-- Node 当前仍提供有价值的浏览器同源入口、Origin 检查和服务端 Token 注入；浏览器不需要知道
-  Python 内部 API Token。
-- Python 已经承接最适合其生态的 FIT、Agent、分析、路线、Garmin、Strava 和工作流，继续让它
-  成为后台业务 owner 比复制这些能力到 JavaScript 更合理。
-- 即使未来服务端全部使用 Python，也应把 Web/API 进程与 Agent/长任务 worker 分开，不能因为
-  语言统一又把慢模型调用和核心 API 合并到同一故障域。
+- Python 已有 FIT、Agent、训练分析、路线、Garmin、Strava、Workflow 和 600 多项测试；迁移 Node
+  的有限后台职责比把这些能力重写成 JavaScript 风险更低。
+- Node 当前的同源、Origin、OAuth 和上传能力必须先在 Python 建立等价测试，不能先删再补。
+- 最终即使只有一个对外服务，慢 Agent/Provider 任务仍应通过 job/worker 与基础 API 隔离。
+- `npm start` 继续作为统一入口；最终它只负责定位 Python、检查配置并启动一个 Backend。
 
 ### 2.2 三种方案比较
 
 | 方案 | 收益 | 主要代价和风险 | 判断 |
 |---|---|---|---|
-| 保留当前双写结构 | 不迁移、近期风险最低 | Node/Python 共同写 SQLite，契约、DDL 和事务继续漂移 | 只适合作为短期状态 |
-| 浏览器 JS + 薄 Node BFF + Python 主后端 | 可逐步迁移，保留同源、安全和进程隔离，后台 owner 清晰 | 仍需维护两个运行时和内部 HTTP | 推荐目标 |
-| Node server 全量重写为 Python | 最终可能少一个生产服务进程 | 需重写上传、OAuth、安全、静态/vendor 和回归测试；JS 开发工具链仍在 | 当前收益不足，不推荐立即执行 |
+| 保留当前双写结构 | 不迁移、近期风险最低 | Node/Python 共同写 SQLite，契约、DDL 和事务继续漂移 | 只适合作为迁移起点 |
+| 浏览器 JS + 薄 Node BFF + Python 主后端 | 可以按 API 纵向切片迁移并保持 URL | 迁移期仍有两个服务端进程 | 必要过渡态 |
+| 浏览器 JS + Python 唯一业务后端 | 单一持久化和后台 owner；单端口；便于本地和桌面打包 | 必须补齐 Node 现有安全、OAuth、上传和静态托管行为 | 推荐终态 |
+| 全量改为 JavaScript | 表面语言统一 | 重写成熟 Python 领域能力并丢失既有测试价值 | 不采用 |
 
 ### 2.3 推荐职责 owner
 
@@ -103,33 +101,34 @@ Rider Training Backend Python :8000
 |---|---|
 | UI、地图展示、Web Bluetooth、FTMS | Browser JavaScript |
 | 骑行物理、readiness、trainer command、runtime route | Rider JavaScript Domain |
-| 静态资源、同源入口、Origin/Auth、内部 Token 注入 | 薄 Node BFF |
+| 静态资源、同源入口、Origin/Auth | 迁移期 Node；最终 FastAPI |
 | FIT 历史解析、Agent、路线规划、路线讲解 | Python Backend |
 | Garmin、Strava、LLM、可恢复长任务 | Python Backend |
 | SQLite schema、migration、repository 和跨表事务 | Python Backend |
-| Python -> Node -> Browser 数据格式 | 版本化 OpenAPI / JSON Schema 契约 |
+| 浏览器与 Backend 数据格式 | 版本化 OpenAPI / JSON Schema 契约 |
 
-`Node BFF` 可以长期保留，也可以在满足本报告第 13 节“阶段 9”的退出门槛后被 FastAPI 取代；它不应继续
-持有与 Python 重叠的数据库和后台领域实现。
+Node BFF 只在迁移期保留，不应新增数据库或后台领域实现。前端构建、测试和依赖管理仍可继续使用
+Node，这与“Node 退出生产后端运行时”并不冲突。
 
 ### 2.4 当前结构债优先级
 
 当前最重要的结构债依次是：
 
-1. Agent 路线仍从通用 Presentation 反向拼装领域数据，确认、revision 和异步响应缺少 fail-closed
-   契约。
+1. Python 正式业务仍被包在 `services/training-agent`，业务后端与 Agent 的物理边界相反。
 2. Node 与 Python 同时直接写共享 SQLite；Python 虽是 migration owner，但还不是唯一持久化 owner。
-3. Agent 当前是 Rider 启动和存活的硬依赖，故障会连基础骑行入口一起停止。
-4. 正式路线服务反向依赖 `demo/`，Google/Strava provider 仍有重复实现。
-5. Python 服务名称、包名、客户端名、环境变量和数据库名不一致。
+3. 正式路线服务反向依赖 `demo/`，Google/Strava provider 仍有重复实现。
+4. `operations/activity`、`services/activity`、`fit/analysis` 的职责边界仍有兼容门面和反向包装。
+5. Agent 路线仍从通用 Presentation 反向拼装领域数据，确认、revision 和异步响应缺少 fail-closed
+   契约。
 6. 运行时相对路径可能在服务源码目录中生成第二份 Token、工作流、日志或数据库。
-7. `operations/activity`、`services/activity`、`fit/analysis` 的职责边界仍有兼容门面和反向包装。
-8. 过时文档、不可达 Tool 和兼容门面继续增加维护范围。
+7. 迁移期 Agent 是 Rider 启动和存活的硬依赖，故障会连基础骑行入口一起停止。
+8. Python 服务名称、包名、客户端名、环境变量和数据库名不一致。
 
-旧 Python Web UI 的删除已在当前开发工作区完成，优先级从“结构债”转为“代码检视、浏览器手工
-验收与提交”。
+旧 Python Web UI 已由提交 `c9b4f35` 删除并完成自动回归；真实 Garmin、Strava 和路线 Provider
+仍需在具备凭据的环境手工验收。
 
-推荐先修跨进程契约、事务 owner 和故障隔离，再进行大规模 namespace、目录或语言调整。
+推荐先冻结跨进程契约和依赖方向，再迁入根 `src`；随后按纵向 API 切片迁移事务 owner，最后删除
+Node 生产后端。目录移动本身不是目标，移动后依赖方向和 owner 必须同时变得可验证。
 
 ## 3. FIT 代码是否应直接搬到外层
 
@@ -156,7 +155,7 @@ FIT 文件
 
 ### 3.2 不推荐的做法
 
-不建议第一步直接创建仓库根目录的松散 Python 包：
+不建议把 FIT 单独放成仓库根目录的松散包：
 
 ```text
 rider-tracker/fit/
@@ -164,18 +163,17 @@ rider-tracker/fit/
 
 原因：
 
-- Node 与 Python 源码边界会更模糊；
-- 当前启动方式依赖 Python 服务 cwd，跨目录 import 会进一步复杂化；
+- 它会绕过统一的根 `src` 源码树；
 - FIT 导入仍需要运动员档案、活动 repository 和 artifact 持久化，并不是独立进程；
 - 当前没有第二个 Python 服务需要直接复用这个包；
 - 只移动物理路径不会解决 decoder、纯算法和应用编排混杂的问题。
 
 ### 3.3 推荐边界
 
-先把 `services/training-agent` 视为一个 Python Backend，在同一个可安装 namespace 内拆分：
+FIT 随 Python Backend 迁入根 `src`，按职责拆分，而不是继续作为 Agent 的子模块：
 
 ```text
-rider_backend/
+src/
 ├── infrastructure/fit/
 │   ├── decoder.py          # fitdecode、文件读取、原始消息标准化
 │   └── paths.py
@@ -201,7 +199,7 @@ rider_backend/
 只有未来确实出现第二个 Python 服务需要复用活动算法时，再抽取
 `packages/activity-core-py/`。当前不应为了形式新增第三个服务或进程。
 
-## 4. 双前端（当前开发工作区已完成删除）
+## 4. 双前端（已完成删除）
 
 ### 4.1 初次审计事实
 
@@ -211,7 +209,7 @@ Strava 状态，是当时优先级最高、风险最低的删除目标。
 
 ### 4.2 当前状态
 
-当前开发工作区已经按
+提交 `c9b4f35` 已按
 [`remove-training-agent-legacy-web-ui-plan.md`](./remove-training-agent-legacy-web-ui-plan.md)
 完成主要删除：
 
@@ -564,12 +562,12 @@ Token 迁移必须显式检测冲突，不能静默选择某一份或覆盖内�
 | Node client | `createPersonalFitAgentClient` |
 | 默认数据库 | `personal-fit-agent.db` |
 
-建议统一概念：
+迁移期间统一概念：
 
 - 产品：Rider Tracker；
 - Python 服务：Rider Training Backend；
 - 对话能力：Training Agent；
-- Python namespace：`rider_backend`；
+- Python 正式源码：根 `src/api`、`src/application`、`src/domain`、`src/infrastructure`、`src/agent`；
 - Node client：`trainingBackendClient`；
 - 新环境变量：`TRAINING_BACKEND_URL`；
 - 数据库：`rider-tracker.db`。
@@ -610,7 +608,7 @@ Token 迁移必须显式检测冲突，不能静默选择某一份或覆盖内�
 
 ### 9.1 文档
 
-当前开发工作区已经同步整理主要文档资产：
+提交 `c9b4f35` 已同步整理主要文档资产：
 
 - `AGENT_STRUCTURE.md` 已描述 `/api/chat`、正式路线服务和 `presentation.v1` 当前链路；
 - `README.md` 已明确 Rider 是唯一浏览器入口，Python 只提供 Backend、Agent、CLI 和内部 API；
@@ -618,8 +616,8 @@ Token 迁移必须显式检测冲突，不能静默选择某一份或覆盖内�
 - 子目录 `.github/workflows/test.yml` 已删除，Python 测试并入根 CI；
 - 旧独立服务 `figure.png` 已删除。
 
-以上仍是当前未提交工作区内容，需在合入前检查文档链接、命令和实际代码是否一致。长期仍应把
-`CLAUDE.md` 中通用的工程规则迁入仓库统一说明，避免出现另一份只对 Python 子目录有效的产品架构。
+长期仍应把 `CLAUDE.md` 中通用的工程规则迁入仓库统一说明，避免出现另一份只对 Python 子目录
+有效的产品架构。
 
 ### 9.2 运行时文件
 
@@ -684,168 +682,127 @@ Token 迁移必须显式检测冲突，不能静默选择某一份或覆盖内�
 
 ## 12. 推荐目标目录
 
-短期保留物理目录 `services/training-agent`，先引入统一 Python namespace：
+`src/` 是 Rider 唯一正式源码树。Python 后台代码不再长期留在名为 Training Agent 的服务目录，
+也不额外套一层笼统的 `training_backend/`；它按职责迁入根目录：
 
 ```text
-services/training-agent/
-├── pyproject.toml
-├── rider_backend/
-│   ├── api/
-│   │   ├── main.py
-│   │   ├── models.py
-│   │   └── routes/
-│   │       ├── agent.py
-│   │       ├── activities.py
-│   │       ├── athlete.py
-│   │       ├── strava.py
-│   │       ├── route_plans.py
-│   │       └── narration.py
-│   ├── cli/
-│   ├── agent/
-│   │   ├── main/
-│   │   ├── activity_analysis/
-│   │   ├── narration/
-│   │   ├── skills/
-│   │   ├── tools/
-│   │   └── runtime/
-│   ├── application/
-│   │   ├── activities/
-│   │   ├── routes/
-│   │   ├── narration/
-│   │   └── workflows/
-│   ├── domain/
-│   │   ├── activity/
-│   │   ├── route/
-│   │   ├── athlete/
-│   │   └── contracts/
-│   └── infrastructure/
-│       ├── fit/
-│       ├── persistence/
-│       │   ├── sqlite/
-│       │   └── repositories/
-│       └── providers/
-│           ├── garmin/
-│           ├── strava/
-│           ├── amap/
-│           ├── google/
-│           └── llm/
-├── tests/
-└── evaluation/
+src/
+├── ui/                         # JavaScript 浏览器 UI
+├── app/                        # JavaScript 浏览器应用编排
+├── adapters/                   # JavaScript 浏览器 I/O adapter
+├── domain/
+│   ├── ride/                   # JavaScript 实时骑行
+│   ├── metrics/                # JavaScript 实时指标
+│   ├── activity/               # Python FIT、活动事实和训练领域
+│   ├── athlete/                # Python 运动员领域
+│   ├── contracts/              # 稳定协议；跨语言实现由 contract test 对齐
+│   └── route/
+│       ├── runtime/             # JavaScript 地图与骑行运行时
+│       └── planning/            # Python 路线规划领域
+├── application/                # Python 活动、路线和 Workflow use case
+├── infrastructure/
+│   ├── runtime_paths.py
+│   ├── persistence/             # SQLite migration 与 repositories
+│   └── providers/               # Garmin、Strava、地图与 LLM
+├── agent/                       # Python 对话、Skill、Tool adapter、Presentation
+├── api/                         # Python FastAPI 与 routers
+├── cli/                         # Python 运维入口
+└── server/                      # 迁移期 Node BFF；最终退出生产运行时
+
+tests/
+├── backend/                     # Python 测试
+├── contracts/                   # 跨语言 fixture / schema / API snapshot
+└── unit|integration/            # JavaScript 测试
+
+evaluation/                      # Agent 评测代码与提交的 cases
+experiments/                     # 不允许被生产代码 import 的实验代码
 ```
 
-只有 namespace 和启动方式稳定后，再考虑将物理目录重命名为：
-
-```text
-services/rider-backend/
-```
-
-不要在同一个提交同时完成物理目录改名、全部 import 改造、API 删除和数据库 migration。
+同一个业务目录出现跨语言实现时必须按职责再分层，不能依靠 `.js` / `.py` 扩展名区分语义。
+例如路线的 Browser runtime 与 Backend planning 明确分开。源码移动使用 `git mv`，但不得在同一
+提交同时修改公开 API、升级数据库或迁移用户数据。
 
 ## 13. 分阶段迁移
 
 ### 阶段 0：冻结边界并增加护栏
 
-- 合入本报告；
-- 用 ADR 固定“Browser JS + 薄 Node BFF + Python Backend”的当前目标；
-- 建立 Rider 当前消费的 HTTP request/response contract 测试和 OpenAPI snapshot；
-- 统一错误 envelope、schema version、`request_id` 和 correlation header 的规则；
-- 增加“生产代码不得 import demo”的架构测试，在 provider 抽取提交中启用；
-- 补真实双进程 FIT、路线和 Agent unavailable 测试；
+- [x] 合入旧 Python Web UI 删除和本报告；
+- [x] 用 [ADR 0001](./adr/0001-python-backend-consolidation.md) 固定“Browser JavaScript + Python
+  唯一业务后端”的终态，并声明 Node 只是迁移期 BFF；
+- [x] 保留稳定 schema 注册表和 Python 内部 API 精确路径测试；
+- [x] 增加生产代码 `demo` import 基线测试：允许已知历史依赖，但禁止债务继续增长；
+- [x] 建立浏览器当前对外 HTTP method/path 的机器可读迁移基线，并用架构测试锁定；
+- [ ] 给上述 API 补齐 request/response/error contract fixture；
+- [ ] 生成并审阅 OpenAPI snapshot，明确内部 API 与最终浏览器 API 的兼容关系；
+- [ ] 统一错误 envelope、schema version、`request_id` 和 correlation header 的规则；
+- [ ] 补真实双进程 FIT、路线和 Backend unavailable 测试；
 - 本阶段不移动生产代码。
 
 ### 阶段 1：完成双前端删除验收
 
 - 详细实施步骤见 [`remove-training-agent-legacy-web-ui-plan.md`](./remove-training-agent-legacy-web-ui-plan.md)；
-- 当前开发工作区已完成代码、文档和 CI 整理；
+- 提交 `c9b4f35` 已完成代码、文档和 CI 整理；
 - 运行 Python 全量回归与双进程测试；
 - 浏览器手工验收 Garmin、FIT、Agent、路线、报告和 Strava；
 - 保持 Rider 所用 API URL 不变；
 - 独立提交当前删除，不同时改 namespace、数据库版本和公开 URL。
 
-### 阶段 2：稳定 Agent 路线契约和异步安全
+### 阶段 2：建立根 `src` Python 边界
 
-- 增加 `route_plan_view.v1` Pydantic response model，不再从 Presentation table 读取领域数据；
-- 给 candidate table/DTO 补稳定 `candidate_id`、plan `revision`、confirmed/active candidate 和
-  `schedule_type`；
-- JS 检测多个 plan ID、未知版本、未知枚举、非 LineString 和不连续 stage 时 fail-closed；
-- route command 增加 `request_id`、`expected_revision` 和 409 conflict；
-- confirm 只有在 status/revision/candidate 全部匹配时才能设置 `isDraft=false`；
-- 所有 route command 统一使用中央 loading/request ID、骑行后二次检查和 stale response 丢弃；
-- 抽出 provider 无关的 `buildCoordinateRoute()`，不再用 `buildMapDrawRoute()` 承载 Agent route；
-- 补同 turn 多 execution、多 plan、同名 candidate、重复 undo/reverse 和骑行中晚到响应测试。
+- 在根 `src` 建立 Python `api`、`application`、`infrastructure`、`agent` 和 `cli` package；
+- 调整 `PYTHONPATH`、pytest、CLI、启动器和 CI，使新旧 package 在迁移期可同时导入；
+- 第一条纵向切片只迁移 contracts、配置和 `runtime_paths.py`，不改变行为；
+- 建立根 `src/domain` 的跨语言目录规则，路线明确拆为 runtime 与 planning；
+- 所有临时 re-export 写明调用方和删除条件。
 
-### 阶段 3：让 Agent 可降级并补真实跨进程验收
+### 阶段 3：迁移 Python Domain 与正式 Provider
 
-- Node 不等待 Agent 成功才提供 Rider 页面；
-- Python 异常退出不再自动结束 Rider，启动器报告独立 readiness 并可重启 Agent；
-- BFF 对 Agent 能力返回统一 `503 agent_unavailable`，UI 做能力级降级；
-- 验证 Python 不可用时 GPX、设备、ERG、模拟和实时骑行仍可工作；
-- 将当前仅验证 health proxy 的双进程测试扩展到 FIT ingest/detail、路线确认保存和超时/重试。
+- 使用 `git mv` 将 FIT、活动、运动员、稳定 contract 和路线 planning 迁入根 `src/domain`；
+- 将生产使用的高德、Google、OSM 和 Strava Segment 实现迁入 `src/infrastructure/providers`；
+- Demo/实验反向调用正式模块，生产代码的 `demo` import 基线逐项归零；
+- Domain 不依赖 Agent、FastAPI、SQLite、文件系统或 Provider；
+- 保持活动、路线 schema 和 HTTP URL 不变。
 
-### 阶段 4：统一运行时路径和 schema owner
+### 阶段 4：统一 Application、Workflow 与运行时路径
 
-- 新增统一 `runtime_paths.py`；
-- 修复 Strava Token 相对路径；
-- Workflow、日志、评测 artifact 统一从 Rider root 推导；
+- 将现有 `services/` 与 `operations/` 收敛为 activity、route、workflow application use case；
+- Agent Tool、CLI 和 API 都调用同一 use case，不直接访问数据库、文件或 Provider；
+- Strava Token、Workflow、日志和评测 artifact 统一从 Rider data root 推导；
 - 只读检查并显式迁移子目录中的旧 Token、数据库和 workflow；
-- Node 删除 standalone DDL fallback，Python migration 成为唯一 schema owner。
+- Python migration 成为唯一 schema owner，Node 不再保留 standalone DDL fallback。
 
 该阶段涉及真实用户数据，操作前必须备份，不得用静默覆盖完成迁移。
 
-### 阶段 5：让 Python 成为持久化 owner，Node 收缩为 BFF
+### 阶段 5：迁移并收缩 Agent，拆分 Python API
 
-- Python 增加 `saved_routes` / `route_progress` API 和“确认 candidate 并物化 SavedRoute”事务；
-- Node `/api/routes/*` 保持浏览器 URL 不变，逐个改为 Python 代理；
-- Python 接管 activities 列表、改名、删除、骑行 session 归档和 FIT metadata；
-- Node 可暂时负责受管目录文件接收，但不再直接写活动/路线表；
-- 为每个纵向切片先增加双实现对照测试，再切换 owner，最后删除 Node store；
-- 完成标准是生产 Node 不再 import `node:sqlite`，也不负责数据库初始化或版本判断。
+- Agent 只保留对话 loop、Skill、Tool adapter、会话和 Presentation；
+- 移除 Agent 对 SQLite、FIT 文件和 Provider 的直接所有权；
+- 将 FastAPI 按 activities、routes、athlete、strava、agent、narration 拆 router；
+- 稳定 Agent route DTO、`request_id`、revision 冲突与 stale response 规则；
+- 长任务使用 job + polling/SSE + cancel，避免阻塞基础 API。
 
-### 阶段 6：抽取正式地图与 Strava Provider
+### 阶段 6：按纵向切片把 Node 业务 API 迁到 Python
 
-- 使用 `git mv` 保留历史；
-- 将生产使用的高德、Google 和 Strava Segment 代码迁入正式 provider/domain；
-- 正式路线服务修改导入；
-- Demo 反向调用正式模块；
-- 启用禁止生产导入 Demo 的架构测试；
-- 保持 route schema 和 HTTP API 不变。
+- 依次迁移 route library、activity CRUD、Rider session/FIT 上传、profile、Strava、Agent/narration；
+- 每组先建立新旧响应对照测试，再让 Node 保持原 URL 做薄代理，最后删除对应 Node store；
+- “确认 route candidate 并物化 SavedRoute”等跨表操作由 Python 单事务完成；
+- 完成标准是生产 Node 不再 import `node:sqlite`，不负责 schema 判断，也没有后台业务规则。
 
-### 阶段 7：长任务、依赖与可观测性
+### 阶段 7：FastAPI 接管正式 Rider 入口
 
-- 对同步、批量分析、复杂路线和报告采用 job + polling/SSE + cancel；
-- Browser、Node 和 Python 统一传播 request/session/plan/job ID；
-- 记录结构化耗时、重试、revision conflict、provider 和错误类别；
-- `pyproject.toml` 作为依赖声明源，生成可复现锁文件，避免与 `requirements.txt` 双维护漂移；
-- 明确 Web/API 与 Agent/worker 的资源和故障隔离。
+- Python 复刻并测试当前 Origin、Host、认证、OAuth state、受管文件路径和上传限制；
+- FastAPI 托管唯一 Rider `index.html`、`/src/*`、vendor 资源和全部 `/api/*`；
+- 对外继续监听 `:8787`，浏览器 Adapter 和 OAuth URL 不做大爆炸修改；
+- 删除 Node BFF、内部 Python Token 和 `:8000` 进程协调；
+- `npm start` 继续作为开发入口，但最终只启动一个 Python Backend。
 
-### 阶段 8：清理兼容债并引入 `rider_backend` namespace
+### 阶段 8：部署、桌面打包与兼容债清理
 
-- 删除 `generate_route_advice`；
-- 审核并删除不可达 conversation tools；
-- 拆除 `operations/activity/service.py`；
-- 删除 `storage/paths.py`；
-- 清理只为旧入口存在的测试和 evaluation 分支。
-- 先迁移一个纵向切片，例如 contracts + athlete；
-- 短期保留旧模块 re-export，并注明删除条件；
-- 再迁移 activity、route、agent、infrastructure；
-- 完成所有调用迁移后删除 flat package alias；
-- 最后才考虑物理目录改名。
-- 在依赖边界稳定后按业务能力拆 repository、route、analysis agent、presentation 和 API，不按
-  行数机械拆分。
-
-### 阶段 9：可选——评估是否移除 Node server
-
-只有同时满足以下门槛，才单独编写 ADR 评估由 FastAPI 接管 `:8787`：
-
-1. Node 已不访问 SQLite，也没有 Rider 后台领域逻辑；
-2. Python Web/API 与 Agent/worker 已隔离，慢任务不会拖垮基础 API；
-3. FIT、路线、Agent、OAuth、安全和降级链路都有真实端到端回归；
-4. FastAPI 入口具备当前 Node 的同源、Origin、Host、认证、受管文件路径和 OAuth state 保护；
-5. 打包验证证明能真正减少用户侧 Node runtime/安装成本，而不是只替换 2,000 多行 server 实现；
-6. 浏览器 `/api/*` 契约和用户数据无需大爆炸迁移。
-
-若满足门槛，也应采用 strangler：先由 Python 接管静态/代理能力，保持 URL 不变，完成回归后再删除
-Node；不得与数据库 schema、namespace 或前端框架重写同时进行。
+- 建立单一 `RIDER_DATA_ROOT`，支持仓库、本机服务、Docker 和桌面用户数据目录；
+- 锁定 Python 依赖并分别构建各平台 Backend；
+- Electron 只负责窗口、Web Bluetooth 权限、OAuth 外部浏览器和 Python sidecar 生命周期；
+- 清理旧环境变量、兼容 re-export、不可达 Tool 和 `services/training-agent` 空目录；
+- 大文件最后按业务能力拆分，不按行数机械切割。
 
 ## 14. 兼容策略
 
@@ -862,6 +819,8 @@ Node；不得与数据库 schema、namespace 或前端框架重写同时进行�
 - 旧环境变量至少兼容一个版本；
 - Token 和数据库只做显式迁移；
 - 临时 re-export 必须写明调用方迁完后的删除条件。
+- Node 代理切换与 Python API 实现分开提交；同一提交不能同时删除旧实现和改变响应语义；
+- FastAPI 接管 `:8787` 前，必须通过 Node 当前安全、OAuth、上传和静态资源行为的等价回归。
 
 `request_id`、`expected_revision`、response model 和新错误码应先以兼容字段加入；旧消费者迁完并有
 契约回归后才能收紧为必填。若持久化 owner 迁移确实需要升级 `user_version`，必须作为独立数据库
@@ -878,6 +837,9 @@ npm run test:agent
 npm run test:integration
 npm run db:check
 ```
+
+迁移到根 `src` 后，命令名称保持不变，内部 `PYTHONPATH` 和 pytest 目录再随迁移提交调整；不得要求
+使用者在新旧目录之间手工切换工作目录。
 
 Python 定向检查：
 
@@ -936,15 +898,14 @@ RIDER_TRACKER_DB_PATH=/tmp/rider-structure-audit.db npm run db:check
 
 建议接下来依次处理：
 
-1. 检视、完整验收并提交当前 Training Agent 遗留 Web UI 删除。
-2. 修复 Agent route 的版本化领域 DTO、确认 fail-closed、幂等和 revision 并发控制。
-3. 让 Agent 故障可降级，补 FIT/路线/不可用场景的真实双进程测试。
-4. 修正 Strava Token、Workflow、日志和数据库默认路径，删除 Node standalone DDL。
-5. 将 activities、saved routes 和 progress 逐步迁入 Python repository/API，使 Node 成为薄 BFF。
-6. 把正式路线依赖的 Demo provider 移入正式目录。
-7. 再处理长任务、依赖锁、不可达 Tool、operation facade 和 `rider_backend` namespace。
-8. 最后才根据明确退出门槛评估移除 Node、拆大文件和物理目录改名。
+1. 完成阶段 0 剩余 contract fixture、OpenAPI snapshot 和真实双进程失败场景。
+2. 在根 `src` 建立 Python package/测试/启动骨架，先迁 contracts、配置与 runtime paths。
+3. 迁移 FIT、Activity、Athlete、Route planning domain，并把生产 Provider 从 Demo 提升出来。
+4. 将 `services`/`operations` 收敛为 application use case，再收缩 Agent 和拆 FastAPI routers。
+5. 按 route library、activity、FIT、profile、Strava、Agent 的顺序迁移 Node API owner。
+6. Python 成为唯一持久化 owner 后，删除 Node stores 和 standalone DDL。
+7. FastAPI 完成安全与 OAuth 等价验收后接管 `:8787` 和正式 Rider 页面。
+8. 最后删除 Node 生产后端与旧服务目录，再做依赖锁、桌面 sidecar 和大文件拆分。
 
-FIT 不应作为一个独立进程直接搬到仓库外层。真正需要做的是承认当前 Python 服务已经是
-Rider Backend，并在这个边界内把 FIT I/O、确定性活动算法和应用编排拆清。语言统一不是目标；
-单一事实源、稳定契约、可恢复事务和清晰故障域才是融合完成的标准。
+最终完成标准不是“所有代码使用同一种语言”，而是 Browser JavaScript 与 Python Backend 之间只有
+一组稳定接口，后台业务、事务、运行时路径和部署入口都只有一个 owner。
