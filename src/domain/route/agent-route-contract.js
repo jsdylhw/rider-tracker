@@ -1,8 +1,12 @@
-import { buildMapDrawRoute } from "./map-draw-route.js";
+import { buildCoordinateRoute } from "./coordinate-route.js";
+import { parseRoutePlanView } from "./route-plan-view.js";
 
 const VIRTUAL_ROUTE_SPEED_KMH = 25;
 
 export function parseAgentRouteDraft(turnResult) {
+    if (turnResult?.route_plan) {
+        return parseRoutePlanView(turnResult.route_plan, { answer: turnResult.answer });
+    }
     const presentations = Array.isArray(turnResult?.presentations) ? turnResult.presentations : [];
     const routeMaps = presentations.filter((item) => item?.type === "route_map");
     const candidateTable = presentations.find((item) => (
@@ -75,12 +79,15 @@ export function buildRiderRouteFromAgentCandidate(draft, candidateId) {
     if (!candidate) throw new Error("所选 AI 路线候选不存在。");
     const routePath = candidate.coordinates.map(([longitude, latitude]) => ({ lat: latitude, lng: longitude }));
     const routeWaypoints = resolveRouteWaypoints(routePath);
-    const route = buildMapDrawRoute({
+    const route = buildCoordinateRoute({
         waypoints: routeWaypoints,
         routePath,
         totalDistanceMeters: candidate.distanceKm ? candidate.distanceKm * 1000 : null,
         estimatedDuration: candidate.durationMinutes ? `${Math.round(candidate.durationMinutes * 60)}s` : null,
-        travelMode: candidate.travelMode
+        travelMode: candidate.travelMode,
+        source: "agent-planned",
+        name: candidate.name,
+        routeProvider: "personal-fit-agent"
     });
     return {
         ...route,
@@ -112,10 +119,11 @@ function resolveRouteWaypoints(routePath) {
 }
 
 export function isRouteActivationOnly(turnResult) {
-    const hasRouteMap = (turnResult?.presentations ?? []).some((item) => item?.type === "route_map");
+    const hasRoute = Boolean(turnResult?.route_plan)
+        || (turnResult?.presentations ?? []).some((item) => item?.type === "route_map");
     const activatedRouteSkill = /^plan-/.test(String(turnResult?.skill_id || ""));
     const activatedTool = (turnResult?.executions ?? []).some((item) => item?.tool === "activate_skill");
-    return !hasRouteMap && (activatedRouteSkill || activatedTool);
+    return !hasRoute && (activatedRouteSkill || activatedTool);
 }
 
 function collectCandidateMetadata(rows) {

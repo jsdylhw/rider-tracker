@@ -38,6 +38,47 @@ export const suite = {
             }
         },
         {
+            name: "prefers the versioned route plan view over presentation labels",
+            run() {
+                const input = buildTurnResult();
+                input.route_plan = {
+                    schema_version: "route_plan_view.v1",
+                    plan_id: "route-contract",
+                    revision: 4,
+                    country_code: "FR",
+                    planning_status: "awaiting_selection",
+                    active_candidate_id: "candidate-stable",
+                    confirmed_candidate_id: null,
+                    candidates: [{
+                        candidate_id: "candidate-stable",
+                        name: "勃朗峰山谷",
+                        distance_m: 42_000,
+                        provider_duration_s: 7_200,
+                        provider: "google_routes",
+                        travel_mode: "BICYCLE",
+                        geometry: { coordinates: [[6.8, 45.9], [6.9, 46.0]] },
+                        waypoints: [],
+                        segment_sequence: [{ segment_id: 77 }]
+                    }],
+                    segments: [{
+                        segment_id: 77,
+                        name: "山谷路段",
+                        distance_m: 5_000,
+                        candidate_ids: ["candidate-stable"],
+                        geometry: { coordinates: [[6.82, 45.92], [6.85, 45.95]] }
+                    }]
+                };
+
+                const draft = parseAgentRouteDraft(input);
+
+                assertEqual(draft.planId, "route-contract");
+                assertEqual(draft.revision, 4);
+                assertEqual(draft.candidates[0].candidateId, "candidate-stable");
+                assertEqual(draft.candidates[0].name, "勃朗峰山谷");
+                assertEqual(draft.segments[0].segmentId, 77);
+            }
+        },
+        {
             name: "detects a route skill activation response without route geometry",
             run() {
                 assertEqual(isRouteActivationOnly({

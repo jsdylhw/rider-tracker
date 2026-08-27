@@ -56,13 +56,23 @@ export function createAgentRoutePreviewService({
     async function previewAgentRoute(candidateId) {
         ensureDraft();
         const draft = await runCommand("select", { candidate_id: candidateId });
+        if (!draft) return null;
         commitCandidateRoute(draft, candidateId, true, "正在预览");
         return draft;
     }
 
     async function confirmAgentRoute(candidateId) {
         ensureDraft();
+        const previousRevision = currentDraft.revision;
         const draft = await runCommand("confirm", { candidate_id: candidateId });
+        if (!draft) return null;
+        if (
+            draft.planningStatus !== "confirmed"
+            || draft.confirmedCandidateId !== candidateId
+            || draft.revision <= previousRevision
+        ) {
+            throw new Error("路线确认响应与当前候选不一致，已保留原路线，请重试。");
+        }
         const built = buildRiderRouteFromAgentCandidate(draft, candidateId);
         const saved = await saveConfirmedRoute(built);
         const route = {
@@ -101,6 +111,7 @@ export function createAgentRoutePreviewService({
             target_distance_km: targetDistanceKm,
             segments
         });
+        if (!draft) return null;
         commitActiveRoute(draft, "已按所选 Strava 路段生成新候选，请检查地图后确认。");
         return draft;
     }
@@ -108,6 +119,7 @@ export function createAgentRoutePreviewService({
     async function reverseAgentRoute() {
         ensureDraft();
         const draft = await runCommand("reverse", { candidate_id: activeCandidateId(currentDraft) });
+        if (!draft) return null;
         commitActiveRoute(draft, "已反转当前 AI 路线，请检查地图后确认。");
         return draft;
     }
@@ -115,20 +127,25 @@ export function createAgentRoutePreviewService({
     async function undoAgentRoute() {
         ensureDraft();
         const draft = await runCommand("undo");
+        if (!draft) return null;
         commitActiveRoute(draft, "已撤销上一版 AI 路线修改。");
         return draft;
     }
 
     async function runCommand(operation, input = {}) {
         if (!operations.ensureRouteEditingAllowed()) return currentDraft;
+        const requestId = operations.invalidateRequests();
         const response = await agentClient.routePlanCommand(operation, {
             plan_id: currentDraft?.planId,
             expected_revision: currentDraft?.revision,
             ...input
         });
+        if (!operations.isCurrent(requestId)) return null;
+        if (operations.discardAfterRideStart("骑行已开始，已忽略未完成的 AI 路线操作。")) return null;
         return saveDraft(parseAgentRouteDraft({
             answer: response.answer,
             status: "completed",
+            route_plan: response.route_plan,
             presentations: response.presentations
         }));
     }

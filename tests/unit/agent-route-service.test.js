@@ -33,7 +33,10 @@ export const suite = {
                         },
                         async routePlanCommand(operation) {
                             commands.push(operation);
-                            return routeResponse(operation === "confirm" ? "confirmed" : "awaiting_selection");
+                            return routeResponse(
+                                operation === "confirm" ? "confirmed" : "awaiting_selection",
+                                commands.length + 1
+                            );
                         }
                     }
                 });
@@ -77,7 +80,7 @@ export const suite = {
                         },
                         async routePlanCommand(operation, input) {
                             commands.push({ operation, input });
-                            return routeResponse("awaiting_selection");
+                            return routeResponse("awaiting_selection", commands.length + 1);
                         }
                     }
                 });
@@ -100,6 +103,62 @@ export const suite = {
                 assertEqual(commands[1].input.segments[1].direction, "reverse");
                 assertEqual(commands[1].input.target_distance_km, 52);
                 assertEqual(state.route.agentCandidateId, "candidate-1");
+            }
+        },
+        {
+            name: "discards a late route command after another route operation wins",
+            async run() {
+                const state = { route: baseRoute(), liveRide: { isActive: false }, statusText: "" };
+                let resolveCommand;
+                const operations = createOperations(state);
+                const service = createAgentRoutePreviewService({
+                    store: { getState: () => state },
+                    operations,
+                    invalidateExploration() {},
+                    agentClient: {
+                        async chat() { return routeResponse("awaiting_selection"); },
+                        routePlanCommand() {
+                            return new Promise((resolve) => { resolveCommand = resolve; });
+                        }
+                    }
+                });
+                await service.planAgentRoutes("生成路线");
+                const before = state.route;
+                const pending = service.reverseAgentRoute();
+                operations.invalidateRequests();
+                resolveCommand(routeResponse("awaiting_selection", 2));
+
+                assertEqual(await pending, null);
+                assertEqual(state.route, before);
+            }
+        },
+        {
+            name: "fails closed when confirmation does not identify the requested candidate",
+            async run() {
+                const state = { route: baseRoute(), liveRide: { isActive: false }, statusText: "" };
+                const service = createAgentRoutePreviewService({
+                    store: { getState: () => state },
+                    operations: createOperations(state),
+                    invalidateExploration() {},
+                    agentClient: {
+                        async chat() { return routeResponse("awaiting_selection"); },
+                        async routePlanCommand() {
+                            const response = routeResponse("confirmed", 2);
+                            response.route_plan.confirmed_candidate_id = "candidate-other";
+                            return response;
+                        }
+                    }
+                });
+                await service.planAgentRoutes("生成路线");
+                let error = null;
+                try {
+                    await service.confirmAgentRoute("candidate-1");
+                } catch (caught) {
+                    error = caught;
+                }
+
+                assert(error?.message.includes("确认响应与当前候选不一致"));
+                assertEqual(state.route.isDraft, true);
             }
         }
     ]
@@ -134,11 +193,31 @@ function baseRoute() {
     return { source: "manual", points: [], segments: [], totalDistanceMeters: 0 };
 }
 
-function routeResponse(planningStatus) {
+function routeResponse(planningStatus, revision = 1) {
     return {
         answer: "路线已生成",
         status: "completed",
-        route_plan: { revision: 1 },
+        route_plan: {
+            schema_version: "route_plan_view.v1",
+            plan_id: "plan-1",
+            revision,
+            country_code: "CN",
+            planning_status: planningStatus,
+            active_candidate_id: "candidate-1",
+            confirmed_candidate_id: planningStatus === "confirmed" ? "candidate-1" : null,
+            candidates: [{
+                candidate_id: "candidate-1",
+                name: "滨江路线",
+                distance_m: 50_000,
+                provider_duration_s: 8_400,
+                provider: "AMap",
+                travel_mode: "BICYCLE",
+                geometry: { coordinates: [[121.4, 31.2], [121.5, 31.25], [121.4, 31.2]] },
+                waypoints: [],
+                segment_sequence: []
+            }],
+            segments: []
+        },
         presentations: [
             {
                 type: "table",
