@@ -7,6 +7,7 @@ export function createAgentRoutePlanner({
     onComposeAgentRouteSegments,
     onReverseAgentRoute,
     onUndoAgentRoute,
+    progressClock = globalThis,
 }) {
     const documentRef = elements.aiRoutePanel?.ownerDocument ?? globalThis.document;
     const listeners = [];
@@ -69,6 +70,7 @@ export function createAgentRoutePlanner({
         const pending = addMessage("agent", currentDraft
             ? "正在根据新要求增量修改当前路线……"
             : "正在检索地点并生成路线候选……", { pending: true });
+        const stopProgress = startProgressUpdates(pending, Boolean(currentDraft));
         if (elements.aiRouteMessageInput) elements.aiRouteMessageInput.value = "";
         setBusy(true);
         try {
@@ -77,12 +79,13 @@ export function createAgentRoutePlanner({
             pending.remove?.();
             currentDraft = draft;
             selectedSegmentIds = [];
-            addMessage("agent", compactAgentAnswer(draft.answer, draft.candidates.length));
+            addMessage("agent", formatRouteDraftAnswer(draft));
             renderDraft();
         } catch (error) {
             pending.remove?.();
             addMessage("agent", `路线处理失败：${error?.message || "请确认 Personal FIT Agent 已启动后重试。"}`);
         } finally {
+            stopProgress();
             if (sequence === requestSequence) {
                 setBusy(false);
                 renderDraft();
@@ -279,10 +282,37 @@ export function createAgentRoutePlanner({
         label.textContent = role === "user" ? "你" : "Agent";
         const body = documentRef.createElement("p");
         body.textContent = text;
+        article.messageBody = body;
         article.append(label, body);
         elements.aiRouteMessages?.append(article);
         if (elements.aiRouteMessages) elements.aiRouteMessages.scrollTop = elements.aiRouteMessages.scrollHeight;
         return article;
+    }
+
+    function startProgressUpdates(message, refining) {
+        const now = () => progressClock.now?.() ?? Date.now();
+        const startedAt = now();
+        const stages = refining
+            ? [
+                [15, "正在解析修改要求并重新检索受影响的地点"],
+                [35, "正在重新计算路线并校验距离"],
+                [70, "正在检查路线材料和可用候选"],
+            ]
+            : [
+                [15, "已理解路线偏好，正在检索候选地点"],
+                [35, "正在调用地图服务计算真实道路路线"],
+                [70, "正在校验候选距离并检查 Strava 路段"],
+                [120, "外部地图服务响应较慢，仍在继续处理"],
+            ];
+        const update = () => {
+            const elapsed = Math.max(0, Math.floor((now() - startedAt) / 1000));
+            const stage = [...stages].reverse().find(([after]) => elapsed >= after)?.[1]
+                || (refining ? "正在根据新要求增量修改当前路线" : "正在检索地点并生成路线候选");
+            if (message?.messageBody) message.messageBody.textContent = `${stage}……已等待 ${elapsed} 秒`;
+        };
+        update();
+        const timer = progressClock.setInterval?.(update, 5_000);
+        return () => progressClock.clearInterval?.(timer);
     }
 
     function activeCandidateId() {
@@ -346,8 +376,19 @@ function segmentMetrics(segment) {
     return values.join(" · ");
 }
 
-function compactAgentAnswer(answer, count) {
-    const normalized = String(answer || "").replace(/^已处理：[^\n]*\n*/u, "").trim();
-    if (!normalized) return `已生成 ${count} 条真实路线候选，请先预览再确认。`;
-    return normalized.length > 600 ? `${normalized.slice(0, 600)}…` : normalized;
+function formatRouteDraftAnswer(draft) {
+    const candidates = draft?.candidates ?? [];
+    const active = candidates.find((item) => item.active) ?? candidates[0];
+    if (!active) return "暂时没有生成可用路线，请调整地点或距离后重试。";
+    const metrics = [];
+    if (active.distanceKm) metrics.push(`${active.distanceKm.toFixed(1)} km`);
+    if (active.durationMinutes) metrics.push(`约 ${Math.round(active.durationMinutes)} 分钟`);
+    return [
+        `已生成 ${candidates.length} 条路线候选。`,
+        "",
+        `当前预览：${active.name}`,
+        metrics.length ? `距离与用时：${metrics.join(" · ")}` : "",
+        "",
+        "可以切换候选、继续输入修改要求，或最终确认。",
+    ].filter((line, index, lines) => line || (index > 0 && lines[index - 1])).join("\n");
 }

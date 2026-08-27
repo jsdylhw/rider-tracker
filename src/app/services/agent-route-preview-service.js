@@ -26,9 +26,13 @@ export function createAgentRoutePreviewService({
             const request = currentDraft
                 ? buildRouteRefinementRequest(message, currentDraft)
                 : buildVirtualRouteRequest(message);
-            let turnResult = await agentClient.chat(request);
+            const chatOptions = { routeOptions: { include_elevation: false } };
+            let turnResult = await agentClient.chat(request, chatOptions);
             if (isRouteActivationOnly(turnResult)) {
-                turnResult = await agentClient.chat("请继续执行刚才的路线规划请求，并返回可选择的路线候选。");
+                turnResult = await agentClient.chat(
+                    "请继续执行刚才的路线规划请求，并返回可选择的路线候选。",
+                    chatOptions
+                );
             }
             if (!operations.isCurrent(requestId) || store.getState().route !== loadingRoute) return null;
             if (operations.discardAfterRideStart("骑行已开始，已忽略未完成的 AI 路线。")) return null;

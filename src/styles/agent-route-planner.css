@@ -105,6 +105,7 @@
     border: 1px solid #dbe4f0;
     border-radius: 4px 14px 14px;
     line-height: 1.55;
+    white-space: pre-line;
 }
 
 .ai-route-message.is-user p {

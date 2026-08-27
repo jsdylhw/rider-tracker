@@ -20,6 +20,7 @@ export const suite = {
                             strava_scopes: "activity:write"
                         },
                         training_agent: { host: "127.0.0.3", port: 9100 },
+                        agent: { base_url: "https://api.deepseek.com/anthropic" },
                         strava: { client_id: "client", client_secret: "secret" },
                         web_api_token: "shared-token"
                     }
@@ -33,6 +34,25 @@ export const suite = {
                 assertEqual(env.TRAINING_AGENT_DB_PATH, path.join(root, "runtime", "rider.db"));
                 assertEqual(env.TRAINING_AGENT_MANAGED_DATABASE, "1");
                 assertEqual(env.TRAINING_AGENT_CONFIG_PATH, path.join(root, "config.yaml"));
+                assertEqual(env.NO_PROXY, "api.deepseek.com");
+                assertEqual(env.no_proxy, "api.deepseek.com");
+            }
+        },
+        {
+            name: "bypasses the proxy only for the configured LLM host",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: { agent: { base_url: "https://api.deepseek.com/anthropic" } }
+                }, {
+                    HTTPS_PROXY: "http://127.0.0.1:7897",
+                    NO_PROXY: "localhost,127.0.0.1"
+                });
+                assertEqual(env.HTTPS_PROXY, "http://127.0.0.1:7897");
+                assertEqual(env.NO_PROXY, "localhost,127.0.0.1,api.deepseek.com");
+                assertEqual(env.NO_PROXY.includes("googleapis.com"), false);
+                assertEqual(env.NO_PROXY.includes("strava.com"), false);
             }
         },
         {

@@ -78,6 +78,33 @@ def test_create_loop_reuses_first_waypoint_and_compacts_geometry():
     assert compact["candidates"][0]["waypoints"][0]["name"] == "Annecy"
 
 
+def test_provider_failure_rejects_only_that_candidate():
+    def route_google(queries, country_code, is_closed, config, **kwargs):
+        if queries[0] == "Bad origin":
+            raise RuntimeError("Google Places returned HTTP 400: Bad Request")
+        return _places(queries), _route_result(distance_m=30_000)
+
+    with patch("services.route.single_day.load_config", return_value={}), patch(
+        "services.route.single_day._route_google", side_effect=route_google,
+    ):
+        plan = create_single_day_plan(
+            workspace_id="workspace",
+            title="部分可用路线",
+            country_code="MY",
+            candidates=[
+                {"name": "失败候选", "waypoints": ["Bad origin", "Bad destination"]},
+                {"name": "成功候选", "waypoints": ["George Town", "Batu Ferringhi"]},
+            ],
+            include_elevation=False,
+        )
+
+    assert [item["name"] for item in plan["candidates"]] == ["成功候选"]
+    assert plan["rejected_candidates"] == [{
+        "name": "失败候选",
+        "reason": "Google Places returned HTTP 400: Bad Request",
+    }]
+
+
 def test_create_loop_ignores_explicit_duplicate_start_at_end():
     captured = []
 
@@ -638,6 +665,45 @@ def test_create_route_plan_tool_persists_but_returns_compact_result(monkeypatch)
     assert output["status"] == "completed"
     assert output["result"]["revision"] == 1
     assert "geometry" not in output["result"]["candidates"][0]
+
+
+def test_create_route_plan_inherits_target_and_trusted_virtual_route_options(monkeypatch):
+    captured = {}
+    plan = {
+        "schema_version": "route_plan.v1", "plan_id": "route_virtual",
+        "workspace_id": "workspace", "revision": 0, "title": "虚拟路线",
+        "country_code": "MY", "active_candidate_id": "candidate_1",
+        "candidates": [{
+            "candidate_id": "candidate_1", "name": "候选一",
+            "waypoints": _places(["A", "B"]), "waypoint_queries": ["A", "B"],
+            **_route_result(distance_m=30_000), "distance_km": 30.0,
+            "duration_min": 60, "warnings": [],
+        }],
+    }
+
+    def create(**kwargs):
+        captured.update(kwargs)
+        return plan
+
+    def enrich(value, **kwargs):
+        captured["segment_include_elevation"] = kwargs["include_elevation"]
+        return {**value, "segment_strategy": kwargs["strategy"]}
+
+    monkeypatch.setattr("agent.tools.handlers.route.create_single_day_plan", create)
+    monkeypatch.setattr("agent.tools.handlers.route._apply_segment_strategy", enrich)
+    monkeypatch.setattr(RoutePlanStore, "save", lambda self, value: {**value, "revision": 1})
+    context = AgentContext(session_id="session", workspace_id="workspace")
+    context.route_request_options = {"include_elevation": False}
+
+    create_route_plan_tool(context, args={
+        "title": "虚拟路线", "country_code": "MY", "target_distance_km": 30,
+        "include_elevation": True,
+        "candidates": [{"name": "候选一", "waypoints": ["A", "B"]}],
+    })
+
+    assert captured["include_elevation"] is False
+    assert captured["candidates"][0]["target_distance_km"] == 30
+    assert captured["segment_include_elevation"] is False
 
 
 def test_create_domestic_route_defers_elevation_until_segment_composition(monkeypatch):

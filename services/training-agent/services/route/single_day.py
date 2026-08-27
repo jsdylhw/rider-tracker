@@ -62,14 +62,14 @@ def create_single_day_plan(
                 include_elevation=include_elevation,
                 config=config,
             ))
-        except RouteCandidateRejected as exc:
+        except (RouteCandidateRejected, RuntimeError) as exc:
             rejected.append({
                 "name": str(candidate.get("name") or f"候选路线 {index}"),
                 "reason": str(exc),
             })
     if not routed:
         reasons = "；".join(f"{item['name']}：{item['reason']}" for item in rejected)
-        raise RouteCandidateRejected(f"所有路线候选均超出合理范围。{reasons}")
+        raise RouteCandidateRejected(f"所有路线候选均不可用。{reasons}")
     return {
         "schema_version": "route_plan.v1",
         "plan_id": plan_id or f"route_{uuid4().hex}",

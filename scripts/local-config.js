@@ -20,6 +20,7 @@ export function buildRuntimeEnv(projectRoot, unifiedConfig, baseEnv = process.en
     const { configPath, values } = unifiedConfig;
     const rider = objectValue(values.rider);
     const trainingAgent = objectValue(values.training_agent);
+    const agent = objectValue(values.agent);
     const env = { ...baseEnv };
 
     setDefault(env, "HOST", rider.host);
@@ -53,6 +54,7 @@ export function buildRuntimeEnv(projectRoot, unifiedConfig, baseEnv = process.en
     setDefault(env, "PERSONAL_FIT_AGENT_TOKEN", values.web_api_token);
     setDefault(env, "PYTHON_EXECUTABLE", trainingAgent.python_executable);
     setDefault(env, "TRAINING_AGENT_CONFIG_PATH", configPath);
+    appendProxyBypass(env, endpointHostname(agent.base_url));
     return env;
 }
 
@@ -79,6 +81,32 @@ function parseHttpEndpoint(value) {
     } catch {
         return null;
     }
+}
+
+function endpointHostname(value) {
+    try {
+        const endpoint = new URL(String(value || ""));
+        return endpoint.protocol === "https:" || endpoint.protocol === "http:"
+            ? endpoint.hostname
+            : "";
+    } catch {
+        return "";
+    }
+}
+
+function appendProxyBypass(env, hostname) {
+    if (!hostname) return;
+    const entries = new Set(
+        [env.NO_PROXY, env.no_proxy]
+            .filter(Boolean)
+            .flatMap((value) => String(value).split(","))
+            .map((value) => value.trim())
+            .filter(Boolean)
+    );
+    entries.add(hostname);
+    const value = [...entries].join(",");
+    env.NO_PROXY = value;
+    env.no_proxy = value;
 }
 
 function isObject(value) {

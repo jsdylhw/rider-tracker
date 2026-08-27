@@ -196,12 +196,13 @@ export const suite = {
 
                 const previousSession = client.sessionId;
                 const nextSession = client.resetSession();
-                await client.chat("分析活动");
+                await client.chat("分析活动", { routeOptions: { include_elevation: false } });
 
                 assertEqual(previousSession, "rider-existing");
                 assertEqual(nextSession === previousSession, false);
                 assertEqual(values.get("home-session"), nextSession);
                 assertEqual(requestBody.session_id, nextSession);
+                assertEqual(requestBody.route_options.include_elevation, false);
             }
         }
     ]

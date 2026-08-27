@@ -54,7 +54,28 @@ function normalizeChatRequest(body = {}) {
     if (!message || message.length > 20_000) {
         throw new RequestValidationError("message 必须是 1-20000 字符的文本。");
     }
-    return { session_id: sessionId, request_id: requestId, message };
+    const routeOptions = normalizeRouteOptions(body.route_options);
+    return {
+        session_id: sessionId,
+        request_id: requestId,
+        message,
+        ...(routeOptions ? { route_options: routeOptions } : {})
+    };
+}
+
+function normalizeRouteOptions(value) {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "object" || Array.isArray(value)) {
+        throw new RequestValidationError("route_options 格式无效。");
+    }
+    const result = {};
+    if (value.include_elevation !== undefined) {
+        if (typeof value.include_elevation !== "boolean") {
+            throw new RequestValidationError("route_options.include_elevation 必须是布尔值。");
+        }
+        result.include_elevation = value.include_elevation;
+    }
+    return result;
 }
 
 function normalizeSelectionRequest(body = {}) {

@@ -10,6 +10,7 @@ export const suite = {
             async run() {
                 const state = { route: baseRoute(), liveRide: { isActive: false }, statusText: "" };
                 const chatMessages = [];
+                const chatOptions = [];
                 const commands = [];
                 const savedRoutes = [];
                 let chatCount = 0;
@@ -24,8 +25,9 @@ export const suite = {
                         }
                     },
                     agentClient: {
-                        async chat(message) {
+                        async chat(message, options) {
                             chatMessages.push(message);
+                            chatOptions.push(options);
                             chatCount += 1;
                             return chatCount === 1
                                 ? { skill_id: "plan-routes", executions: [{ tool: "activate_skill" }], presentations: [] }
@@ -45,6 +47,8 @@ export const suite = {
                 assertEqual(draft.candidates.length, 1);
                 assertEqual(chatMessages.length, 2);
                 assert(chatMessages[0].includes("不请求海拔"), "首次生成应明确无海拔约束");
+                assertEqual(chatOptions[0].routeOptions.include_elevation, false);
+                assertEqual(chatOptions[1].routeOptions.include_elevation, false);
                 assertEqual(state.route.agentCandidateId, "candidate-1");
                 assertEqual(state.route.isDraft, true);
                 assertEqual(state.route.mapGeometry.length, 3, "生成完成后应立即把首条候选送入地图路线状态");
@@ -99,6 +103,7 @@ export const suite = {
                 await service.undoAgentRoute();
 
                 assertEqual(commands.map((item) => item.operation).join(","), "explore_segments,compose_segments,reverse,undo");
+                assertEqual(chatMessages.length, 2, "右侧反转和撤销按钮不得额外调用大模型对话");
                 assertEqual(commands[1].input.segments[0].segment_id, 101);
                 assertEqual(commands[1].input.segments[1].direction, "reverse");
                 assertEqual(commands[1].input.target_distance_km, 52);
@@ -159,6 +164,34 @@ export const suite = {
 
                 assert(error?.message.includes("确认响应与当前候选不一致"));
                 assertEqual(state.route.isDraft, true);
+            }
+        },
+        {
+            name: "discards a route command that finishes after the ride starts",
+            async run() {
+                const state = { route: baseRoute(), liveRide: { isActive: false }, statusText: "" };
+                let resolveCommand;
+                const operations = createOperations(state);
+                operations.discardAfterRideStart = () => state.liveRide.isActive;
+                const service = createAgentRoutePreviewService({
+                    store: { getState: () => state },
+                    operations,
+                    invalidateExploration() {},
+                    agentClient: {
+                        async chat() { return routeResponse("awaiting_selection"); },
+                        routePlanCommand() {
+                            return new Promise((resolve) => { resolveCommand = resolve; });
+                        }
+                    }
+                });
+                await service.planAgentRoutes("生成路线");
+                const before = state.route;
+                const pending = service.reverseAgentRoute();
+                state.liveRide.isActive = true;
+                resolveCommand(routeResponse("awaiting_selection", 2));
+
+                assertEqual(await pending, null);
+                assertEqual(state.route, before);
             }
         }
     ]

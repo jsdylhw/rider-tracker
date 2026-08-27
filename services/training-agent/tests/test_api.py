@@ -369,6 +369,71 @@ def test_route_command_is_idempotent_and_rejects_stale_revision(tmp_path, monkey
     assert stale.json()["detail"]["actual_revision"] == stored["revision"] + 1
 
 
+def test_route_command_targets_an_explicit_plan_without_mutating_another_plan(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    session = api.chat_sessions.get_or_create("route-multiple-plans")
+    workspace_id = str(session.context.workspace_id)
+    first = RoutePlanStore().save({
+        "plan_id": "route-first",
+        "workspace_id": workspace_id,
+        "active_candidate_id": "candidate-first",
+        "planning": {"status": "awaiting_selection"},
+        "candidates": [{"candidate_id": "candidate-first", "name": "第一条"}],
+    })
+    second = RoutePlanStore().save({
+        "plan_id": "route-second",
+        "workspace_id": workspace_id,
+        "active_candidate_id": "candidate-second",
+        "planning": {"status": "awaiting_selection"},
+        "candidates": [{"candidate_id": "candidate-second", "name": "第二条"}],
+    })
+
+    response = client.post("/api/route-plans/command", json={
+        "session_id": "route-multiple-plans",
+        "request_id": "confirm-first-plan",
+        "plan_id": first["plan_id"],
+        "candidate_id": "candidate-first",
+        "operation": "confirm",
+        "expected_revision": first["revision"],
+    })
+
+    assert response.status_code == 200
+    assert response.json()["route_plan"]["plan_id"] == "route-first"
+    assert RoutePlanStore().get("route-first")["planning"]["status"] == "confirmed"
+    untouched = RoutePlanStore().get("route-second")
+    assert untouched["revision"] == second["revision"]
+    assert untouched["planning"]["status"] == "awaiting_selection"
+
+
+def test_route_command_rejects_request_id_reuse_with_different_payload(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    session = api.chat_sessions.get_or_create("route-replay-conflict")
+    stored = RoutePlanStore().save({
+        "plan_id": "route-replay-plan",
+        "workspace_id": str(session.context.workspace_id),
+        "active_candidate_id": "candidate-1",
+        "planning": {"status": "awaiting_selection"},
+        "candidates": [{"candidate_id": "candidate-1", "name": "候选"}],
+    })
+    base = {
+        "session_id": "route-replay-conflict",
+        "request_id": "same-request",
+        "plan_id": stored["plan_id"],
+        "expected_revision": stored["revision"],
+    }
+
+    first = client.post("/api/route-plans/command", json={
+        **base, "operation": "confirm", "candidate_id": "candidate-1",
+    })
+    reused = client.post("/api/route-plans/command", json={
+        **base, "operation": "reverse", "candidate_id": "candidate-1",
+    })
+
+    assert first.status_code == 200
+    assert reused.status_code == 400
+    assert "different request payload" in reused.json()["detail"]
+
+
 def test_chat_reuses_context_and_deduplicates_request_id(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
     calls = []
@@ -423,6 +488,31 @@ def test_chat_rejects_request_id_reuse_with_different_message(tmp_path, monkeypa
     assert first.status_code == 200
     assert conflict.status_code == 409
     assert calls == ["第一轮"]
+
+
+def test_chat_applies_route_options_only_for_current_request(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    seen = []
+
+    def run(message, *, context):
+        seen.append((message, dict(context.route_request_options)))
+        return {"answer": "ok", "status": "completed", "intent": "route_advice"}
+
+    monkeypatch.setattr(api, "run_tool_loop", run)
+    first = client.post("/api/chat", json={
+        "session_id": "session-1", "request_id": "request-1", "message": "生成虚拟路线",
+        "route_options": {"include_elevation": False},
+    })
+    second = client.post("/api/chat", json={
+        "session_id": "session-1", "request_id": "request-2", "message": "普通聊天",
+    })
+
+    assert first.status_code == second.status_code == 200
+    assert seen == [
+        ("生成虚拟路线", {"include_elevation": False}),
+        ("普通聊天", {}),
+    ]
+    assert api.chat_sessions.get_or_create("session-1").context.route_request_options == {}
 
 
 def test_chat_returns_only_public_execution_and_presentation_fields(tmp_path, monkeypatch):

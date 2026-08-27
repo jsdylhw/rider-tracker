@@ -86,3 +86,43 @@ def test_route_turn_exposes_route_plan_view(monkeypatch):
     assert result["route_plan"]["schema_version"] == "route_plan_view.v1"
     assert result["route_plan"]["plan_id"] == "route-1"
     assert result["route_plan"]["revision"] == 2
+
+
+def test_route_turn_uses_the_last_route_execution_when_multiple_plans_exist(monkeypatch):
+    context = AgentContext(session_id="route-turn")
+    context.execution_trace.extend([
+        {
+            "tool": "create_route_plan",
+            "status": "completed",
+            "result": {"result": {"plan_id": "route-old"}},
+        },
+        {
+            "tool": "inspect_selection",
+            "status": "completed",
+            "result": {"answer": "non-route execution"},
+        },
+        {
+            "tool": "update_route_plan",
+            "status": "completed",
+            "result": {"result": {"plan_id": "route-new"}},
+        },
+    ])
+    plans = {
+        "route-old": {
+            "plan_id": "route-old", "revision": 1,
+            "candidates": [{"candidate_id": "candidate-old"}],
+        },
+        "route-new": {
+            "plan_id": "route-new", "revision": 3,
+            "candidates": [{"candidate_id": "candidate-new"}],
+        },
+    }
+    monkeypatch.setattr(
+        "agent.main_agent.result_builder.RoutePlanStore.get",
+        lambda self, plan_id: plans.get(plan_id),
+    )
+
+    result = build_turn_result("completed", "route_advice", context, [], "完成")
+
+    assert result["route_plan"]["plan_id"] == "route-new"
+    assert result["route_plan"]["revision"] == 3

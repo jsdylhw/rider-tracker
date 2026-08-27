@@ -26,7 +26,7 @@ def test_chat_session_restores_context_and_idempotency_after_restart(tmp_path):
     assert restored.context.conversation_used_skills == ["analyze-activity", "plan-routes"]
     assert restored.context.current_activity_key == "activity-1"
     assert restored.cached_response("request-1", "把路线反转") == response
-    with pytest.raises(ValueError, match="different message"):
+    with pytest.raises(ValueError, match="different request payload"):
         restored.cached_response("request-1", "换一条路线")
 
 

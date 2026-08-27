@@ -23,11 +23,12 @@ export function createAgentApiClient({
 
     return {
         get sessionId() { return sessionId; },
-        chat(message) {
+        chat(message, { routeOptions = null } = {}) {
             return post("/api/agent/chat", {
                 session_id: sessionId,
                 request_id: `request-${crypto.randomUUID()}`,
-                message
+                message,
+                ...(routeOptions ? { route_options: routeOptions } : {})
             });
         },
         selectRouteCandidate(planId, candidateId, expectedRevision) {

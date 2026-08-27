@@ -50,6 +50,12 @@ class AgentContext:
     active_skill_reason: str | None = None
     pending_skill_reference: str | None = None
 
+    # Request-scoped options supplied by a trusted application surface.  They
+    # are deliberately not persisted as conversation memory: the Rider route
+    # workspace uses this to make virtual-route constraints deterministic
+    # instead of relying on the model to repeat UI policy in tool arguments.
+    route_request_options: dict[str, Any] = field(default_factory=dict)
+
     # In-memory projection of the persisted activity/segment navigation stack.
     analysis_navigation: dict[str, Any] | None = None
 

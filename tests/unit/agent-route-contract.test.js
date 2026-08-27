@@ -102,6 +102,34 @@ export const suite = {
             }
         },
         {
+            name: "rejects multi-day and staged route views instead of joining stages silently",
+            run() {
+                const multiDay = buildTurnResult();
+                multiDay.route_plan.schedule_type = "multi_day";
+                let multiDayError = null;
+                try {
+                    parseAgentRouteDraft(multiDay);
+                } catch (caught) {
+                    multiDayError = caught;
+                }
+                assert(multiDayError?.message.includes("只支持单日 AI 路线"));
+
+                const staged = buildTurnResult();
+                staged.route_plan.schedule_type = "single_day";
+                staged.route_plan.candidates[0].stages = [{
+                    stage_id: "morning",
+                    geometry: { coordinates: [[135.75, 35.0], [135.77, 35.03]] }
+                }];
+                let stagedError = null;
+                try {
+                    parseAgentRouteDraft(staged);
+                } catch (caught) {
+                    stagedError = caught;
+                }
+                assert(stagedError?.message.includes("不能把分阶段路线静默拼成一条路线"));
+            }
+        },
+        {
             name: "does not reconstruct route state from presentation blocks",
             run() {
                 let error = null;

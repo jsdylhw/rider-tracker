@@ -39,6 +39,9 @@ export const suite = {
                 planner.render({ route: {}, liveRide: { isActive: false } });
 
                 await planner.sendMessage("从世博园出发沿江骑 50km");
+                const answer = elements.aiRouteMessages.children.at(-1).messageBody.textContent;
+                assert(answer.includes("已生成 1 条路线候选。"));
+                assert(answer.includes("\n\n当前预览：滨江路线"));
                 assertEqual(elements.aiRouteCandidates.children.length, 1);
                 assertEqual(elements.aiRouteSegmentPanel.hidden, false);
                 assertEqual(elements.aiRouteSegmentList.children.length, 2);
@@ -58,6 +61,38 @@ export const suite = {
                 await flushPromises();
                 assertEqual(confirmed[0], "candidate-1");
                 assert(elements.aiRouteResultStatus.textContent.includes("已确认"));
+                planner.destroy();
+            }
+        },
+        {
+            name: "updates the pending chat message while route providers are still working",
+            async run() {
+                const { documentRef, elements } = createPlannerDom();
+                let resolvePlan;
+                let now = 0;
+                let tick = null;
+                const planner = createAgentRoutePlanner({
+                    elements,
+                    onPlanAgentRoutes: () => new Promise((resolve) => { resolvePlan = resolve; }),
+                    progressClock: {
+                        now: () => now,
+                        setInterval(callback) { tick = callback; return 1; },
+                        clearInterval() { tick = null; },
+                    },
+                });
+                elements.aiRoutePanel.ownerDocument = documentRef;
+                planner.render({ route: {}, liveRide: { isActive: false } });
+
+                const pendingPlan = planner.sendMessage("马来西亚沿海 30km");
+                now = 40_000;
+                tick();
+                const pendingMessage = elements.aiRouteMessages.children.at(-1);
+                assert(pendingMessage.messageBody.textContent.includes("地图服务"));
+                assert(pendingMessage.messageBody.textContent.includes("40 秒"));
+
+                resolvePlan(buildDraft());
+                await pendingPlan;
+                assertEqual(tick, null, "路线完成后必须停止进展计时器");
                 planner.destroy();
             }
         }

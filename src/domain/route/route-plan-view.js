@@ -7,12 +7,17 @@ export function parseRoutePlanView(view, { answer = "" } = {}) {
     const planId = text(view.plan_id);
     const revision = positiveInteger(view.revision);
     if (!planId || !revision) throw new Error("路线数据缺少 plan_id 或 revision。");
+    const scheduleType = text(view.schedule_type) || "single_day";
+    if (scheduleType !== "single_day") {
+        throw new Error("Rider 当前只支持单日 AI 路线，不能直接加载多日或分阶段路线。");
+    }
     const candidates = (Array.isArray(view.candidates) ? view.candidates : [])
         .map((candidate) => parseCandidate(candidate, view)).filter(Boolean);
     if (candidates.length === 0) throw new Error("路线计划没有可用候选。");
     return {
         planId,
         revision,
+        scheduleType,
         countryCode: text(view.country_code) || null,
         answer: String(answer || ""),
         planningStatus: text(view.planning_status) || "awaiting_selection",
@@ -25,11 +30,10 @@ export function parseRoutePlanView(view, { answer = "" } = {}) {
 
 function parseCandidate(candidate, view) {
     const candidateId = text(candidate?.candidate_id);
-    const direct = normalizeCoordinates(candidate?.geometry?.coordinates);
-    const staged = joinCoordinateSegments((candidate?.stages ?? []).map(
-        (stage) => normalizeCoordinates(stage?.geometry?.coordinates)
-    ));
-    const coordinates = direct.length >= 2 ? direct : staged;
+    if (Array.isArray(candidate?.stages) && candidate.stages.length > 0) {
+        throw new Error("Rider 当前不能把分阶段路线静默拼成一条路线，请改为单日路线后再加载。");
+    }
+    const coordinates = normalizeCoordinates(candidate?.geometry?.coordinates);
     if (!candidateId || coordinates.length < 2) return null;
     const distanceKm = positiveNumber(candidate.distance_m) / 1000 || null;
     const providerMinutes = positiveNumber(candidate.provider_duration_s) / 60 || null;
@@ -76,17 +80,6 @@ function normalizeCoordinates(coordinates) {
         Number.isFinite(longitude) && Number.isFinite(latitude)
         && Math.abs(longitude) <= 180 && Math.abs(latitude) <= 90
     ));
-}
-
-function joinCoordinateSegments(segments) {
-    const joined = [];
-    for (const coordinates of segments) {
-        for (const coordinate of coordinates) {
-            const previous = joined.at(-1);
-            if (!previous || previous[0] !== coordinate[0] || previous[1] !== coordinate[1]) joined.push(coordinate);
-        }
-    }
-    return joined;
 }
 
 function text(value) { return String(value ?? "").trim(); }

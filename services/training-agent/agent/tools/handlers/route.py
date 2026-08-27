@@ -81,6 +81,15 @@ def create_route_plan_tool(
     name: str = "create_route_plan",
 ) -> dict[str, Any]:
     args = args or {}
+    request_options = (
+        context.route_request_options
+        if isinstance(context.route_request_options, dict) else {}
+    )
+    include_elevation = (
+        bool(request_options["include_elevation"])
+        if "include_elevation" in request_options
+        else bool(args.get("include_elevation", True))
+    )
     segment_strategy = str(args.get("segment_strategy") or "auto").lower()
     country_code = str(args.get("country_code") or "")
     if segment_strategy == "complete_loop":
@@ -93,7 +102,7 @@ def create_route_plan_tool(
             segment_name_hint=str(args.get("segment_name_hint") or ""),
             target_distance_km=args.get("target_distance_km"),
             search_radius_km=float(args.get("search_radius_km", 8.0)),
-            include_elevation=bool(args.get("include_elevation", True)),
+            include_elevation=include_elevation,
             fallback_to_provider=bool(args.get("fallback_to_provider", True)),
         )
         stored = RoutePlanStore().save(plan)
@@ -113,12 +122,24 @@ def create_route_plan_tool(
             "waypoints": args["waypoints"],
             "target_distance_km": args.get("target_distance_km"),
         }]
+    plan_target_distance = args.get("target_distance_km")
+    candidates = [
+        {
+            **candidate,
+            **(
+                {"target_distance_km": plan_target_distance}
+                if candidate.get("target_distance_km") is None and plan_target_distance is not None
+                else {}
+            ),
+        }
+        for candidate in candidates if isinstance(candidate, dict)
+    ]
     plan = create_single_day_plan(
         workspace_id=_workspace_id(context),
         title=str(args.get("title") or "单日骑行路线"),
         country_code=country_code,
         candidates=candidates,
-        include_elevation=bool(args.get("include_elevation", True)) and not segment_active,
+        include_elevation=include_elevation and not segment_active,
     )
     if segment_active:
         plan = _apply_segment_strategy(
@@ -126,9 +147,9 @@ def create_route_plan_tool(
             context=context,
             strategy=segment_strategy,
             preferences=args.get("segment_preferences") or [],
-            include_elevation=bool(args.get("include_elevation", True)),
+            include_elevation=include_elevation,
         )
-    plan = _mark_route_proposed(plan, include_elevation=bool(args.get("include_elevation", True)))
+    plan = _mark_route_proposed(plan, include_elevation=include_elevation)
     stored = RoutePlanStore().save(plan)
     compact = compact_route_plan(stored)
     return {

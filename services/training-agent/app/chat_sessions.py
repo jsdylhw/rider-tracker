@@ -24,25 +24,25 @@ class ChatSession:
     touched_at: float = field(default_factory=monotonic)
     persist: Callable[["ChatSession"], None] | None = field(default=None, repr=False)
 
-    def cached_response(self, request_id: str, message: str) -> dict[str, Any] | None:
+    def cached_response(self, request_id: str, request_fingerprint: str) -> dict[str, Any] | None:
         entry = self.responses.get(request_id)
         if entry is not None:
             self.responses.move_to_end(request_id)
-            original_message, response = entry
-            if original_message != message:
-                raise ValueError("request_id was already used with a different message")
+            original_fingerprint, response = entry
+            if original_fingerprint != request_fingerprint:
+                raise ValueError("request_id was already used with a different request payload")
             return response
         return None
 
     def cache_response(
         self,
         request_id: str,
-        message: str,
+        request_fingerprint: str,
         response: dict[str, Any],
         *,
         limit: int = 100,
     ) -> None:
-        self.responses[request_id] = (message, response)
+        self.responses[request_id] = (request_fingerprint, response)
         self.responses.move_to_end(request_id)
         while len(self.responses) > limit:
             self.responses.popitem(last=False)

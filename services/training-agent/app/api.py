@@ -83,6 +83,7 @@ class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     request_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     message: str = Field(min_length=1, max_length=20_000)
+    route_options: dict[str, Any] | None = None
 
 
 class SelectRouteCandidateRequest(BaseModel):
@@ -265,16 +266,33 @@ def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]
     _require_api_access(http_request)
     session = chat_sessions.get_or_create(request.session_id)
     with session.lock:
+        request_fingerprint = json.dumps({
+            "message": request.message,
+            "route_options": request.route_options or {},
+        }, ensure_ascii=False, sort_keys=True)
         try:
-            cached = session.cached_response(request.request_id, request.message)
+            cached = session.cached_response(request.request_id, request_fingerprint)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if cached is not None:
             return cached
-        result = run_tool_loop(request.message, context=session.context)
-        response = public_turn_dict(result)
-        session.cache_response(request.request_id, request.message, response)
+        session.context.route_request_options = _normalized_route_options(request.route_options)
+        try:
+            result = run_tool_loop(request.message, context=session.context)
+            response = public_turn_dict(result)
+        finally:
+            session.context.route_request_options = {}
+        session.cache_response(request.request_id, request_fingerprint, response)
         return response
+
+
+def _normalized_route_options(value: dict[str, Any] | None) -> dict[str, Any]:
+    """Allow only trusted, request-scoped route policy fields."""
+    options = value if isinstance(value, dict) else {}
+    result: dict[str, Any] = {}
+    if isinstance(options.get("include_elevation"), bool):
+        result["include_elevation"] = options["include_elevation"]
+    return result
 
 
 @app.post("/api/route-narrations/prepare")

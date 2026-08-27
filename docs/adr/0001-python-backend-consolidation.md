@@ -123,3 +123,12 @@ compare-and-swap；重复请求返回缓存结果，过期 revision 返回 HTTP 
 Rider 的地图选点路线和 Agent 路线统一通过 provider-neutral `buildCoordinateRoute` 转为实时骑行
 runtime route。Provider 原始耗时仅作为数据保留；无海拔 ERG 路线的前端预计时间仍按虚拟骑行速度
 计算。至此 Python 不再把路线交给 Node 重建第二份业务模型，Node 仅验证并转发 HTTP。
+
+阶段 2 收尾时进一步关闭了分阶段路线的隐式降级：`route_plan_view.v1` 可以保留多日和 stage 数据，
+但当前 Rider runtime 只接收 `single_day`，遇到 multi-day 或带 stages 的候选会明确拒绝，不再把各阶段
+坐标静默首尾拼接成一条可骑路线。这样可以避免阶段间存在接驳空洞时仍被误判为有效道路路线。
+
+阶段 2 的回归覆盖包括：同轮多个 route execution 选择最后一次业务结果、同会话多个 plan 的显式定向
+修改、request ID 相同但 payload 不同的冲突重放、SQLite compare-and-swap 并发写入、浏览器晚到响应
+失效，以及骑行开始后的二次丢弃检查。2026-08-27 验收结果为 Rider `343/343`、Training Agent
+`622/622`；最终架构文档保持为冻结决策，本段只记录实现和验收状态。
