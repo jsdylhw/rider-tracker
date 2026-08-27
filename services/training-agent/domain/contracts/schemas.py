@@ -52,6 +52,10 @@ FIT_INGESTION_V1 = "fit_ingestion.v1"
 # 附加可选 ``report``，但生成报告不写入该 FIT artifact，避免报告晚于缓存生成时陈旧。
 ACTIVITY_DETAIL_V1 = "activity_detail.v1"
 
+# Rider 读取路线计划的跨进程领域视图。它包含稳定 candidate/segment ID 和有界
+# WGS84 geometry；Presentation 只负责展示，不再充当路线业务协议。
+ROUTE_PLAN_VIEW_V1 = "route_plan_view.v1"
+
 # ---------------------------- 活动持久化协议 ----------------------------
 # 以下两个对象目前共同保存在 activity_facts。metrics 是数值事实，features 是
 # 冲刺、爬坡、强度片段等确定性候选。暂不合并版本，避免迁移现有 SQLite 数据。
@@ -86,7 +90,13 @@ AGENT_TRACE_V1 = "agent_trace.v1"
 
 # PUBLIC_SCHEMAS 会直接跨 HTTP/进程边界。注意 activity_detail 同时也可缓存，
 # 这里按它最主要的消费者边界归类；两个集合无需互斥表达全部属性。
-PUBLIC_SCHEMAS = frozenset({AGENT_TURN_V1, PRESENTATION_V1, FIT_INGESTION_V1, ACTIVITY_DETAIL_V1})
+PUBLIC_SCHEMAS = frozenset({
+    AGENT_TURN_V1,
+    PRESENTATION_V1,
+    FIT_INGESTION_V1,
+    ACTIVITY_DETAIL_V1,
+    ROUTE_PLAN_VIEW_V1,
+})
 
 # PERSISTED_SCHEMAS 在进程退出后仍要读取。修改这些格式前必须检查数据库迁移、
 # 历史 JSON/缓存兼容和回滚策略。

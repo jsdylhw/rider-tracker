@@ -1,5 +1,5 @@
 from agent.main_agent.context import AgentContext
-from agent.main_agent.result_builder import build_completed_result, with_execution_header
+from agent.main_agent.result_builder import build_completed_result, build_turn_result, with_execution_header
 
 
 def test_execution_header_does_not_expose_internal_activity_key():
@@ -63,3 +63,26 @@ def test_partial_workflow_uses_deterministic_error_answer(monkeypatch, tmp_path)
     assert "处理部分完成" in result["answer"]
     assert "Strava 上传失败：TLS EOF" in result["answer"]
     assert "已完成。" not in result["answer"]
+
+
+def test_route_turn_exposes_route_plan_view(monkeypatch):
+    context = AgentContext(session_id="route-turn")
+    context.execution_trace.append({
+        "tool": "create_route_plan",
+        "status": "completed",
+        "result": {"result": {"plan_id": "route-1"}},
+    })
+    monkeypatch.setattr(
+        "agent.main_agent.result_builder.RoutePlanStore.get",
+        lambda self, plan_id: {
+            "plan_id": plan_id,
+            "revision": 2,
+            "candidates": [{"candidate_id": "candidate-1"}],
+        },
+    )
+
+    result = build_turn_result("completed", "route_advice", context, [], "完成")
+
+    assert result["route_plan"]["schema_version"] == "route_plan_view.v1"
+    assert result["route_plan"]["plan_id"] == "route-1"
+    assert result["route_plan"]["revision"] == 2

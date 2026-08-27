@@ -8,6 +8,8 @@ from agent.main_agent.context import AgentContext
 from agent.runtime.chat_logger import write_main_agent_markdown_log
 from agent.runtime.models import TurnResult, executions_from_trace
 from agent.runtime.presentation_projector import project_presentations
+from services.route.view import build_route_plan_view
+from storage.repositories.route import RoutePlanStore
 
 
 def build_completed_result(
@@ -118,7 +120,7 @@ def build_turn_result(
 ) -> dict[str, Any]:
     """Create the typed result while preserving the legacy dictionary API."""
     executions = executions_from_trace(context.execution_trace, steps=steps)
-    return TurnResult(
+    result = TurnResult(
         answer=answer,
         status=status,
         context=context,
@@ -130,6 +132,24 @@ def build_turn_result(
         current_fit_file=str(context.current_fit_file) if context.current_fit_file else None,
         log_path=log_path,
     ).to_dict()
+    route_plan = _route_plan_from_executions(executions)
+    if route_plan:
+        result["route_plan"] = route_plan
+    return result
+
+
+def _route_plan_from_executions(executions: list[Any]) -> dict[str, Any] | None:
+    for execution in reversed(executions):
+        payload = execution.result if isinstance(execution.result, dict) else {}
+        if isinstance(payload.get("result"), dict):
+            payload = payload["result"]
+        plan_id = str(payload.get("plan_id") or "")
+        if not plan_id:
+            continue
+        plan = RoutePlanStore().get(plan_id)
+        if plan:
+            return build_route_plan_view(plan)
+    return None
 
 
 def intent_kind(intent: Any) -> str:

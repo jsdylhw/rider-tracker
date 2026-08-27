@@ -27,6 +27,7 @@ from app.chat_sessions import ChatSessionStore
 from settings import cfg_get, load_config
 from storage.repositories.route import RoutePlanStore
 from services.route.single_day import compact_route_plan
+from services.route.view import build_route_plan_view
 from operations.activity.strava import (
     get_strava_upload_status,
     upload_stored_activity_fit,
@@ -357,6 +358,11 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
             "segments": request.segments,
         })
     plan_result = get_route_plan_tool(context, args={"plan_id": request.plan_id or ""})
+    compact_plan = plan_result.get("result") if isinstance(plan_result.get("result"), dict) else {}
+    resolved_plan_id = str(compact_plan.get("plan_id") or request.plan_id or "")
+    full_plan = RoutePlanStore().get(resolved_plan_id)
+    if not full_plan:
+        raise ValueError("route plan does not exist")
     presentations = project_presentations([ToolExecution(
         index=0,
         tool="get_route_plan",
@@ -364,7 +370,8 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
     )])
     return {
         "answer": primary.get("answer") or "",
-        "result": plan_result.get("result") or {},
+        "result": compact_plan,
+        "route_plan": build_route_plan_view(full_plan),
         "presentations": [item.to_dict() for item in presentations],
     }
 

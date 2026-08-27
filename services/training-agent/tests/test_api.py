@@ -311,8 +311,11 @@ def test_route_command_get_and_confirm_return_full_presentations(tmp_path, monke
 
     assert current.status_code == 200
     assert {item["type"] for item in current.json()["presentations"]} == {"table", "route_map"}
+    assert current.json()["route_plan"]["schema_version"] == "route_plan_view.v1"
+    assert current.json()["route_plan"]["plan_id"] == stored["plan_id"]
     assert confirmed.status_code == 200
     assert confirmed.json()["result"]["planning"]["status"] == "confirmed"
+    assert confirmed.json()["route_plan"]["planning_status"] == "confirmed"
     assert RoutePlanStore().get(stored["plan_id"])["planning"]["confirmed_candidate_id"] == "candidate_1"
 
 
