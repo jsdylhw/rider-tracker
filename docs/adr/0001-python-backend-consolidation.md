@@ -75,3 +75,36 @@ Electron 管理打包后的 Python sidecar；用户不需要安装 Conda 或手�
 正面结果是业务后端、持久化和运行时路径最终只有一个 owner，本地服务可收敛为单进程，也便于
 打包桌面应用。代价是迁移期仍需维护 Node 到 Python 的兼容代理，且根 `src` 会同时包含 JavaScript
 和 Python；因此必须依靠职责目录、架构测试和跨语言 contract，而不是仅凭文件扩展名维持边界。
+
+## 实施记录
+
+### 2026-08-27：阶段 0、1 收尾
+
+阶段 0（冻结决策和基线）与阶段 1（删除 Training Agent 遗留 Web UI）的代码工作已经分别完成并
+提交，后续迁移从阶段 2 开始。
+
+阶段 0 已落地：
+
+- 本 ADR 和唯一权威最终架构文档；
+- `tests/contracts/rider-browser-http-api.v1.json` 浏览器 API surface 基线；
+- API surface、跨层依赖及生产 `demo/` 依赖不再扩大的架构护栏；
+- 稳定 schema 注册表以及根 CI 中的 JavaScript、Python、契约和双进程检查。
+
+阶段 1 已落地：
+
+- 删除 Python 静态页面、旧页面专属 API/测试和旧主视觉；
+- Rider 接回 Garmin 快捷入口与已有活动报告；
+- Python `/` 只返回服务元数据，遗留 `/static/app.js` 返回 404；
+- 双进程检查覆盖 Rider 唯一页面、本地活动/路线接口和 Agent health proxy。
+
+阶段 0 冻结的是迁移约束与当前契约基线，不表示 `error.v1`、job、revision 等目标契约已经全部进入
+生产；这些按权威计划的后续阶段逐项实现。Garmin、Strava、地图供应商及模型服务的真实账号验收需要
+网络和凭据，属于发布前人工外部集成检查，不由无副作用 CI 自动执行。
+
+本次收尾验证结果：
+
+- Rider JavaScript/集成测试：335/335；
+- Python Training Backend：610/610；
+- 双进程集成：统一 Rider 页面、本地活动/路线接口、Agent health proxy、Python 服务元数据及遗留静态页面 404 均通过；
+- SQLite：`user_version=9`，统一数据库检查通过；
+- Skill case 载入、Python `compileall`、路线 Demo JavaScript syntax 和 `git diff --check` 均通过。

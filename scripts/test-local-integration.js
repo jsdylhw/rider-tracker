@@ -22,9 +22,21 @@ try {
     ], {
         cwd: agentRoot,
         stdio: "pipe",
-        env: { ...process.env, PYTHONPATH: agentRoot, PYTHONUNBUFFERED: "1" }
+        env: {
+            ...process.env,
+            PYTHONPATH: agentRoot,
+            PYTHONUNBUFFERED: "1",
+            RIDER_PROJECT_ROOT: projectRoot,
+            TRAINING_AGENT_DB_PATH: path.join(tempRoot, "rider-tracker.db"),
+            TRAINING_AGENT_MANAGED_DATABASE: "1"
+        }
     }));
     await waitForJson(`${agentUrl}/health`, (value) => value.status === "ok");
+    const agentRootMetadata = await readJson(`${agentUrl}/`);
+    if (agentRootMetadata.service !== "rider-training-backend") {
+        throw new Error(`Unexpected Training Backend root payload: ${JSON.stringify(agentRootMetadata)}`);
+    }
+    await expectStatus(`${agentUrl}/static/app.js`, 404);
 
     children.push(spawn(process.execPath, [
         "--disable-warning=ExperimentalWarning",
@@ -42,11 +54,23 @@ try {
         }
     }));
     await waitForJson(`${riderUrl}/healthz`, (value) => value.ok === true);
+    const riderPage = await readText(`${riderUrl}/`);
+    if (!riderPage.includes("Rider Tracker") || !riderPage.includes("Training Agent")) {
+        throw new Error("Rider root did not return the unified product page.");
+    }
+    const activities = await readJson(`${riderUrl}/api/activities`);
+    if (!activities.ok || !Array.isArray(activities.activities)) {
+        throw new Error(`Unexpected Rider activity payload: ${JSON.stringify(activities)}`);
+    }
+    const routes = await readJson(`${riderUrl}/api/routes`);
+    if (!routes.ok || !Array.isArray(routes.routes)) {
+        throw new Error(`Unexpected Rider route payload: ${JSON.stringify(routes)}`);
+    }
     const proxyHealth = await readJson(`${riderUrl}/api/agent/health`);
     if (!proxyHealth.ok || proxyHealth.result?.status !== "ok") {
         throw new Error(`Unexpected Agent proxy health payload: ${JSON.stringify(proxyHealth)}`);
     }
-    console.log("[integration] Rider -> embedded Training Agent health path passed.");
+    console.log("[integration] Unified Rider page, local stores, Agent proxy, and removed legacy UI checks passed.");
 } finally {
     for (const child of children) child.kill();
     await rm(tempRoot, { recursive: true, force: true });
@@ -74,4 +98,21 @@ async function readJson(url) {
     const value = await response.json();
     if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}: ${JSON.stringify(value)}`);
     return value;
+}
+
+async function readText(url) {
+    const response = await fetch(url, {
+        headers: { Origin: new URL(url).origin },
+        signal: AbortSignal.timeout(2_000)
+    });
+    const value = await response.text();
+    if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}: ${value}`);
+    return value;
+}
+
+async function expectStatus(url, expectedStatus) {
+    const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
+    if (response.status !== expectedStatus) {
+        throw new Error(`${url} returned HTTP ${response.status}; expected ${expectedStatus}.`);
+    }
 }
