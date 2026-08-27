@@ -262,8 +262,10 @@ def test_route_candidate_click_persists_preview_without_archiving_chat_turn(tmp_
 
     response = client.post("/api/route-plans/select", json={
         "session_id": "route-session",
+        "request_id": "select-1",
         "plan_id": stored["plan_id"],
         "candidate_id": "candidate_2",
+        "expected_revision": stored["revision"],
     })
 
     assert response.status_code == 200
@@ -299,14 +301,17 @@ def test_route_command_get_and_confirm_return_full_presentations(tmp_path, monke
 
     current = client.post("/api/route-plans/command", json={
         "session_id": "route-command",
+        "request_id": "route-get-1",
         "plan_id": stored["plan_id"],
         "operation": "get",
     })
     confirmed = client.post("/api/route-plans/command", json={
         "session_id": "route-command",
+        "request_id": "route-confirm-1",
         "plan_id": stored["plan_id"],
         "candidate_id": "candidate_1",
         "operation": "confirm",
+        "expected_revision": stored["revision"],
     })
 
     assert current.status_code == 200
@@ -323,9 +328,45 @@ def test_route_command_rejects_unsupported_operation(tmp_path, monkeypatch):
     _, client, _ = _prepare_api(tmp_path, monkeypatch)
     response = client.post("/api/route-plans/command", json={
         "session_id": "route-command",
+        "request_id": "route-invalid-1",
         "operation": "delete_everything",
     })
     assert response.status_code == 400
+
+
+def test_route_command_is_idempotent_and_rejects_stale_revision(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    session = api.chat_sessions.get_or_create("route-cas")
+    stored = RoutePlanStore().save({
+        "plan_id": "route-cas-plan",
+        "workspace_id": str(session.context.workspace_id),
+        "active_candidate_id": "candidate-1",
+        "planning": {"status": "awaiting_selection"},
+        "candidates": [{"candidate_id": "candidate-1", "name": "候选"}],
+    })
+    request = {
+        "session_id": "route-cas",
+        "request_id": "confirm-once",
+        "plan_id": stored["plan_id"],
+        "candidate_id": "candidate-1",
+        "operation": "confirm",
+        "expected_revision": stored["revision"],
+    }
+
+    first = client.post("/api/route-plans/command", json=request)
+    replay = client.post("/api/route-plans/command", json=request)
+    stale = client.post("/api/route-plans/command", json={
+        **request,
+        "request_id": "stale-confirm",
+    })
+
+    assert first.status_code == 200
+    assert replay.status_code == 200
+    assert replay.json() == first.json()
+    assert RoutePlanStore().get(stored["plan_id"])["revision"] == stored["revision"] + 1
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "route_revision_conflict"
+    assert stale.json()["detail"]["actual_revision"] == stored["revision"] + 1
 
 
 def test_chat_reuses_context_and_deduplicates_request_id(tmp_path, monkeypatch):

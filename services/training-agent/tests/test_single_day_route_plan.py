@@ -18,7 +18,7 @@ from services.route.single_day import (
     create_single_day_plan,
     edit_candidate_waypoints,
 )
-from storage.repositories.route import RoutePlanStore
+from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
 
 
 def _route_result(distance_m=42_000):
@@ -415,6 +415,29 @@ def test_route_plan_store_serializes_concurrent_revision_updates(tmp_path):
 
     assert sorted(revisions) == list(range(2, workers + 2))
     assert store.get("route_shared")["revision"] == workers + 1
+
+
+def test_route_plan_store_compare_and_swap_allows_only_one_stale_writer(tmp_path):
+    path = tmp_path / "routes.db"
+    store = RoutePlanStore(path)
+    plan = store.save({"plan_id": "route_cas", "workspace_id": "workspace", "candidates": []})
+    barrier = Barrier(2)
+
+    def save_once(index):
+        barrier.wait()
+        try:
+            saved = RoutePlanStore(path).save(
+                {**plan, "writer": index}, expected_revision=plan["revision"],
+            )
+            return ("saved", saved["revision"])
+        except RouteRevisionConflict as exc:
+            return ("conflict", exc.actual)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(save_once, range(2)))
+
+    assert sorted(status for status, _ in results) == ["conflict", "saved"]
+    assert store.get("route_cas")["revision"] == 2
 
 
 def test_route_plan_store_undoes_multiple_persisted_edits(tmp_path):

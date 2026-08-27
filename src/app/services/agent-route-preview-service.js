@@ -123,6 +123,7 @@ export function createAgentRoutePreviewService({
         if (!operations.ensureRouteEditingAllowed()) return currentDraft;
         const response = await agentClient.routePlanCommand(operation, {
             plan_id: currentDraft?.planId,
+            expected_revision: currentDraft?.revision,
             ...input
         });
         return saveDraft(parseAgentRouteDraft({

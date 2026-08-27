@@ -132,8 +132,10 @@ export const suite = {
                 });
                 const result = await client.routePlanCommand({
                     session_id: "s1",
+                    request_id: "route-1",
                     plan_id: "plan-1",
                     operation: "compose_segments",
+                    expected_revision: 3,
                     segments: [
                         { segment_id: 101, direction: "forward" },
                         { segment_id: 202, direction: "reverse" }
@@ -143,6 +145,7 @@ export const suite = {
                 assertEqual(result.answer, "已确认");
                 assertEqual(request.url, "http://127.0.0.1:8000/api/route-plans/command");
                 assertEqual(body.operation, "compose_segments");
+                assertEqual(body.expected_revision, 3);
                 assertEqual(body.segments[1].segment_id, 202);
             }
         },

@@ -59,9 +59,17 @@ function normalizeChatRequest(body = {}) {
 
 function normalizeSelectionRequest(body = {}) {
     const sessionId = normalizeId(body.session_id, "session_id");
+    const requestId = normalizeId(body.request_id, "request_id");
     const planId = normalizeText(body.plan_id, "plan_id");
     const candidateId = normalizeText(body.candidate_id, "candidate_id");
-    return { session_id: sessionId, plan_id: planId, candidate_id: candidateId };
+    const expectedRevision = normalizeRevision(body.expected_revision);
+    return {
+        session_id: sessionId,
+        request_id: requestId,
+        plan_id: planId,
+        candidate_id: candidateId,
+        expected_revision: expectedRevision
+    };
 }
 
 function normalizeCommandRequest(body = {}) {
@@ -70,9 +78,11 @@ function normalizeCommandRequest(body = {}) {
     if (!allowed.has(operation)) throw new RequestValidationError("不支持的路线操作。");
     const request = {
         session_id: normalizeId(body.session_id, "session_id"),
+        request_id: normalizeId(body.request_id, "request_id"),
         operation,
     };
     if (body.plan_id) request.plan_id = normalizeText(body.plan_id, "plan_id");
+    if (operation !== "get") request.expected_revision = normalizeRevision(body.expected_revision);
     if (body.candidate_id) request.candidate_id = normalizeText(body.candidate_id, "candidate_id");
     if (body.candidate_name) request.candidate_name = String(body.candidate_name).trim().slice(0, 200);
     if (body.target_distance_km !== undefined && body.target_distance_km !== null) {
@@ -88,6 +98,14 @@ function normalizeCommandRequest(body = {}) {
         request.max_segments = Math.round(clampNumber(body.max_segments, 1, 20, 12));
     }
     return request;
+}
+
+function normalizeRevision(value) {
+    const revision = Number(value);
+    if (!Number.isInteger(revision) || revision < 1) {
+        throw new RequestValidationError("expected_revision 格式无效。");
+    }
+    return revision;
 }
 
 function normalizeSegments(value) {
@@ -126,7 +144,8 @@ function normalizeText(value, field) {
 }
 
 function resolveStatus(error) {
-    return error instanceof RequestValidationError ? 400 : 502;
+    if (error instanceof RequestValidationError) return 400;
+    return Number.isInteger(error?.statusCode) ? error.statusCode : 502;
 }
 
 class RequestValidationError extends Error {}

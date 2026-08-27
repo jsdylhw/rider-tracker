@@ -10,11 +10,29 @@ from typing import Any
 from storage.database import connect_database
 
 
+class RouteRevisionConflict(ValueError):
+    """Raised when a route command was based on a stale persisted revision."""
+
+    def __init__(self, *, plan_id: str, expected: int, actual: int):
+        self.plan_id = plan_id
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"route plan revision conflict: expected {expected}, current revision is {actual}"
+        )
+
+
 class RoutePlanStore:
     def __init__(self, path: str | Path | None = None):
         self.path = path
 
-    def save(self, plan: dict[str, Any], *, archive: bool = True) -> dict[str, Any]:
+    def save(
+        self,
+        plan: dict[str, Any],
+        *,
+        archive: bool = True,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
         plan_id = str(plan.get("plan_id") or "").strip()
         workspace_id = str(plan.get("workspace_id") or "").strip()
         if not plan_id or not workspace_id:
@@ -29,7 +47,14 @@ class RoutePlanStore:
                 "SELECT revision, plan_json, created_at FROM route_plans WHERE id = ?",
                 (plan_id,),
             ).fetchone()
-            revision = int(existing["revision"] or 0) + 1 if existing else 1
+            actual_revision = int(existing["revision"] or 0) if existing else 0
+            if expected_revision is not None and expected_revision != actual_revision:
+                raise RouteRevisionConflict(
+                    plan_id=plan_id,
+                    expected=expected_revision,
+                    actual=actual_revision,
+                )
+            revision = actual_revision + 1
             created_at = str(existing["created_at"]) if existing else now
             updated_at = _next_workspace_timestamp(connection, workspace_id, now)
             stored = {
@@ -72,7 +97,7 @@ class RoutePlanStore:
             )
         return stored
 
-    def undo(self, plan_id: str) -> dict[str, Any] | None:
+    def undo(self, plan_id: str, *, expected_revision: int | None = None) -> dict[str, Any] | None:
         """Restore and consume the latest prior snapshot as a new revision."""
         normalized_id = str(plan_id or "").strip()
         if not normalized_id:
@@ -86,6 +111,13 @@ class RoutePlanStore:
             ).fetchone()
             if not current:
                 return None
+            actual_revision = int(current["revision"] or 0)
+            if expected_revision is not None and expected_revision != actual_revision:
+                raise RouteRevisionConflict(
+                    plan_id=normalized_id,
+                    expected=expected_revision,
+                    actual=actual_revision,
+                )
             previous = connection.execute(
                 """
                 SELECT revision, plan_json FROM route_plan_revisions
@@ -96,7 +128,7 @@ class RoutePlanStore:
             if not previous:
                 return None
             restored = _json_object(previous["plan_json"])
-            revision = int(current["revision"] or 0) + 1
+            revision = actual_revision + 1
             workspace_id = str(current["workspace_id"])
             updated_at = _next_workspace_timestamp(connection, workspace_id, now)
             restored.update({

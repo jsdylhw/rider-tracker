@@ -61,6 +61,7 @@ export function parseAgentRouteDraft(turnResult) {
 
     return {
         planId: String(planId),
+        revision: positiveInteger(turnResult?.route_plan?.revision),
         countryCode,
         answer: String(turnResult?.answer || ""),
         planningStatus: routeMaps.map((item) => item?.data?.planning_status).find(Boolean) || "awaiting_selection",
@@ -195,6 +196,11 @@ function joinCoordinateSegments(segments) {
 function positiveNumber(value) {
     const number = Number(value);
     return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function positiveInteger(value) {
+    const number = Number(value);
+    return Number.isInteger(number) && number > 0 ? number : null;
 }
 
 function finiteNumber(value) {

@@ -138,6 +138,7 @@ function routeResponse(planningStatus) {
     return {
         answer: "路线已生成",
         status: "completed",
+        route_plan: { revision: 1 },
         presentations: [
             {
                 type: "table",

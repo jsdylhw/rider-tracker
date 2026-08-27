@@ -192,8 +192,13 @@ def update_route_plan_tool(
     if not plan:
         raise ValueError("没有可更新的路线计划，请先创建路线")
     operation = str(args.get("operation") or "replace_waypoints")
+    expected_revision = _expected_revision(args)
     if operation == "undo":
-        restored = store.undo(str(plan.get("plan_id") or ""))
+        restored = (
+            store.undo(str(plan.get("plan_id") or ""), expected_revision=expected_revision)
+            if expected_revision is not None
+            else store.undo(str(plan.get("plan_id") or ""))
+        )
         if not restored:
             raise ValueError("当前路线没有可以撤销的上一版本")
         compact = compact_route_plan(restored)
@@ -350,10 +355,11 @@ def update_route_plan_tool(
         )
         if plan.get("schedule_type") in {"multi_day", "day_parts"}:
             plan = refresh_itinerary_plan(plan)
-    stored = (
-        store.save(plan, archive=False)
-        if operation == "select_candidate"
-        else store.save(plan)
+    stored = _save_route_plan(
+        store,
+        plan,
+        archive=operation != "select_candidate",
+        expected_revision=expected_revision,
     )
     compact = compact_route_plan(stored)
     return {
@@ -409,7 +415,12 @@ def explore_route_segments_tool(
     # Segment discovery enriches the current route but is not itself a route
     # edit. Do not make a later conversational undo stop at this metadata-only
     # revision instead of restoring the previous waypoint/geometry version.
-    stored = store.save(updated, archive=False)
+    stored = _save_route_plan(
+        store,
+        updated,
+        archive=False,
+        expected_revision=_expected_revision(args),
+    )
     result = {**result, "revision": stored.get("revision")}
     return {
         "step": name,
@@ -420,6 +431,28 @@ def explore_route_segments_tool(
         ),
         "result": result,
     }
+
+
+def _expected_revision(args: dict[str, Any]) -> int | None:
+    value = args.get("_expected_revision")
+    if value is None:
+        return None
+    revision = int(value)
+    if revision < 1:
+        raise ValueError("expected_revision must be a positive integer")
+    return revision
+
+
+def _save_route_plan(
+    store: RoutePlanStore,
+    plan: dict[str, Any],
+    *,
+    archive: bool,
+    expected_revision: int | None,
+) -> dict[str, Any]:
+    if expected_revision is None:
+        return store.save(plan, archive=False) if not archive else store.save(plan)
+    return store.save(plan, archive=archive, expected_revision=expected_revision)
 
 
 def _workspace_id(context: AgentContext) -> str:

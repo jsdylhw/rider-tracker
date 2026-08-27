@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hmac
+import json
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ from agent.tools.handlers.route import (
 )
 from app.chat_sessions import ChatSessionStore
 from settings import cfg_get, load_config
-from storage.repositories.route import RoutePlanStore
+from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
 from services.route.single_day import compact_route_plan
 from services.route.view import build_route_plan_view
 from operations.activity.strava import (
@@ -86,14 +87,18 @@ class ChatRequest(BaseModel):
 
 class SelectRouteCandidateRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    request_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     plan_id: str = Field(min_length=1, max_length=128)
     candidate_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=1)
 
 
 class RoutePlanCommandRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    request_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     plan_id: str | None = Field(default=None, max_length=128)
     operation: str = Field(min_length=1, max_length=64)
+    expected_revision: int | None = Field(default=None, ge=1)
     candidate_id: str | None = Field(default=None, max_length=128)
     candidate_name: str | None = Field(default=None, max_length=200)
     target_distance_km: float | None = Field(default=None, gt=0)
@@ -291,6 +296,13 @@ def select_route_candidate_endpoint(
     _require_api_access(http_request)
     session = chat_sessions.get_or_create(request.session_id)
     with session.lock:
+        fingerprint = _route_request_fingerprint(request)
+        try:
+            cached = session.cached_response(request.request_id, fingerprint)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if cached is not None:
+            return cached
         store = RoutePlanStore()
         plan = store.get(request.plan_id)
         if not plan:
@@ -304,8 +316,17 @@ def select_route_candidate_endpoint(
         }
         if request.candidate_id not in valid_ids:
             raise HTTPException(status_code=404, detail="Route candidate does not exist.")
-        stored = store.save({**plan, "active_candidate_id": request.candidate_id}, archive=False)
-        return compact_route_plan(stored)
+        try:
+            stored = store.save(
+                {**plan, "active_candidate_id": request.candidate_id},
+                archive=False,
+                expected_revision=request.expected_revision,
+            )
+        except RouteRevisionConflict as exc:
+            raise _revision_conflict_response(exc) from exc
+        response = compact_route_plan(stored)
+        session.cache_response(request.request_id, fingerprint, response)
+        return response
 
 
 @app.post("/api/route-plans/command")
@@ -317,8 +338,19 @@ def route_plan_command_endpoint(
     _require_api_access(http_request)
     session = chat_sessions.get_or_create(request.session_id)
     with session.lock:
+        fingerprint = _route_request_fingerprint(request)
         try:
-            return _run_route_plan_command(session.context, request)
+            cached = session.cached_response(request.request_id, fingerprint)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if cached is not None:
+            return cached
+        try:
+            response = _run_route_plan_command(session.context, request)
+            session.cache_response(request.request_id, fingerprint, response)
+            return response
+        except RouteRevisionConflict as exc:
+            raise _revision_conflict_response(exc) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -329,6 +361,8 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
         "candidate_id": request.candidate_id or "",
     }
     operation = request.operation.strip().lower()
+    if operation != "get" and request.expected_revision is None:
+        raise ValueError("expected_revision is required for route mutations")
     if operation == "get":
         primary = get_route_plan_tool(context, args=args)
     elif operation == "explore_segments":
@@ -336,6 +370,7 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
             **args,
             "corridor_km": request.corridor_km,
             "max_segments": request.max_segments,
+            "_expected_revision": request.expected_revision,
         })
     else:
         mapped = {
@@ -356,6 +391,7 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
             "candidate_name": request.candidate_name or "",
             "target_distance_km": request.target_distance_km,
             "segments": request.segments,
+            "_expected_revision": request.expected_revision,
         })
     plan_result = get_route_plan_tool(context, args={"plan_id": request.plan_id or ""})
     compact_plan = plan_result.get("result") if isinstance(plan_result.get("result"), dict) else {}
@@ -374,6 +410,25 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
         "route_plan": build_route_plan_view(full_plan),
         "presentations": [item.to_dict() for item in presentations],
     }
+
+
+def _route_request_fingerprint(request: BaseModel) -> str:
+    return json.dumps(
+        request.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _revision_conflict_response(exc: RouteRevisionConflict) -> HTTPException:
+    return HTTPException(status_code=409, detail={
+        "code": "route_revision_conflict",
+        "plan_id": exc.plan_id,
+        "expected_revision": exc.expected,
+        "actual_revision": exc.actual,
+        "message": str(exc),
+    })
 
 
 def _require_api_access(request: Request) -> None:

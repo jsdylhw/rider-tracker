@@ -30,16 +30,19 @@ export function createAgentApiClient({
                 message
             });
         },
-        selectRouteCandidate(planId, candidateId) {
+        selectRouteCandidate(planId, candidateId, expectedRevision) {
             return post("/api/agent/route-plans/select", {
                 session_id: sessionId,
+                request_id: `route-${crypto.randomUUID()}`,
                 plan_id: planId,
-                candidate_id: candidateId
+                candidate_id: candidateId,
+                expected_revision: expectedRevision
             });
         },
         routePlanCommand(operation, input = {}) {
             return post("/api/agent/route-plans/command", {
                 session_id: sessionId,
+                request_id: `route-${crypto.randomUUID()}`,
                 operation,
                 ...input
             });

@@ -18,7 +18,7 @@ export function createPersonalFitAgentClient({
             });
             const payload = await readJson(response);
             if (!response.ok) {
-                throw new Error(payload?.detail || payload?.error || `Personal FIT Agent 请求失败（HTTP ${response.status}）`);
+                throw responseError(response, payload);
             }
             return payload;
         } catch (error) {
@@ -54,7 +54,7 @@ export function createPersonalFitAgentClient({
             });
             const payload = await readJson(response);
             if (!response.ok) {
-                throw new Error(payload?.detail || payload?.error || `Personal FIT Agent 请求失败（HTTP ${response.status}）`);
+                throw responseError(response, payload);
             }
             return payload;
         } catch (error) {
@@ -88,6 +88,17 @@ export function createPersonalFitAgentClient({
         routePlanCommand: (request) => post("/api/route-plans/command", request),
         prepareRouteNarration: (request) => post("/api/route-narrations/prepare", request)
     };
+}
+
+function responseError(response, payload) {
+    const detail = payload?.detail;
+    const message = typeof detail === "string"
+        ? detail
+        : detail?.message || payload?.error || `Personal FIT Agent 请求失败（HTTP ${response.status}）`;
+    const error = new Error(message);
+    error.statusCode = response.status;
+    error.detail = detail;
+    return error;
 }
 
 async function readJson(response) {
