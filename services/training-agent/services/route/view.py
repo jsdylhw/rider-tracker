@@ -80,6 +80,7 @@ def _stage_view(stage: dict[str, Any]) -> dict[str, Any] | None:
 
 def _segment_catalog(plan: dict[str, Any]) -> list[dict[str, Any]]:
     pools = plan.get("segment_pool") if isinstance(plan.get("segment_pool"), dict) else {}
+    target_candidates = _segment_target_candidates(plan)
     catalog: dict[int, dict[str, Any]] = {}
     for target_id, values in pools.items():
         for segment in values if isinstance(values, list) else []:
@@ -101,10 +102,25 @@ def _segment_catalog(plan: dict[str, Any]) -> list[dict[str, Any]]:
                 "candidate_ids": [],
                 "geometry": _geometry(segment.get("geometry")),
             })
-            target = str(target_id)
+            target = target_candidates.get(str(target_id), str(target_id))
             if target and target not in current["candidate_ids"]:
                 current["candidate_ids"].append(target)
     return list(catalog.values())
+
+
+def _segment_target_candidates(plan: dict[str, Any]) -> dict[str, str]:
+    targets: dict[str, str] = {}
+    for candidate in plan.get("candidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        candidate_id = str(candidate.get("candidate_id") or "")
+        if not candidate_id:
+            continue
+        targets[candidate_id] = candidate_id
+        for stage in candidate.get("stages") or []:
+            if isinstance(stage, dict) and stage.get("stage_id"):
+                targets[str(stage["stage_id"])] = candidate_id
+    return targets
 
 
 def _segment_sequence(values: Any) -> list[dict[str, Any]]:

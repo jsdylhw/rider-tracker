@@ -108,3 +108,18 @@ Electron 管理打包后的 Python sidecar；用户不需要安装 Conda 或手�
 - 双进程集成：统一 Rider 页面、本地活动/路线接口、Agent health proxy、Python 服务元数据及遗留静态页面 404 均通过；
 - SQLite：`user_version=9`，统一数据库检查通过；
 - Skill case 载入、Python `compileall`、路线 Demo JavaScript syntax 和 `git diff --check` 均通过。
+
+### 2026-08-27：阶段 2 路线业务契约收敛
+
+路线计划的业务 owner 保持为 Python。Python 持久化完整 `route_plan.v1`，并向 Rider 投影有界的
+`route_plan_view.v1`：它包含稳定的 plan/candidate/segment ID、revision、WGS84 geometry、途经点、
+多日阶段、选中/确认状态和 Strava 路段目录。`presentation.v1` 继续用于通用 Agent 结果展示，但不再
+承担候选识别、路线几何拼装或确认状态传递。
+
+路线修改命令必须携带唯一 `request_id` 和当前 `expected_revision`。Python 在 SQLite 写事务内执行
+compare-and-swap；重复请求返回缓存结果，过期 revision 返回 HTTP 409。Rider 只接受仍属于当前页面
+操作、骑行尚未开始且 revision 前进的响应；最终确认还必须明确返回相同 candidate ID。
+
+Rider 的地图选点路线和 Agent 路线统一通过 provider-neutral `buildCoordinateRoute` 转为实时骑行
+runtime route。Provider 原始耗时仅作为数据保留；无海拔 ERG 路线的前端预计时间仍按虚拟骑行速度
+计算。至此 Python 不再把路线交给 Node 重建第二份业务模型，Node 仅验证并转发 HTTP。

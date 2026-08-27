@@ -87,7 +87,9 @@ def test_route_plan_view_projects_itinerary_stages():
                 "geometry": {"coordinates": [[119, 29], [119.5, 29.5]]},
             }],
         }],
+        "segment_pool": {"day-1": [{"segment_id": 18, "name": "第一天路段"}]},
     })
 
     assert view["candidates"][0]["stages"][0]["stage_id"] == "day-1"
     assert view["candidates"][0]["stages"][0]["distance_m"] == 100_000
+    assert view["segments"][0]["candidate_ids"] == ["candidate-1"]

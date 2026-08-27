@@ -10,7 +10,7 @@ export const suite = {
     name: "agent-route-contract",
     tests: [
         {
-            name: "parses route_plan presentations and builds a no-elevation Rider route",
+            name: "parses route_plan_view and builds a no-elevation Rider route",
             run() {
                 const draft = parseAgentRouteDraft(buildTurnResult());
                 assertEqual(draft.planId, "route-1");
@@ -100,6 +100,24 @@ export const suite = {
                 }
                 assertEqual(error?.message, "请补充起点");
             }
+        },
+        {
+            name: "does not reconstruct route state from presentation blocks",
+            run() {
+                let error = null;
+                try {
+                    parseAgentRouteDraft({
+                        answer: "旧展示数据不能作为路线协议。",
+                        presentations: [{
+                            type: "route_map",
+                            data: { plan_id: "legacy", routes: [{ candidate_id: "candidate-1" }] }
+                        }]
+                    });
+                } catch (caught) {
+                    error = caught;
+                }
+                assertEqual(error?.message, "旧展示数据不能作为路线协议。");
+            }
         }
     ]
 };
@@ -108,50 +126,52 @@ function buildTurnResult() {
     return {
         answer: "已生成两条路线。",
         status: "completed",
-        presentations: [
-            {
-                type: "table",
-                data: {
-                    rows: [
-                        { candidate: "鸭川路线", distance_km: 30.4, duration_min: 92, provider: "Google", mode: "BICYCLE", strava_segments: "" },
-                        { candidate: "岚山路线", distance_km: 32.1, duration_min: 105, provider: "Google", mode: "BICYCLE", strava_segments: "桂川" }
-                    ]
-                }
-            },
-            {
-                type: "table",
-                data: {
-                    rows: [{
-                        segment_id: 9876,
-                        segment_name: "桂川景观段",
-                        distance_km: 6.4,
-                        average_grade_percent: 0.4,
-                        elevation_difference_m: 18,
-                        distance_to_route_km: 0.3,
-                        route_overlap_ratio: 0.72,
-                        candidate_ids: ["candidate-1"]
-                    }, {
-                        segment_id: 9999,
-                        segment_name: "岚山专属段",
-                        distance_km: 4.2,
-                        candidate_ids: ["candidate-2"]
-                    }]
-                }
-            },
-            {
-                type: "route_map",
-                data: {
-                    plan_id: "route-1",
-                    country_code: "JP",
-                    planning_status: "awaiting_selection",
-                    routes: [
-                        { candidate_id: "candidate-1", kind: "planned_route", name: "鸭川路线", active: true, geometry: { coordinates: [[135.75, 35.0], [135.77, 35.03], [135.75, 35.0]] } },
-                        { candidate_id: "candidate-2", kind: "planned_route", name: "岚山路线", active: false, geometry: { coordinates: [[135.75, 35.0], [135.67, 35.01], [135.75, 35.0]] } },
-                        { kind: "strava_segment", segment_id: 9876, candidate_ids: ["candidate-1"], name: "桂川景观段", geometry: { coordinates: [[135.7, 35.0], [135.71, 35.01]] } },
-                        { kind: "strava_segment", segment_id: 9999, candidate_ids: ["candidate-2"], name: "岚山专属段", geometry: { coordinates: [[135.67, 35.01], [135.68, 35.02]] } }
-                    ]
-                }
-            }
-        ]
+        route_plan: {
+            schema_version: "route_plan_view.v1",
+            plan_id: "route-1",
+            revision: 3,
+            country_code: "JP",
+            planning_status: "awaiting_selection",
+            active_candidate_id: "candidate-1",
+            confirmed_candidate_id: null,
+            candidates: [{
+                candidate_id: "candidate-1",
+                name: "鸭川路线",
+                distance_m: 30_400,
+                provider_duration_s: 5_520,
+                provider: "Google",
+                travel_mode: "BICYCLE",
+                geometry: { coordinates: [[135.75, 35.0], [135.77, 35.03], [135.75, 35.0]] },
+                waypoints: [],
+                segment_sequence: [{ segment_id: 9876 }]
+            }, {
+                candidate_id: "candidate-2",
+                name: "岚山路线",
+                distance_m: 32_100,
+                provider_duration_s: 6_300,
+                provider: "Google",
+                travel_mode: "BICYCLE",
+                geometry: { coordinates: [[135.75, 35.0], [135.67, 35.01], [135.75, 35.0]] },
+                waypoints: [],
+                segment_sequence: [{ segment_id: 9999 }]
+            }],
+            segments: [{
+                segment_id: 9876,
+                name: "桂川景观段",
+                distance_m: 6_400,
+                average_grade_percent: 0.4,
+                elevation_difference_m: 18,
+                distance_to_route_m: 300,
+                route_overlap_ratio: 0.72,
+                candidate_ids: ["candidate-1"],
+                geometry: { coordinates: [[135.7, 35.0], [135.71, 35.01]] }
+            }, {
+                segment_id: 9999,
+                name: "岚山专属段",
+                distance_m: 4_200,
+                candidate_ids: ["candidate-2"],
+                geometry: { coordinates: [[135.67, 35.01], [135.68, 35.02]] }
+            }]
+        }
     };
 }

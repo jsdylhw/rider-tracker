@@ -145,8 +145,7 @@ export function createAgentRoutePreviewService({
         return saveDraft(parseAgentRouteDraft({
             answer: response.answer,
             status: "completed",
-            route_plan: response.route_plan,
-            presentations: response.presentations
+            route_plan: response.route_plan
         }));
     }
 
