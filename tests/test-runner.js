@@ -61,12 +61,14 @@ import { suite as incrementalPowerMetricsSuite } from "./unit/incremental-power-
 import { suite as oauthStateStoreSuite } from "./unit/oauth-state-store.test.js";
 import { suite as localApiSecuritySuite } from "./unit/local-api-security.test.js";
 import { suite as agentFloatingWindowSuite } from "./unit/agent-floating-window.test.js";
+import { suite as agentCapabilitiesSuite } from "./unit/agent-capabilities.test.js";
 import { suite as safeMarkdownRendererSuite } from "./unit/safe-markdown-renderer.test.js";
 import { suite as agentRouteContractSuite } from "./unit/agent-route-contract.test.js";
 import { suite as personalFitAgentClientSuite } from "./unit/personal-fit-agent-client.test.js";
 import { suite as agentRouteServiceSuite } from "./unit/agent-route-service.test.js";
 import { suite as agentRoutePlannerSuite } from "./unit/agent-route-planner.test.js";
 import { suite as localConfigSuite } from "./unit/local-config.test.js";
+import { suite as browserLauncherSuite } from "./unit/browser-launcher.test.js";
 import { suite as narrationPlanSuite } from "./unit/narration-plan.test.js";
 import { suite as narrationTimelineSuite } from "./unit/narration-timeline.test.js";
 import { suite as routeNarrationServiceSuite } from "./unit/route-narration-service.test.js";
@@ -137,12 +139,14 @@ const suites = [
     oauthStateStoreSuite,
     localApiSecuritySuite,
     agentFloatingWindowSuite,
+    agentCapabilitiesSuite,
     safeMarkdownRendererSuite,
     agentRouteContractSuite,
     personalFitAgentClientSuite,
     agentRouteServiceSuite,
     agentRoutePlannerSuite,
     localConfigSuite,
+    browserLauncherSuite,
     narrationPlanSuite,
     narrationTimelineSuite,
     routeNarrationServiceSuite,

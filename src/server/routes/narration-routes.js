@@ -1,4 +1,5 @@
 import express from "express";
+import { sendAgentUnavailable } from "../agent-unavailable.js";
 
 export function createNarrationRoutes({ agentClient }) {
     const router = express.Router();
@@ -9,6 +10,7 @@ export function createNarrationRoutes({ agentClient }) {
             const result = await agentClient.prepareRouteNarration(request);
             return res.json({ ok: true, result });
         } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "route_narration" })) return;
             const status = error instanceof RequestValidationError ? 400 : 502;
             return res.status(status).json({ ok: false, error: error.message });
         }

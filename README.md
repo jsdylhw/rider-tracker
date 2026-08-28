@@ -59,7 +59,11 @@ Ctrl + C
 npm test
 ```
 
-`npm start` 会先启动内置 Python Training Agent，健康检查通过后再启动 Rider Node 服务。注意不要直接双击 `index.html`；Web Bluetooth、本地活动历史、FIT 文件保存、Agent 和 Strava 上传都依赖本地服务。
+`npm start` 会启动 Rider 与内置 Python Training Backend，并在 Rider 就绪后自动打开
+`http://localhost:8787`。Python 仅作为本地内部服务，产品入口始终是 Rider 页面；即使 AI 未配置或
+Training Backend 暂时不可用，Rider 基础页面仍可启动。无桌面环境时会输出访问地址而不尝试打开浏览器，
+也可设置 `RIDER_OPEN_BROWSER=false` 或将 `rider.open_browser` 配为 `false`。注意不要直接双击
+`index.html`；Web Bluetooth、本地活动历史、FIT 文件保存、Agent 和 Strava 上传都依赖本地服务。
 
 需要单独排查服务时可以使用：
 

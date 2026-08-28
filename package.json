@@ -17,7 +17,8 @@
     "test": "node --disable-warning=ExperimentalWarning tests/test-runner.js",
     "test:agent": "node scripts/run-agent-tests.js",
     "test:integration": "node scripts/test-local-integration.js",
-    "test:all": "npm test && npm run test:agent && npm run test:integration"
+    "test:degraded": "node scripts/test-agent-degraded-integration.js",
+    "test:all": "npm test && npm run test:agent && npm run test:integration && npm run test:degraded"
   },
   "dependencies": {
     "@garmin/fitsdk": "^21.178.0",

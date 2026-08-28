@@ -1,16 +1,20 @@
+import { createAgentUnavailableError } from "./agent-unavailable.js";
+
 const DEFAULT_TIMEOUT_MS = 240_000;
+const DEFAULT_HEALTH_TIMEOUT_MS = 1_500;
 
 export function createPersonalFitAgentClient({
     baseUrl = "http://127.0.0.1:8000",
     apiToken = "",
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    healthTimeoutMs = DEFAULT_HEALTH_TIMEOUT_MS,
     fetchImpl = fetch
 } = {}) {
     const normalizedBaseUrl = String(baseUrl).replace(/\/+$/, "");
 
-    async function get(pathname) {
+    async function get(pathname, requestTimeoutMs = timeoutMs) {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
         try {
             const response = await fetchImpl(`${normalizedBaseUrl}${pathname}`, {
                 headers: apiToken ? { "X-API-Token": apiToken } : {},
@@ -23,8 +27,12 @@ export function createPersonalFitAgentClient({
             return payload;
         } catch (error) {
             if (error?.name === "AbortError") {
-                throw new Error(`Personal FIT Agent 在 ${Math.round(timeoutMs / 1000)} 秒内未响应。`);
+                throw createAgentUnavailableError(
+                    `Training Agent 在 ${Math.round(requestTimeoutMs / 1000)} 秒内未响应。`,
+                    { cause: error }
+                );
             }
+            if (!error?.statusCode) throw createAgentUnavailableError("无法连接本地 Training Agent。", { cause: error });
             throw error;
         } finally {
             clearTimeout(timeout);
@@ -59,8 +67,12 @@ export function createPersonalFitAgentClient({
             return payload;
         } catch (error) {
             if (error?.name === "AbortError") {
-                throw new Error(`Personal FIT Agent 在 ${Math.round(timeoutMs / 1000)} 秒内未响应。`);
+                throw createAgentUnavailableError(
+                    `Training Agent 在 ${Math.round(timeoutMs / 1000)} 秒内未响应。`,
+                    { cause: error }
+                );
             }
+            if (!error?.statusCode) throw createAgentUnavailableError("无法连接本地 Training Agent。", { cause: error });
             throw error;
         } finally {
             clearTimeout(timeout);
@@ -68,7 +80,7 @@ export function createPersonalFitAgentClient({
     }
 
     return {
-        health: () => get("/health"),
+        health: () => get("/health", healthTimeoutMs),
         chat: (request) => post("/api/chat", request),
         ingestFit: (request) => post("/api/activities/ingest-fit", request),
         activityDetail: (activityId, { maxPoints = 700 } = {}) => get(
@@ -98,6 +110,8 @@ function responseError(response, payload) {
     const error = new Error(message);
     error.statusCode = response.status;
     error.detail = detail;
+    error.code = detail?.code || payload?.code || null;
+    error.retryable = detail?.retryable ?? payload?.retryable;
     return error;
 }
 

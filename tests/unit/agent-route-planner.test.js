@@ -95,6 +95,32 @@ export const suite = {
                 assertEqual(tick, null, "路线完成后必须停止进展计时器");
                 planner.destroy();
             }
+        },
+        {
+            name: "disables AI route controls without blocking other route modes",
+            async run() {
+                const { documentRef, elements } = createPlannerDom();
+                let calls = 0;
+                const planner = createAgentRoutePlanner({
+                    elements,
+                    onPlanAgentRoutes: async () => { calls += 1; return buildDraft(); }
+                });
+                elements.aiRoutePanel.ownerDocument = documentRef;
+                planner.render({
+                    route: {}, liveRide: { isActive: false },
+                    agentCapabilities: {
+                        backend: "available", llm: "not_configured",
+                        capabilities: { ai_route_planning: false }
+                    }
+                });
+
+                await planner.sendMessage("生成 30km 路线");
+
+                assertEqual(elements.aiRouteSendBtn.disabled, true);
+                assertEqual(elements.aiRouteResultStatus.textContent.includes("尚未配置"), true);
+                assertEqual(calls, 0);
+                planner.destroy();
+            }
         }
     ]
 };

@@ -1,4 +1,5 @@
 import { createPersonalFitAgentClient } from "../../src/server/personal-fit-agent-client.js";
+import { isAgentUnavailableError } from "../../src/server/agent-unavailable.js";
 import { createAgentApiClient } from "../../src/adapters/agent/personal-fit-agent-client.js";
 import { canonicalDetailToRiderActivity } from "../../src/server/routes/activity-routes.js";
 import { assertEqual } from "../helpers/test-harness.js";
@@ -42,6 +43,44 @@ export const suite = {
                 assertEqual(request.url, "http://127.0.0.1:8000/api/chat");
                 assertEqual(request.options.headers["X-API-Token"], "server-only-token");
                 assertEqual(JSON.parse(request.options.body).message, "规划路线");
+            }
+        },
+        {
+            name: "normalizes an unreachable backend as agent_unavailable",
+            async run() {
+                const client = createPersonalFitAgentClient({
+                    baseUrl: "http://127.0.0.1:65534",
+                    fetchImpl: async () => { throw new TypeError("fetch failed"); }
+                });
+                let error = null;
+                try {
+                    await client.health();
+                } catch (caught) {
+                    error = caught;
+                }
+
+                assertEqual(error?.statusCode, 503);
+                assertEqual(error?.code, "agent_unavailable");
+            }
+        },
+        {
+            name: "does not confuse an upstream provider 503 with backend loss",
+            async run() {
+                const client = createPersonalFitAgentClient({
+                    fetchImpl: async () => fakeResponse(
+                        { detail: "Strava maintenance" },
+                        { ok: false, status: 503 }
+                    )
+                });
+                let error = null;
+                try {
+                    await client.stravaConnection();
+                } catch (caught) {
+                    error = caught;
+                }
+
+                assertEqual(error?.statusCode, 503);
+                assertEqual(isAgentUnavailableError(error), false);
             }
         },
         {

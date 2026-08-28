@@ -1,6 +1,7 @@
 import { createAgentApiClient } from "../../adapters/agent/personal-fit-agent-client.js";
 import { createAgentPresentationRenderer } from "./agent-presentation-renderer.js";
 import { replaceWithSafeMarkdown } from "../shared/safe-markdown-renderer.js";
+import { capabilityMessage } from "../../domain/agent/agent-capabilities.js";
 
 const QUICK_PROMPTS = {
     sync: "同步 Garmin 最新一个活动并分析，不要上传 Strava",
@@ -29,6 +30,7 @@ export function createAgentFloatingWindow({
     let contextCleared = false;
     let visible = true;
     let busy = false;
+    let agentCapabilities = null;
 
     const listen = (element, type, handler) => {
         element?.addEventListener(type, handler);
@@ -62,8 +64,13 @@ export function createAgentFloatingWindow({
 
     function setBusy(nextBusy) {
         busy = nextBusy;
-        if (elements.sendButton) elements.sendButton.disabled = nextBusy;
-        if (elements.input) elements.input.disabled = nextBusy;
+        const unavailable = agentCapabilities !== null
+            && agentCapabilities?.capabilities?.activity_analysis !== true;
+        if (elements.sendButton) elements.sendButton.disabled = nextBusy || unavailable;
+        if (elements.input) elements.input.disabled = nextBusy || unavailable;
+        elements.quickPrompts?.querySelectorAll?.("[data-agent-prompt]").forEach((button) => {
+            button.disabled = nextBusy || unavailable;
+        });
     }
 
     function addTextMessage(role, text, { error = false } = {}) {
@@ -105,6 +112,10 @@ export function createAgentFloatingWindow({
     async function sendMessage(text, kind = inferPromptKind(text)) {
         const normalized = String(text ?? "").trim();
         if (!normalized || busy) return null;
+        if (agentCapabilities !== null && agentCapabilities?.capabilities?.activity_analysis !== true) {
+            addTextMessage("agent", capabilityMessage(agentCapabilities, "activity_analysis"), { error: true });
+            return null;
+        }
         requestSequence += 1;
         const sequence = requestSequence;
         addTextMessage("user", normalized);
@@ -160,6 +171,17 @@ export function createAgentFloatingWindow({
         addTextMessage("agent", "已开始一个新的本地分析会话。下一条消息不会继承之前选择的活动。 ");
     }
 
+    function setCapabilities(value) {
+        agentCapabilities = value;
+        const message = capabilityMessage(value, "activity_analysis");
+        if (elements.input) {
+            elements.input.placeholder = message || "询问活动或当前骑行……";
+            elements.input.title = message;
+        }
+        if (elements.launcher) elements.launcher.title = message || "打开 Training Agent";
+        setBusy(busy);
+    }
+
     listen(elements.launcher, "click", () => setWindowOpen(true));
     listen(elements.closeButton, "click", () => setWindowOpen(false));
     listen(elements.minimizeButton, "click", () => setWindowOpen(false));
@@ -185,6 +207,7 @@ export function createAgentFloatingWindow({
         open: () => setWindowOpen(true),
         close: () => setWindowOpen(false),
         setVisible,
+        setCapabilities,
         sendMessage,
         destroy() {
             requestSequence += 1;

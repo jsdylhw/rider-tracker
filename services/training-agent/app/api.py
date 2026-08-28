@@ -29,12 +29,13 @@ from settings import cfg_get, load_config
 from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
 from services.route.single_day import compact_route_plan
 from services.route.view import build_route_plan_view
+from services.capabilities import build_backend_capabilities
+from project_paths import project_root
 from operations.activity.strava import (
     get_strava_upload_status,
     upload_stored_activity_fit,
 )
 from integrations.strava import StravaSink
-from project_paths import project_root
 from services.activity.ingestion import get_activity_detail, ingest_fit_activity
 from services.athlete.profile import (
     athlete_profile_response,
@@ -133,8 +134,8 @@ def service_info() -> dict[str, str]:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    return build_backend_capabilities(load_config())
 
 
 @app.post("/api/activities/ingest-fit")
@@ -264,6 +265,7 @@ def strava_upload_status_endpoint(upload_id: str, request: Request) -> dict[str,
 def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]:
     """Run one serialized, idempotent turn in a durable chat session."""
     _require_api_access(http_request)
+    _require_llm_capability("activity_analysis")
     session = chat_sessions.get_or_create(request.session_id)
     with session.lock:
         request_fingerprint = json.dumps({
@@ -302,7 +304,21 @@ def prepare_route_narration_endpoint(
 ) -> dict[str, Any]:
     """Run one independent RouteNarrationAgent session for a route snapshot."""
     _require_api_access(http_request)
+    _require_llm_capability("route_narration")
     return run_route_narration_agent(request.model_dump())
+
+
+def _require_llm_capability(capability: str) -> None:
+    availability = build_backend_capabilities(load_config())
+    if availability["capabilities"].get(capability) is True:
+        return
+    raise HTTPException(status_code=503, detail={
+        "code": "agent_unavailable",
+        "capability": capability,
+        "retryable": availability["llm"] != "disabled",
+        "llm": availability["llm"],
+        "message": availability.get("reason") or "AI capability is unavailable.",
+    })
 
 
 @app.post("/api/route-plans/select")

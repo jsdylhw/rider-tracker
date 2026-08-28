@@ -102,6 +102,25 @@ export const suite = {
                 renderer.render(createState(), { visible: false });
                 assertEqual(elements.routeNarrationHudCard.hidden, true);
             }
+        },
+        {
+            name: "shows narration capability degradation without blocking Street View",
+            run() {
+                const elements = createElements();
+                const renderer = createRouteNarrationRenderer({ elements });
+                renderer.render({ status: "prompt" }, {
+                    visible: true,
+                    agentCapabilities: {
+                        backend: "available", llm: "not_configured",
+                        capabilities: { route_narration: false }
+                    }
+                });
+
+                assertEqual(elements.routeNarrationHudCard.hidden, false);
+                assertEqual(elements.routeNarrationTitle.textContent, "沿途讲解未启用");
+                assertEqual(elements.routeNarrationSummary.textContent.includes("街景和骑行不受影响"), true);
+                assertEqual(elements.routeNarrationLoadBtn.hidden, true);
+            }
         }
     ]
 };

@@ -145,6 +145,31 @@ export const suite = {
                 assertEqual(messages[0], "同步 Garmin 最新一个活动并分析，不要上传 Strava");
                 windowController.destroy();
             }
+        },
+        {
+            name: "disables only assistant controls when llm is not configured",
+            async run() {
+                const { root, elements } = createAgentTestDom();
+                let calls = 0;
+                const windowController = createAgentFloatingWindow({
+                    root,
+                    seedConversation: false,
+                    agentClient: { async chat() { calls += 1; } }
+                });
+                windowController.setCapabilities({
+                    backend: "available",
+                    llm: "not_configured",
+                    capabilities: { activity_analysis: false }
+                });
+
+                await windowController.sendMessage("分析最后一个活动");
+
+                assertEqual(elements.agentMessageInput.disabled, true);
+                assertEqual(elements.agentSendBtn.disabled, true);
+                assertEqual(calls, 0);
+                assertEqual(elements.agentMessages.children.at(-1).children[1].textContent.includes("尚未配置"), true);
+                windowController.destroy();
+            }
         }
     ]
 };

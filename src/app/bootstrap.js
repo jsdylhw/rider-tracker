@@ -16,6 +16,7 @@ import { createGoogleMapsConfigService } from "./services/google-maps-config-ser
 import { createUiService } from "./services/ui-service.js";
 import { createWorkoutService } from "./services/workout-service.js";
 import { createAgentFloatingWindow } from "../ui/agent/agent-floating-window.js";
+import { createAgentCapabilityService } from "./services/agent-capability-service.js";
 
 // Leaflet is loaded from CDN with fallbacks. Do not prevent non-map features
 // from starting if every external source is unavailable.
@@ -44,11 +45,16 @@ const rideService = createRideService({ store, deviceService, exportService, rou
 const uiService = createUiService({ store });
 const workoutService = createWorkoutService({ store, deviceService });
 const agentFloatingWindow = createAgentFloatingWindow();
+const agentCapabilityService = createAgentCapabilityService({ store });
 const stopAgentVisibilitySync = store.subscribe((state, previousState) => {
     if (previousState === undefined || state.uiMode !== previousState.uiMode) {
         agentFloatingWindow.setVisible(state.uiMode === "home");
     }
+    if (previousState === undefined || state.agentCapabilities !== previousState.agentCapabilities) {
+        agentFloatingWindow.setCapabilities(state.agentCapabilities);
+    }
 });
+const stopAgentCapabilityChecks = agentCapabilityService.start();
 
 // 3. 创建控制器与视图
 const pipController = createPipController({
@@ -140,6 +146,7 @@ const mainView = createMainView({
 window.addEventListener("beforeunload", () => {
     mainView.destroy();
     stopAgentVisibilitySync();
+    stopAgentCapabilityChecks();
     agentFloatingWindow.destroy();
     if (store.getState().liveRide.isActive) {
         rideService.finalizeRideSync({ sendBeacon: true });

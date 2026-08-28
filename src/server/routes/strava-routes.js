@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { buildStravaLoginPage } from "../pages/strava-login-page.js";
 import { sendOAuthResultPage } from "../pages/oauth-result-page.js";
 import { normalizeText, normalizeUserId, parseBoolean } from "../shared/http-utils.js";
+import { sendAgentUnavailable } from "../agent-unavailable.js";
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -77,6 +78,7 @@ export function createStravaRoutes({ agentClient, scopes, redirectUri, frontendR
             const config = await getConfig();
             res.json({ ok: true, ...config, loginUrl: "/strava/login", redirectUri, scopes });
         } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "strava" })) return;
             res.status(502).json({ ok: false, error: error.message });
         }
     });
@@ -119,6 +121,7 @@ export function createStravaRoutes({ agentClient, scopes, redirectUri, frontendR
             });
             res.json({ ok: true, authUrl: result.auth_url, state, userId });
         } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "strava" })) return;
             res.status(502).json({ ok: false, error: error.message });
         }
     });
@@ -175,6 +178,7 @@ export function createStravaRoutes({ agentClient, scopes, redirectUri, frontendR
             const connection = await agentClient.stravaConnection();
             res.json({ ...connection, userId, expiresAt: connection.expires_at ?? null });
         } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "strava" })) return;
             res.status(502).json({ ok: false, error: error.message });
         }
     });
@@ -211,6 +215,7 @@ export function createStravaRoutes({ agentClient, scopes, redirectUri, frontendR
                 upload: result.upload
             });
         } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "strava" })) return;
             const status = /activity not found/i.test(error.message) ? 404
                 : /FIT path missing/i.test(error.message) ? 409 : 502;
             res.status(status).json({ ok: false, error: error.message });
@@ -226,6 +231,7 @@ export function createStravaRoutes({ agentClient, scopes, redirectUri, frontendR
                 status
             });
         } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "strava" })) return;
             res.status(502).json({ ok: false, error: error.message });
         }
     });

@@ -23,6 +23,9 @@ output_dir: "data/files/fit/garmin"
 
 # Anthropic Messages API compatible model service.
 agent:
+  # auto: enable AI only when base_url/api_key/model are configured.
+  # false: disable all LLM calls while keeping FIT, Strava and riding features.
+  enabled: auto
   provider: "anthropic"
   base_url: "https://your-api-base-url/v1"
   api_key: "replace-with-your-api-key"

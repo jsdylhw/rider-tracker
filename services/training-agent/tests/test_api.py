@@ -8,11 +8,19 @@ from fastapi.testclient import TestClient
 from storage.repositories.route import RoutePlanStore
 
 
-def _prepare_api(tmp_path, monkeypatch, *, web_api_token: str = ""):
+def _prepare_api(tmp_path, monkeypatch, *, web_api_token: str = "", llm_configured: bool = True):
     monkeypatch.chdir(tmp_path)
     fit_dir = tmp_path / "fits"
     fit_dir.mkdir()
-    config = {"output_dir": str(fit_dir)}
+    config = {
+        "output_dir": str(fit_dir),
+        "agent": ({
+            "enabled": "auto",
+            "base_url": "https://llm.example.test",
+            "api_key": "test-key",
+            "model": "test-model",
+        } if llm_configured else {"enabled": "auto"}),
+    }
     if web_api_token:
         config["web_api_token"] = web_api_token
     api = importlib.import_module("app.api")
@@ -29,6 +37,30 @@ def test_service_root_returns_metadata_instead_of_a_second_web_ui(tmp_path, monk
     assert response.status_code == 200
     assert response.json() == {"service": "rider-training-backend", "status": "ok"}
     assert client.get("/static/app.js").status_code == 404
+
+
+def test_health_reports_backend_available_when_llm_is_not_configured(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch, llm_configured=False)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["backend"] == "available"
+    assert response.json()["llm"] == "not_configured"
+    assert response.json()["capabilities"]["fit_ingestion"] is True
+    assert response.json()["capabilities"]["ai_route_planning"] is False
+
+
+def test_llm_endpoints_return_agent_unavailable_without_disabling_backend(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch, llm_configured=False)
+
+    response = client.post("/api/chat", json={
+        "session_id": "no-llm", "request_id": "request-1", "message": "分析活动",
+    })
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "agent_unavailable"
+    assert response.json()["detail"]["capability"] == "activity_analysis"
 
 
 def test_legacy_web_ui_routes_are_not_exposed(tmp_path, monkeypatch):

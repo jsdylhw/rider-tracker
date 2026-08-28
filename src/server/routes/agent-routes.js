@@ -1,4 +1,5 @@
 import express from "express";
+import { sendAgentUnavailable } from "../agent-unavailable.js";
 
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -10,6 +11,7 @@ export function createAgentRoutes({ agentClient }) {
             const result = await agentClient.health();
             return res.json({ ok: true, result });
         } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "backend" })) return;
             return res.status(502).json({ ok: false, error: error.message });
         }
     });
@@ -20,6 +22,7 @@ export function createAgentRoutes({ agentClient }) {
             const result = await agentClient.chat(request);
             return res.json({ ok: true, result });
         } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "activity_analysis" })) return;
             return res.status(resolveStatus(error)).json({ ok: false, error: error.message });
         }
     });
@@ -30,6 +33,7 @@ export function createAgentRoutes({ agentClient }) {
             const result = await agentClient.selectRouteCandidate(request);
             return res.json({ ok: true, result });
         } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "ai_route_planning" })) return;
             return res.status(resolveStatus(error)).json({ ok: false, error: error.message });
         }
     });
@@ -40,6 +44,7 @@ export function createAgentRoutes({ agentClient }) {
             const result = await agentClient.routePlanCommand(request);
             return res.json({ ok: true, result });
         } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "ai_route_planning" })) return;
             return res.status(resolveStatus(error)).json({ ok: false, error: error.message });
         }
     });

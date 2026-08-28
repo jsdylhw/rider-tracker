@@ -12,6 +12,7 @@ import { createStravaRoutes } from "./routes/strava-routes.js";
 import { createAgentRoutes } from "./routes/agent-routes.js";
 import { createNarrationRoutes } from "./routes/narration-routes.js";
 import { createPersonalFitAgentClient } from "./personal-fit-agent-client.js";
+import { sendAgentUnavailable } from "./agent-unavailable.js";
 import { buildAllowedLocalOrigins, buildLocalBaseUrl, createLocalApiOriginGuard } from "./local-api-security.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -95,6 +96,7 @@ app.get("/api/user-profile", async (_req, res) => {
             }
         });
     } catch (error) {
+        if (sendAgentUnavailable(res, error, { capability: "athlete_profile" })) return;
         res.status(500).json({ ok: false, error: error.message });
     }
 });
@@ -118,6 +120,7 @@ app.put("/api/user-profile", async (req, res) => {
             }
         });
     } catch (error) {
+        if (sendAgentUnavailable(res, error, { capability: "athlete_profile" })) return;
         res.status(400).json({ ok: false, error: error.message });
     }
 });

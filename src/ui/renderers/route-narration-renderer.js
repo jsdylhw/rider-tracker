@@ -12,7 +12,7 @@ export function createRouteNarrationRenderer({
     elements.routeNarrationNextBtn?.addEventListener("click", () => onNext?.());
     elements.routeNarrationRetryBtn?.addEventListener("click", () => onRetry?.());
 
-    function render(state, { visible = false } = {}) {
+    function render(state, { visible = false, agentCapabilities = null } = {}) {
         const panel = elements.routeNarrationHudCard;
         if (!panel) return;
 
@@ -21,13 +21,26 @@ export function createRouteNarrationRenderer({
         if (panel.hidden) return;
 
         resetActions(elements);
-        if (status === "prompt") renderPrompt(elements);
+        if (agentCapabilities !== null && agentCapabilities?.capabilities?.route_narration !== true) {
+            renderUnavailable(elements, agentCapabilities);
+        } else if (status === "prompt") renderPrompt(elements);
         else if (status === "loading") renderLoading(elements);
         else if (status === "failed") renderFailure(elements, state);
         else renderReady(elements, state);
     }
 
     return { render };
+}
+
+function renderUnavailable(elements, availability) {
+    setText(elements.routeNarrationStatus, "路线讲解 · 不可用");
+    setText(elements.routeNarrationTitle, "沿途讲解未启用");
+    const summary = availability?.backend !== "available"
+        ? "Training Agent 当前未运行；街景和骑行不受影响。"
+        : availability?.llm === "disabled"
+            ? "AI 功能已关闭；街景和骑行不受影响。"
+            : "尚未配置大模型 API；街景和骑行不受影响。";
+    setText(elements.routeNarrationSummary, summary);
 }
 
 function resetActions(elements) {

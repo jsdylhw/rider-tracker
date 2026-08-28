@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeFileToken, normalizeText } from "../shared/http-utils.js";
+import { sendAgentUnavailable } from "../agent-unavailable.js";
 
 export function createActivityRoutes({ activityStore, agentClient, upload, fitFileDir, projectRoot }) {
     const router = express.Router();
@@ -93,6 +94,7 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
                 activity: savedActivity
             });
         } catch (err) {
+            if (sendAgentUnavailable(res, err, { capability: "fit_ingestion" })) return;
             return res.status(400).json({
                 ok: false,
                 error: err.message
@@ -121,6 +123,7 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
                 activity
             });
         } catch (err) {
+            if (sendAgentUnavailable(res, err, { capability: "activity_detail" })) return;
             return res.status(500).json({
                 ok: false,
                 error: err.message
@@ -176,6 +179,7 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
                 }
             });
         } catch (err) {
+            if (sendAgentUnavailable(res, err, { capability: "fit_ingestion" })) return;
             return res.status(500).json({
                 ok: false,
                 error: err.message
@@ -230,6 +234,7 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
                 activity: savedActivity
             });
         } catch (err) {
+            if (sendAgentUnavailable(res, err, { capability: "fit_ingestion" })) return;
             return res.status(400).json({
                 ok: false,
                 error: err.message

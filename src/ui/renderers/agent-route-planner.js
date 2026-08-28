@@ -63,6 +63,10 @@ export function createAgentRoutePlanner({
 
     async function sendMessage(text) {
         const normalized = String(text ?? "").trim();
+        if (!isAiRouteAvailable()) {
+            addMessage("agent", unavailableMessage());
+            return;
+        }
         if (!normalized || isLocked()) return;
         requestSequence += 1;
         const sequence = requestSequence;
@@ -267,6 +271,10 @@ export function createAgentRoutePlanner({
 
     function updateResultStatus(selectedId) {
         if (!elements.aiRouteResultStatus) return;
+        if (!isAiRouteAvailable()) {
+            elements.aiRouteResultStatus.textContent = unavailableMessage();
+            return;
+        }
         const candidate = currentDraft?.candidates?.find((item) => item.candidateId === selectedId);
         elements.aiRouteResultStatus.textContent = !candidate
             ? "等待生成或选择"
@@ -330,12 +338,27 @@ export function createAgentRoutePlanner({
     }
 
     function isLocked() {
-        return isBusy || lastState?.liveRide?.isActive === true || lastState?.route?.isLoading === true;
+        return !isAiRouteAvailable()
+            || isBusy || lastState?.liveRide?.isActive === true || lastState?.route?.isLoading === true;
+    }
+
+    function isAiRouteAvailable() {
+        return lastState?.agentCapabilities === undefined
+            || lastState.agentCapabilities?.capabilities?.ai_route_planning === true;
+    }
+
+    function unavailableMessage() {
+        const availability = lastState?.agentCapabilities;
+        if (availability?.backend === "checking") return "正在检查 Training Agent，请稍候。";
+        if (availability?.backend !== "available") return "Training Agent 当前未运行；GPX、地图选点和手工路线仍可使用。";
+        if (availability?.llm === "disabled") return "AI 路线已关闭；GPX、地图选点和手工路线仍可使用。";
+        return "尚未配置大模型 API；GPX、地图选点和手工路线仍可使用。";
     }
 
     function setBusy(busy) {
         isBusy = busy;
-        const locked = busy || lastState?.liveRide?.isActive === true || lastState?.route?.isLoading === true;
+        const locked = !isAiRouteAvailable()
+            || busy || lastState?.liveRide?.isActive === true || lastState?.route?.isLoading === true;
         if (elements.aiRouteMessageInput) elements.aiRouteMessageInput.disabled = locked;
         if (elements.aiRouteSendBtn) {
             elements.aiRouteSendBtn.disabled = locked;

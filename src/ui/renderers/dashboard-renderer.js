@@ -280,7 +280,8 @@ export function createDashboardRenderer({
             elapsedSeconds: currentRecord?.elapsedSeconds ?? 0
         });
         routeNarrationRenderer.render(narrationState, {
-            visible: immersiveStreetViewMode && ride.dashboardOpen
+            visible: immersiveStreetViewMode && ride.dashboardOpen,
+            agentCapabilities: state.agentCapabilities
         });
         const isGradeSimulation = training.mode === WORKOUT_MODES.GRADE_SIM;
         const modeChanged = previousImmersiveStreetViewMode !== immersiveStreetViewMode;

@@ -5,6 +5,7 @@ import { createDefaultCustomWorkoutTarget } from "../../domain/workout/custom-wo
 import { createInitialSensorSamplingState } from "../realtime/sensor-sampling.js";
 import { clamp, normalizeText } from "../../shared/utils/common.js";
 import { DEFAULT_PIP_CHART_SELECTION, DEFAULT_PIP_METRIC_SELECTION } from "../../shared/live-metrics.js";
+import { DEFAULT_AGENT_CAPABILITIES } from "../../domain/agent/agent-capabilities.js";
 
 const DEFAULT_STRAVA_SERVER_URL = globalThis.location?.origin || "http://localhost:8787";
 
@@ -53,6 +54,10 @@ export function createInitialState(session, options = {}) {
         selectedActivity: null,
         liveRide: createInitialLiveRideState(),
         ble: createInitialBleState(),
+        agentCapabilities: {
+            ...DEFAULT_AGENT_CAPABILITIES,
+            capabilities: { ...DEFAULT_AGENT_CAPABILITIES.capabilities }
+        },
         exportMetadata: {
             ...defaultExportMetadata,
             ...(session?.exportMetadata ?? {})
