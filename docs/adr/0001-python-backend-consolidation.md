@@ -208,3 +208,36 @@ SQLite schema 的唯一 owner 已收敛到 Python migration。Node 的 activity/
 `RuntimePaths.fit_root`；Node 数据库 guard 对 `user_version` 做精确匹配，并由架构测试约束其版本与
 Python migration 常量一致。独立探针确认从 `/tmp` 启动仍解析到 Rider 根目录，且手工降为 schema 8
 的数据库会被 Node 拒绝。Python 测试统一使用临时 runtime root，防止之后的 cwd 回归污染真实数据。
+
+### 2026-08-28：阶段 5A 路线库与续骑进度切换到 Python owner
+
+阶段 5 的第一个纵向切片迁移 `saved_routes` 和 `route_progress`。Python 新增 `SavedRouteStore`，统一
+负责路线来源别名、坐标清洗、geometry fingerprint 去重、路线 JSON、Agent plan/candidate 关联、元数据
+合并以及续骑进度的保存和完成清理。FastAPI 在内部端口实现与浏览器既有 URL 对应的路线 CRUD 和进度
+API；Node 保留相同的 `/api/routes*` 公开协议和同源安全，只做异步转发，不再打开 SQLite 或执行业务
+规则。原 `src/server/route-library-store.js` 及其 Node 仓储测试已经删除，等价行为改由 Python repository、
+FastAPI API 和双进程 CRUD 回归覆盖。
+
+这个切片没有迁移 `activities`，因此 `src/server/activity-store.js` 暂时仍是生产 Node SQLite 使用者；
+也没有提前实现“确认 Agent 候选并原子保存 SavedRoute”，该事务属于阶段 5 的下一切片。浏览器路线库
+协议没有变化，前端适配器无需改写。
+
+路线库属于 Python 业务后端能力，而不是 LLM 能力：Python 正常运行但未配置模型时，路线保存、加载和
+进度仍可用；Python 进程不可用时，不再提供 Node SQLite 回退，而是在 2 秒内返回
+`agent_unavailable / route_library`。Rider 页面、设备、ERG/坡度模式、运行时路线以及当前尚未迁移的
+活动列表继续可用。此行为替代阶段 3 中“Python 掉线时路线库始终可用”的迁移期假设，避免重新形成双
+owner。
+
+复审期间进一步关闭了四个迁移边界：`save_route` 的读取、元数据合并和 upsert 现在由
+`BEGIN IMMEDIATE` 串行化，避免并发重复 geometry 返回不存在的临时 UUID 或丢失元数据；路线重命名
+同时更新目录字段和 `route_json.name`，同 geometry 的距离修正会清除已越过新终点的续骑进度；路线
+语义校验继续映射为旧公开协议的 HTTP 400，而不是泄漏 FastAPI 422；Node 代理路由增加不依赖本地
+监听端口的操作映射、错误透传和降级单测。
+
+阶段 5A 验收结果：
+
+- Rider JavaScript：`357/357`；
+- Python Training Backend：`648/648`，其中新增路线仓储和 API 等价测试；
+- 正常双进程集成覆盖路线创建、重命名、续骑、详情和删除：通过；
+- Python 启动失败、恢复和再次掉线的降级集成：通过；
+- 生产 Node 中路线仓储及其 `node:sqlite` 引用已删除，`git diff --check` 通过。

@@ -6,6 +6,7 @@ import importlib
 
 from fastapi.testclient import TestClient
 from storage.repositories.route import RoutePlanStore
+from storage.repositories.saved_route import SavedRouteStore
 
 
 def _prepare_api(tmp_path, monkeypatch, *, web_api_token: str = "", llm_configured: bool = True):
@@ -92,6 +93,9 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/route-narrations/prepare",
         "/api/route-plans/command",
         "/api/route-plans/select",
+        "/api/routes",
+        "/api/routes/{route_id}",
+        "/api/routes/{route_id}/progress",
         "/api/strava/auth-url",
         "/api/strava/config",
         "/api/strava/connection",
@@ -99,6 +103,44 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/strava/upload-activity",
         "/api/strava/upload-status/{upload_id}",
     }
+
+
+def test_saved_route_api_preserves_browser_contract(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    database = tmp_path / "routes.db"
+    from storage.database import connect_database, initialize_database
+    with connect_database(database) as connection:
+        initialize_database(connection)
+    monkeypatch.setattr(api, "SavedRouteStore", lambda: SavedRouteStore(database))
+    route = {
+        "source": "gpx",
+        "name": "API route",
+        "totalDistanceMeters": 1000,
+        "totalElevationGainMeters": 50,
+        "hasElevationData": True,
+        "points": [
+            {"latitude": 31.1, "longitude": 121.1, "distanceMeters": 0},
+            {"latitude": 31.2, "longitude": 121.2, "distanceMeters": 1000},
+        ],
+    }
+
+    created = client.post("/api/routes", json={"route": route, "source": "gpx"})
+    assert created.status_code == 201
+    route_id = created.json()["route"]["id"]
+    assert client.get("/api/routes").json()["routes"][0]["id"] == route_id
+    assert client.patch(f"/api/routes/{route_id}", json={"name": "Renamed"}).json()["route"]["name"] == "Renamed"
+    paused = client.put(
+        f"/api/routes/{route_id}/progress",
+        json={"resumeDistanceMeters": 400},
+    )
+    assert paused.json()["route"]["resumeDistanceMeters"] == 400
+    assert client.delete(f"/api/routes/{route_id}/progress").status_code == 200
+    assert client.delete(f"/api/routes/{route_id}").status_code == 200
+    assert client.get(f"/api/routes/{route_id}").status_code == 404
+
+    invalid = client.post("/api/routes", json={"source": "gpx"})
+    assert invalid.status_code == 400
+    assert invalid.json()["detail"] == "A route with at least two coordinate points is required."
 
 
 def test_route_narration_endpoint_runs_independent_agent(tmp_path, monkeypatch):

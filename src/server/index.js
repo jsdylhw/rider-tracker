@@ -5,7 +5,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { createActivityStore } from "./activity-store.js";
-import { createRouteLibraryStore } from "./route-library-store.js";
 import { createActivityRoutes } from "./routes/activity-routes.js";
 import { createRouteLibraryRoutes } from "./routes/route-library-routes.js";
 import { createStravaRoutes } from "./routes/strava-routes.js";
@@ -39,13 +38,11 @@ const PERSONAL_FIT_AGENT_URL = process.env.PERSONAL_FIT_AGENT_URL || "http://127
 const PERSONAL_FIT_AGENT_TOKEN = process.env.PERSONAL_FIT_AGENT_TOKEN || "";
 
 const activityStore = createActivityStore();
-const routeLibraryStore = createRouteLibraryStore();
 const personalFitAgentClient = createPersonalFitAgentClient({
     baseUrl: PERSONAL_FIT_AGENT_URL,
     apiToken: PERSONAL_FIT_AGENT_TOKEN
 });
 activityStore.initialize();
-routeLibraryStore.initialize();
 
 app.use(express.json({ limit: "10mb" }));
 app.use("/api", createLocalApiOriginGuard({
@@ -64,7 +61,7 @@ app.use(createActivityRoutes({
     fitFileDir: FIT_FILE_DIR,
     projectRoot: PROJECT_ROOT
 }));
-app.use(createRouteLibraryRoutes({ routeLibraryStore }));
+app.use(createRouteLibraryRoutes({ agentClient: personalFitAgentClient }));
 app.use(createStravaRoutes({
     agentClient: personalFitAgentClient,
     scopes: SCOPES,

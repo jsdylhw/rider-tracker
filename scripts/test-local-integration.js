@@ -69,14 +69,55 @@ try {
     if (!routes.ok || !Array.isArray(routes.routes)) {
         throw new Error(`Unexpected Rider route payload: ${JSON.stringify(routes)}`);
     }
+    await assertRouteLibraryRoundTrip();
     const proxyHealth = await readJson(`${riderUrl}/api/agent/health`);
     if (!proxyHealth.ok || proxyHealth.result?.status !== "ok") {
         throw new Error(`Unexpected Agent proxy health payload: ${JSON.stringify(proxyHealth)}`);
     }
-    console.log("[integration] Unified Rider page, local stores, Agent proxy, and removed legacy UI checks passed.");
+    console.log("[integration] Unified Rider page, Python route store, Agent proxy, and removed legacy UI checks passed.");
 } finally {
     for (const child of children) child.kill();
     await rm(tempRoot, { recursive: true, force: true });
+}
+
+async function assertRouteLibraryRoundTrip() {
+    const created = await requestJson(`${riderUrl}/api/routes`, {
+        method: "POST",
+        body: {
+            source: "gpx",
+            route: {
+                source: "gpx",
+                name: "Integration route",
+                totalDistanceMeters: 1000,
+                totalElevationGainMeters: 20,
+                hasElevationData: true,
+                points: [
+                    { latitude: 31.1, longitude: 121.1, distanceMeters: 0 },
+                    { latitude: 31.2, longitude: 121.2, distanceMeters: 1000 }
+                ]
+            }
+        }
+    });
+    const routeId = created.route?.id;
+    if (!created.ok || !routeId) throw new Error(`Route creation failed: ${JSON.stringify(created)}`);
+
+    const renamed = await requestJson(`${riderUrl}/api/routes/${encodeURIComponent(routeId)}`, {
+        method: "PATCH", body: { name: "Renamed integration route" }
+    });
+    if (renamed.route?.name !== "Renamed integration route") {
+        throw new Error(`Route rename failed: ${JSON.stringify(renamed)}`);
+    }
+    const paused = await requestJson(`${riderUrl}/api/routes/${encodeURIComponent(routeId)}/progress`, {
+        method: "PUT", body: { resumeDistanceMeters: 400 }
+    });
+    if (paused.route?.resumeDistanceMeters !== 400) {
+        throw new Error(`Route progress failed: ${JSON.stringify(paused)}`);
+    }
+    const loaded = await readJson(`${riderUrl}/api/routes/${encodeURIComponent(routeId)}`);
+    if (loaded.route?.route?.points?.length !== 2) {
+        throw new Error(`Route detail failed: ${JSON.stringify(loaded)}`);
+    }
+    await requestJson(`${riderUrl}/api/routes/${encodeURIComponent(routeId)}`, { method: "DELETE" });
 }
 
 function initializeDatabase() {
@@ -128,6 +169,21 @@ async function readText(url) {
     });
     const value = await response.text();
     if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}: ${value}`);
+    return value;
+}
+
+async function requestJson(url, { method, body }) {
+    const response = await fetch(url, {
+        method,
+        headers: {
+            Origin: new URL(url).origin,
+            "Content-Type": "application/json"
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(3_000)
+    });
+    const value = await response.json();
+    if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}: ${JSON.stringify(value)}`);
     return value;
 }
 

@@ -2,12 +2,14 @@ import { createAgentUnavailableError } from "./agent-unavailable.js";
 
 const DEFAULT_TIMEOUT_MS = 240_000;
 const DEFAULT_HEALTH_TIMEOUT_MS = 1_500;
+const DEFAULT_ROUTE_LIBRARY_TIMEOUT_MS = 2_000;
 
 export function createPersonalFitAgentClient({
     baseUrl = "http://127.0.0.1:8000",
     apiToken = "",
     timeoutMs = DEFAULT_TIMEOUT_MS,
     healthTimeoutMs = DEFAULT_HEALTH_TIMEOUT_MS,
+    routeLibraryTimeoutMs = DEFAULT_ROUTE_LIBRARY_TIMEOUT_MS,
     fetchImpl = fetch
 } = {}) {
     const normalizedBaseUrl = String(baseUrl).replace(/\/+$/, "");
@@ -39,17 +41,25 @@ export function createPersonalFitAgentClient({
         }
     }
 
-    async function post(pathname, body) {
-        return sendJson("POST", pathname, body);
+    async function post(pathname, body, requestTimeoutMs = timeoutMs) {
+        return sendJson("POST", pathname, body, requestTimeoutMs);
     }
 
-    async function put(pathname, body) {
-        return sendJson("PUT", pathname, body);
+    async function put(pathname, body, requestTimeoutMs = timeoutMs) {
+        return sendJson("PUT", pathname, body, requestTimeoutMs);
     }
 
-    async function sendJson(method, pathname, body) {
+    async function patch(pathname, body, requestTimeoutMs = timeoutMs) {
+        return sendJson("PATCH", pathname, body, requestTimeoutMs);
+    }
+
+    async function remove(pathname, requestTimeoutMs = timeoutMs) {
+        return sendJson("DELETE", pathname, undefined, requestTimeoutMs);
+    }
+
+    async function sendJson(method, pathname, body, requestTimeoutMs = timeoutMs) {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
         try {
             const response = await fetchImpl(`${normalizedBaseUrl}${pathname}`, {
                 method,
@@ -68,7 +78,7 @@ export function createPersonalFitAgentClient({
         } catch (error) {
             if (error?.name === "AbortError") {
                 throw createAgentUnavailableError(
-                    `Training Agent 在 ${Math.round(timeoutMs / 1000)} 秒内未响应。`,
+                    `Training Agent 在 ${Math.round(requestTimeoutMs / 1000)} 秒内未响应。`,
                     { cause: error }
                 );
             }
@@ -95,6 +105,33 @@ export function createPersonalFitAgentClient({
         stravaUploadActivity: (request) => post("/api/strava/upload-activity", request),
         stravaUploadStatus: (uploadId) => get(
             `/api/strava/upload-status/${encodeURIComponent(uploadId)}`
+        ),
+        listSavedRoutes: ({ source = "" } = {}) => get(
+            `/api/routes${source ? `?source=${encodeURIComponent(source)}` : ""}`,
+            routeLibraryTimeoutMs
+        ),
+        saveRoute: (request) => post("/api/routes", request, routeLibraryTimeoutMs),
+        getSavedRoute: (routeId) => get(
+            `/api/routes/${encodeURIComponent(routeId)}`,
+            routeLibraryTimeoutMs
+        ),
+        renameSavedRoute: (routeId, name) => patch(
+            `/api/routes/${encodeURIComponent(routeId)}`,
+            { name },
+            routeLibraryTimeoutMs
+        ),
+        deleteSavedRoute: (routeId) => remove(
+            `/api/routes/${encodeURIComponent(routeId)}`,
+            routeLibraryTimeoutMs
+        ),
+        saveRouteProgress: (routeId, request) => put(
+            `/api/routes/${encodeURIComponent(routeId)}/progress`,
+            request,
+            routeLibraryTimeoutMs
+        ),
+        clearRouteProgress: (routeId) => remove(
+            `/api/routes/${encodeURIComponent(routeId)}/progress`,
+            routeLibraryTimeoutMs
         ),
         selectRouteCandidate: (request) => post("/api/route-plans/select", request),
         routePlanCommand: (request) => post("/api/route-plans/command", request),

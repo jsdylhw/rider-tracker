@@ -27,6 +27,7 @@ from agent.tools.handlers.route import (
 from app.chat_sessions import ChatSessionStore
 from settings import cfg_get, load_config
 from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
+from storage.repositories.saved_route import SavedRouteNotFound, SavedRouteStore
 from services.route.single_day import compact_route_plan
 from services.route.view import build_route_plan_view
 from services.capabilities import build_backend_capabilities
@@ -128,6 +129,28 @@ class RouteNarrationRequest(BaseModel):
     samples: list[RouteNarrationSample] = Field(min_length=2, max_length=64)
 
 
+class SavedRouteRequest(BaseModel):
+    # Keep semantic validation in SavedRouteStore so the migrated public API
+    # preserves the former HTTP 400 contract instead of exposing FastAPI 422.
+    route: Any = None
+    source: Any = None
+    name: Any = None
+    originalGpxText: Any = None
+    agentPlanId: Any = None
+    agentCandidateId: Any = None
+    metadata: Any = None
+
+
+class RenameSavedRouteRequest(BaseModel):
+    name: Any = None
+
+
+class SavedRouteProgressRequest(BaseModel):
+    resumeDistanceMeters: Any = 0
+    lastActivityId: Any = None
+    startedAt: Any = None
+
+
 @app.get("/")
 def service_info() -> dict[str, str]:
     return {"service": "rider-training-backend", "status": "ok"}
@@ -170,6 +193,75 @@ def activity_detail_endpoint(activity_id: str, request: Request, max_points: int
     if detail is None:
         raise HTTPException(status_code=404, detail="Activity does not exist.")
     return detail
+
+
+@app.get("/api/routes")
+def list_saved_routes_endpoint(request: Request, source: str = "") -> dict[str, Any]:
+    """List lightweight saved-route summaries for Rider's route library."""
+    _require_api_access(request)
+    try:
+        return {"routes": SavedRouteStore().list_routes(source=source)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/routes", status_code=201)
+def save_route_endpoint(request: SavedRouteRequest, http_request: Request) -> dict[str, Any]:
+    """Normalize, fingerprint and upsert one immutable Rider route asset."""
+    _require_api_access(http_request)
+    try:
+        return {"route": SavedRouteStore().save_route(request.model_dump())}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/routes/{route_id}")
+def get_saved_route_endpoint(route_id: str, request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    route = _saved_route_call(SavedRouteStore().get_route, route_id)
+    if route is None:
+        raise HTTPException(status_code=404, detail="Saved route not found.")
+    return {"route": route}
+
+
+@app.patch("/api/routes/{route_id}")
+def rename_saved_route_endpoint(
+    route_id: str,
+    request: RenameSavedRouteRequest,
+    http_request: Request,
+) -> dict[str, Any]:
+    _require_api_access(http_request)
+    return {"route": _saved_route_call(SavedRouteStore().rename_route, route_id, request.name)}
+
+
+@app.delete("/api/routes/{route_id}")
+def delete_saved_route_endpoint(route_id: str, request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    return {"route": _saved_route_call(SavedRouteStore().delete_route, route_id)}
+
+
+@app.put("/api/routes/{route_id}/progress")
+def save_route_progress_endpoint(
+    route_id: str,
+    request: SavedRouteProgressRequest,
+    http_request: Request,
+) -> dict[str, Any]:
+    _require_api_access(http_request)
+    return {
+        "route": _saved_route_call(
+            SavedRouteStore().save_progress,
+            route_id,
+            resume_distance_meters=request.resumeDistanceMeters,
+            last_activity_id=request.lastActivityId,
+            started_at=request.startedAt,
+        )
+    }
+
+
+@app.delete("/api/routes/{route_id}/progress")
+def clear_route_progress_endpoint(route_id: str, request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    return {"route": _saved_route_call(SavedRouteStore().clear_progress, route_id)}
 
 
 @app.get("/api/athlete-profile")
@@ -464,6 +556,16 @@ def _revision_conflict_response(exc: RouteRevisionConflict) -> HTTPException:
         "actual_revision": exc.actual,
         "message": str(exc),
     })
+
+
+def _saved_route_call(callback: Any, *args: Any, **kwargs: Any) -> Any:
+    """Map repository failures onto the stable internal HTTP boundary."""
+    try:
+        return callback(*args, **kwargs)
+    except SavedRouteNotFound as exc:
+        raise HTTPException(status_code=404, detail="Saved route not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _require_api_access(request: Request) -> None:

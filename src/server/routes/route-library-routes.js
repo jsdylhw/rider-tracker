@@ -1,48 +1,48 @@
 import express from "express";
+import { sendAgentUnavailable } from "../agent-unavailable.js";
 
-export function createRouteLibraryRoutes({ routeLibraryStore }) {
+export function createRouteLibraryRoutes({ agentClient }) {
     const router = express.Router();
+    const handlers = createRouteLibraryHandlers({ agentClient });
 
-    router.get("/api/routes", (req, res) => handle(res, () => ({
-        routes: routeLibraryStore.listRoutes({ source: req.query.source || "" })
-    })));
-    router.post("/api/routes", (req, res) => handle(res, () => ({
-        route: routeLibraryStore.saveRoute(req.body)
-    }), 201));
-    router.get("/api/routes/:routeId", (req, res) => handleRoute(res, () => (
-        routeLibraryStore.getRoute(req.params.routeId)
-    )));
-    router.patch("/api/routes/:routeId", (req, res) => handleRoute(res, () => (
-        routeLibraryStore.renameRoute(req.params.routeId, req.body?.name)
-    )));
-    router.delete("/api/routes/:routeId", (req, res) => handleRoute(res, () => (
-        routeLibraryStore.deleteRoute(req.params.routeId)
-    )));
-    router.put("/api/routes/:routeId/progress", (req, res) => handleRoute(res, () => (
-        routeLibraryStore.saveProgress(req.params.routeId, req.body)
-    )));
-    router.delete("/api/routes/:routeId/progress", (req, res) => handleRoute(res, () => (
-        routeLibraryStore.clearProgress(req.params.routeId)
-    )));
+    router.get("/api/routes", handlers.list);
+    router.post("/api/routes", handlers.save);
+    router.get("/api/routes/:routeId", handlers.get);
+    router.patch("/api/routes/:routeId", handlers.rename);
+    router.delete("/api/routes/:routeId", handlers.remove);
+    router.put("/api/routes/:routeId/progress", handlers.saveProgress);
+    router.delete("/api/routes/:routeId/progress", handlers.clearProgress);
 
     return router;
 }
 
-function handleRoute(res, callback) {
-    return handle(res, () => {
-        const route = callback();
-        if (!route) return res.status(404).json({ ok: false, error: "Saved route not found." });
-        return { route };
-    });
+export function createRouteLibraryHandlers({ agentClient }) {
+    return {
+        list: (req, res) => proxy(res, () => (
+            agentClient.listSavedRoutes({ source: req.query?.source || "" })
+        )),
+        save: (req, res) => proxy(res, () => agentClient.saveRoute(req.body), 201),
+        get: (req, res) => proxy(res, () => agentClient.getSavedRoute(req.params.routeId)),
+        rename: (req, res) => proxy(res, () => (
+            agentClient.renameSavedRoute(req.params.routeId, req.body?.name)
+        )),
+        remove: (req, res) => proxy(res, () => agentClient.deleteSavedRoute(req.params.routeId)),
+        saveProgress: (req, res) => proxy(res, () => (
+            agentClient.saveRouteProgress(req.params.routeId, req.body)
+        )),
+        clearProgress: (req, res) => proxy(res, () => (
+            agentClient.clearRouteProgress(req.params.routeId)
+        ))
+    };
 }
 
-function handle(res, callback, successStatus = 200) {
+async function proxy(res, callback, successStatus = 200) {
     try {
-        const result = callback();
-        if (result?.headersSent || res.headersSent) return result;
+        const result = await callback();
         return res.status(successStatus).json({ ok: true, ...result });
     } catch (error) {
-        const notFound = error.message === "Saved route not found.";
-        return res.status(notFound ? 404 : 400).json({ ok: false, error: error.message });
+        if (sendAgentUnavailable(res, error, { capability: "route_library" })) return;
+        const status = Number(error?.statusCode) || 500;
+        return res.status(status).json({ ok: false, error: error.message });
     }
 }

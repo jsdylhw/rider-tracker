@@ -216,6 +216,38 @@ export const suite = {
             }
         },
         {
+            name: "forwards saved route and progress ownership requests",
+            async run() {
+                const requests = [];
+                const client = createPersonalFitAgentClient({
+                    baseUrl: "http://127.0.0.1:8000",
+                    apiToken: "server-only-token",
+                    fetchImpl: async (url, options) => {
+                        requests.push({ url, options });
+                        return fakeResponse({ route: { id: "route-1" }, routes: [] });
+                    }
+                });
+
+                await client.listSavedRoutes({ source: "agent-planned" });
+                await client.saveRoute({ route: { name: "Route" }, source: "agent" });
+                await client.getSavedRoute("route/1");
+                await client.renameSavedRoute("route-1", "Renamed");
+                await client.saveRouteProgress("route-1", { resumeDistanceMeters: 400 });
+                await client.clearRouteProgress("route-1");
+                await client.deleteSavedRoute("route-1");
+
+                assertEqual(requests[0].url, "http://127.0.0.1:8000/api/routes?source=agent-planned");
+                assertEqual(requests[1].options.method, "POST");
+                assertEqual(requests[2].url, "http://127.0.0.1:8000/api/routes/route%2F1");
+                assertEqual(requests[3].options.method, "PATCH");
+                assertEqual(JSON.parse(requests[3].options.body).name, "Renamed");
+                assertEqual(requests[4].options.method, "PUT");
+                assertEqual(JSON.parse(requests[4].options.body).resumeDistanceMeters, 400);
+                assertEqual(requests[5].options.method, "DELETE");
+                assertEqual(requests[6].url, "http://127.0.0.1:8000/api/routes/route-1");
+            }
+        },
+        {
             name: "can rotate a scoped browser chat session without affecting other surfaces",
             async run() {
                 const values = new Map([["home-session", "rider-existing"]]);
