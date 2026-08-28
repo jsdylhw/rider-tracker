@@ -72,7 +72,75 @@ export function createAgentPresentationRenderer({ root = document, container, ti
         if (block.type === "line_chart") return renderLineChart(block);
         if (block.type === "table") return renderTable(block);
         if (block.type === "markdown") return renderMarkdown(block);
+        if (block.type === "activity_workflow") return renderActivityWorkflow(block);
         return null;
+    }
+
+    function renderActivityWorkflow(block) {
+        const section = createSection(block.title);
+        section.classList.add("agent-workflow-result");
+        const summary = block.data?.summary ?? {};
+        const summaryRow = root.createElement("div");
+        summaryRow.className = "agent-workflow-summary";
+        appendSummaryPill(summaryRow, `${summary.total ?? 0} 条活动`, "neutral");
+        appendSummaryPill(
+            summaryRow,
+            `分析 ${summary.analysis_completed ?? 0}/${summary.total ?? 0}`,
+            (summary.analysis_completed ?? 0) === (summary.total ?? 0) ? "success" : "warning"
+        );
+        if ((summary.strava_completed ?? 0) > 0) {
+            appendSummaryPill(summaryRow, `Strava ${summary.strava_completed} 完成`, "success");
+        }
+        if ((summary.strava_pending ?? 0) > 0) {
+            appendSummaryPill(summaryRow, `${summary.strava_pending} 条待确认`, "warning");
+        }
+        if ((summary.strava_failed ?? 0) > 0) {
+            appendSummaryPill(summaryRow, `${summary.strava_failed} 条失败`, "error");
+        }
+        section.append(summaryRow);
+
+        const list = root.createElement("div");
+        list.className = "agent-workflow-list";
+        for (const activity of block.data?.activities ?? []) {
+            const card = root.createElement("article");
+            card.className = `agent-workflow-card is-${activity?.status || "neutral"}`;
+            const header = root.createElement("header");
+            const heading = root.createElement("strong");
+            const time = root.createElement("time");
+            heading.textContent = activity?.title || "训练活动";
+            time.textContent = formatActivityTime(activity?.started_at);
+            header.append(heading, time);
+            card.append(header);
+            appendTaskStatus(card, "活动分析", activity?.analysis);
+            appendTaskStatus(card, "Strava", activity?.strava);
+            list.append(card);
+        }
+        section.append(list);
+        return section;
+    }
+
+    function appendSummaryPill(container, text, status) {
+        const pill = root.createElement("span");
+        pill.className = `agent-workflow-pill is-${status}`;
+        pill.textContent = text;
+        container.append(pill);
+    }
+
+    function appendTaskStatus(container, name, task) {
+        if (!task || task.status === "not_requested") return;
+        const row = root.createElement("div");
+        row.className = `agent-workflow-task is-${task.status || "neutral"}`;
+        const marker = root.createElement("i");
+        marker.setAttribute("aria-hidden", "true");
+        const content = root.createElement("div");
+        const heading = root.createElement("strong");
+        const detail = root.createElement("span");
+        heading.textContent = `${name} · ${task.label || "状态未知"}`;
+        detail.textContent = task.detail || "";
+        content.append(heading);
+        if (detail.textContent) content.append(detail);
+        row.append(marker, content);
+        container.append(row);
     }
 
     function renderMetricCards(block) {
@@ -243,4 +311,10 @@ function formatValue(value, unit) {
 
 function humanizeKey(value) {
     return String(value || "指标").replaceAll("_", " ");
+}
+
+function formatActivityTime(value) {
+    const text = String(value || "");
+    if (!text) return "";
+    return text.replace("T", " ").replace(/([+-]\d{2}:?\d{2}|Z)$/, "").slice(0, 16);
 }

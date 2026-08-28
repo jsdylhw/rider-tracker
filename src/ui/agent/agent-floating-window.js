@@ -136,7 +136,7 @@ export function createAgentFloatingWindow({
             if (sequence !== requestSequence) return null;
             thinking.remove();
             const answer = String(result?.answer || "本轮已完成，但没有返回文字说明。");
-            addTextMessage("agent", answer);
+            addTextMessage("agent", workflowConversationSummary(result) || answer);
             presentationRenderer.render(result?.presentations, { fallbackText: answer });
             updateContext(resolveContextLabel(result));
             if (elements.window.hidden) elements.badge.hidden = false;
@@ -230,6 +230,24 @@ export function inferPromptKind(text) {
     if (/趋势|历史|最近.*周|最近.*月|周期/.test(normalized)) return "history";
     if (/活动|分析|报告|掉速|心率/.test(normalized)) return "activity";
     return "general";
+}
+
+export function workflowConversationSummary(result) {
+    const block = (Array.isArray(result?.presentations) ? result.presentations : [])
+        .find((item) => item?.type === "activity_workflow");
+    const summary = block?.data?.summary;
+    if (!summary || !Number.isFinite(Number(summary.total))) return "";
+    const parts = [`分析 ${Number(summary.analysis_completed || 0)}/${Number(summary.total)}`];
+    if (Number(summary.strava_completed || 0) > 0) {
+        parts.push(`Strava ${Number(summary.strava_completed)} 条完成`);
+    }
+    if (Number(summary.strava_pending || 0) > 0) {
+        parts.push(`${Number(summary.strava_pending)} 条等待确认`);
+    }
+    if (Number(summary.strava_failed || 0) > 0) {
+        parts.push(`${Number(summary.strava_failed)} 条失败`);
+    }
+    return `已处理 ${Number(summary.total)} 条活动：${parts.join("，")}。详细状态见右侧。`;
 }
 
 function resolveContextLabel(result) {

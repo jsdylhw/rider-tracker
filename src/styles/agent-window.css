@@ -627,6 +627,114 @@
     font-size: 14px;
 }
 
+.agent-workflow-result {
+    gap: 14px;
+}
+
+.agent-workflow-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.agent-workflow-pill {
+    padding: 5px 9px;
+    color: #526071;
+    background: #f1f5f9;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.agent-workflow-pill.is-success {
+    color: #08775b;
+    background: #e8f8f1;
+}
+
+.agent-workflow-pill.is-warning {
+    color: #9a5b08;
+    background: #fff5da;
+}
+
+.agent-workflow-pill.is-error {
+    color: #b4233a;
+    background: #fff0f2;
+}
+
+.agent-workflow-list {
+    display: grid;
+    gap: 9px;
+}
+
+.agent-workflow-card {
+    display: grid;
+    gap: 9px;
+    padding: 12px;
+    background: #f8fafc;
+    border: 1px solid #e4eaf2;
+    border-left: 4px solid #94a3b8;
+    border-radius: 12px;
+}
+
+.agent-workflow-card.is-success { border-left-color: #19a77d; }
+.agent-workflow-card.is-pending { border-left-color: #e4a11b; }
+.agent-workflow-card.is-error { border-left-color: #dc4961; }
+
+.agent-workflow-card > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.agent-workflow-card > header strong {
+    color: #1e293b;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.agent-workflow-card > header time {
+    flex: 0 0 auto;
+    color: #7b8799;
+    font-size: 10px;
+}
+
+.agent-workflow-task {
+    display: grid;
+    align-items: start;
+    gap: 8px;
+    grid-template-columns: 8px minmax(0, 1fr);
+}
+
+.agent-workflow-task > i {
+    width: 7px;
+    height: 7px;
+    margin-top: 4px;
+    background: #94a3b8;
+    border-radius: 50%;
+}
+
+.agent-workflow-task.is-success > i { background: #19a77d; }
+.agent-workflow-task.is-pending > i { background: #e4a11b; }
+.agent-workflow-task.is-error > i { background: #dc4961; }
+
+.agent-workflow-task > div {
+    display: grid;
+    gap: 2px;
+}
+
+.agent-workflow-task strong {
+    color: #334155;
+    font-size: 11px;
+}
+
+.agent-workflow-task span {
+    overflow-wrap: anywhere;
+    color: #7b8799;
+    font-size: 10px;
+    line-height: 1.45;
+}
+
 .agent-markdown-result {
     color: #475569;
     font-size: 12px;

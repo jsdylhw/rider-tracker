@@ -42,7 +42,7 @@ from __future__ import annotations
 AGENT_TURN_V1 = "agent_turn.v1"
 
 # 单个 UI 展示块。具体组件通过 type 区分：markdown、metric_cards、
-# line_chart、table、route_map。浏览器不需要认识活动分析的内部 result kind。
+# line_chart、table、route_map、activity_workflow。浏览器不需要认识活动分析的内部 result kind。
 PRESENTATION_V1 = "presentation.v1"
 
 # Rider/Node 请求 Python 导入一个 FIT 后得到的跨进程响应。

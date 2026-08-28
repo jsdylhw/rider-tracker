@@ -23,7 +23,9 @@ def project_presentations(executions: list[ToolExecution]) -> list[PresentationB
     for execution in executions:
         payload = _schema_payload(execution.result)
         result_kind = _result_kind(payload)
-        if result_kind == "training_history_analysis":
+        if payload.get("operation") == "activity_workflow":
+            blocks.extend(_activity_workflow_blocks(execution, payload))
+        elif result_kind == "training_history_analysis":
             blocks.extend(_training_history_blocks(execution, payload))
         elif result_kind == "activity_report":
             blocks.extend(_activity_report_blocks(execution, payload))
@@ -42,6 +44,149 @@ def project_presentations(executions: list[ToolExecution]) -> list[PresentationB
         ):
             blocks.extend(_resolved_activity_blocks(execution, payload))
     return blocks
+
+
+def _activity_workflow_blocks(
+    execution: ToolExecution,
+    payload: dict[str, Any],
+) -> list[PresentationBlock]:
+    """Project persisted per-activity tasks without exposing paths or raw errors."""
+    activities = [item for item in payload.get("activities") or [] if isinstance(item, dict)]
+    if not activities:
+        return []
+
+    task_groups: dict[str, dict[str, dict[str, Any]]] = {}
+    for task in payload.get("tasks") or []:
+        if not isinstance(task, dict):
+            continue
+        activity_key = str(task.get("activity_key") or "")
+        if not activity_key:
+            continue
+        task_groups.setdefault(activity_key, {})[str(task.get("kind") or "task")] = task
+
+    rows = []
+    for activity in activities:
+        activity_key = str(activity.get("activity_key") or "")
+        indexed = _indexed_activity(activity_key)
+        tasks = task_groups.get(activity_key, {})
+        analysis = _workflow_task_view(tasks.get("ensure_summary"), kind="analysis")
+        upload = _workflow_task_view(tasks.get("upload_strava"), kind="strava")
+        rows.append({
+            "activity_key": activity_key,
+            "title": (
+                indexed.get("summary_label")
+                or activity.get("summary_label")
+                or _sport_label(indexed.get("sport_type") or activity.get("sport_type"))
+            ),
+            "started_at": indexed.get("start_time_local") or activity.get("start_time_local"),
+            "sport_type": indexed.get("sport_type") or activity.get("sport_type"),
+            "status": _combined_workflow_status(analysis, upload),
+            "analysis": analysis,
+            "strava": upload,
+        })
+
+    summary = {
+        "total": len(rows),
+        "analysis_completed": sum(row["analysis"]["status"] == "success" for row in rows),
+        "strava_completed": sum(row["strava"]["status"] == "success" for row in rows),
+        "strava_pending": sum(row["strava"]["status"] == "pending" for row in rows),
+        "strava_failed": sum(row["strava"]["status"] == "error" for row in rows),
+    }
+    sync = payload.get("sync") if isinstance(payload.get("sync"), dict) else {}
+    return [PresentationBlock(
+        presentation_id=f"execution-{execution.index}-activity-workflow",
+        type="activity_workflow",
+        title="活动处理结果",
+        data={
+            "status": payload.get("status"),
+            "summary": summary,
+            "sync": {
+                "downloaded": int(sync.get("downloaded") or 0),
+                "skipped": int(sync.get("skipped") or 0),
+                "failed": int(sync.get("failed") or 0),
+            },
+            "activities": rows,
+        },
+        source=_source(execution, payload),
+    )]
+
+
+def _indexed_activity(activity_key: str) -> dict[str, Any]:
+    if not activity_key:
+        return {}
+    try:
+        from storage.repositories.activity import ActivityStore
+
+        value = ActivityStore().get_activity(activity_key)
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        # Presentation must remain available even when enrichment storage is unavailable.
+        return {}
+
+
+def _workflow_task_view(task: dict[str, Any] | None, *, kind: str) -> dict[str, Any]:
+    if not isinstance(task, dict):
+        return {"status": "not_requested", "label": "未请求", "detail": ""}
+    status = str(task.get("status") or "pending")
+    if kind == "strava" and task.get("pending_upload_id"):
+        return {
+            "status": "pending",
+            "label": "等待 Strava 确认",
+            "detail": f"FIT 已提交 · 上传编号 {task['pending_upload_id']}",
+        }
+    if status == "completed":
+        if kind == "analysis":
+            return {"status": "success", "label": "分析完成", "detail": "活动报告已生成"}
+        activity_id = task.get("strava_activity_id")
+        suffix = f" · 活动 ID {activity_id}" if activity_id else ""
+        label = "Strava 已存在" if task.get("outcome") == "duplicate" else "上传完成"
+        return {"status": "success", "label": label, "detail": f"已同步至 Strava{suffix}"}
+    if status == "skipped":
+        reason = str(task.get("reason") or "")
+        if kind == "analysis" and reason == "existing_report":
+            return {"status": "success", "label": "分析已存在", "detail": "复用已有活动报告"}
+        if kind == "strava" and reason == "already_uploaded":
+            activity_id = task.get("strava_activity_id")
+            suffix = f" · 活动 ID {activity_id}" if activity_id else ""
+            return {"status": "success", "label": "Strava 已存在", "detail": f"无需重复上传{suffix}"}
+        if reason == "dependency_failed":
+            return {"status": "skipped", "label": "未执行", "detail": "前置任务失败"}
+        return {"status": "skipped", "label": "已跳过", "detail": reason}
+    if status == "failed":
+        return {
+            "status": "error",
+            "label": "分析失败" if kind == "analysis" else "上传失败",
+            "detail": _compact_workflow_error(task.get("message") or task.get("error")),
+        }
+    return {"status": "pending", "label": "处理中", "detail": "任务尚未完成"}
+
+
+def _combined_workflow_status(analysis: dict[str, Any], upload: dict[str, Any]) -> str:
+    statuses = {analysis.get("status"), upload.get("status")} - {"not_requested"}
+    if "error" in statuses:
+        return "error"
+    if "pending" in statuses:
+        return "pending"
+    if statuses and statuses <= {"success", "skipped"}:
+        return "success"
+    return "neutral"
+
+
+def _compact_workflow_error(value: Any) -> str:
+    message = str(value or "未知错误").strip()
+    if "timed out" in message.lower():
+        return "请求超时，可稍后重试"
+    if "ssl" in message.lower() or "httpsconnectionpool" in message.lower():
+        return "网络连接中断，可稍后重试"
+    return message[:140] + ("…" if len(message) > 140 else "")
+
+
+def _sport_label(value: Any) -> str:
+    return {
+        "cycling": "骑行活动",
+        "running": "跑步活动",
+        "swimming": "游泳活动",
+    }.get(str(value or "").lower(), "训练活动")
 
 
 _LEGACY_RESULT_KINDS = {

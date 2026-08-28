@@ -1,6 +1,7 @@
 import {
     createAgentFloatingWindow,
-    inferPromptKind
+    inferPromptKind,
+    workflowConversationSummary
 } from "../../src/ui/agent/agent-floating-window.js";
 import { assertEqual } from "../helpers/test-harness.js";
 import { createFakeClassList } from "../helpers/fake-dom.js";
@@ -143,6 +144,74 @@ export const suite = {
                 await Promise.resolve();
 
                 assertEqual(messages[0], "同步 Garmin 最新一个活动并分析，不要上传 Strava");
+                windowController.destroy();
+            }
+        },
+        {
+            name: "summarizes structured activity workflows in the conversation",
+            run() {
+                const answer = workflowConversationSummary({
+                    presentations: [{
+                        type: "activity_workflow",
+                        data: {
+                            summary: {
+                                total: 3,
+                                analysis_completed: 3,
+                                strava_completed: 2,
+                                strava_pending: 1,
+                                strava_failed: 0
+                            }
+                        }
+                    }]
+                });
+
+                assertEqual(answer, "已处理 3 条活动：分析 3/3，Strava 2 条完成，1 条等待确认。详细状态见右侧。");
+            }
+        },
+        {
+            name: "renders activity workflow cards instead of markdown fallback",
+            async run() {
+                const { root, elements } = createAgentTestDom();
+                const windowController = createAgentFloatingWindow({
+                    root,
+                    seedConversation: false,
+                    agentClient: {
+                        async chat() {
+                            return {
+                                answer: "处理部分完成：很长的原始工作流文本。",
+                                presentations: [{
+                                    type: "activity_workflow",
+                                    title: "活动处理结果",
+                                    data: {
+                                        summary: {
+                                            total: 1,
+                                            analysis_completed: 1,
+                                            strava_completed: 0,
+                                            strava_pending: 1,
+                                            strava_failed: 0
+                                        },
+                                        activities: [{
+                                            title: "夜间轻松恢复骑",
+                                            started_at: "2026-08-27T21:43:42",
+                                            status: "pending",
+                                            analysis: { status: "success", label: "分析完成", detail: "报告已生成" },
+                                            strava: { status: "pending", label: "等待确认", detail: "FIT 已提交" }
+                                        }]
+                                    }
+                                }]
+                            };
+                        }
+                    }
+                });
+
+                await windowController.sendMessage("同步并上传");
+
+                assertEqual(elements.agentWorkspaceTitle.textContent, "活动处理结果");
+                assertEqual(elements.agentWorkspaceContent.children[0].classList.contains("agent-workflow-result"), true);
+                const messageBody = elements.agentMessages.children.at(-1).children[1];
+                const summaryText = messageBody.children[0].children[0].textContent;
+                assertEqual(summaryText.includes("已处理 1 条活动"), true);
+                assertEqual(summaryText.includes("很长的原始工作流文本"), false);
                 windowController.destroy();
             }
         },

@@ -119,6 +119,86 @@ def test_public_turn_result_excludes_internal_state_and_raw_tool_values():
     assert "/tmp/activity.fit" not in str(result)
 
 
+def test_activity_workflow_projects_compact_per_activity_status(monkeypatch):
+    indexed = {
+        "a1": {
+            "summary_label": "夜间轻松恢复骑",
+            "sport_type": "cycling",
+            "start_time_local": "2026-08-27T21:43:42",
+        },
+        "a2": {
+            "summary_label": "轻量间歇强度唤醒骑行",
+            "sport_type": "cycling",
+            "start_time_local": "2026-08-27T08:37:00",
+        },
+    }
+    monkeypatch.setattr(
+        "storage.repositories.activity.ActivityStore.get_activity",
+        lambda self, key: indexed.get(key),
+    )
+    execution = ToolExecution(
+        index=4,
+        tool="sync_and_run_activity_workflow",
+        result={
+            "operation": "activity_workflow",
+            "status": "partial",
+            "sync": {"downloaded": 2, "skipped": 0, "failed": 0},
+            "activities": [
+                {"activity_key": "a1", "file_name": "/private/a1.fit"},
+                {"activity_key": "a2", "file_name": "/private/a2.fit"},
+            ],
+            "tasks": [
+                {"activity_key": "a1", "kind": "ensure_summary", "status": "completed"},
+                {
+                    "activity_key": "a1",
+                    "kind": "upload_strava",
+                    "status": "failed",
+                    "pending_upload_id": "21067041882",
+                    "message": "HTTPSConnectionPool SSL unexpected EOF /private/token",
+                },
+                {"activity_key": "a2", "kind": "ensure_summary", "status": "completed"},
+                {
+                    "activity_key": "a2",
+                    "kind": "upload_strava",
+                    "status": "completed",
+                    "strava_activity_id": "19930460015",
+                },
+            ],
+        },
+    )
+
+    blocks = project_presentations([execution])
+
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block.type == "activity_workflow"
+    assert block.data["summary"] == {
+        "total": 2,
+        "analysis_completed": 2,
+        "strava_completed": 1,
+        "strava_pending": 1,
+        "strava_failed": 0,
+    }
+    assert block.data["activities"][0] == {
+        "activity_key": "a1",
+        "title": "夜间轻松恢复骑",
+        "started_at": "2026-08-27T21:43:42",
+        "sport_type": "cycling",
+        "status": "pending",
+        "analysis": {
+            "status": "success", "label": "分析完成", "detail": "活动报告已生成",
+        },
+        "strava": {
+            "status": "pending",
+            "label": "等待 Strava 确认",
+            "detail": "FIT 已提交 · 上传编号 21067041882",
+        },
+    }
+    serialized = str(block.to_dict())
+    assert "HTTPSConnectionPool" not in serialized
+    assert "/private" not in serialized
+
+
 def test_activity_report_projects_markdown_without_exposing_report_metadata():
     execution = ToolExecution(
         index=2,
