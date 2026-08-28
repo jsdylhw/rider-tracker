@@ -90,7 +90,7 @@ Python 在正常启动时只检查 schema，不各自执行隐式迁移。
 - 原始 FIT 文件统一保存在根目录 `data/files/fit/`，数据库只保存相对路径或必要的绝对路径。
 
 Strava 也由 Python 单独持有外部副作用：凭据来自 `config.yaml`，OAuth Token 默认保存在
-`data/strava-tokens.json`，Token 刷新、活动上传和状态查询都通过 Node 代理进入 Training Agent。
+`data/credentials/strava-tokens.json`，Token 刷新、活动上传和状态查询都通过 Node 代理进入 Training Agent。
 旧 Node Token 文件的 `default` 包装格式会在首次读取时兼容，后续写入统一的单用户格式。
 
 FIT 历史解析也只有一个生产入口：`services/activity/fit_loader.py` 从数据库读取统一运动员档案并显式注入纯 FIT parser。JavaScript 继续负责实时记录、导出与页面适配，不再作为历史 FIT 指标的权威来源。

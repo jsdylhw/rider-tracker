@@ -9,17 +9,19 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from project_paths import resolve_project_path
+from project_paths import DEFAULT_PROJECT_ROOT, resolve_project_path, runtime_paths
 
-DEFAULT_DATA_DIR = Path("data")
-DEFAULT_CONFIG_PATH = Path(os.environ.get("TRAINING_AGENT_CONFIG_PATH", "config.yaml"))
+# Compatibility exports are stable code-layout defaults. Runtime callers use
+# the functions below so environment overrides are evaluated at call time.
+DEFAULT_DATA_DIR = DEFAULT_PROJECT_ROOT / "data"
+DEFAULT_CONFIG_PATH = DEFAULT_PROJECT_ROOT / "config.yaml"
 
 
 def get_data_dir() -> Path:
-    return DEFAULT_DATA_DIR
+    return runtime_paths().data_root
 
 
-def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
+def load_config(path: str | Path | None = None) -> dict[str, Any]:
     """加载完整的 config.yaml.
 
     Args:
@@ -28,7 +30,7 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
     Returns:
         dict: 解析后的配置.文件不存在返回 {}.
     """
-    config_path = Path(path)
+    config_path = Path(path) if path is not None else _runtime_config_path()
     if not config_path.exists():
         return {}
     data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
@@ -53,13 +55,13 @@ def cfg_bool(config: dict[str, Any], name: str, default: bool = False) -> bool:
     return bool(value)
 
 
-def load_agent_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
+def load_agent_config(path: str | Path | None = None) -> dict[str, Any]:
     """从 config.yaml 中提取 agent: 块.
 
     用字符串行解析而非完整 YAML 再取 key,避免解析其他可能包含
     敏感值或特殊字符的顶层块.
     """
-    config_path = Path(path)
+    config_path = Path(path) if path is not None else _runtime_config_path()
     if not config_path.exists():
         return {}
     text = config_path.read_text(encoding="utf-8")
@@ -73,6 +75,11 @@ def load_agent_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
     if not isinstance(agent_config, dict):
         raise ValueError("config.yaml 中的 agent 必须是 object")
     return agent_config
+
+
+def _runtime_config_path() -> Path:
+    configured = os.environ.get("TRAINING_AGENT_CONFIG_PATH")
+    return Path(configured).expanduser().resolve() if configured else runtime_paths().project_root / "config.yaml"
 
 
 def get_agent_config(config: dict[str, Any] | None = None) -> dict[str, Any]:

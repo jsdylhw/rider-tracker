@@ -8,6 +8,8 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
+from project_paths import runtime_paths
+
 
 def write_report(results: list[dict[str, Any]], *, output_dir: str | Path) -> dict[str, Any]:
     target = Path(output_dir)
@@ -74,9 +76,10 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def default_run_directory(root: str | Path = "evaluation/artifacts") -> Path:
+def default_run_directory(root: str | Path | None = None) -> Path:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return Path(root) / stamp
+    target = Path(root) if root is not None else runtime_paths().evaluation_artifact_dir
+    return target / stamp
 
 
 def _percentile(values: list[float], quantile: float) -> float | None:

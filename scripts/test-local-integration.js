@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,9 +14,11 @@ const riderPort = String(18400 + Math.floor(Math.random() * 300));
 const agentUrl = `http://127.0.0.1:${agentPort}`;
 const riderUrl = `http://127.0.0.1:${riderPort}`;
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "rider-agent-integration-"));
+const databasePath = path.join(tempRoot, "rider-tracker.db");
 const children = [];
 
 try {
+    initializeDatabase();
     children.push(spawn(python, [
         "-m", "uvicorn", "app.api:app", "--host", "127.0.0.1", "--port", agentPort
     ], {
@@ -27,7 +29,8 @@ try {
             PYTHONPATH: agentRoot,
             PYTHONUNBUFFERED: "1",
             RIDER_PROJECT_ROOT: projectRoot,
-            TRAINING_AGENT_DB_PATH: path.join(tempRoot, "rider-tracker.db"),
+            RIDER_TRACKER_DB_PATH: databasePath,
+            TRAINING_AGENT_DB_PATH: databasePath,
             TRAINING_AGENT_MANAGED_DATABASE: "1"
         }
     }));
@@ -49,7 +52,7 @@ try {
             PORT: riderPort,
             HOST: "127.0.0.1",
             PERSONAL_FIT_AGENT_URL: agentUrl,
-            RIDER_TRACKER_DB_PATH: path.join(tempRoot, "rider-tracker.db"),
+            RIDER_TRACKER_DB_PATH: databasePath,
             FIT_FILE_DIR: path.join(tempRoot, "fit")
         }
     }));
@@ -74,6 +77,24 @@ try {
 } finally {
     for (const child of children) child.kill();
     await rm(tempRoot, { recursive: true, force: true });
+}
+
+function initializeDatabase() {
+    const result = spawnSync(python, [
+        path.join(projectRoot, "scripts", "database-tool.py"), "init", "--database", databasePath
+    ], {
+        cwd: projectRoot,
+        encoding: "utf8",
+        env: {
+            ...process.env,
+            RIDER_PROJECT_ROOT: projectRoot,
+            RIDER_TRACKER_DB_PATH: databasePath,
+            TRAINING_AGENT_DB_PATH: databasePath
+        }
+    });
+    if (result.status !== 0) {
+        throw new Error(`Failed to initialize integration database: ${result.stderr || result.stdout}`);
+    }
 }
 
 async function waitForJson(url, predicate, timeoutMs = 20_000) {

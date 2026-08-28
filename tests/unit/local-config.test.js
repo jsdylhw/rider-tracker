@@ -15,6 +15,7 @@ export const suite = {
                         rider: {
                             host: "127.0.0.2",
                             port: 9000,
+                            open_browser: false,
                             database_path: "runtime/rider.db",
                             fit_file_dir: "runtime/fit",
                             strava_scopes: "activity:write"
@@ -27,11 +28,16 @@ export const suite = {
                 }, {});
                 assertEqual(env.HOST, "127.0.0.2");
                 assertEqual(env.PORT, "9000");
+                assertEqual(env.RIDER_OPEN_BROWSER, "false");
                 assertEqual(env.PERSONAL_FIT_AGENT_URL, "http://127.0.0.3:9100");
                 assertEqual(env.PERSONAL_FIT_AGENT_TOKEN, "shared-token");
                 assertEqual(env.STRAVA_CLIENT_ID, undefined);
                 assertEqual(env.RIDER_TRACKER_DB_PATH, path.join(root, "runtime", "rider.db"));
                 assertEqual(env.TRAINING_AGENT_DB_PATH, path.join(root, "runtime", "rider.db"));
+                assertEqual(env.RIDER_DATA_ROOT, path.join(root, "data"));
+                assertEqual(env.STRAVA_TOKEN_STORE, path.join(root, "data", "credentials", "strava-tokens.json"));
+                assertEqual(env.RIDER_ACTIVITY_WORKFLOW_DIR, path.join(root, "data", "workflows", "activity-runs"));
+                assertEqual(env.RIDER_LOG_DIR, path.join(root, "data", "logs"));
                 assertEqual(env.TRAINING_AGENT_MANAGED_DATABASE, "1");
                 assertEqual(env.TRAINING_AGENT_CONFIG_PATH, path.join(root, "config.yaml"));
                 assertEqual(env.NO_PROXY, "api.deepseek.com");
@@ -80,6 +86,23 @@ export const suite = {
                 assertEqual(env.RIDER_TRACKER_DB_PATH, databasePath);
                 assertEqual(env.TRAINING_AGENT_DB_PATH, databasePath);
                 assertEqual(env.FIT_FILE_DIR, path.join(root, "data", "files", "fit"));
+            }
+        },
+        {
+            name: "derives all default mutable paths from a custom data root",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: { rider: { data_root: "runtime-data" } }
+                }, {});
+                const dataRoot = path.join(root, "runtime-data");
+                assertEqual(env.RIDER_DATA_ROOT, dataRoot);
+                assertEqual(env.RIDER_TRACKER_DB_PATH, path.join(dataRoot, "rider-tracker.db"));
+                assertEqual(env.FIT_FILE_DIR, path.join(dataRoot, "files", "fit"));
+                assertEqual(env.STRAVA_TOKEN_STORE, path.join(dataRoot, "credentials", "strava-tokens.json"));
+                assertEqual(env.RIDER_ACTIVITY_WORKFLOW_DIR, path.join(dataRoot, "workflows", "activity-runs"));
+                assertEqual(env.RIDER_LOG_DIR, path.join(dataRoot, "logs"));
             }
         },
         {

@@ -17,12 +17,12 @@ from urllib.parse import urlencode
 
 import requests
 
+from project_paths import resolve_project_path, runtime_paths
 from settings import load_config
 
 STRAVA_API_BASE = "https://www.strava.com/api/v3"
 STRAVA_OAUTH_AUTHORIZE_URL = "https://www.strava.com/oauth/authorize"
 STRAVA_OAUTH_TOKEN_URL = "https://www.strava.com/oauth/token"
-DEFAULT_TOKEN_STORE = Path("data") / "strava-tokens.json"
 ACCESS_TOKEN_REFRESH_LEEWAY_SECONDS = 60
 
 
@@ -43,7 +43,11 @@ class StravaSink:
     ):
         root_config = config if config is not None else load_config()
         self.config = root_config.get("strava", root_config)
-        self.token_store = Path(str(self.config.get("token_store") or DEFAULT_TOKEN_STORE)).expanduser()
+        configured_store = self.config.get("token_store") or os.environ.get("STRAVA_TOKEN_STORE")
+        self.token_store = (
+            resolve_project_path(str(configured_store))
+            if configured_store else runtime_paths().strava_token_store
+        )
         self._legacy_token_envelope = False
         self._stored_tokens = self._load_token_store()
         if self._legacy_token_envelope:

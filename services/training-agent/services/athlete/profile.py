@@ -6,13 +6,17 @@ from typing import Any
 
 from domain.contracts.schemas import ATHLETE_PROFILE_V1
 from domain.athlete import (
-    DEFAULT_ATHLETE_PATH,
     athlete_profile_to_rider_settings,
     load_athlete_profile as load_profile_file,
     normalize_athlete_profile,
 )
+from project_paths import runtime_paths
 from settings import load_config
 from storage.repositories.athlete import AthleteProfileStore
+
+
+# Test/extension override. Production resolves the runtime path at call time.
+DEFAULT_ATHLETE_PATH = None
 
 
 def get_athlete_profile() -> dict[str, Any]:
@@ -21,7 +25,8 @@ def get_athlete_profile() -> dict[str, Any]:
     if stored:
         return stored
     configured = normalize_athlete_profile(load_config().get("athlete") or {})
-    legacy = normalize_athlete_profile(load_profile_file(DEFAULT_ATHLETE_PATH))
+    legacy_path = DEFAULT_ATHLETE_PATH or runtime_paths().legacy_athlete_file
+    legacy = normalize_athlete_profile(load_profile_file(legacy_path))
     migrated = _merge_profiles(configured, legacy)
     if migrated:
         store.save_profile(migrated)

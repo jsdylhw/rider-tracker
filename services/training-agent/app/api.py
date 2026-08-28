@@ -30,7 +30,7 @@ from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
 from services.route.single_day import compact_route_plan
 from services.route.view import build_route_plan_view
 from services.capabilities import build_backend_capabilities
-from project_paths import project_root
+from project_paths import project_root, runtime_paths
 from operations.activity.strava import (
     get_strava_upload_status,
     upload_stored_activity_fit,
@@ -142,10 +142,11 @@ def health() -> dict[str, Any]:
 def ingest_fit_endpoint(request: IngestFitRequest, http_request: Request) -> dict[str, Any]:
     """Deterministically index a Rider-managed FIT without invoking an LLM."""
     _require_api_access(http_request)
+    paths = runtime_paths()
     requested_path = Path(request.path).expanduser()
     fit_path = _require_managed_path(
-        requested_path if requested_path.is_absolute() else project_root() / requested_path,
-        allowed_root=project_root() / "data" / "files" / "fit",
+        requested_path if requested_path.is_absolute() else paths.project_root / requested_path,
+        allowed_root=paths.fit_root,
         suffix=".fit",
         label="FIT file",
     )
@@ -193,7 +194,7 @@ def strava_config_endpoint(request: Request) -> dict[str, Any]:
     return {
         "configured": bool(config.get("client_id") and config.get("client_secret")),
         "source": "config.yaml" if config else "none",
-        "token_store": str(config.get("token_store") or "data/strava-tokens.json"),
+        "token_store": str(config.get("token_store") or runtime_paths().strava_token_store),
     }
 
 

@@ -14,10 +14,9 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from project_paths import runtime_paths
 from settings import cfg_bool, cfg_get, resolve_project_path
 
-DEFAULT_OUTPUT_DIR = "garmin_cn_fit_files"
-DEFAULT_TOKENSTORE = ".garmin_cn_tokens"
 # Garmin 中国区使用独立的 OAuth 端点。
 CN_DI_TOKEN_URL = "https://diauth.garmin.cn/di-oauth2-service/oauth/token"
 
@@ -96,13 +95,13 @@ class GarminChinaDownloader:
         *,
         username: str,
         password: str,
-        tokenstore: str | Path = DEFAULT_TOKENSTORE,
+        tokenstore: str | Path | None = None,
         proxy: str | None = None,
         disable_curl_cffi: bool = False,
     ) -> None:
         self.username = username
         self.password = password
-        self.tokenstore = str(tokenstore)
+        self.tokenstore = str(tokenstore or (runtime_paths().credentials_dir / "garmin"))
         self.proxy = proxy
         self.disable_curl_cffi = disable_curl_cffi
         self.client = None
@@ -151,7 +150,7 @@ def build_downloader(config: dict[str, Any]) -> GarminChinaDownloader:
         username=str(username),
         password=str(password),
         tokenstore=resolve_project_path(
-            cfg_get(config, "garmin_tokenstore", DEFAULT_TOKENSTORE)
+            cfg_get(config, "garmin_tokenstore", runtime_paths().credentials_dir / "garmin")
         ),
         proxy=cfg_get(config, "garmin_proxy"),
         disable_curl_cffi=cfg_bool(config, "disable_curl_cffi", default=False),

@@ -637,6 +637,7 @@ class TestAnalyzeFitFileResultTimes:
         external_fit.parent.mkdir()
         external_fit.write_bytes(b"mock fit content")
         monkeypatch.chdir(project_root)
+        monkeypatch.setenv("RIDER_PROJECT_ROOT", str(project_root))
         monkeypatch.setattr("agent.analysis.agent.parse_fit", lambda path: sample_parsed_fit)
         monkeypatch.setattr(
             "agent.analysis.agent.analyze_with_llm",

@@ -128,10 +128,13 @@ def test_route_narration_endpoint_runs_independent_agent(tmp_path, monkeypatch):
 def test_ingest_fit_uses_deterministic_managed_file_service(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
     rider_root = tmp_path / "rider"
-    fit = rider_root / "data" / "files" / "fit" / "manual.fit"
+    fit_root = rider_root / "runtime-data" / "imported-fit"
+    fit = fit_root / "manual.fit"
     fit.parent.mkdir(parents=True)
     fit.write_bytes(b"fit")
-    monkeypatch.setattr(api, "project_root", lambda: rider_root)
+    monkeypatch.setenv("RIDER_PROJECT_ROOT", str(rider_root))
+    monkeypatch.setenv("RIDER_DATA_ROOT", str(rider_root / "runtime-data"))
+    monkeypatch.setenv("FIT_FILE_DIR", str(fit_root))
     calls = []
     monkeypatch.setattr(
         api,
@@ -142,7 +145,7 @@ def test_ingest_fit_uses_deterministic_managed_file_service(tmp_path, monkeypatc
     )
 
     response = client.post("/api/activities/ingest-fit", json={
-        "path": "data/files/fit/manual.fit",
+        "path": "runtime-data/imported-fit/manual.fit",
         "activity_id": "fit-manual",
         "source": "fit-import",
         "max_points": 500,

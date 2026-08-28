@@ -35,6 +35,22 @@ npm run db:migrate
 
 `npm start` 不会重复迁移数据库，只检查已初始化的共享结构。需要排查结构时可运行 `npm run db:check`。
 
+旧版本可能把 Token、FIT、Workflow 和日志分散在根目录或
+`services/training-agent/` 下。迁移前先执行只读审计：
+
+```bash
+npm run data:audit
+```
+
+确认没有 `conflict` 后，再显式执行一次复制迁移：
+
+```bash
+npm run data:migrate
+```
+
+迁移采用 copy-first：校验目标内容后保留旧文件，并写入一次性迁移清单；多个旧 SQLite
+数据库不会自动合并，必须根据审计结果人工确认。`npm start` 不会隐式移动用户数据。
+
 统一启动 Rider 和 Training Agent：
 
 ```bash
@@ -195,7 +211,10 @@ data/
 user-profile.json           仅兼容保存本地 Google Key，不再保存运动员参数
 data/rider-tracker.db       SQLite 活动、路线和运动员档案数据库
 data/files/fit/             本地保存的 FIT 文件
-data/strava-tokens.json     Strava OAuth token
+data/credentials/           Garmin、Strava 等本地凭据
+data/credentials/strava-tokens.json  Strava OAuth token
+data/workflows/             工作流运行状态与 journal
+data/logs/                  Agent 本地日志
 ```
 
 `user-profile.json` 和 `data/` 不提交到仓库。
@@ -213,7 +232,7 @@ http://127.0.0.1:8787/strava/login
 或在页面里点击连接 Strava。
 
 `client_id`、`client_secret` 只配置在根目录 `config.yaml`；浏览器授权、Token
-刷新、活动上传和 Agent 工作流共用同一份 `data/strava-tokens.json`。
+刷新、活动上传和 Agent 工作流共用同一份 `data/credentials/strava-tokens.json`。
 
 Strava callback URL：
 

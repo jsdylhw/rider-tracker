@@ -5,10 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from agent.main_agent.context import AgentContext
 from integrations.llm import LLMRequestError
 from agent.main_agent.loop import MAX_TOOL_STEPS, _build_state_preamble, _build_system_prompt, run_tool_loop
 from agent.main_agent.turn_policy import should_continue_route_skill
+from project_paths import resolve_project_path
+
+
+@pytest.fixture(autouse=True)
+def isolate_chat_logs(tmp_path, monkeypatch):
+    """Tool-loop tests must never append logs to the user's runtime data."""
+    monkeypatch.setenv("RIDER_LOG_DIR", str(tmp_path / "logs"))
 
 
 def _activation_response(skill_id):
@@ -224,7 +233,7 @@ def test_second_sync_turn_replaces_previous_activity_focus(monkeypatch):
     assert first["executions"][0]["result"]["workflow_id"] == "run-old"
     assert second["executions"][0]["result"]["workflow_id"] == "run-new"
     assert context.current_activity_key == "new"
-    assert context.current_fit_file == (Path.cwd() / "new.fit").resolve()
+    assert context.current_fit_file == resolve_project_path("new.fit")
     assert second["answer"].startswith("已处理：2026-08-20T11:00:00")
 
 

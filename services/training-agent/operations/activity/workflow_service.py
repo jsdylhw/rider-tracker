@@ -11,7 +11,6 @@ from typing import Any, Iterable
 
 from operations.activity.workflow_executor import execute_activity_run
 from operations.activity.workflow_factory import (
-    DEFAULT_ACTIVITY_RUN_DIRECTORY,
     create_activity_run_from_activities,
     create_local_activity_run,
 )
@@ -324,7 +323,10 @@ def _append_sync_warning(answer: Any, sync: dict[str, Any]) -> str:
 
 
 def _directory(directory: str | Path | None) -> Path:
-    return Path(directory) if directory is not None else DEFAULT_ACTIVITY_RUN_DIRECTORY
+    if directory is not None:
+        return Path(directory)
+    from project_paths import runtime_paths
+    return runtime_paths().activity_workflow_dir
 
 
 def _synced_activities(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:

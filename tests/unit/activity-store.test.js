@@ -1,18 +1,55 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { createActivityStore } from "../../src/server/activity-store.js";
 import { assert, assertApprox, assertEqual } from "../helpers/test-harness.js";
+import { initializeManagedTestDatabase } from "../helpers/managed-database.js";
 
 export const suite = {
     name: "activity-store",
     tests: [
         {
+            name: "refuses to create an unmanaged database schema",
+            run() {
+                const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
+                const dbPath = path.join(tempDir, "missing.db");
+                const store = createActivityStore(dbPath);
+                let error = null;
+                try {
+                    store.initialize();
+                } catch (caught) {
+                    error = caught;
+                }
+                assertEqual(error?.message.includes("npm run db:init"), true);
+                assertEqual(fs.existsSync(dbPath), false);
+            }
+        },
+        {
+            name: "rejects stale and future database schema versions",
+            run() {
+                for (const version of [8, 10]) {
+                    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-version-"));
+                    const dbPath = initializeManagedTestDatabase(path.join(tempDir, `schema-${version}.db`));
+                    const db = new DatabaseSync(dbPath);
+                    db.exec(`PRAGMA user_version = ${version}`);
+                    db.close();
+                    let error = null;
+                    try {
+                        createActivityStore(dbPath).initialize();
+                    } catch (caught) {
+                        error = caught;
+                    }
+                    assertEqual(error?.message.includes(`user_version ${version}; expected 9`), true);
+                }
+            }
+        },
+        {
             name: "saves rider sessions into sqlite activity history",
             run() {
                 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
                 const dbPath = path.join(tempDir, "activities.db");
-                const store = createActivityStore(dbPath);
+                const store = createActivityStore(initializeManagedTestDatabase(dbPath));
                 const session = buildVirtualRideSession();
 
                 const saved = store.saveRiderSession(session);
@@ -41,7 +78,7 @@ export const suite = {
             run() {
                 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
                 const dbPath = path.join(tempDir, "activities.db");
-                const store = createActivityStore(dbPath);
+                const store = createActivityStore(initializeManagedTestDatabase(dbPath));
                 const saved = store.saveRiderSession(buildVirtualRideSession());
 
                 const renamed = store.updateActivityName(saved.id, "Renamed Virtual Ride");
@@ -59,7 +96,7 @@ export const suite = {
             run() {
                 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
                 const dbPath = path.join(tempDir, "activities.db");
-                const store = createActivityStore(dbPath);
+                const store = createActivityStore(initializeManagedTestDatabase(dbPath));
                 const saved = store.saveRiderSession(buildVirtualRideSession());
 
                 const updated = store.updateActivityFitFile(saved.id, {
@@ -78,7 +115,7 @@ export const suite = {
             name: "links a completed activity to a saved route distance window",
             run() {
                 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
-                const store = createActivityStore(path.join(tempDir, "activities.db"));
+                const store = createActivityStore(initializeManagedTestDatabase(path.join(tempDir, "activities.db")));
                 const saved = store.saveRiderSession(buildVirtualRideSession());
 
                 const linked = store.updateActivityRoute(saved.id, {
@@ -97,7 +134,7 @@ export const suite = {
             run() {
                 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
                 const dbPath = path.join(tempDir, "activities.db");
-                const store = createActivityStore(dbPath);
+                const store = createActivityStore(initializeManagedTestDatabase(dbPath));
                 const session = {
                     ...buildVirtualRideSession(),
                     source: "fit-import",
@@ -127,7 +164,7 @@ export const suite = {
             name: "pages and filters activity history in sqlite",
             run() {
                 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
-                const store = createActivityStore(path.join(tempDir, "activities.db"));
+                const store = createActivityStore(initializeManagedTestDatabase(path.join(tempDir, "activities.db")));
                 store.saveRiderSession(buildVirtualRideSession("virtual-new", "2026-05-03T10:00:00.000Z"), {
                     source: "rider-tracker",
                     sportType: "VirtualRide"

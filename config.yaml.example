@@ -4,6 +4,10 @@
 rider:
   host: "127.0.0.1"
   port: 8787
+  # Mutable runtime data; relative paths are always resolved from the project root.
+  data_root: "data"
+  # npm start opens the Rider page after the local server is ready.
+  open_browser: true
   database_path: "data/rider-tracker.db"
   fit_file_dir: "data/files/fit"
   app_base_url: ""
@@ -51,7 +55,7 @@ strava:
   client_id: "your-strava-client-id"
   client_secret: "your-strava-client-secret"
   refresh_token: "your-strava-refresh-token"
-  token_store: "data/strava-tokens.json"
+  token_store: "data/credentials/strava-tokens.json"
   timeout_seconds: 120
 
 athlete:

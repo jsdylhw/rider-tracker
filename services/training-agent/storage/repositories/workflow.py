@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from uuid import uuid4
 
-DEFAULT_WORKFLOW_DIRECTORY = Path("data") / "runs"
-
+from project_paths import runtime_paths
 
 class WorkflowLockError(RuntimeError):
     """另一个进程正在推进同一个持久化 Run。"""
@@ -21,7 +20,7 @@ def workflow_path(workflow_id: str, *, directory: str | Path | None = None) -> P
     workflow_id = str(workflow_id).strip()
     if not workflow_id or any(value in workflow_id for value in ("/", "\\", "..")):
         raise ValueError("invalid workflow_id")
-    root = Path(directory) if directory is not None else DEFAULT_WORKFLOW_DIRECTORY
+    root = Path(directory) if directory is not None else runtime_paths().workflow_journal_dir
     return root / f"{workflow_id}.json"
 
 

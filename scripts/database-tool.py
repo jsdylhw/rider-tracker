@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sqlite3
 import sys
 from datetime import datetime
@@ -16,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 AGENT_ROOT = PROJECT_ROOT / "services" / "training-agent"
 sys.path.insert(0, str(AGENT_ROOT))
 
+from project_paths import runtime_paths  # noqa: E402
 from storage.database import SCHEMA_VERSION, initialize_database  # noqa: E402
 
 
@@ -45,7 +45,7 @@ def main() -> None:
     parser.add_argument("operation", choices=("init", "migrate", "check"))
     parser.add_argument(
         "--database",
-        default=os.environ.get("RIDER_TRACKER_DB_PATH", str(PROJECT_ROOT / "data" / "rider-tracker.db")),
+        default=str(runtime_paths(base=PROJECT_ROOT).database),
     )
     args = parser.parse_args()
     target = Path(args.database).expanduser().resolve()

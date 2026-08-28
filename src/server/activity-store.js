@@ -2,8 +2,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
+import { assertManagedDatabaseSchema } from "./managed-database.js";
 
-const DEFAULT_DB_PATH = path.resolve(process.cwd(), "data", "rider-tracker.db");
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const DEFAULT_DB_PATH = path.join(PROJECT_ROOT, "data", "rider-tracker.db");
 
 export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH || DEFAULT_DB_PATH) {
     const dbPath = path.resolve(filePath);
@@ -13,55 +16,17 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         if (initialized) {
             return;
         }
-        fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-        if (isManagedDatabase()) {
-            const columns = new Set(queryJson("PRAGMA table_info(activities);").map((column) => column.name));
-            if (!columns.has("id") || !columns.has("source") || !columns.has("fit_file_path")) {
-                throw new Error("Unified database is not initialized. Run npm run db:migrate.");
-            }
-            initialized = true;
-            return;
+        if (!fs.existsSync(dbPath)) {
+            throw new Error("Unified database does not exist. Run npm run db:init.");
         }
-        runSql(`
-            PRAGMA journal_mode = WAL;
-            CREATE TABLE IF NOT EXISTS activities (
-                id TEXT PRIMARY KEY,
-                source TEXT NOT NULL,
-                sport_type TEXT NOT NULL,
-                name TEXT NOT NULL,
-                started_at TEXT,
-                finished_at TEXT,
-                elapsed_seconds REAL,
-                distance_km REAL,
-                ascent_meters REAL,
-                average_power REAL,
-                normalized_power REAL,
-                average_hr REAL,
-                estimated_tss REAL,
-                has_gps_track INTEGER NOT NULL DEFAULT 0,
-                fit_file_path TEXT,
-                fit_file_size_bytes INTEGER,
-                fit_file_created_at TEXT,
-                saved_route_id TEXT,
-                route_start_distance_meters REAL,
-                route_end_distance_meters REAL,
-                raw_json TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_activities_started_at ON activities(started_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_activities_source ON activities(source);
-            CREATE INDEX IF NOT EXISTS idx_activities_sport_type ON activities(sport_type);
-            CREATE INDEX IF NOT EXISTS idx_activities_saved_route ON activities(saved_route_id, started_at DESC);
-        `);
-        ensureActivityColumns([
-            { name: "fit_file_path", definition: "TEXT" },
-            { name: "fit_file_size_bytes", definition: "INTEGER" },
-            { name: "fit_file_created_at", definition: "TEXT" },
-            { name: "saved_route_id", definition: "TEXT" },
-            { name: "route_start_distance_meters", definition: "REAL" },
-            { name: "route_end_distance_meters", definition: "REAL" }
-        ]);
+        withDatabase((db) => assertManagedDatabaseSchema(db, {
+            tables: ["activities"],
+            columns: { activities: [
+                "id", "source", "sport_type", "name", "raw_json",
+                "fit_file_path", "fit_file_size_bytes", "fit_file_created_at",
+                "saved_route_id", "route_start_distance_meters", "route_end_distance_meters",
+            ] }
+        }));
         initialized = true;
     }
 
@@ -368,15 +333,6 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         return withDatabase((db) => db.prepare(sql).all());
     }
 
-    function ensureActivityColumns(columns) {
-        const existingColumns = new Set(queryJson("PRAGMA table_info(activities);").map((column) => column.name));
-        columns.forEach((column) => {
-            if (!existingColumns.has(column.name)) {
-                runSql(`ALTER TABLE activities ADD COLUMN ${column.name} ${column.definition};`);
-            }
-        });
-    }
-
     function withDatabase(callback) {
         const db = new DatabaseSync(dbPath);
         try {
@@ -402,12 +358,6 @@ export function createActivityStore(filePath = process.env.RIDER_TRACKER_DB_PATH
         deleteActivity,
         getSummary
     };
-}
-
-function isManagedDatabase() {
-    return ["1", "true", "yes", "on"].includes(
-        String(process.env.RIDER_DATABASE_MANAGED || "").trim().toLowerCase()
-    );
 }
 
 function buildActivityListSql({ whereClause, safeLimit, safeOffset }) {

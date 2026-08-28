@@ -10,12 +10,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-DEFAULT_ATHLETE_PATH = Path("data") / "athlete.json"
+from project_paths import DEFAULT_PROJECT_ROOT, runtime_paths
+
+DEFAULT_ATHLETE_PATH = DEFAULT_PROJECT_ROOT / "data" / "athlete.json"
 
 
-def load_athlete_profile(path: str | Path = DEFAULT_ATHLETE_PATH) -> dict[str, Any]:
+def load_athlete_profile(path: str | Path | None = None) -> dict[str, Any]:
     """Load one explicit JSON profile; persistence ownership lives in services."""
-    return _load_profile_file(Path(path))
+    return _load_profile_file(Path(path) if path is not None else runtime_paths().legacy_athlete_file)
 
 
 def _load_profile_file(target: Path) -> dict[str, Any]:
@@ -29,9 +31,9 @@ def _load_profile_file(target: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def save_athlete_profile(profile: dict[str, Any], path: str | Path = DEFAULT_ATHLETE_PATH) -> Path:
+def save_athlete_profile(profile: dict[str, Any], path: str | Path | None = None) -> Path:
     """Save one explicit JSON profile; retained for fixtures and manual export."""
-    target = Path(path)
+    target = Path(path) if path is not None else runtime_paths().legacy_athlete_file
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
     return target

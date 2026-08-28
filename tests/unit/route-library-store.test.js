@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRouteLibraryStore } from "../../src/server/route-library-store.js";
 import { assertEqual } from "../helpers/test-harness.js";
+import { initializeManagedTestDatabase } from "../helpers/managed-database.js";
 
 export const suite = {
     name: "route-library-store",
@@ -78,7 +79,8 @@ export const suite = {
 
 function createTestStore() {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "rider-route-library-"));
-    return createRouteLibraryStore(path.join(directory, "routes.db"));
+    const database = initializeManagedTestDatabase(path.join(directory, "routes.db"));
+    return createRouteLibraryStore(database);
 }
 
 function buildRoute(source) {

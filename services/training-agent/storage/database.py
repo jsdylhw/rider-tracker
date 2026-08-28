@@ -7,21 +7,24 @@ report state.
 
 from __future__ import annotations
 
-import sqlite3
 import os
+import sqlite3
 from pathlib import Path
 
-DEFAULT_DATABASE_PATH = Path(
-    os.environ.get("TRAINING_AGENT_DB_PATH", str(Path("data") / "personal-fit-agent.db"))
-)
+from project_paths import DEFAULT_PROJECT_ROOT, runtime_paths
+
+# Compatibility export only. Actual connections call runtime_paths() so
+# environment/config overrides are never frozen at module import time.
+DEFAULT_DATABASE_PATH = DEFAULT_PROJECT_ROOT / "data" / "rider-tracker.db"
 SCHEMA_VERSION = 9
 
 
 def database_path(path: str | Path | None = None) -> Path:
     if path is not None:
         return Path(path).expanduser()
-    DEFAULT_DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    return DEFAULT_DATABASE_PATH
+    target = runtime_paths().database
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return target
 
 
 def connect_database(path: str | Path | None = None) -> sqlite3.Connection:

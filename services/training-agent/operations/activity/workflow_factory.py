@@ -10,9 +10,8 @@ from typing import Any, Iterable
 
 from operations.activity.catalog import resolve_recent
 from operations.runtime.models import create_task, create_workflow, workflow_overview
+from project_paths import runtime_paths
 from storage.repositories.workflow import save_workflow
-
-DEFAULT_ACTIVITY_RUN_DIRECTORY = Path("data") / "activity_runs"
 
 TASK_ENSURE_SUMMARY = "ensure_summary"
 TASK_UPLOAD_STRAVA = "upload_strava"
@@ -105,7 +104,7 @@ def create_activity_run_from_activities(
         activities=rows,
         tasks=tasks,
     )
-    target_directory = Path(directory) if directory is not None else DEFAULT_ACTIVITY_RUN_DIRECTORY
+    target_directory = Path(directory) if directory is not None else runtime_paths().activity_workflow_dir
     # workflow_overview refreshes status/updated_at, so compute it before the
     # snapshot is persisted to keep the returned object equal to disk state.
     overview = workflow_overview(run)

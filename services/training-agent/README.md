@@ -69,7 +69,7 @@ npm run start:agent
 也可直接分析一个本地文件：
 
 ```bash
-npm run agent:cli -- analyze-file "garmin_cn_fit_files/path/to/activity.fit"
+npm run agent:cli -- analyze-file "data/files/fit/garmin/path/to/activity.fit"
 ```
 
 ## 本地活动数据库

@@ -2,8 +2,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
+import { assertManagedDatabaseSchema } from "./managed-database.js";
 
-const DEFAULT_DB_PATH = path.resolve(process.cwd(), "data", "rider-tracker.db");
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const DEFAULT_DB_PATH = path.join(PROJECT_ROOT, "data", "rider-tracker.db");
 const ROUTE_SOURCES = new Set(["gpx", "agent", "map-draw", "exploration", "manual", "imported"]);
 
 export function createRouteLibraryStore(filePath = process.env.RIDER_TRACKER_DB_PATH || DEFAULT_DB_PATH) {
@@ -12,12 +15,16 @@ export function createRouteLibraryStore(filePath = process.env.RIDER_TRACKER_DB_
 
     function initialize() {
         if (initialized) return;
-        fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-        if (isManagedDatabase()) {
-            withDatabase((db) => assertManagedSchema(db));
-        } else {
-            withDatabase((db) => createStandaloneSchema(db));
+        if (!fs.existsSync(dbPath)) {
+            throw new Error("Unified route database does not exist. Run npm run db:init.");
         }
+        withDatabase((db) => assertManagedDatabaseSchema(db, {
+            tables: ["saved_routes", "route_progress"],
+            columns: { saved_routes: [
+                "id", "source", "fingerprint", "route_json",
+                "agent_plan_id", "agent_candidate_id", "metadata_json",
+            ] }
+        }));
         initialized = true;
     }
 
@@ -280,40 +287,6 @@ function normalizeRouteRow(row) {
     };
 }
 
-function createStandaloneSchema(db) {
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS saved_routes (
-            id TEXT PRIMARY KEY, source TEXT NOT NULL, name TEXT NOT NULL,
-            import_file_name TEXT, fingerprint TEXT NOT NULL UNIQUE,
-            route_json TEXT NOT NULL, original_gpx_text TEXT,
-            total_distance_meters REAL NOT NULL,
-            total_elevation_gain_meters REAL NOT NULL DEFAULT 0,
-            has_elevation_data INTEGER NOT NULL DEFAULT 0,
-            agent_plan_id TEXT, agent_candidate_id TEXT,
-            metadata_json TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS route_progress (
-            route_id TEXT PRIMARY KEY, resume_distance_meters REAL NOT NULL DEFAULT 0,
-            last_activity_id TEXT, status TEXT NOT NULL DEFAULT 'paused',
-            started_at TEXT, updated_at TEXT NOT NULL,
-            FOREIGN KEY(route_id) REFERENCES saved_routes(id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS idx_saved_routes_updated_at ON saved_routes(updated_at DESC);
-    `);
-}
-
-function assertManagedSchema(db) {
-    for (const table of ["saved_routes", "route_progress"]) {
-        const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
-        if (!exists) throw new Error("Unified route database is not initialized. Run npm run db:migrate.");
-    }
-    const columns = new Set(db.prepare("PRAGMA table_info(saved_routes)").all().map((row) => row.name));
-    for (const required of ["agent_plan_id", "agent_candidate_id", "metadata_json"]) {
-        if (!columns.has(required)) throw new Error("Unified route database is outdated. Run npm run db:migrate.");
-    }
-}
-
 function normalizeSource(value) {
     const source = String(value || "").trim().toLowerCase();
     const aliases = {
@@ -382,10 +355,4 @@ function parseObject(value) {
 
 function isObject(value) {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isManagedDatabase() {
-    return ["1", "true", "yes", "on"].includes(
-        String(process.env.RIDER_DATABASE_MANAGED || "").trim().toLowerCase()
-    );
 }

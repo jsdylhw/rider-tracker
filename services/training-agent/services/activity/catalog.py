@@ -257,11 +257,12 @@ def _compact_activity(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _iter_fit_files(roots: list[str | Path] | None = None) -> list[Path]:
-    scan_roots = [Path(root) for root in roots] if roots else [
-        Path("data") / "fit",
-        Path("garmin_cn_fit_files"),
-        Path.cwd(),
-    ]
+    if roots:
+        scan_roots = [Path(root) for root in roots]
+    else:
+        from project_paths import runtime_paths
+        paths = runtime_paths()
+        scan_roots = [paths.fit_root, paths.garmin_fit_dir]
     files: list[Path] = []
     for root in scan_roots:
         if root.exists():

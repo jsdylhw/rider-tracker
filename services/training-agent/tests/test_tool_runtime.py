@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from agent.main_agent.context import AgentContext
 from agent.main_agent.guard import guard_tool_call
 from agent.tools.registry import TOOL_HANDLERS
 from agent.tools.agent_tools import MAIN_AGENT_TOOLS
+from project_paths import resolve_project_path
 
 
 def test_every_declared_tool_has_exactly_one_callable_handler():
@@ -84,7 +83,7 @@ def test_sync_workflow_handler_returns_service_result_directly(monkeypatch):
     assert result["status"] == "completed"
     assert result["workflow_id"] == "run-2"
     assert context.current_activity_key == "new"
-    assert context.current_fit_file == (Path.cwd() / "new.fit").resolve()
+    assert context.current_fit_file == resolve_project_path("new.fit")
     assert context.selected_activity_range == {
         "type": "garmin_sync_result", "workflow_id": "run-2",
     }

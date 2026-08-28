@@ -132,3 +132,79 @@ runtime route。Provider 原始耗时仅作为数据保留；无海拔 ERG 路�
 修改、request ID 相同但 payload 不同的冲突重放、SQLite compare-and-swap 并发写入、浏览器晚到响应
 失效，以及骑行开始后的二次丢弃检查。2026-08-27 验收结果为 Rider `343/343`、Training Agent
 `622/622`；最终架构文档保持为冻结决策，本段只记录实现和验收状态。
+
+### 2026-08-27：阶段 3 可选 AI 与降级运行
+
+阶段 3 将“Python 业务后端是否运行”和“是否配置大模型”拆成两个独立状态。大模型不再是 Rider
+启动和基础骑行的前置条件；统一配置新增 `agent.enabled`，`auto` 只在 `base_url`、`api_key`、`model`
+均已配置时开放 AI，`false` 则显式关闭所有 LLM 调用。该开关不会关闭 FIT 确定性处理、活动详情、
+运动员档案和 Strava 等 Python 后端能力。
+
+Python `/health` 现在投影 `training_backend_capabilities.v1`，分别报告 `backend`、`llm` 以及
+`fit_ingestion`、`activity_detail`、`athlete_profile`、`strava`、`activity_analysis`、
+`training_history`、`ai_route_planning`、`route_narration`。这是配置就绪度，不会在 health 请求中
+访问外部模型。聊天与路线讲解在 LLM 未配置或被关闭时返回结构化 HTTP 503：
+`code=agent_unavailable`、具体 `capability`、`retryable` 和可读原因；Node BFF 统一保留该错误语义，
+但不会把 Strava 等上游服务自身的 HTTP 503 误判为后端掉线。
+
+`npm start` 不再等待 Training Backend 健康后才启动 Rider。组合模式中 Rider 是关键进程，Python
+启动失败或运行中退出只记录告警，不会结束 Rider；`npm run start:agent` 仍保持 fail-fast，便于独立
+诊断。Rider 就绪后默认只打开产品入口 `http://localhost:8787`；Python sidecar 继续绑定本地地址，
+其 Uvicorn 启动信息和 access log 不作为产品输出。无桌面环境或 `rider.open_browser=false` 时只打印
+Rider 访问地址。浏览器每 15 秒刷新一次 capability，连接恢复后自动恢复 AI 入口。无 LLM 时首页对话、AI
+路线生成和街景讲解显示明确原因并禁用请求入口，但 GPX、地图选点、路线库、设备连接、ERG、街景
+和实时骑行不被锁定。
+
+本阶段增加无 AI 单元测试和 `npm run test:degraded` 进程级验收。后者使用已迁移的临时数据库，依次
+模拟 Python 无法启动、后端恢复、再次掉线，确认 Rider 页面、本地活动 API 和路线库始终可用，
+Agent health 在三秒交互预算内返回标准 503，并能在恢复后重新报告 capability。2026-08-27 验收结果：
+
+- Rider JavaScript：`353/353`；
+- Python Training Backend：`627/627`；
+- 正常双进程集成：通过；
+- Agent 降级、恢复及再次掉线集成：通过；
+- Python `compileall` 与 `git diff --check`：通过。
+
+阶段 3 不等于删除 Python Backend，也不允许绕过统一数据库 migration。它解决的是可选 LLM 或
+Agent 进程故障不应扩大为整套 Rider 不可用；Python 最终接管全部后端和静态页面仍按后续阶段推进。
+
+### 2026-08-27：阶段 4 运行时路径与数据库 schema owner 收敛
+
+阶段 4 新增 Python `RuntimePaths` 作为可变本地数据的唯一路径契约。数据库、FIT、凭据、Workflow、
+journal、日志、缓存、评测产物和迁移清单默认统一位于项目根 `data/`，并允许通过统一配置或环境变量
+覆盖；相对路径始终相对项目根解析，不再依赖 Node、Python 或 CLI 启动时的当前工作目录。Node 启动器
+负责把同一组解析后的路径传给 sidecar，数据库变量发生分叉时 Python 会拒绝启动，而不是静默选择其中
+一份。旧 FIT 目录只保留只读查找兼容，新下载和导入不再写入旧位置。
+
+用户数据迁移保持显式、copy-first。`npm run data:audit` 只生成计划，不写文件；
+`npm run data:migrate` 在不存在冲突时复制并校验内容、保留源文件、限制凭据文件权限，并写入一次性
+manifest。旧 SQLite 文件永不自动合并。本机只读审计发现 2 个目标冲突和 3 个需人工确认的旧数据库，
+因此本阶段没有执行真实迁移，也没有修改这些用户数据。
+
+SQLite schema 的唯一 owner 已收敛到 Python migration。Node 的 activity/route store 删除了
+`CREATE TABLE`、`ALTER TABLE` 和独立 schema 分支，只检查 `user_version`、必需表和列；数据库缺失或
+版本不匹配时给出显式 `db:init`/`db:migrate` 指引，且不会自行创建文件。Node 单元测试使用 Python
+迁移器生成临时数据库，架构测试阻止服务端重新引入 DDL。
+
+本阶段解决的是“同一数据因 cwd、进程或旧默认值落到不同目录”和“Node/Python 各自演进 SQLite”两类
+结构性问题。默认物理目录仍是开发期布局；后续移动 Python 源码时只需调整 resolver/打包入口，不需要
+再次修改各业务模块或迁移一遍数据。
+
+阶段 4 验收结果：
+
+- Rider JavaScript：`356/356`；
+- Python Training Backend：`639/639`；
+- 正常双进程集成和 Agent 启动失败、恢复、再次掉线的降级集成均通过；
+- 真实统一数据库只读检查通过：`user_version=9`；
+- `data:audit` 保持只读，结果为 53 个待复制文件、2 个冲突和 3 个旧数据库人工确认项；
+- `compileall`、`git diff --check` 和 Node 生产目录 DDL 扫描通过。
+
+验收期间还发现并修复了两个边界问题：正常集成测试在 Node DDL 删除后必须显式调用 Python migration
+创建临时数据库；Tool Loop 测试日志必须写入各自的 `tmp_path`，不能污染用户 `data/logs`。本轮误写的
+9 个明确测试日志已清理，其他用户数据未修改。
+
+阶段 4 复审又关闭了四个遗漏边界：无环境变量时项目根改为从嵌入后端代码位置确定，不再回退
+`cwd`；配置、旧运动员档案和外部集成默认路径改为调用时解析；FIT ingest 的允许目录改为实际
+`RuntimePaths.fit_root`；Node 数据库 guard 对 `user_version` 做精确匹配，并由架构测试约束其版本与
+Python migration 常量一致。独立探针确认从 `/tmp` 启动仍解析到 Rider 根目录，且手工降为 schema 8
+的数据库会被 Node 拒绝。Python 测试统一使用临时 runtime root，防止之后的 cwd 回归污染真实数据。

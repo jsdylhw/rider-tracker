@@ -21,24 +21,32 @@ export function buildRuntimeEnv(projectRoot, unifiedConfig, baseEnv = process.en
     const rider = objectValue(values.rider);
     const trainingAgent = objectValue(values.training_agent);
     const agent = objectValue(values.agent);
+    const strava = objectValue(values.strava);
     const env = { ...baseEnv };
 
     setDefault(env, "HOST", rider.host);
     setDefault(env, "PORT", rider.port);
     setDefault(env, "APP_BASE_URL", rider.app_base_url);
     setDefault(env, "FRONTEND_REDIRECT_URL", rider.frontend_redirect_url);
+    setDefault(env, "RIDER_OPEN_BROWSER", rider.open_browser);
     setDefault(env, "STRAVA_REDIRECT_URI", rider.strava_redirect_uri);
     setDefault(env, "STRAVA_SCOPES", rider.strava_scopes);
-    setPathDefault(
-        env,
-        "RIDER_TRACKER_DB_PATH",
-        projectRoot,
-        rider.database_path || "data/rider-tracker.db"
-    );
-    setPathDefault(env, "FIT_FILE_DIR", projectRoot, rider.fit_file_dir || "data/files/fit");
+    setPathDefault(env, "RIDER_DATA_ROOT", projectRoot, rider.data_root || "data");
+    const dataRoot = path.resolve(env.RIDER_DATA_ROOT);
+    setPathDefault(env, "RIDER_TRACKER_DB_PATH", projectRoot, rider.database_path || path.join(dataRoot, "rider-tracker.db"));
+    setPathDefault(env, "FIT_FILE_DIR", projectRoot, rider.fit_file_dir || path.join(dataRoot, "files", "fit"));
+    setPathDefault(env, "GARMIN_FIT_DIR", projectRoot, rider.garmin_fit_dir || path.join(dataRoot, "files", "fit", "garmin"));
+    setPathDefault(env, "RIDER_CREDENTIALS_DIR", projectRoot, rider.credentials_dir || path.join(dataRoot, "credentials"));
+    setPathDefault(env, "STRAVA_TOKEN_STORE", projectRoot, strava.token_store || path.join(dataRoot, "credentials", "strava-tokens.json"));
+    setPathDefault(env, "RIDER_WORKFLOW_DIR", projectRoot, rider.workflow_dir || path.join(dataRoot, "workflows"));
+    setPathDefault(env, "RIDER_WORKFLOW_JOURNAL_DIR", projectRoot, rider.workflow_journal_dir || path.join(dataRoot, "workflows", "journals"));
+    setPathDefault(env, "RIDER_ACTIVITY_WORKFLOW_DIR", projectRoot, rider.activity_workflow_dir || path.join(dataRoot, "workflows", "activity-runs"));
+    setPathDefault(env, "RIDER_LOG_DIR", projectRoot, rider.log_dir || path.join(dataRoot, "logs"));
+    setPathDefault(env, "RIDER_CACHE_DIR", projectRoot, rider.cache_dir || path.join(dataRoot, "cache"));
+    setPathDefault(env, "RIDER_EVALUATION_ARTIFACT_DIR", projectRoot, rider.evaluation_artifact_dir || path.join(dataRoot, "artifacts", "evaluation"));
+    setPathDefault(env, "RIDER_MIGRATION_DIR", projectRoot, rider.migration_dir || path.join(dataRoot, "migrations"));
     setDefault(env, "TRAINING_AGENT_DB_PATH", env.RIDER_TRACKER_DB_PATH);
     setDefault(env, "TRAINING_AGENT_MANAGED_DATABASE", "1");
-    setDefault(env, "RIDER_DATABASE_MANAGED", "1");
     setDefault(env, "RIDER_PROJECT_ROOT", projectRoot);
 
     const endpointOverride = parseHttpEndpoint(env.PERSONAL_FIT_AGENT_URL);

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from evaluation.graders import grade_case
 from evaluation.report import summarize_results, write_report
@@ -201,7 +202,7 @@ def test_report_writes_jsonl_summary_and_markdown(tmp_path):
 
 
 def test_skill_cases_are_versioned_evaluation_inputs():
-    cases = load_cases("evaluation/cases/skills.jsonl")
+    cases = load_cases(Path(__file__).resolve().parents[1] / "evaluation" / "cases" / "skills.jsonl")
 
     assert len(cases) == 17
     assert all(case.mode == "skill" for case in cases)

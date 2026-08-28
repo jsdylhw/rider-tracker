@@ -18,7 +18,7 @@ from domain.analysis.artifacts import (
 )
 from services.activity.fit_loader import parse_activity_fit as parse_fit
 from storage.repositories.activity import ActivityStore
-from project_paths import resolve_project_path
+from project_paths import project_root, resolve_project_path, runtime_paths
 
 
 GROUP_BY_VALUES = {"day", "week", "month"}
@@ -223,7 +223,15 @@ def _resolve_fit_path(activity: dict[str, Any], summary: dict[str, Any] | None) 
         if path.exists() and path.is_file():
             return path
         name = str(value).replace("\\", "/").split("/")[-1]
-        for directory in (Path("garmin_cn_fit_files"), Path("fit_files")):
+        paths = runtime_paths()
+        # Canonical locations come first. The project-root legacy locations are
+        # read-only compatibility for users who have not run data:migrate yet.
+        for directory in (
+            paths.fit_root,
+            paths.garmin_fit_dir,
+            project_root() / "garmin_cn_fit_files",
+            project_root() / "fit_files",
+        ):
             fallback = directory / name
             if fallback.exists() and fallback.is_file():
                 return fallback

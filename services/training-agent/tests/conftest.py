@@ -9,6 +9,17 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def isolate_runtime_data(tmp_path, monkeypatch):
+    """Never let a Python test use or mutate the developer's Rider data tree."""
+    database = tmp_path / "data" / "rider-tracker.db"
+    monkeypatch.setenv("RIDER_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("RIDER_DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("RIDER_TRACKER_DB_PATH", str(database))
+    monkeypatch.setenv("TRAINING_AGENT_DB_PATH", str(database))
+    monkeypatch.delenv("TRAINING_AGENT_MANAGED_DATABASE", raising=False)
+
+
 @pytest.fixture
 def sample_records():
     """Generate sample cycling records with power, HR, cadence, speed, distance."""

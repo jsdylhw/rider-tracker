@@ -13,6 +13,8 @@ from typing import Any
 
 import requests
 
+from project_paths import runtime_paths
+
 MAX_SYNC_COUNT = 20
 
 
@@ -45,14 +47,15 @@ def sync_garmin_activities_tool(
 
     from settings import cfg_get, load_config, resolve_project_path
     from integrations.garmin import (
-        DEFAULT_OUTPUT_DIR,
         build_downloader,
         existing_fit_paths,
         save_original_as_fit,
     )
 
     config = load_config()
-    output_dir = resolve_project_path(cfg_get(config, "output_dir", DEFAULT_OUTPUT_DIR))
+    output_dir = resolve_project_path(cfg_get(
+        config, "output_dir", str(runtime_paths().garmin_fit_dir),
+    ))
     downloader = build_downloader(config)
     downloader.login()
     activities = downloader.list_activities(count)

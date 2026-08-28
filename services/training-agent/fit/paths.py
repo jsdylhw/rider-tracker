@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from project_paths import project_root, resolve_project_path
+from project_paths import project_root, resolve_project_path, runtime_paths
 
 
 def resolve_fit_path(value: str | Path) -> Path:
@@ -32,9 +32,15 @@ def resolve_fit_path(value: str | Path) -> Path:
 
 
 def iter_candidate_fit_files() -> list[Path]:
-    """返回常用本地目录下可被自然语言匹配的 FIT 候选文件."""
+    """返回可被自然语言匹配的 FIT 文件。
+
+    前两个目录属于统一运行时契约；后两个位置仅用于读取尚未执行显式
+    ``data:migrate`` 的旧数据，不再接收新文件。
+    """
+    paths = runtime_paths()
     roots = [
-        (project_root() / "data" / "files" / "fit", True),
+        (paths.fit_root, True),
+        (paths.garmin_fit_dir, True),
         (project_root() / "data" / "fit", True),
         (project_root() / "garmin_cn_fit_files", True),
         (project_root(), False),

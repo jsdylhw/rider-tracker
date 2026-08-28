@@ -104,6 +104,28 @@ def test_browser_http_surface_matches_migration_contract() -> None:
     assert actual == expected
 
 
+def test_node_server_does_not_own_database_schema_ddl() -> None:
+    """Python migrations are the only production owner of SQLite structure."""
+    violations: list[str] = []
+    for path in (REPOSITORY_ROOT / "src" / "server").rglob("*.js"):
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"\b(?:CREATE|ALTER|DROP)\s+(?:TABLE|INDEX)\b", text, re.IGNORECASE):
+            violations.append(str(path.relative_to(REPOSITORY_ROOT)))
+    assert violations == []
+
+
+def test_node_schema_guard_matches_python_migration_version() -> None:
+    """Node may validate the schema, but its expected version cannot drift from Python."""
+    from storage.database import SCHEMA_VERSION
+
+    source = (REPOSITORY_ROOT / "src" / "server" / "managed-database.js").read_text(
+        encoding="utf-8",
+    )
+    match = re.search(r"MANAGED_DATABASE_SCHEMA_VERSION\s*=\s*(\d+)", source)
+    assert match is not None
+    assert int(match.group(1)) == SCHEMA_VERSION
+
+
 def _imports_with_prefix(directories: list[str], *, forbidden: tuple[str, ...]) -> list[str]:
     violations: list[str] = []
     for directory in directories:

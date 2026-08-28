@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-DEFAULT_CHAT_LOG_DIR = Path("log")
+from project_paths import runtime_paths
 
 
 def new_session_id(prefix: str = "chat") -> str:
@@ -22,7 +22,7 @@ def new_session_id(prefix: str = "chat") -> str:
 
 
 def append_chat_log(
-    session_id: str, event: dict[str, Any], *, log_dir: str | Path = DEFAULT_CHAT_LOG_DIR,
+    session_id: str, event: dict[str, Any], *, log_dir: str | Path | None = None,
     file_stem: str | None = None,
 ) -> Path:
     """追加一条事件记录到 JSONL 日志,同步更新 .md 可读日志.
@@ -36,7 +36,7 @@ def append_chat_log(
     Returns:
         Path: JSONL 文件路径.
     """
-    target_dir = Path(log_dir)
+    target_dir = Path(log_dir) if log_dir is not None else runtime_paths().log_dir
     target_dir.mkdir(parents=True, exist_ok=True)
     name = file_stem or session_id
     path = target_dir / f"{name}.jsonl"
@@ -62,10 +62,10 @@ def write_main_agent_markdown_log(
     selected_activities: list[dict[str, Any]],
     selected_activity_range: dict[str, Any] | None,
     current_fit_file: str | None,
-    log_dir: str | Path = DEFAULT_CHAT_LOG_DIR,
+    log_dir: str | Path | None = None,
 ) -> Path:
     """写入 Main Agent 总览日志,只生成可读 Markdown,不再额外生成 JSONL。"""
-    target_dir = Path(log_dir)
+    target_dir = Path(log_dir) if log_dir is not None else runtime_paths().log_dir
     target_dir.mkdir(parents=True, exist_ok=True)
     path = target_dir / f"{session_id}.md"
     lines = _format_main_agent_log(
