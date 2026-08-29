@@ -241,3 +241,31 @@ owner。
 - 正常双进程集成覆盖路线创建、重命名、续骑、详情和删除：通过；
 - Python 启动失败、恢复和再次掉线的降级集成：通过；
 - 生产 Node 中路线仓储及其 `node:sqlite` 引用已删除，`git diff --check` 通过。
+
+### 2026-08-29：阶段 5B Agent 路线确认与保存原子化
+
+阶段 5B 消除了 Agent 路线确认中的最后一个双写窗口。此前浏览器先调用 Python 确认候选，再单独调用
+路线库接口保存 runtime route；第二次请求失败时，路线计划已经进入 confirmed，但路线库中没有对应路线。
+现在 Rider 在确认请求中携带它根据候选生成的 runtime route 快照，Python 在同一个 SQLite 连接和
+`BEGIN IMMEDIATE` 事务中完成候选校验、路线计划 revision compare-and-swap、确认状态更新以及
+SavedRoute upsert。任一步失败都会同时回滚两项写入，浏览器也不再允许“确认成功但保存失败时仍可骑行”
+的降级状态。
+
+Python 会验证 chat workspace、plan/candidate ID、单日路线类型、候选名称、来源和距离容差。Google、
+高德或 Strava 返回并进入 RoutePlan 的 provider 路线是几何事实来源；浏览器从该候选构建 runtime route，
+Python 不再用另一套坐标清理规则逐点复核 provider 几何。SavedRoute repository 仍负责坐标、距离和来源
+的基本结构校验。Python 在 plan revision 写入后覆盖 SavedRoute 内外层 Agent metadata，确保状态为
+confirmed、revision 为本次事务的新值。Node BFF 仅校验并完整转发 `saved_route` 请求字段；Rider
+只有在响应同时返回递增 revision、相同 confirmed candidate 和 SavedRoute ID 时才提交可骑 runtime
+route。重复 `request_id` 继续返回会话缓存结果，过期 revision 继续返回 HTTP 409。
+
+本切片增加了事务中第二次写入失败的强制回滚测试、非法距离不改变 plan revision 的测试、权威
+confirmed metadata 测试、重复请求幂等测试、浏览器确认请求及 Node BFF 字段转发测试。
+双进程集成会经 Rider 公开 BFF 发起一次真实确认，再分别读取 plan 和 SavedRoute 验证同一事务结果。
+验收结果：
+
+- Rider JavaScript：`359/359`；
+- Python Training Backend：`651/651`；
+- 正常双进程集成（含 Agent 路线原子确认）：通过；
+- Python 启动失败、恢复和再次掉线的降级集成：通过；
+- Python `compileall` 与 `git diff --check`：通过。

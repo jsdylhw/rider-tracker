@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import sqlite3
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,82 +44,96 @@ class SavedRouteStore:
     def __init__(self, path: str | Path | None = None):
         self.path = path
 
-    def save_route(self, value: dict[str, Any]) -> dict[str, Any]:
+    def save_route(
+        self,
+        value: dict[str, Any],
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> dict[str, Any]:
         normalized = _normalize_saved_route(value)
-        now = _now()
-        with connect_database(self.path) as connection:
+        if connection is not None:
+            return self._save_route(connection, normalized)
+        with connect_database(self.path) as owned_connection:
             # Serialize the read/merge/upsert sequence. Without this lock, two
             # writers can both observe no row, choose different UUIDs and make
             # the conflict loser read back a route ID that was never inserted.
-            connection.execute("BEGIN IMMEDIATE")
-            existing = connection.execute(
-                """
-                SELECT id, created_at, agent_plan_id, agent_candidate_id, metadata_json
-                FROM saved_routes WHERE fingerprint = ?
-                """,
-                (normalized["fingerprint"],),
-            ).fetchone()
-            route_id = str(existing["id"] if existing else uuid4())
-            created_at = str(existing["created_at"] if existing else now)
-            agent_plan_id = normalized["agent_plan_id"] or (
-                existing["agent_plan_id"] if existing else None
-            )
-            agent_candidate_id = normalized["agent_candidate_id"] or (
-                existing["agent_candidate_id"] if existing else None
-            )
-            metadata = _json_object(existing["metadata_json"] if existing else None)
-            metadata.update(normalized["metadata"])
-            connection.execute(
-                """
-                INSERT INTO saved_routes (
-                    id, source, name, import_file_name, fingerprint, route_json,
-                    original_gpx_text, total_distance_meters,
-                    total_elevation_gain_meters, has_elevation_data,
-                    agent_plan_id, agent_candidate_id, metadata_json,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(fingerprint) DO UPDATE SET
-                    source = excluded.source,
-                    name = excluded.name,
-                    import_file_name = COALESCE(excluded.import_file_name, saved_routes.import_file_name),
-                    route_json = excluded.route_json,
-                    original_gpx_text = COALESCE(excluded.original_gpx_text, saved_routes.original_gpx_text),
-                    total_distance_meters = excluded.total_distance_meters,
-                    total_elevation_gain_meters = excluded.total_elevation_gain_meters,
-                    has_elevation_data = excluded.has_elevation_data,
-                    agent_plan_id = COALESCE(excluded.agent_plan_id, saved_routes.agent_plan_id),
-                    agent_candidate_id = COALESCE(excluded.agent_candidate_id, saved_routes.agent_candidate_id),
-                    metadata_json = excluded.metadata_json,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    route_id,
-                    normalized["source"],
-                    normalized["name"],
-                    normalized["import_file_name"],
-                    normalized["fingerprint"],
-                    _json(normalized["route"]),
-                    normalized["original_gpx_text"],
-                    normalized["total_distance_meters"],
-                    normalized["total_elevation_gain_meters"],
-                    int(normalized["has_elevation_data"]),
-                    agent_plan_id,
-                    agent_candidate_id,
-                    _json(metadata),
-                    created_at,
-                    now,
-                ),
-            )
-            # A geometry duplicate may carry corrected distance metadata. Do
-            # not leave continuation state beyond the replacement route end.
-            connection.execute(
-                """
-                DELETE FROM route_progress
-                WHERE route_id = ? AND resume_distance_meters >= ?
-                """,
-                (route_id, max(0.0, normalized["total_distance_meters"] - 10)),
-            )
-            route = self._read_route(connection, route_id)
+            owned_connection.execute("BEGIN IMMEDIATE")
+            return self._save_route(owned_connection, normalized)
+
+    def _save_route(
+        self,
+        connection: sqlite3.Connection,
+        normalized: dict[str, Any],
+    ) -> dict[str, Any]:
+        now = _now()
+        existing = connection.execute(
+            """
+            SELECT id, created_at, agent_plan_id, agent_candidate_id, metadata_json
+            FROM saved_routes WHERE fingerprint = ?
+            """,
+            (normalized["fingerprint"],),
+        ).fetchone()
+        route_id = str(existing["id"] if existing else uuid4())
+        created_at = str(existing["created_at"] if existing else now)
+        agent_plan_id = normalized["agent_plan_id"] or (
+            existing["agent_plan_id"] if existing else None
+        )
+        agent_candidate_id = normalized["agent_candidate_id"] or (
+            existing["agent_candidate_id"] if existing else None
+        )
+        metadata = _json_object(existing["metadata_json"] if existing else None)
+        metadata.update(normalized["metadata"])
+        connection.execute(
+            """
+            INSERT INTO saved_routes (
+                id, source, name, import_file_name, fingerprint, route_json,
+                original_gpx_text, total_distance_meters,
+                total_elevation_gain_meters, has_elevation_data,
+                agent_plan_id, agent_candidate_id, metadata_json,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(fingerprint) DO UPDATE SET
+                source = excluded.source,
+                name = excluded.name,
+                import_file_name = COALESCE(excluded.import_file_name, saved_routes.import_file_name),
+                route_json = excluded.route_json,
+                original_gpx_text = COALESCE(excluded.original_gpx_text, saved_routes.original_gpx_text),
+                total_distance_meters = excluded.total_distance_meters,
+                total_elevation_gain_meters = excluded.total_elevation_gain_meters,
+                has_elevation_data = excluded.has_elevation_data,
+                agent_plan_id = COALESCE(excluded.agent_plan_id, saved_routes.agent_plan_id),
+                agent_candidate_id = COALESCE(excluded.agent_candidate_id, saved_routes.agent_candidate_id),
+                metadata_json = excluded.metadata_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                route_id,
+                normalized["source"],
+                normalized["name"],
+                normalized["import_file_name"],
+                normalized["fingerprint"],
+                _json(normalized["route"]),
+                normalized["original_gpx_text"],
+                normalized["total_distance_meters"],
+                normalized["total_elevation_gain_meters"],
+                int(normalized["has_elevation_data"]),
+                agent_plan_id,
+                agent_candidate_id,
+                _json(metadata),
+                created_at,
+                now,
+            ),
+        )
+        # A geometry duplicate may carry corrected distance metadata. Do not
+        # leave continuation state beyond the replacement route end.
+        connection.execute(
+            """
+            DELETE FROM route_progress
+            WHERE route_id = ? AND resume_distance_meters >= ?
+            """,
+            (route_id, max(0.0, normalized["total_distance_meters"] - 10)),
+        )
+        route = self._read_route(connection, route_id)
         return {**(route or {}), "created": existing is None}
 
     def list_routes(self, *, source: str = "") -> list[dict[str, Any]]:

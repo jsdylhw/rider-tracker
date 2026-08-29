@@ -11,8 +11,7 @@ export function createAgentRoutePreviewService({
     store,
     operations,
     invalidateExploration,
-    agentClient = createAgentApiClient(),
-    routeLibrary = null
+    agentClient = createAgentApiClient()
 }) {
     let currentDraft = null;
 
@@ -68,29 +67,33 @@ export function createAgentRoutePreviewService({
     async function confirmAgentRoute(candidateId) {
         ensureDraft();
         const previousRevision = currentDraft.revision;
-        const draft = await runCommand("confirm", { candidate_id: candidateId });
-        if (!draft) return null;
+        const pendingRoute = buildRiderRouteFromAgentCandidate(currentDraft, candidateId);
+        const execution = await executeCommand("confirm", {
+            candidate_id: candidateId,
+            saved_route: confirmedRoutePayload(pendingRoute)
+        });
+        if (!execution?.response) return null;
+        const { draft, response } = execution;
         if (
             draft.planningStatus !== "confirmed"
             || draft.confirmedCandidateId !== candidateId
             || draft.revision <= previousRevision
+            || !response.saved_route?.id
         ) {
-            throw new Error("路线确认响应与当前候选不一致，已保留原路线，请重试。");
+            throw new Error("路线确认或保存响应与当前候选不一致，已保留原路线，请重试。");
         }
-        const built = buildRiderRouteFromAgentCandidate(draft, candidateId);
-        const saved = await saveConfirmedRoute(built);
+        const saved = response.saved_route;
         const route = {
-            ...built,
+            ...pendingRoute,
             isDraft: false,
-            savedRouteId: saved?.id ?? null,
-            savedRouteResumeDistanceMeters: saved?.resumeDistanceMeters ?? 0
+            agentMetadata: saved.route?.agentMetadata ?? pendingRoute.agentMetadata,
+            savedRouteId: saved.id,
+            savedRouteResumeDistanceMeters: saved.resumeDistanceMeters ?? 0
         };
         operations.invalidateRequests();
         operations.commitRoute(
             route,
-            saved
-                ? `已确认并保存 AI 虚拟路线：${route.name}，${formatNumber(route.totalDistanceMeters / 1000, 1)} km。`
-                : `已确认 AI 虚拟路线，但路线库保存失败：${route.name}。本次仍可骑行。`
+            `已确认并保存 AI 虚拟路线：${route.name}，${formatNumber(route.totalDistanceMeters / 1000, 1)} km。`
         );
         return { draft, route, savedRoute: saved };
     }
@@ -137,7 +140,12 @@ export function createAgentRoutePreviewService({
     }
 
     async function runCommand(operation, input = {}) {
-        if (!operations.ensureRouteEditingAllowed()) return currentDraft;
+        const execution = await executeCommand(operation, input);
+        return execution?.draft ?? null;
+    }
+
+    async function executeCommand(operation, input = {}) {
+        if (!operations.ensureRouteEditingAllowed()) return { draft: currentDraft, response: null };
         const requestId = operations.invalidateRequests();
         const response = await agentClient.routePlanCommand(operation, {
             plan_id: currentDraft?.planId,
@@ -146,11 +154,12 @@ export function createAgentRoutePreviewService({
         });
         if (!operations.isCurrent(requestId)) return null;
         if (operations.discardAfterRideStart("骑行已开始，已忽略未完成的 AI 路线操作。")) return null;
-        return saveDraft(parseAgentRouteDraft({
+        const draft = saveDraft(parseAgentRouteDraft({
             answer: response.answer,
             status: "completed",
             route_plan: response.route_plan
         }));
+        return { draft, response };
     }
 
     function commitActiveRoute(draft, statusText) {
@@ -180,22 +189,6 @@ export function createAgentRoutePreviewService({
         if (!currentDraft?.planId) throw new Error("请先让 Agent 生成路线候选。");
     }
 
-    async function saveConfirmedRoute(route) {
-        try {
-            return await routeLibrary?.saveRoute?.({
-                route,
-                source: "agent",
-                name: route.name,
-                agentPlanId: route.agentPlanId,
-                agentCandidateId: route.agentCandidateId,
-                metadata: route.agentMetadata ?? {}
-            }) ?? null;
-        } catch (error) {
-            console.warn("AI 路线保存失败", error);
-            return null;
-        }
-    }
-
     return {
         planAgentRoutes,
         previewAgentRoute,
@@ -204,6 +197,17 @@ export function createAgentRoutePreviewService({
         composeAgentRouteSegments,
         reverseAgentRoute,
         undoAgentRoute,
+    };
+}
+
+function confirmedRoutePayload(route) {
+    return {
+        route,
+        source: "agent",
+        name: route.name,
+        agentPlanId: route.agentPlanId,
+        agentCandidateId: route.agentCandidateId,
+        metadata: route.agentMetadata ?? {}
     };
 }
 

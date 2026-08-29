@@ -66,6 +66,7 @@ import { suite as safeMarkdownRendererSuite } from "./unit/safe-markdown-rendere
 import { suite as agentRouteContractSuite } from "./unit/agent-route-contract.test.js";
 import { suite as personalFitAgentClientSuite } from "./unit/personal-fit-agent-client.test.js";
 import { suite as agentRouteServiceSuite } from "./unit/agent-route-service.test.js";
+import { suite as agentRoutesSuite } from "./unit/agent-routes.test.js";
 import { suite as agentRoutePlannerSuite } from "./unit/agent-route-planner.test.js";
 import { suite as localConfigSuite } from "./unit/local-config.test.js";
 import { suite as browserLauncherSuite } from "./unit/browser-launcher.test.js";
@@ -144,6 +145,7 @@ const suites = [
     agentRouteContractSuite,
     personalFitAgentClientSuite,
     agentRouteServiceSuite,
+    agentRoutesSuite,
     agentRoutePlannerSuite,
     localConfigSuite,
     browserLauncherSuite,

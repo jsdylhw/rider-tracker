@@ -29,6 +29,7 @@ from settings import cfg_get, load_config
 from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
 from storage.repositories.saved_route import SavedRouteNotFound, SavedRouteStore
 from services.route.single_day import compact_route_plan
+from services.route.confirmation import confirm_and_save_route
 from services.route.view import build_route_plan_view
 from services.capabilities import build_backend_capabilities
 from project_paths import project_root, runtime_paths
@@ -108,6 +109,7 @@ class RoutePlanCommandRequest(BaseModel):
     segments: list[dict[str, Any]] = Field(default_factory=list, max_length=3)
     corridor_km: float = Field(default=5.0, ge=0.1, le=20)
     max_segments: int = Field(default=12, ge=1, le=20)
+    saved_route: dict[str, Any] | None = None
 
 
 class RouteNarrationSample(BaseModel):
@@ -478,6 +480,8 @@ def route_plan_command_endpoint(
             return response
         except RouteRevisionConflict as exc:
             raise _revision_conflict_response(exc) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -492,6 +496,36 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
         raise ValueError("expected_revision is required for route mutations")
     if operation == "get":
         primary = get_route_plan_tool(context, args=args)
+    elif operation == "confirm":
+        if not request.saved_route:
+            raise ValueError("saved_route is required for confirm")
+        full_plan, saved_route = confirm_and_save_route(
+            plan_id=request.plan_id or "",
+            candidate_id=request.candidate_id or "",
+            expected_revision=int(request.expected_revision or 0),
+            workspace_id=str(context.workspace_id or context.session_id),
+            saved_route=request.saved_route,
+        )
+        compact_plan = compact_route_plan(full_plan)
+        answer = f"已确认并保存路线：{saved_route.get('name') or request.candidate_id}"
+        plan_result = {
+            "step": "confirm_and_save_route",
+            "status": "completed",
+            "answer": answer,
+            "result": compact_plan,
+        }
+        presentations = project_presentations([ToolExecution(
+            index=0,
+            tool="get_route_plan",
+            result=plan_result,
+        )])
+        return {
+            "answer": answer,
+            "result": compact_plan,
+            "route_plan": build_route_plan_view(full_plan),
+            "saved_route": saved_route,
+            "presentations": [item.to_dict() for item in presentations],
+        }
     elif operation == "explore_segments":
         primary = explore_route_segments_tool(context, args={
             **args,
@@ -502,7 +536,6 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
     else:
         mapped = {
             "select": "select_candidate",
-            "confirm": "confirm_candidate",
             "reverse": "reverse_candidate",
             "undo": "undo",
             "compose_segments": "compose_segments",

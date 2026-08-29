@@ -98,7 +98,7 @@ function normalizeSelectionRequest(body = {}) {
     };
 }
 
-function normalizeCommandRequest(body = {}) {
+export function normalizeCommandRequest(body = {}) {
     const allowed = new Set(["get", "select", "confirm", "reverse", "undo", "explore_segments", "compose_segments"]);
     const operation = String(body.operation || "").trim();
     if (!allowed.has(operation)) throw new RequestValidationError("不支持的路线操作。");
@@ -118,6 +118,12 @@ function normalizeCommandRequest(body = {}) {
     }
     if (operation === "compose_segments") {
         request.segments = normalizeSegments(body.segments);
+    }
+    if (operation === "confirm") {
+        if (!body.saved_route || typeof body.saved_route !== "object" || Array.isArray(body.saved_route)) {
+            throw new RequestValidationError("saved_route 格式无效。");
+        }
+        request.saved_route = body.saved_route;
     }
     if (operation === "explore_segments") {
         request.corridor_km = clampNumber(body.corridor_km, 0.1, 20, 5);

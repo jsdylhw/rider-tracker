@@ -70,11 +70,12 @@ try {
         throw new Error(`Unexpected Rider route payload: ${JSON.stringify(routes)}`);
     }
     await assertRouteLibraryRoundTrip();
+    await assertAtomicRouteConfirmation();
     const proxyHealth = await readJson(`${riderUrl}/api/agent/health`);
     if (!proxyHealth.ok || proxyHealth.result?.status !== "ok") {
         throw new Error(`Unexpected Agent proxy health payload: ${JSON.stringify(proxyHealth)}`);
     }
-    console.log("[integration] Unified Rider page, Python route store, Agent proxy, and removed legacy UI checks passed.");
+    console.log("[integration] Unified Rider page, atomic route confirmation, Python route store, Agent proxy, and removed legacy UI checks passed.");
 } finally {
     for (const child of children) child.kill();
     await rm(tempRoot, { recursive: true, force: true });
@@ -118,6 +119,120 @@ async function assertRouteLibraryRoundTrip() {
         throw new Error(`Route detail failed: ${JSON.stringify(loaded)}`);
     }
     await requestJson(`${riderUrl}/api/routes/${encodeURIComponent(routeId)}`, { method: "DELETE" });
+}
+
+async function assertAtomicRouteConfirmation() {
+    const sessionId = "integration-route-confirm";
+    const planId = "integration-plan";
+    const candidateId = "integration-candidate";
+    seedRoutePlan({
+        plan_id: planId,
+        workspace_id: `web-chat:${sessionId}`,
+        schedule_type: "single_day",
+        active_candidate_id: candidateId,
+        planning: { status: "awaiting_selection" },
+        candidates: [{
+            candidate_id: candidateId,
+            name: "Atomic integration route",
+            distance_m: 1000,
+            provider: "integration",
+            travel_mode: "BICYCLE",
+            geometry: {
+                type: "LineString",
+                coordinates: [[121, 31], [121.01, 31]]
+            }
+        }]
+    });
+    const savedRoute = {
+        source: "agent",
+        name: "Atomic integration route",
+        agentPlanId: planId,
+        agentCandidateId: candidateId,
+        metadata: { planningStatus: "awaiting_selection", revision: 1 },
+        route: {
+            source: "agent-planned",
+            name: "Atomic integration route",
+            agentPlanId: planId,
+            agentCandidateId: candidateId,
+            totalDistanceMeters: 1000,
+            totalElevationGainMeters: 0,
+            hasElevationData: false,
+            mapGeometry: [{ lat: 31, lng: 121 }, { lat: 31, lng: 121.01 }],
+            points: [
+                { latitude: 31, longitude: 121, distanceMeters: 0 },
+                { latitude: 31, longitude: 121.01, distanceMeters: 1000 }
+            ]
+        }
+    };
+    const confirmed = await requestJson(`${riderUrl}/api/agent/route-plans/command`, {
+        method: "POST",
+        body: {
+            session_id: sessionId,
+            request_id: "integration-confirm-request",
+            operation: "confirm",
+            plan_id: planId,
+            candidate_id: candidateId,
+            expected_revision: 1,
+            saved_route: savedRoute
+        }
+    });
+    const savedRouteId = confirmed.result?.saved_route?.id;
+    if (
+        !confirmed.ok
+        || confirmed.result?.route_plan?.planning_status !== "confirmed"
+        || confirmed.result?.route_plan?.revision !== 2
+        || !savedRouteId
+    ) {
+        throw new Error(`Atomic route confirmation failed: ${JSON.stringify(confirmed)}`);
+    }
+
+    const persistedPlan = await requestJson(`${riderUrl}/api/agent/route-plans/command`, {
+        method: "POST",
+        body: {
+            session_id: sessionId,
+            request_id: "integration-get-confirmed-plan",
+            operation: "get",
+            plan_id: planId
+        }
+    });
+    if (
+        persistedPlan.result?.route_plan?.planning_status !== "confirmed"
+        || persistedPlan.result?.route_plan?.revision !== 2
+    ) {
+        throw new Error(`Confirmed route plan was not persisted: ${JSON.stringify(persistedPlan)}`);
+    }
+    const persistedRoute = await readJson(`${riderUrl}/api/routes/${encodeURIComponent(savedRouteId)}`);
+    if (
+        persistedRoute.route?.agentCandidateId !== candidateId
+        || persistedRoute.route?.metadata?.planningStatus !== "confirmed"
+        || persistedRoute.route?.metadata?.revision !== 2
+        || persistedRoute.route?.route?.agentMetadata?.revision !== 2
+    ) {
+        throw new Error(`Confirmed SavedRoute was not persisted atomically: ${JSON.stringify(persistedRoute)}`);
+    }
+}
+
+function seedRoutePlan(plan) {
+    const script = [
+        "import json, sys",
+        "from storage.repositories.route import RoutePlanStore",
+        "RoutePlanStore(sys.argv[1]).save(json.loads(sys.argv[2]))"
+    ].join("; ");
+    const result = spawnSync(python, ["-c", script, databasePath, JSON.stringify(plan)], {
+        cwd: agentRoot,
+        encoding: "utf8",
+        env: {
+            ...process.env,
+            PYTHONPATH: agentRoot,
+            RIDER_PROJECT_ROOT: projectRoot,
+            RIDER_TRACKER_DB_PATH: databasePath,
+            TRAINING_AGENT_DB_PATH: databasePath,
+            TRAINING_AGENT_MANAGED_DATABASE: "1"
+        }
+    });
+    if (result.status !== 0) {
+        throw new Error(`Failed to seed route plan: ${result.stderr || result.stdout}`);
+    }
 }
 
 function initializeDatabase() {

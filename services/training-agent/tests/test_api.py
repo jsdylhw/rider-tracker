@@ -389,6 +389,9 @@ def test_route_command_get_and_confirm_return_full_presentations(tmp_path, monke
         "candidate_id": "candidate_1",
         "operation": "confirm",
         "expected_revision": stored["revision"],
+        "saved_route": _confirmed_route_payload(
+            stored["plan_id"], "candidate_1", "候选一", 20_000,
+        ),
     })
 
     assert current.status_code == 200
@@ -398,7 +401,9 @@ def test_route_command_get_and_confirm_return_full_presentations(tmp_path, monke
     assert confirmed.status_code == 200
     assert confirmed.json()["result"]["planning"]["status"] == "confirmed"
     assert confirmed.json()["route_plan"]["planning_status"] == "confirmed"
+    assert confirmed.json()["saved_route"]["agentCandidateId"] == "candidate_1"
     assert RoutePlanStore().get(stored["plan_id"])["planning"]["confirmed_candidate_id"] == "candidate_1"
+    assert len(api.SavedRouteStore().list_routes()) == 1
 
 
 def test_route_command_rejects_unsupported_operation(tmp_path, monkeypatch):
@@ -419,7 +424,7 @@ def test_route_command_is_idempotent_and_rejects_stale_revision(tmp_path, monkey
         "workspace_id": str(session.context.workspace_id),
         "active_candidate_id": "candidate-1",
         "planning": {"status": "awaiting_selection"},
-        "candidates": [{"candidate_id": "candidate-1", "name": "候选"}],
+        "candidates": [_route_candidate("candidate-1", "候选")],
     })
     request = {
         "session_id": "route-cas",
@@ -428,6 +433,9 @@ def test_route_command_is_idempotent_and_rejects_stale_revision(tmp_path, monkey
         "candidate_id": "candidate-1",
         "operation": "confirm",
         "expected_revision": stored["revision"],
+        "saved_route": _confirmed_route_payload(
+            stored["plan_id"], "candidate-1", "候选", 20_000,
+        ),
     }
 
     first = client.post("/api/route-plans/command", json=request)
@@ -455,14 +463,14 @@ def test_route_command_targets_an_explicit_plan_without_mutating_another_plan(tm
         "workspace_id": workspace_id,
         "active_candidate_id": "candidate-first",
         "planning": {"status": "awaiting_selection"},
-        "candidates": [{"candidate_id": "candidate-first", "name": "第一条"}],
+        "candidates": [_route_candidate("candidate-first", "第一条")],
     })
     second = RoutePlanStore().save({
         "plan_id": "route-second",
         "workspace_id": workspace_id,
         "active_candidate_id": "candidate-second",
         "planning": {"status": "awaiting_selection"},
-        "candidates": [{"candidate_id": "candidate-second", "name": "第二条"}],
+        "candidates": [_route_candidate("candidate-second", "第二条")],
     })
 
     response = client.post("/api/route-plans/command", json={
@@ -472,6 +480,9 @@ def test_route_command_targets_an_explicit_plan_without_mutating_another_plan(tm
         "candidate_id": "candidate-first",
         "operation": "confirm",
         "expected_revision": first["revision"],
+        "saved_route": _confirmed_route_payload(
+            first["plan_id"], "candidate-first", "第一条", 20_000,
+        ),
     })
 
     assert response.status_code == 200
@@ -490,7 +501,7 @@ def test_route_command_rejects_request_id_reuse_with_different_payload(tmp_path,
         "workspace_id": str(session.context.workspace_id),
         "active_candidate_id": "candidate-1",
         "planning": {"status": "awaiting_selection"},
-        "candidates": [{"candidate_id": "candidate-1", "name": "候选"}],
+        "candidates": [_route_candidate("candidate-1", "候选")],
     })
     base = {
         "session_id": "route-replay-conflict",
@@ -500,7 +511,12 @@ def test_route_command_rejects_request_id_reuse_with_different_payload(tmp_path,
     }
 
     first = client.post("/api/route-plans/command", json={
-        **base, "operation": "confirm", "candidate_id": "candidate-1",
+        **base,
+        "operation": "confirm",
+        "candidate_id": "candidate-1",
+        "saved_route": _confirmed_route_payload(
+            stored["plan_id"], "candidate-1", "候选", 20_000,
+        ),
     })
     reused = client.post("/api/route-plans/command", json={
         **base, "operation": "reverse", "candidate_id": "candidate-1",
@@ -509,6 +525,36 @@ def test_route_command_rejects_request_id_reuse_with_different_payload(tmp_path,
     assert first.status_code == 200
     assert reused.status_code == 400
     assert "different request payload" in reused.json()["detail"]
+
+
+def test_route_confirm_rolls_back_plan_when_saved_route_distance_is_invalid(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    session = api.chat_sessions.get_or_create("route-atomic-rollback")
+    stored = RoutePlanStore().save({
+        "plan_id": "route-atomic-plan",
+        "workspace_id": str(session.context.workspace_id),
+        "active_candidate_id": "candidate-1",
+        "planning": {"status": "awaiting_selection"},
+        "candidates": [_route_candidate("candidate-1", "候选")],
+    })
+    invalid = _confirmed_route_payload(stored["plan_id"], "candidate-1", "候选", 20_000)
+    invalid["route"]["totalDistanceMeters"] = 10_000
+
+    response = client.post("/api/route-plans/command", json={
+        "session_id": "route-atomic-rollback",
+        "request_id": "confirm-invalid-route",
+        "plan_id": stored["plan_id"],
+        "candidate_id": "candidate-1",
+        "operation": "confirm",
+        "expected_revision": stored["revision"],
+        "saved_route": invalid,
+    })
+
+    assert response.status_code == 400
+    unchanged = RoutePlanStore().get(stored["plan_id"])
+    assert unchanged["revision"] == stored["revision"]
+    assert unchanged["planning"]["status"] == "awaiting_selection"
+    assert api.SavedRouteStore().list_routes() == []
 
 
 def test_chat_reuses_context_and_deduplicates_request_id(tmp_path, monkeypatch):
@@ -649,3 +695,52 @@ def test_chat_uses_existing_api_token_boundary(tmp_path, monkeypatch):
     assert client.post(
         "/api/chat", json=payload, headers={"X-API-Token": "chat-token"},
     ).status_code == 200
+
+
+def _route_candidate(candidate_id: str, name: str, distance_m: float = 20_000) -> dict:
+    return {
+        "candidate_id": candidate_id,
+        "name": name,
+        "distance_m": distance_m,
+        "provider": "Google",
+        "travel_mode": "BICYCLE",
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[121.0, 31.0], [121.1, 31.1]],
+        },
+        "waypoints": [],
+    }
+
+
+def _confirmed_route_payload(
+    plan_id: str,
+    candidate_id: str,
+    name: str,
+    distance_m: float,
+) -> dict:
+    route = {
+        "source": "agent-planned",
+        "name": name,
+        "totalDistanceMeters": distance_m,
+        "totalElevationGainMeters": 0,
+        "hasElevationData": False,
+        "isDraft": True,
+        "agentPlanId": plan_id,
+        "agentCandidateId": candidate_id,
+        "mapGeometry": [
+            {"lat": 31.0, "lng": 121.0},
+            {"lat": 31.1, "lng": 121.1},
+        ],
+        "points": [
+            {"latitude": 31.0, "longitude": 121.0, "distanceMeters": 0},
+            {"latitude": 31.1, "longitude": 121.1, "distanceMeters": distance_m},
+        ],
+    }
+    return {
+        "route": route,
+        "source": "agent",
+        "name": name,
+        "agentPlanId": plan_id,
+        "agentCandidateId": candidate_id,
+        "metadata": {},
+    }

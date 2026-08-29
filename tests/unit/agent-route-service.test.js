@@ -12,18 +12,11 @@ export const suite = {
                 const chatMessages = [];
                 const chatOptions = [];
                 const commands = [];
-                const savedRoutes = [];
                 let chatCount = 0;
                 const service = createAgentRoutePreviewService({
                     store: { getState: () => state },
                     operations: createOperations(state),
                     invalidateExploration() {},
-                    routeLibrary: {
-                        async saveRoute(input) {
-                            savedRoutes.push(input);
-                            return { id: "saved-agent-route", resumeDistanceMeters: 0 };
-                        }
-                    },
                     agentClient: {
                         async chat(message, options) {
                             chatMessages.push(message);
@@ -33,12 +26,20 @@ export const suite = {
                                 ? { skill_id: "plan-routes", executions: [{ tool: "activate_skill" }], presentations: [] }
                                 : routeResponse("awaiting_selection");
                         },
-                        async routePlanCommand(operation) {
-                            commands.push(operation);
-                            return routeResponse(
+                        async routePlanCommand(operation, input) {
+                            commands.push({ operation, input });
+                            const response = routeResponse(
                                 operation === "confirm" ? "confirmed" : "awaiting_selection",
                                 commands.length + 1
                             );
+                            if (operation === "confirm") {
+                                response.saved_route = {
+                                    id: "saved-agent-route",
+                                    resumeDistanceMeters: 0,
+                                    route: { agentMetadata: { planningStatus: "confirmed", revision: 3 } }
+                                };
+                            }
+                            return response;
                         }
                     }
                 });
@@ -60,11 +61,13 @@ export const suite = {
                 await service.confirmAgentRoute("candidate-1");
                 assertEqual(state.route.isDraft, false);
                 assert(isRouteReadyForRide(state.route), "确认路线应允许开骑");
-                assertEqual(commands.join(","), "select,confirm");
-                assertEqual(savedRoutes.length, 1);
-                assertEqual(savedRoutes[0].agentPlanId, "plan-1");
-                assertEqual(savedRoutes[0].agentCandidateId, "candidate-1");
+                assertEqual(commands.map((item) => item.operation).join(","), "select,confirm");
+                assertEqual(commands[1].input.saved_route.agentPlanId, "plan-1");
+                assertEqual(commands[1].input.saved_route.agentCandidateId, "candidate-1");
+                assertEqual(commands[1].input.saved_route.route.mapGeometry.length, 3);
                 assertEqual(state.route.savedRouteId, "saved-agent-route");
+                assertEqual(state.route.agentMetadata.planningStatus, "confirmed");
+                assertEqual(state.route.agentMetadata.revision, 3);
             }
         },
         {
@@ -162,7 +165,7 @@ export const suite = {
                     error = caught;
                 }
 
-                assert(error?.message.includes("确认响应与当前候选不一致"));
+                assert(error?.message.includes("确认或保存响应与当前候选不一致"));
                 assertEqual(state.route.isDraft, true);
             }
         },

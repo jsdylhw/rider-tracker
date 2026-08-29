@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -32,69 +33,94 @@ class RoutePlanStore:
         *,
         archive: bool = True,
         expected_revision: int | None = None,
+        connection: sqlite3.Connection | None = None,
     ) -> dict[str, Any]:
         plan_id = str(plan.get("plan_id") or "").strip()
         workspace_id = str(plan.get("workspace_id") or "").strip()
         if not plan_id or not workspace_id:
             raise ValueError("plan_id and workspace_id are required")
-        now = _now()
-        with connect_database(self.path) as connection:
+        if connection is not None:
+            return self._save(
+                connection,
+                plan,
+                archive=archive,
+                expected_revision=expected_revision,
+            )
+        with connect_database(self.path) as owned_connection:
             # Serialize the read-increment-write sequence. A deferred SQLite
             # transaction lets concurrent writers read the same revision and
             # silently overwrite one another before either UPSERT commits.
-            connection.execute("BEGIN IMMEDIATE")
-            existing = connection.execute(
-                "SELECT revision, plan_json, created_at FROM route_plans WHERE id = ?",
-                (plan_id,),
-            ).fetchone()
-            actual_revision = int(existing["revision"] or 0) if existing else 0
-            if expected_revision is not None and expected_revision != actual_revision:
-                raise RouteRevisionConflict(
-                    plan_id=plan_id,
-                    expected=expected_revision,
-                    actual=actual_revision,
-                )
-            revision = actual_revision + 1
-            created_at = str(existing["created_at"]) if existing else now
-            updated_at = _next_workspace_timestamp(connection, workspace_id, now)
-            stored = {
-                **plan,
-                "revision": revision,
-                "created_at": created_at,
-                "updated_at": updated_at,
-            }
-            if existing and archive:
-                connection.execute(
-                    """
-                    INSERT OR IGNORE INTO route_plan_revisions (
-                        plan_id, revision, plan_json, archived_at
-                    ) VALUES (?, ?, ?, ?)
-                    """,
-                    (plan_id, int(existing["revision"]), str(existing["plan_json"]), now),
-                )
+            owned_connection.execute("BEGIN IMMEDIATE")
+            return self._save(
+                owned_connection,
+                plan,
+                archive=archive,
+                expected_revision=expected_revision,
+            )
+
+    def _save(
+        self,
+        connection: sqlite3.Connection,
+        plan: dict[str, Any],
+        *,
+        archive: bool,
+        expected_revision: int | None,
+    ) -> dict[str, Any]:
+        plan_id = str(plan.get("plan_id") or "").strip()
+        workspace_id = str(plan.get("workspace_id") or "").strip()
+        now = _now()
+        existing = connection.execute(
+            "SELECT revision, plan_json, created_at FROM route_plans WHERE id = ?",
+            (plan_id,),
+        ).fetchone()
+        actual_revision = int(existing["revision"] or 0) if existing else 0
+        if expected_revision is not None and expected_revision != actual_revision:
+            raise RouteRevisionConflict(
+                plan_id=plan_id,
+                expected=expected_revision,
+                actual=actual_revision,
+            )
+        revision = actual_revision + 1
+        created_at = str(existing["created_at"]) if existing else now
+        updated_at = _next_workspace_timestamp(connection, workspace_id, now)
+        stored = {
+            **plan,
+            "revision": revision,
+            "created_at": created_at,
+            "updated_at": updated_at,
+        }
+        if existing and archive:
             connection.execute(
                 """
-                INSERT INTO route_plans (
-                    id, workspace_id, revision, active_candidate_id,
-                    plan_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    workspace_id = excluded.workspace_id,
-                    revision = excluded.revision,
-                    active_candidate_id = excluded.active_candidate_id,
-                    plan_json = excluded.plan_json,
-                    updated_at = excluded.updated_at
+                INSERT OR IGNORE INTO route_plan_revisions (
+                    plan_id, revision, plan_json, archived_at
+                ) VALUES (?, ?, ?, ?)
                 """,
-                (
-                    plan_id,
-                    workspace_id,
-                    revision,
-                    stored.get("active_candidate_id"),
-                    json.dumps(stored, ensure_ascii=False, default=str),
-                    created_at,
-                    updated_at,
-                ),
+                (plan_id, int(existing["revision"]), str(existing["plan_json"]), now),
             )
+        connection.execute(
+            """
+            INSERT INTO route_plans (
+                id, workspace_id, revision, active_candidate_id,
+                plan_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                workspace_id = excluded.workspace_id,
+                revision = excluded.revision,
+                active_candidate_id = excluded.active_candidate_id,
+                plan_json = excluded.plan_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                plan_id,
+                workspace_id,
+                revision,
+                stored.get("active_candidate_id"),
+                json.dumps(stored, ensure_ascii=False, default=str),
+                created_at,
+                updated_at,
+            ),
+        )
         return stored
 
     def undo(self, plan_id: str, *, expected_revision: int | None = None) -> dict[str, Any] | None:
@@ -158,9 +184,20 @@ class RoutePlanStore:
             )
         return restored
 
-    def get(self, plan_id: str) -> dict[str, Any] | None:
-        with connect_database(self.path) as connection:
+    def get(
+        self,
+        plan_id: str,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> dict[str, Any] | None:
+        if connection is not None:
             row = connection.execute(
+                "SELECT plan_json FROM route_plans WHERE id = ?",
+                (str(plan_id),),
+            ).fetchone()
+            return _json_object(row["plan_json"]) if row else None
+        with connect_database(self.path) as owned_connection:
+            row = owned_connection.execute(
                 "SELECT plan_json FROM route_plans WHERE id = ?",
                 (str(plan_id),),
             ).fetchone()
