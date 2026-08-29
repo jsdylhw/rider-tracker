@@ -15,7 +15,6 @@ import {
     buildRideLogMessage,
     buildRuntimeByControlMode
 } from "../realtime/ride-engine.js";
-import { saveLastSession } from "../../adapters/storage/session-storage.js";
 import { saveRiderSessionActivity } from "../../adapters/storage/activity-history-client.js";
 import { formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
@@ -225,7 +224,6 @@ export function createRideService({ store, deviceService, exportService, routeSe
             ...currentState,
             session: completedSession ?? currentState.session,
             route: buildRoute([]),
-            hasPersistedSession: Boolean(completedSession) || currentState.hasPersistedSession,
             workout: {
                 ...currentState.workout,
                 runtime: stoppedRuntime
@@ -245,7 +243,6 @@ export function createRideService({ store, deviceService, exportService, routeSe
         }));
 
         if (completedSession) {
-            saveLastSession(completedSession);
             if (options.sendBeacon === true) {
                 trySendFitBeacon(completedSession);
             }
@@ -281,7 +278,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
             fitBytes,
             filename,
             session: compactSession,
-            name: state.exportMetadata?.activityName,
+            name: session.exportMetadata?.activityName,
             sportType: "VirtualRide"
         });
 
@@ -446,16 +443,14 @@ export function createRideService({ store, deviceService, exportService, routeSe
         const state = store.getState();
         const session = {
             ...simulateRide({ route: state.route, settings: state.settings }),
-            exportMetadata: sanitizeSessionExportMetadata(state.exportMetadata)
+            exportMetadata: buildRideExportMetadata(state.exportMetadata, state.route)
         };
 
-        saveLastSession(session);
         archiveSimulationSession(session, exportService);
 
         store.setState((currentState) => ({
             ...currentState,
             session,
-            hasPersistedSession: true,
             statusText: `模拟完成：${formatNumber(session.summary.metrics.ride.distanceKm, 2)} km / 平均速度 ${formatNumber(session.summary.metrics.speed.averageKph, 1)} km/h`
         }));
     }
@@ -624,27 +619,26 @@ function buildPendingActivity(session) {
 
 function buildRideExportMetadata(exportMetadata, route) {
     const metadata = sanitizeSessionExportMetadata(exportMetadata);
-    if (metadata.activityName !== DEFAULT_ACTIVITY_NAME) {
-        return metadata;
-    }
-
     return {
         ...metadata,
-        activityName: inferDefaultActivityName(route)
+        activityName: inferActivityName(route, metadata.activityName)
     };
 }
 
-function inferDefaultActivityName(route) {
+function inferActivityName(route, fallbackName = DEFAULT_ACTIVITY_NAME) {
     if (route?.source === "gpx") {
-        return `GPX 骑行 · ${route.importFileName ?? route.name ?? "路线"}`.slice(0, 48);
+        return String(route.importFileName ?? route.name ?? "GPX 路线").trim().slice(0, 48);
+    }
+    if (route?.source === "agent-planned" && route.name) {
+        return String(route.name).trim().slice(0, 48);
     }
     if (route?.source === "osm-exploration") {
-        return "OSM 自由探索骑行";
+        return "自由探索骑行";
     }
     if (route?.source === "manual") {
         return "自定义线路骑行";
     }
-    return route?.name ? `路线骑行 · ${route.name}`.slice(0, 48) : DEFAULT_ACTIVITY_NAME;
+    return route?.name ? `路线骑行 · ${route.name}`.slice(0, 48) : fallbackName;
 }
 
 function resolveStartRideSensorSnapshot({ sampling, settings, rideInput, streetViewDebugEnabled }) {

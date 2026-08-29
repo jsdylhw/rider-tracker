@@ -206,7 +206,6 @@ export function createExportService({ store }) {
                 session,
                 selectedActivity: savedActivity,
                 uiMode: "activity-detail",
-                hasPersistedSession: true,
                 statusText: `已导入 FIT 文件：${file.name}。`
             }));
         } catch (error) {

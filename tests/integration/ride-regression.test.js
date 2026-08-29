@@ -81,7 +81,6 @@ function createState() {
         },
         exportMetadata: {},
         session: null,
-        hasPersistedSession: false,
         statusText: ""
     };
 }
@@ -156,6 +155,57 @@ export const suite = {
                     assertEqual(state.liveRide.session.exportMetadata.activityName, "自定义线路骑行");
                     assertGreaterThan(timerCallbacks.length, 0);
                     assertEqual(timerIntervals[0], 250);
+                } finally {
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
+            name: "路线名称会覆盖旧的全局活动名称",
+            run() {
+                const cases = [
+                    {
+                        route: { source: "gpx", name: "GPX 内部名称", importFileName: "260805Fuji" },
+                        expected: "260805Fuji"
+                    },
+                    {
+                        route: { source: "agent-planned", name: "三都经典线" },
+                        expected: "三都经典线"
+                    },
+                    {
+                        route: { source: "osm-exploration", name: "OSM 探索路线" },
+                        expected: "自由探索骑行"
+                    }
+                ];
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval() { return 1; },
+                    clearInterval() {}
+                };
+
+                try {
+                    for (const testCase of cases) {
+                        const baseState = createState();
+                        const store = createStore({
+                            ...baseState,
+                            route: { ...baseState.route, ...testCase.route },
+                            exportMetadata: { activityName: "Rider Tracker Virtual Ride TTTTTT" }
+                        });
+                        const service = createRideService({
+                            store,
+                            deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                            exportService: { downloadFit() {} }
+                        });
+
+                        service.startRide();
+
+                        assertEqual(
+                            store.getState().liveRide.session.exportMetadata.activityName,
+                            testCase.expected
+                        );
+                    }
                 } finally {
                     if (originalWindow === undefined) delete globalThis.window;
                     else globalThis.window = originalWindow;
@@ -567,7 +617,7 @@ export const suite = {
             }
         },
         {
-            name: "finalizeRideSync 只做同步收尾，不触发异步 FIT 归档",
+            name: "finalizeRideSync 只做同步收尾，不写最近 session 或触发异步 FIT 归档",
             run() {
                 const store = createStore({
                     ...createState(),
@@ -615,7 +665,7 @@ export const suite = {
                     assertEqual(nextState.liveRide.isActive, false);
                     assertEqual(Boolean(result), true);
                     assertEqual(Boolean(result.summary), true);
-                    assertEqual(localStorageSaved?.key, "rider-tracker:last-session");
+                    assertEqual(localStorageSaved, null);
                     assertEqual(archiveCalled, false);
                 } finally {
                     if (originalLocalStorage === undefined) delete globalThis.localStorage;

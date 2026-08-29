@@ -36,7 +36,7 @@ export const defaultExportMetadata = {
 
 export const STREET_VIEW_UPDATE_INTERVAL_MS = 3000;
 
-export function createInitialState(session, options = {}) {
+export function createInitialState(options = {}) {
     const route = buildRoute(sanitizeSegments(defaultRouteSegments));
     const pipPreferences = options.pipPreferences ?? {};
 
@@ -50,7 +50,7 @@ export function createInitialState(session, options = {}) {
             virtualCadenceRpm: 85
         },
         workout: createInitialWorkoutState(),
-        session,
+        session: null,
         selectedActivity: null,
         liveRide: createInitialLiveRideState(),
         ble: createInitialBleState(),
@@ -58,11 +58,7 @@ export function createInitialState(session, options = {}) {
             ...DEFAULT_AGENT_CAPABILITIES,
             capabilities: { ...DEFAULT_AGENT_CAPABILITIES.capabilities }
         },
-        exportMetadata: {
-            ...defaultExportMetadata,
-            ...(session?.exportMetadata ?? {})
-        },
-        hasPersistedSession: Boolean(session),
+        exportMetadata: { ...defaultExportMetadata },
         pipConfig: normalizeSelection(pipPreferences.pipConfig, DEFAULT_PIP_METRIC_SELECTION),
         pipChartConfig: normalizeSelection(pipPreferences.pipChartConfig, DEFAULT_PIP_CHART_SELECTION),
         pipLayout: ["compact", "grid", "wide"].includes(pipPreferences.pipLayout) ? pipPreferences.pipLayout : "grid",

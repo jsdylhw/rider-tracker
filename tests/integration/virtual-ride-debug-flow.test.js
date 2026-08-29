@@ -77,7 +77,6 @@ function createState(overrides = {}) {
         },
         exportMetadata: {},
         session: null,
-        hasPersistedSession: false,
         statusText: ""
     };
 

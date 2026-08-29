@@ -1,6 +1,6 @@
 import { createStore } from "./store/app-store.js";
 import { createInitialState } from "./store/initial-state.js";
-import { loadLastSession, loadPipPreferences } from "../adapters/storage/session-storage.js";
+import { loadPipPreferences } from "../adapters/storage/session-storage.js";
 import { createMainView } from "../ui/renderers/main-view.js";
 import { createPipController } from "../ui/pip/pip-controller.js";
 import { formatDuration, formatNumber } from "../shared/format.js";
@@ -23,9 +23,8 @@ import { createAgentCapabilityService } from "./services/agent-capability-servic
 await ensureLeaflet();
 
 // 1. 初始化状态与 Store
-const persistedSession = loadLastSession();
 const pipPreferences = loadPipPreferences();
-const store = createStore(createInitialState(persistedSession, { pipPreferences }));
+const store = createStore(createInitialState({ pipPreferences }));
 const inferredInitialUiMode = inferInitialUiMode();
 
 if (inferredInitialUiMode !== store.getState().uiMode) {

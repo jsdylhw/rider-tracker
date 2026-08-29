@@ -60,7 +60,6 @@ function createIntegrationState() {
         },
         exportMetadata: {},
         session: null,
-        hasPersistedSession: false,
         statusText: ""
     };
 }
