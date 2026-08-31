@@ -92,6 +92,7 @@ function normalizeItem(item, index) {
         route_distance_m: nonNegativeNumber(item.route_distance_m),
         latitude: boundedCoordinate(item.latitude, -90, 90, "latitude", index),
         longitude: boundedCoordinate(item.longitude, -180, 180, "longitude", index),
+        content_scope: ["route", "place"].includes(item.content_scope) ? item.content_scope : "place",
         category: text(item.category) || "place",
         title: text(item.title) || `沿途讲解 ${index + 1}`,
         summary,

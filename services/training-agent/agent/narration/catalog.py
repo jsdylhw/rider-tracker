@@ -5,8 +5,9 @@ from agent.tools.spec import CATEGORY_ANALYSIS, CATEGORY_FIT_QUERY, ToolDef
 SEARCH_ROUTE_KNOWLEDGE = ToolDef(
     name="search_route_knowledge",
     description=(
-        "Search factual places and route knowledge near selected route samples. "
-        "Use several distinct queries instead of one broad query."
+        "Search factual places and regional route knowledge from representative "
+        "route samples. The server applies a strict external-request budget, so "
+        "use focused queries and do not search every display position."
     ),
     input_schema={
         "type": "object",
@@ -50,9 +51,16 @@ SUBMIT_ROUTE_NARRATION_PLAN = ToolDef(
                 "type": "array", "minItems": 1, "maxItems": 44,
                 "items": {
                     "type": "object",
-                    "required": ["sample_id", "source_ids", "title", "summary"],
+                    "required": ["sample_id", "content_scope", "source_ids", "title", "summary"],
                     "properties": {
                         "sample_id": {"type": "string"},
+                        "content_scope": {
+                            "type": "string", "enum": ["route", "place"],
+                            "description": (
+                                "route means regional/general content merely scheduled at this sample; "
+                                "place means the subject is physically near this sample."
+                            ),
+                        },
                         "source_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
                         "category": {"type": "string"},
                         "title": {"type": "string", "maxLength": 80},

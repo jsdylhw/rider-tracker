@@ -53,6 +53,26 @@ export const suite = {
             }
         },
         {
+            name: "normalizer preserves route-wide content scope and defaults legacy items to place",
+            run() {
+                const route = createRoute();
+                const plan = createNarrationPlanFixture(route, { itemCount: 2 });
+                const normalized = normalizeRouteNarrationPlan({
+                    ...plan,
+                    items: [
+                        { ...plan.items[0], content_scope: "route" },
+                        { ...plan.items[1], content_scope: undefined }
+                    ]
+                }, {
+                    routeFingerprint: plan.route_fingerprint,
+                    routeTotalDistanceMeters: route.totalDistanceMeters
+                });
+
+                assertEqual(normalized.items[0].content_scope, "route");
+                assertEqual(normalized.items[1].content_scope, "place");
+            }
+        },
+        {
             name: "normalizer rejects a plan for another route",
             run() {
                 let error = null;
