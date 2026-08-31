@@ -71,6 +71,7 @@ import { suite as agentRoutesSuite } from "./unit/agent-routes.test.js";
 import { suite as agentRoutePlannerSuite } from "./unit/agent-route-planner.test.js";
 import { suite as localConfigSuite } from "./unit/local-config.test.js";
 import { suite as browserLauncherSuite } from "./unit/browser-launcher.test.js";
+import { suite as databasePreflightSuite } from "./unit/database-preflight.test.js";
 import { suite as narrationPlanSuite } from "./unit/narration-plan.test.js";
 import { suite as narrationTimelineSuite } from "./unit/narration-timeline.test.js";
 import { suite as routeNarrationServiceSuite } from "./unit/route-narration-service.test.js";
@@ -151,6 +152,7 @@ const suites = [
     agentRoutePlannerSuite,
     localConfigSuite,
     browserLauncherSuite,
+    databasePreflightSuite,
     narrationPlanSuite,
     narrationTimelineSuite,
     routeNarrationServiceSuite,

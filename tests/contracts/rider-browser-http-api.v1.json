@@ -4,6 +4,7 @@
   "routes": [
     { "method": "GET", "path": "/" },
     { "method": "GET", "path": "/healthz" },
+    { "method": "GET", "path": "/api/runtime-config/maps" },
     { "method": "GET", "path": "/strava/login" },
     { "method": "GET", "path": "/api/user-profile" },
     { "method": "PUT", "path": "/api/user-profile" },

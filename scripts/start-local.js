@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { buildRuntimeEnv, loadUnifiedConfig } from "./local-config.js";
 import { resolvePythonExecutable, trainingAgentRoot } from "./python-runtime.js";
 import { openBrowser, shouldOpenBrowser } from "./browser-launcher.js";
+import { ensureManagedDatabase } from "./database-preflight.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -21,6 +22,13 @@ const python = resolvePythonExecutable(projectRoot, runtimeEnv);
 const riderUrl = runtimeEnv.APP_BASE_URL || `http://localhost:${runtimeEnv.PORT || "8787"}`;
 const children = new Set();
 let stopping = false;
+
+try {
+    ensureManagedDatabase({ python, projectRoot, env: runtimeEnv });
+} catch (error) {
+    console.error(`[rider-tracker] database startup check failed: ${error.message}`);
+    process.exit(1);
+}
 
 if (!agentOnly) {
     const rider = launch("rider-tracker", process.execPath, [

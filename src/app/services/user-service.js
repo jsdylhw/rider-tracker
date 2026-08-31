@@ -1,11 +1,11 @@
 import { sanitizeSettings } from "../store/initial-state.js";
 
-export function createUserService({ store, googleMapsConfig = null }) {
+export function createUserService({ store }) {
     function updateSettings(partialSettings) {
         store.setState((state) => {
             const mergedSettings = { ...state.settings, ...partialSettings };
             const nextSettings = sanitizeSettings(mergedSettings);
-            saveUserProfile(nextSettings, googleMapsConfig);
+            saveUserProfile(nextSettings);
             return {
                 ...state,
                 settings: nextSettings
@@ -23,7 +23,6 @@ export function createUserService({ store, googleMapsConfig = null }) {
             })
             .then((payload) => {
                 const profile = payload?.profile ?? payload;
-                googleMapsConfig?.applyProfileApiKey?.(profile.google_api);
                 store.setState((state) => ({
                     ...state,
                     settings: sanitizeSettings({ ...state.settings, ...profile })
@@ -40,15 +39,11 @@ export function createUserService({ store, googleMapsConfig = null }) {
     };
 }
 
-function saveUserProfile(settings, googleMapsConfig) {
-    const apiKey = googleMapsConfig?.getApiKey?.() ?? "";
+function saveUserProfile(settings) {
     fetch("/api/user-profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            ...settings,
-            ...(apiKey ? { google_api: apiKey } : {})
-        })
+        body: JSON.stringify(settings)
     }).catch((error) => {
         console.error("保存统一运动员档案失败", error);
     });

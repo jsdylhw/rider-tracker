@@ -65,6 +65,8 @@ athlete:
   resting_heart_rate: 50
 
 google:
+  # Shared by backend route/Places calls and browser Maps JavaScript/Street View.
+  # The browser key is necessarily visible in local Maps JavaScript requests.
   api_key: "replace-with-google-maps-api-key"
 
 amap:

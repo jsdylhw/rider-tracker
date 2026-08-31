@@ -46,16 +46,42 @@ export const suite = {
             }
         },
         {
-            name: "uses the profile key as the startup configuration source",
-            run() {
+            name: "uses config.yaml key as the startup source without duplicating browser storage",
+            async run() {
                 const storage = createStorage();
                 storage.setItem("rider-tracker:google-maps-api-key", "stale-browser-key");
-                const service = createGoogleMapsConfigService({ storage });
+                const service = createGoogleMapsConfigService({
+                    storage,
+                    fetchImpl: async () => ({
+                        ok: true,
+                        async json() { return { configured: true, apiKey: " config-key " }; }
+                    })
+                });
 
-                service.applyProfileApiKey(" profile-key ");
+                await service.loadRuntimeConfig();
 
-                assertEqual(service.getApiKey(), "profile-key");
-                assertEqual(storage.getItem("rider-tracker:google-maps-api-key"), "profile-key");
+                assertEqual(service.getApiKey(), "config-key");
+                assertEqual(service.getConfig().source, "config");
+                assertEqual(storage.getItem("rider-tracker:google-maps-api-key"), "stale-browser-key");
+            }
+        },
+        {
+            name: "keeps browser fallback when runtime config has no key",
+            async run() {
+                const storage = createStorage();
+                storage.setItem("rider-tracker:google-maps-api-key", "browser-key");
+                const service = createGoogleMapsConfigService({
+                    storage,
+                    fetchImpl: async () => ({
+                        ok: true,
+                        async json() { return { configured: false, apiKey: "" }; }
+                    })
+                });
+
+                await service.loadRuntimeConfig();
+
+                assertEqual(service.getApiKey(), "browser-key");
+                assertEqual(service.getConfig().source, "browser");
             }
         }
     ]

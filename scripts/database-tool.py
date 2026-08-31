@@ -42,19 +42,40 @@ REQUIRED_ACTIVITY_COLUMNS = {
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("init", "migrate", "check"))
+    parser.add_argument("operation", choices=("init", "migrate", "check", "ensure"))
     parser.add_argument(
         "--database",
         default=str(runtime_paths(base=PROJECT_ROOT).database),
     )
+    parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
     target = Path(args.database).expanduser().resolve()
 
     if args.operation == "check":
         result = check_database(target)
+    elif args.operation == "ensure":
+        result = ensure_database(target)
     else:
         result = initialize_or_migrate(target, backup=args.operation == "migrate")
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if not args.quiet:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def ensure_database(target: Path) -> dict[str, object]:
+    """Make startup usable without running a migration on every launch."""
+    if not target.is_file():
+        result = initialize_or_migrate(target, backup=False)
+        result["startup_action"] = "initialized"
+        return result
+    try:
+        result = check_database(target)
+        result["operation"] = "ensure"
+        result["startup_action"] = "none"
+        return result
+    except SystemExit:
+        result = initialize_or_migrate(target, backup=True)
+        result["startup_action"] = "migrated"
+        return result
 
 
 def initialize_or_migrate(target: Path, *, backup: bool) -> dict[str, object]:

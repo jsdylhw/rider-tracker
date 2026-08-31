@@ -22,6 +22,7 @@ export function buildRuntimeEnv(projectRoot, unifiedConfig, baseEnv = process.en
     const trainingAgent = objectValue(values.training_agent);
     const agent = objectValue(values.agent);
     const strava = objectValue(values.strava);
+    const google = objectValue(values.google);
     const env = { ...baseEnv };
 
     setDefault(env, "HOST", rider.host);
@@ -62,6 +63,7 @@ export function buildRuntimeEnv(projectRoot, unifiedConfig, baseEnv = process.en
     setDefault(env, "PERSONAL_FIT_AGENT_TOKEN", values.web_api_token);
     setDefault(env, "PYTHON_EXECUTABLE", trainingAgent.python_executable);
     setDefault(env, "TRAINING_AGENT_CONFIG_PATH", configPath);
+    setDefault(env, "GOOGLE_MAPS_API_KEY", configuredSecret(google.api_key));
     appendProxyBypass(env, endpointHostname(agent.base_url));
     return env;
 }
@@ -79,6 +81,11 @@ function setPathDefault(env, name, projectRoot, value) {
 
 function objectValue(value) {
     return isObject(value) ? value : {};
+}
+
+function configuredSecret(value) {
+    const normalized = String(value || "").trim();
+    return normalized && !normalized.startsWith("replace-with-") ? normalized : "";
 }
 
 function parseHttpEndpoint(value) {

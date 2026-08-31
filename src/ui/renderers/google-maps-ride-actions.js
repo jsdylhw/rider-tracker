@@ -65,18 +65,26 @@ export function createGoogleMapsRideActions({
         if (actionState.streetViewLoading) return;
 
         const requestGeneration = ++streetViewRequestGeneration;
+        const hadConfiguredKey = Boolean(visuals.getGoogleMapsConfig?.()?.apiKey);
         const apiKey = await resolveGoogleMapsApiKey("加载街景");
         if (!apiKey || requestGeneration !== streetViewRequestGeneration) return;
         actionState = { ...actionState, streetViewLoading: true };
         onRefresh();
         try {
             elements.svPano1.style.display = "";
-            const result = await visuals.enableConfiguredStreetView({
-                container1: elements.svPano1,
-                container2: elements.svPano2
-            });
+            let result;
+            try {
+                result = await enableStreetView();
+            } catch (initialError) {
+                if (!hadConfiguredKey || requestGeneration !== streetViewRequestGeneration) {
+                    throw initialError;
+                }
+                actionState = { ...actionState, forceKeyPrompt: true };
+                const replacementKey = await resolveGoogleMapsApiKey("加载街景");
+                if (!replacementKey) throw initialError;
+                result = await enableStreetView();
+            }
             if (requestGeneration !== streetViewRequestGeneration) return;
-            if (!result?.enabled) throw new Error("街景服务未能初始化。");
 
             debugStreetViewFallback = false;
             elements.streetViewContainer.classList.remove("streetview-debug-empty");
@@ -102,6 +110,15 @@ export function createGoogleMapsRideActions({
                 actionState = { ...actionState, streetViewLoading: false };
                 onRefresh();
             }
+        }
+
+        async function enableStreetView() {
+            const result = await visuals.enableConfiguredStreetView({
+                container1: elements.svPano1,
+                container2: elements.svPano2
+            });
+            if (!result?.enabled) throw new Error("街景服务未能初始化。");
+            return result;
         }
     }
 
@@ -140,8 +157,7 @@ export function createGoogleMapsRideActions({
 
     async function resolveGoogleMapsApiKey(featureLabel) {
         const apiKey = visuals.getGoogleMapsConfig?.()?.apiKey ?? "";
-        const shouldPrompt = actionState.forceKeyPrompt
-            || (streetViewDebugEnabled && featureLabel === "加载街景");
+        const shouldPrompt = actionState.forceKeyPrompt;
         if (apiKey && !shouldPrompt) return apiKey;
 
         const confirmedKey = await requestGoogleMapsApiKey({ featureLabel, force: shouldPrompt });

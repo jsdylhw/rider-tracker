@@ -23,6 +23,7 @@ export const suite = {
                         training_agent: { host: "127.0.0.3", port: 9100 },
                         agent: { base_url: "https://api.deepseek.com/anthropic" },
                         strava: { client_id: "client", client_secret: "secret" },
+                        google: { api_key: "google-key" },
                         web_api_token: "shared-token"
                     }
                 }, {});
@@ -40,6 +41,7 @@ export const suite = {
                 assertEqual(env.RIDER_LOG_DIR, path.join(root, "data", "logs"));
                 assertEqual(env.TRAINING_AGENT_MANAGED_DATABASE, "1");
                 assertEqual(env.TRAINING_AGENT_CONFIG_PATH, path.join(root, "config.yaml"));
+                assertEqual(env.GOOGLE_MAPS_API_KEY, "google-key");
                 assertEqual(env.NO_PROXY, "api.deepseek.com");
                 assertEqual(env.no_proxy, "api.deepseek.com");
             }
@@ -114,6 +116,18 @@ export const suite = {
                     values: { training_agent: { host: "127.0.0.3", port: 9100 } }
                 }, { PERSONAL_FIT_AGENT_PORT: "9200" });
                 assertEqual(env.PERSONAL_FIT_AGENT_URL, "http://127.0.0.3:9200");
+            }
+        },
+        {
+            name: "does not expose the example Google placeholder as configured",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: { google: { api_key: "replace-with-google-maps-api-key" } }
+                }, {});
+
+                assertEqual(env.GOOGLE_MAPS_API_KEY, undefined);
             }
         }
     ]

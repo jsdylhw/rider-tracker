@@ -14,6 +14,7 @@
     "db:init": "node scripts/run-database-tool.js init",
     "db:migrate": "node scripts/run-database-tool.js migrate",
     "db:check": "node scripts/run-database-tool.js check",
+    "db:ensure": "node scripts/run-database-tool.js ensure",
     "data:audit": "node scripts/run-runtime-data-tool.js audit",
     "data:migrate": "node scripts/run-runtime-data-tool.js migrate",
     "test": "node --disable-warning=ExperimentalWarning tests/test-runner.js",

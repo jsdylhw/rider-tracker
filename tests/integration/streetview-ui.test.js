@@ -330,10 +330,14 @@ export const suite = {
                 const elements = createElements();
                 const state = createBaseState();
                 const store = createStore(state);
+                let keyPromptCount = 0;
                 const renderer = createDashboardRenderer({
                     elements,
                     rideVisuals: createConfiguredStreetViewVisuals(),
-                    requestGoogleMapsApiKey: async () => "test-key",
+                    requestGoogleMapsApiKey: async () => {
+                        keyPromptCount += 1;
+                        return "test-key";
+                    },
                     streetViewDebugEnabled: true
                 });
 
@@ -345,6 +349,7 @@ export const suite = {
 
                 assertEqual(elements.immersiveStreetViewBtn.hidden, false);
                 assertEqual(elements.immersiveStreetViewBtn.textContent, "进入沉浸街景");
+                assertEqual(keyPromptCount, 0);
             }
         },
         {
@@ -376,6 +381,46 @@ export const suite = {
                 assertEqual(elements.streetViewContainer.classList.contains("streetview-debug-empty"), true);
                 assertEqual(elements.svPano1.style.display, "none");
                 assertEqual(elements.rideDashboard.classList.contains("immersive-street-view"), true);
+                assertEqual(elements.immersiveStreetViewBtn.hidden, false);
+            }
+        },
+        {
+            name: "config Key 加载失败后才弹出备用 Key 并重试街景",
+            async run() {
+                const elements = createElements();
+                const store = createStore(createBaseState());
+                let attemptCount = 0;
+                let keyPromptCount = 0;
+                let loaded = false;
+                const renderer = createDashboardRenderer({
+                    elements,
+                    rideVisuals: {
+                        hasStreetView: () => loaded,
+                        getGoogleMapsConfig: () => ({ apiKey: "config-key" }),
+                        async enableConfiguredStreetView() {
+                            attemptCount += 1;
+                            if (attemptCount === 1) throw new Error("API Key 验证失败");
+                            loaded = true;
+                            return { enabled: true };
+                        },
+                        syncMap() {},
+                        syncStreetView() {}
+                    },
+                    requestGoogleMapsApiKey: async () => {
+                        keyPromptCount += 1;
+                        return "fallback-key";
+                    },
+                    streetViewDebugEnabled: true
+                });
+
+                renderer.bindEvents(store);
+                renderer.render(store.getState());
+                elements.loadStreetViewBtn.dispatch("click");
+                await waitForUiAction();
+
+                assertEqual(attemptCount, 2);
+                assertEqual(keyPromptCount, 1);
+                assertEqual(elements.streetViewContainer.classList.contains("streetview-debug-empty"), false);
                 assertEqual(elements.immersiveStreetViewBtn.hidden, false);
             }
         },

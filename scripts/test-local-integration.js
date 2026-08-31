@@ -55,13 +55,18 @@ try {
             HOST: "127.0.0.1",
             PERSONAL_FIT_AGENT_URL: agentUrl,
             RIDER_TRACKER_DB_PATH: databasePath,
-            FIT_FILE_DIR: fitRoot
+            FIT_FILE_DIR: fitRoot,
+            GOOGLE_MAPS_API_KEY: "integration-google-key"
         }
     }));
     await waitForJson(`${riderUrl}/healthz`, (value) => value.ok === true);
     const riderPage = await readText(`${riderUrl}/`);
     if (!riderPage.includes("Rider Tracker") || !riderPage.includes("Training Agent")) {
         throw new Error("Rider root did not return the unified product page.");
+    }
+    const mapsConfig = await readJson(`${riderUrl}/api/runtime-config/maps`);
+    if (!mapsConfig.configured || mapsConfig.apiKey !== "integration-google-key") {
+        throw new Error(`Unexpected browser maps config: ${JSON.stringify(mapsConfig)}`);
     }
     const activities = await readJson(`${riderUrl}/api/activities`);
     if (!activities.ok || !Array.isArray(activities.activities)) {

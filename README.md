@@ -21,19 +21,21 @@ npm run setup:agent
 
 将根目录的 `config.yaml.example` 复制为 `config.yaml`，只填写需要使用的 Rider、模型、Garmin、Strava、高德或 Google 配置。Node 和 Python 共用这一份配置；真实配置和本地 Token 均被 Git 忽略。
 
-首次创建数据库：
+通常不需要手工初始化数据库：`npm start` 会先做只读结构检查，首次启动时自动创建数据库，schema
+版本变化时先备份再迁移。需要单独维护或排查时仍可运行：
 
 ```bash
 npm run db:init
 ```
 
-从旧版 Rider 数据库升级时只需显式执行一次：
+从旧版 Rider 数据库手工升级：
 
 ```bash
 npm run db:migrate
 ```
 
-`npm start` 不会重复迁移数据库，只检查已初始化的共享结构。需要排查结构时可运行 `npm run db:check`。
+`npm start` 不会重复迁移已是当前版本的数据库。Python 暂时不可用时，只要数据库结构已经正确，Rider
+基础功能仍可启动；只有首次建库或确实需要升级时才要求 Python 数据库工具可用。
 
 旧版本可能把 Token、FIT、Workflow 和日志分散在根目录或
 `services/training-agent/` 下。迁移前先执行只读审计：
@@ -87,6 +89,9 @@ Training Backend 暂时不可用，Rider 基础页面仍可启动。无桌面环
 npm run start:rider
 npm run start:agent
 ```
+
+`config.yaml` 中的 `google.api_key` 同时供 Python 路线服务和浏览器 Google Maps/Street View 使用。
+街景会优先直接使用该 Key；仅在未配置或实际加载失败时才显示备用 Key 输入框，调试模式也不会重复询问。
 
 ## 主要功能
 

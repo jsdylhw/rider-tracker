@@ -36,7 +36,8 @@ if (inferredInitialUiMode !== store.getState().uiMode) {
 
 // 2. 创建业务服务 (Services)
 const googleMapsConfig = createGoogleMapsConfigService();
-const userService = createUserService({ store, googleMapsConfig });
+await googleMapsConfig.loadRuntimeConfig();
+const userService = createUserService({ store });
 const routeService = createRouteService({ store, googleMapsConfig });
 const deviceService = createDeviceService({ store });
 const exportService = createExportService({ store });
