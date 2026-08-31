@@ -94,6 +94,11 @@ export function createPersonalFitAgentClient({
         health: () => get("/health", healthTimeoutMs),
         chat: (request) => post("/api/chat", request),
         ingestFit: (request) => post("/api/activities/ingest-fit", request),
+        archiveRiderSession: (request) => post(
+            "/api/activities/rider-session",
+            request,
+            DEFAULT_ACTIVITY_LIBRARY_TIMEOUT_MS
+        ),
         activityDetail: (activityId, { maxPoints = 700, requestTimeoutMs = timeoutMs } = {}) => get(
             `/api/activities/${encodeURIComponent(activityId)}/detail?max_points=${encodeURIComponent(maxPoints)}`,
             requestTimeoutMs

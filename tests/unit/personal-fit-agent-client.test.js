@@ -84,7 +84,7 @@ export const suite = {
             }
         },
         {
-            name: "forwards deterministic FIT ingestion and activity detail requests",
+            name: "forwards deterministic activity archive, FIT ingestion and detail requests",
             async run() {
                 const requests = [];
                 const client = createPersonalFitAgentClient({
@@ -96,13 +96,16 @@ export const suite = {
                     }
                 });
 
+                await client.archiveRiderSession({ session: { id: "rt-a" }, name: "Ride" });
                 await client.ingestFit({ path: "data/files/fit/fit-a.fit", activity_id: "fit-a" });
                 await client.activityDetail("fit-a", { maxPoints: 500 });
 
-                assertEqual(requests[0].url, "http://127.0.0.1:8000/api/activities/ingest-fit");
-                assertEqual(JSON.parse(requests[0].options.body).activity_id, "fit-a");
-                assertEqual(requests[1].url, "http://127.0.0.1:8000/api/activities/fit-a/detail?max_points=500");
-                assertEqual(requests[1].options.headers["X-API-Token"], "server-only-token");
+                assertEqual(requests[0].url, "http://127.0.0.1:8000/api/activities/rider-session");
+                assertEqual(JSON.parse(requests[0].options.body).session.id, "rt-a");
+                assertEqual(requests[1].url, "http://127.0.0.1:8000/api/activities/ingest-fit");
+                assertEqual(JSON.parse(requests[1].options.body).activity_id, "fit-a");
+                assertEqual(requests[2].url, "http://127.0.0.1:8000/api/activities/fit-a/detail?max_points=500");
+                assertEqual(requests[2].options.headers["X-API-Token"], "server-only-token");
             }
         },
         {

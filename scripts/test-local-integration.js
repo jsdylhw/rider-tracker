@@ -83,7 +83,7 @@ try {
     if (!proxyHealth.ok || proxyHealth.result?.status !== "ok") {
         throw new Error(`Unexpected Agent proxy health payload: ${JSON.stringify(proxyHealth)}`);
     }
-    console.log("[integration] Unified Rider page, Python activity/route stores, atomic route confirmation, Agent proxy, and removed legacy UI checks passed.");
+    console.log("[integration] Unified Rider page, Python activity/route stores and session archive, atomic route confirmation, Agent proxy, and removed legacy UI checks passed.");
 } finally {
     for (const child of children) child.kill();
     await rm(tempRoot, { recursive: true, force: true });
@@ -140,6 +140,30 @@ async function assertRouteLibraryRoundTrip() {
     });
     const routeId = created.route?.id;
     if (!created.ok || !routeId) throw new Error(`Route creation failed: ${JSON.stringify(created)}`);
+
+    const archived = await requestJson(`${riderUrl}/api/activities/rider-session`, {
+        method: "POST",
+        body: {
+            name: "Integration fallback ride",
+            sportType: "Ride",
+            session: {
+                id: "integration-session-activity",
+                createdAt: "2026-08-29T09:00:00Z",
+                finishedAt: "2026-08-29T09:20:00Z",
+                route: {
+                    savedRouteId: routeId,
+                    continuation: { startDistanceMeters: 250 }
+                },
+                summary: { metrics: { ride: { elapsedSeconds: 1200, distanceKm: 4 } } },
+                records: []
+            }
+        }
+    });
+    if (archived.activity?.savedRouteId !== routeId
+        || archived.activity?.routeStartDistanceMeters !== 250
+        || archived.activity?.routeEndDistanceMeters !== 4250) {
+        throw new Error(`Rider session archive failed: ${JSON.stringify(archived)}`);
+    }
 
     const renamed = await requestJson(`${riderUrl}/api/routes/${encodeURIComponent(routeId)}`, {
         method: "PATCH", body: { name: "Renamed integration route" }

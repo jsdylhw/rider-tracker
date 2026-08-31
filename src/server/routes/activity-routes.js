@@ -11,26 +11,7 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
     const libraryHandlers = createActivityLibraryHandlers({ agentClient });
 
     router.get("/api/activities", libraryHandlers.list);
-
-    router.post("/api/activities/rider-session", (req, res) => {
-        try {
-            let activity = activityStore.saveRiderSession(req.body?.session, {
-                name: req.body?.name,
-                sportType: req.body?.sportType
-            });
-            activity = attachActivityRoute(activityStore, activity, req.body?.session);
-            return res.json({
-                ok: true,
-                dbPath: activityStore.filePath,
-                activity
-            });
-        } catch (err) {
-            return res.status(400).json({
-                ok: false,
-                error: err.message
-            });
-        }
-    });
+    router.post("/api/activities/rider-session", createRiderSessionArchiveHandler({ agentClient }));
 
     router.post("/api/activities/fit-import", upload.single("file"), async (req, res) => {
         try {
@@ -152,11 +133,11 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
                 });
             }
 
-            let activity = activityStore.saveRiderSession(session, {
+            let activity = (await agentClient.archiveRiderSession({
+                session: session.source ? session : { ...session, source: "beacon" },
                 name: req.body?.name,
-                sportType: req.body?.sportType || "Ride",
-                source: session.source || "beacon"
-            });
+                sportType: req.body?.sportType || "Ride"
+            })).activity;
             const savedFit = saveFitFile({
                 activityId: activity.id,
                 uploadedFile,
@@ -193,6 +174,27 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
     router.delete("/api/activities/:activityId", libraryHandlers.remove);
 
     return router;
+}
+
+export function createRiderSessionArchiveHandler({ agentClient }) {
+    return async (req, res) => {
+        try {
+            const result = await agentClient.archiveRiderSession({
+                session: req.body?.session,
+                name: req.body?.name,
+                sportType: req.body?.sportType
+            });
+            return res.status(200).json({ ok: true, ...result });
+        } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "activity_archive" })) return;
+            return res.status(Number(error?.statusCode) || 500).json({
+                ok: false,
+                error: error.message,
+                ...(error?.code ? { code: error.code } : {}),
+                ...(typeof error?.retryable === "boolean" ? { retryable: error.retryable } : {})
+            });
+        }
+    };
 }
 
 export function createActivityLibraryHandlers({

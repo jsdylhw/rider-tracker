@@ -1,13 +1,78 @@
 import { createAgentUnavailableError } from "../../src/server/agent-unavailable.js";
 import {
     canonicalDetailToRiderActivity,
-    createActivityLibraryHandlers
+    createActivityLibraryHandlers,
+    createRiderSessionArchiveHandler
 } from "../../src/server/routes/activity-routes.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
     name: "activity-library-routes",
     tests: [
+        {
+            name: "delegates Rider session archive to Python without a Node store",
+            async run() {
+                const calls = [];
+                const archived = response();
+                await createRiderSessionArchiveHandler({
+                    agentClient: {
+                        archiveRiderSession(request) {
+                            calls.push(request);
+                            return Promise.resolve({ activity: { id: "rt-1", savedRouteId: "route-1" } });
+                        }
+                    }
+                })({
+                    body: {
+                        session: { id: "rt-1", route: { savedRouteId: "route-1" } },
+                        name: "Morning Ride",
+                        sportType: "Ride"
+                    }
+                }, archived);
+
+                assertEqual(archived.statusCode, 200);
+                assertEqual(archived.payload.ok, true);
+                assertEqual(archived.payload.activity.savedRouteId, "route-1");
+                assertEqual(calls[0].name, "Morning Ride");
+                assertEqual(calls[0].sportType, "Ride");
+            }
+        },
+        {
+            name: "returns structured degradation when Rider session archive backend is unavailable",
+            async run() {
+                const archived = response();
+                await createRiderSessionArchiveHandler({
+                    agentClient: {
+                        archiveRiderSession: async () => {
+                            throw createAgentUnavailableError("无法连接本地 Training Agent。");
+                        }
+                    }
+                })({ body: { session: {} } }, archived);
+
+                assertEqual(archived.statusCode, 503);
+                assertEqual(archived.payload.code, "agent_unavailable");
+                assertEqual(archived.payload.capability, "activity_archive");
+            }
+        },
+        {
+            name: "preserves retryable archive errors from Python",
+            async run() {
+                const busyError = new Error("Activity library is busy. Retry the operation.");
+                busyError.statusCode = 503;
+                busyError.code = "activity_store_busy";
+                busyError.retryable = true;
+                const archived = response();
+
+                await createRiderSessionArchiveHandler({
+                    agentClient: {
+                        archiveRiderSession: async () => { throw busyError; }
+                    }
+                })({ body: { session: {} } }, archived);
+
+                assertEqual(archived.statusCode, 503);
+                assertEqual(archived.payload.code, "activity_store_busy");
+                assertEqual(archived.payload.retryable, true);
+            }
+        },
         {
             name: "delegates activity list, detail, rename and delete to Python",
             async run() {

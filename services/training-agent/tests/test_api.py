@@ -89,6 +89,7 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
     assert paths == {
         "/api/activities",
         "/api/activities/ingest-fit",
+        "/api/activities/rider-session",
         "/api/activities/{activity_id}",
         "/api/activities/{activity_id}/detail",
         "/api/athlete-profile",
@@ -106,6 +107,30 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/strava/upload-activity",
         "/api/strava/upload-status/{upload_id}",
     }
+
+
+def test_rider_session_archive_api_preserves_browser_contract(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch)
+    session = {
+        "id": "ride-api-1",
+        "createdAt": "2026-08-31T08:00:00Z",
+        "finishedAt": "2026-08-31T08:30:00Z",
+        "exportMetadata": {"activityName": "API Ride", "markVirtualActivity": False},
+        "summary": {"metrics": {"ride": {"elapsedSeconds": 1800, "distanceKm": 12.5}}},
+        "records": [{"positionLat": 35.0, "positionLong": 139.0}],
+    }
+
+    archived = client.post("/api/activities/rider-session", json={
+        "session": session,
+        "sportType": "Ride",
+    })
+    invalid = client.post("/api/activities/rider-session", json={"session": None})
+
+    assert archived.status_code == 200
+    assert archived.json()["activity"]["id"] == "ride-api-1"
+    assert archived.json()["activity"]["name"] == "API Ride"
+    assert archived.json()["activity"]["rawSession"]["records"] == session["records"]
+    assert invalid.status_code == 400
 
 
 def test_activity_library_api_preserves_browser_crud_contract(tmp_path, monkeypatch):

@@ -121,6 +121,91 @@ class ActivityStore:
             ).fetchone()
         return _rider_activity(row, include_raw_session=include_raw_session) if row else None
 
+    def archive_rider_session(
+        self,
+        activity: dict[str, Any],
+        *,
+        raw_session: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Upsert a completed Rider session and route link atomically.
+
+        FIT metadata and derived analysis rows are intentionally untouched. A
+        later FIT ingestion can enrich this same stable activity ID.
+        """
+        activity_id = str(activity.get("id") or "").strip()
+        if not activity_id or not isinstance(raw_session, dict):
+            raise ValueError("Activity id and Rider session are required.")
+        values = {
+            **activity,
+            "id": activity_id,
+            "raw_json": json.dumps(raw_session, ensure_ascii=False, default=str),
+        }
+        try:
+            with connect_database(
+                self.path,
+                busy_timeout_ms=ACTIVITY_MUTATION_BUSY_TIMEOUT_MS,
+            ) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    """
+                    INSERT INTO activities (
+                        id, source, sport_type, name, started_at, finished_at,
+                        elapsed_seconds, distance_km, ascent_meters,
+                        average_power, normalized_power, average_hr,
+                        estimated_tss, has_gps_track, raw_json,
+                        saved_route_id, route_start_distance_meters,
+                        route_end_distance_meters, created_at, updated_at
+                    ) VALUES (
+                        :id, :source, :sport_type, :name, :started_at, :finished_at,
+                        :elapsed_seconds, :distance_km, :ascent_meters,
+                        :average_power, :normalized_power, :average_hr,
+                        :estimated_tss, :has_gps_track, :raw_json,
+                        :saved_route_id, :route_start_distance_meters,
+                        :route_end_distance_meters, :created_at, :updated_at
+                    )
+                    ON CONFLICT(id) DO UPDATE SET
+                        source = excluded.source,
+                        sport_type = excluded.sport_type,
+                        name = excluded.name,
+                        started_at = excluded.started_at,
+                        finished_at = excluded.finished_at,
+                        elapsed_seconds = excluded.elapsed_seconds,
+                        distance_km = excluded.distance_km,
+                        ascent_meters = excluded.ascent_meters,
+                        average_power = excluded.average_power,
+                        normalized_power = excluded.normalized_power,
+                        average_hr = excluded.average_hr,
+                        estimated_tss = excluded.estimated_tss,
+                        has_gps_track = excluded.has_gps_track,
+                        raw_json = excluded.raw_json,
+                        saved_route_id = CASE
+                            WHEN excluded.saved_route_id IS NOT NULL THEN excluded.saved_route_id
+                            ELSE activities.saved_route_id
+                        END,
+                        route_start_distance_meters = CASE
+                            WHEN excluded.saved_route_id IS NOT NULL THEN excluded.route_start_distance_meters
+                            ELSE activities.route_start_distance_meters
+                        END,
+                        route_end_distance_meters = CASE
+                            WHEN excluded.saved_route_id IS NOT NULL THEN excluded.route_end_distance_meters
+                            ELSE activities.route_end_distance_meters
+                        END,
+                        updated_at = excluded.updated_at
+                    """,
+                    values,
+                )
+                row = connection.execute(
+                    "SELECT * FROM activities WHERE id = ? LIMIT 1",
+                    (activity_id,),
+                ).fetchone()
+                if row is None:
+                    raise RuntimeError("Archived Rider activity was not found.")
+                stored = _rider_activity(row, include_raw_session=True)
+        except sqlite3.OperationalError as exc:
+            _raise_activity_store_busy(exc)
+            raise
+        return stored
+
     def rename_rider_activity(self, activity_id: str, name: Any) -> dict[str, Any]:
         normalized_id = str(activity_id or "").strip()
         if not isinstance(name, str):

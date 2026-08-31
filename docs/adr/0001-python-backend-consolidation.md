@@ -308,3 +308,33 @@ confirmed metadata 测试、重复请求幂等测试、浏览器确认请求及 
 - 正常双进程活动目录 CRUD 集成：通过；
 - Python 启动失败、恢复和再次掉线的降级集成：通过；
 - Python `compileall` 与 `git diff --check`：通过。
+
+### 2026-08-31：阶段 5D Rider session 归档切换到 Python owner
+
+阶段 5D 将无 FIT 的 Rider session 兜底归档从 Node SQLite store 迁移到 Python。浏览器继续调用既有
+`POST /api/activities/rider-session`；Node BFF 只转发 session、名称和运动类型，并在两秒预算内返回
+Python 结果。FIT 编码、文件写入和解析的正常主链路没有改变，本切片也没有引入离线队列或复杂归档状态机。
+
+Python 新增确定性的 session normalization 和专用 repository 写入。活动 ID、名称优先级、运动类型、
+摘要指标和 GPS 判断保持旧 Rider 语义；活动 upsert、`saved_route_id` 及路线起止距离在同一个
+`BEGIN IMMEDIATE` 事务中提交。重复 session 使用稳定 ID 覆盖同一活动，且不会清除稍早写入的 FIT
+metadata、facts 或报告。`fit-beacon` 中先保存 session 的步骤也改用同一 Python API，但 FIT 文件接收、
+metadata 更新、ingestion 及 FIT 路径上的路线补写仍留给阶段 5E。
+
+Node `activity-store.js` 删除 session normalization、稳定 ID 和 `saveRiderSession` SQL，仅保留阶段 5E
+仍使用的单条内部读取、FIT metadata 更新和活动路线关联。Python 不可用时，Node 返回结构化
+`agent_unavailable / activity_archive`，不回退到 Node SQLite。
+
+代码复审进一步收紧了三个边界：缺少 `route` 的重复归档保留既有路线关联，避免精简或重试请求清空
+`saved_route_id` 和距离窗口；归档结果在同一个受一秒写锁预算约束的 SQLite 连接中读回，避免写入已提交后
+第二次读取超出 Node 两秒代理预算；Node 同时完整透传 Python 的 `activity_store_busy` 和 `retryable`，供前端
+明确提示重试。
+
+验收结果：
+
+- Rider JavaScript：`371/371`；
+- Python Training Backend：`664/664`；
+- session normalization、重复归档、既有 FIT/report 保留和 FastAPI 协议定向测试：`33/33`；
+- 正常双进程经 Rider 公开 URL 验证 session 与路线距离窗口一次归档：通过；
+- Python 启动失败和再次掉线时 session archive 结构化降级：通过；
+- `git diff --check`：通过。

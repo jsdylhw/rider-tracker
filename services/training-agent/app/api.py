@@ -40,6 +40,7 @@ from operations.activity.strava import (
 )
 from integrations.strava import StravaSink
 from services.activity.ingestion import get_activity_detail, ingest_fit_activity
+from services.activity.session_archive import archive_rider_session
 from services.athlete.profile import (
     athlete_profile_response,
     get_athlete_profile,
@@ -58,6 +59,12 @@ class IngestFitRequest(BaseModel):
     source_activity_id: str | None = Field(default=None, max_length=128)
     name: str | None = Field(default=None, max_length=200)
     max_points: int = Field(default=700, ge=2, le=2000)
+
+
+class RiderSessionArchiveRequest(BaseModel):
+    session: Any = None
+    name: Any = None
+    sportType: Any = None
 
 
 class RenameActivityRequest(BaseModel):
@@ -190,6 +197,30 @@ def ingest_fit_endpoint(request: IngestFitRequest, http_request: Request) -> dic
         name=request.name,
         max_points=request.max_points,
     )
+
+
+@app.post("/api/activities/rider-session")
+def archive_rider_session_endpoint(
+    request: RiderSessionArchiveRequest,
+    http_request: Request,
+) -> dict[str, Any]:
+    """Persist the non-FIT fallback for a completed Rider session."""
+    _require_api_access(http_request)
+    try:
+        activity = archive_rider_session(
+            request.session,
+            name=request.name,
+            sport_type=request.sportType,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ActivityStoreBusy as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "activity_store_busy",
+            "message": str(exc),
+            "retryable": True,
+        }) from exc
+    return {"activity": activity}
 
 
 @app.get("/api/activities")

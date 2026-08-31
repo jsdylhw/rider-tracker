@@ -43,6 +43,7 @@ try {
     await expectAgentUnavailable();
     await expectRouteLibraryUnavailable();
     await expectActivityLibraryUnavailable();
+    await expectActivityArchiveUnavailable();
 
     fakeAgent = createServer((request, response) => {
         response.setHeader("Content-Type", "application/json");
@@ -83,8 +84,9 @@ try {
     await expectAgentUnavailable();
     await expectRouteLibraryUnavailable();
     await expectActivityLibraryUnavailable();
+    await expectActivityArchiveUnavailable();
     await assertBaseRiderApis();
-    console.log("[degraded-integration] Rider core survived backend loss; Python-owned route and activity libraries degraded explicitly.");
+    console.log("[degraded-integration] Rider core survived backend loss; Python-owned route, activity library, and session archive degraded explicitly.");
 } finally {
     if (fakeAgent) await close(fakeAgent);
     launcher?.kill();
@@ -102,6 +104,20 @@ async function expectActivityLibraryUnavailable() {
     if (response.status !== 503 || payload.code !== "agent_unavailable"
         || payload.capability !== "activity_library") {
         throw new Error(`Unexpected activity-library degradation: HTTP ${response.status} ${JSON.stringify(payload)}`);
+    }
+}
+
+async function expectActivityArchiveUnavailable() {
+    const response = await fetch(`${riderUrl}/api/activities/rider-session`, {
+        ...requestOptions(),
+        method: "POST",
+        headers: { ...requestOptions().headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ session: { id: "degraded-session" } })
+    });
+    const payload = await response.json();
+    if (response.status !== 503 || payload.code !== "agent_unavailable"
+        || payload.capability !== "activity_archive") {
+        throw new Error(`Unexpected activity-archive degradation: HTTP ${response.status} ${JSON.stringify(payload)}`);
     }
 }
 
