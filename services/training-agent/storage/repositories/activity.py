@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -21,6 +22,16 @@ from storage.database import connect_database
 from domain.time import local_time_without_timezone
 
 
+# Browser activity-library mutations have a 2 s proxy deadline.  Waiting less
+# than that at the SQLite boundary guarantees a timed-out HTTP request cannot
+# later acquire the lock and commit an unseen rename/delete.
+ACTIVITY_MUTATION_BUSY_TIMEOUT_MS = 1_000
+
+
+class ActivityStoreBusy(RuntimeError):
+    """The activity catalogue could not acquire its write lock in time."""
+
+
 class ActivityStore:
     """Persist one FIT activity, its deterministic facts and current report."""
 
@@ -31,6 +42,132 @@ class ActivityStore:
         with connect_database(self.path) as connection:
             row = connection.execute("SELECT COUNT(*) AS count FROM activities").fetchone()
         return int(row["count"] if row else 0)
+
+    def get_rider_history(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        sport_type: str = "",
+        source: str = "",
+    ) -> dict[str, Any]:
+        """Return the stable browser activity-list contract.
+
+        Filtering applies to the page and its total.  Summary counters remain
+        global, matching Rider's existing home dashboard semantics.
+        """
+        safe_limit = _clamp_integer(limit, minimum=1, maximum=200, fallback=50)
+        safe_offset = _clamp_integer(offset, minimum=0, maximum=1_000_000, fallback=0)
+        clauses: list[str] = []
+        parameters: list[Any] = []
+        normalized_sport = _filter_text(sport_type)
+        normalized_source = _filter_text(source)
+        if normalized_sport:
+            clauses.append("sport_type = ?")
+            parameters.append(normalized_sport)
+        if normalized_source:
+            clauses.append("source = ?")
+            parameters.append(normalized_source)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
+        with connect_database(self.path) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT * FROM activities
+                {where}
+                ORDER BY COALESCE(started_at, created_at) DESC
+                LIMIT ? OFFSET ?
+                """,
+                (*parameters, safe_limit, safe_offset),
+            ).fetchall()
+            total_row = connection.execute(
+                f"SELECT COUNT(*) AS activity_count FROM activities {where}",
+                parameters,
+            ).fetchone()
+            summary_row = connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS activity_count,
+                    COALESCE(SUM(distance_km), 0) AS total_distance_km,
+                    COALESCE(SUM(ascent_meters), 0) AS total_ascent_meters,
+                    COALESCE(SUM(elapsed_seconds), 0) AS total_elapsed_seconds,
+                    COALESCE(SUM(estimated_tss), 0) AS total_estimated_tss
+                FROM activities
+                """
+            ).fetchone()
+
+        total = int(total_row["activity_count"] if total_row else 0)
+        activities = [_rider_activity(row) for row in rows]
+        summary = _rider_activity_summary(summary_row)
+        return {
+            "activities": activities,
+            "summary": summary,
+            "page": {
+                "total": total,
+                "offset": safe_offset,
+                "limit": safe_limit,
+                "hasMore": safe_offset + len(activities) < total,
+            },
+        }
+
+    def get_rider_activity(self, activity_id: str, *, include_raw_session: bool = False) -> dict[str, Any] | None:
+        normalized_id = str(activity_id or "").strip()
+        if not normalized_id:
+            return None
+        with connect_database(self.path) as connection:
+            row = connection.execute(
+                "SELECT * FROM activities WHERE id = ? LIMIT 1",
+                (normalized_id,),
+            ).fetchone()
+        return _rider_activity(row, include_raw_session=include_raw_session) if row else None
+
+    def rename_rider_activity(self, activity_id: str, name: Any) -> dict[str, Any]:
+        normalized_id = str(activity_id or "").strip()
+        if not isinstance(name, str):
+            raise ValueError("Activity name must be a string.")
+        normalized_name = name.strip()[:120]
+        if not normalized_id or not normalized_name:
+            raise ValueError("Activity id and name are required.")
+        try:
+            with connect_database(
+                self.path,
+                busy_timeout_ms=ACTIVITY_MUTATION_BUSY_TIMEOUT_MS,
+            ) as connection:
+                cursor = connection.execute(
+                    "UPDATE activities SET name = ?, updated_at = ? WHERE id = ?",
+                    (normalized_name, _now(), normalized_id),
+                )
+                if cursor.rowcount == 0:
+                    raise KeyError("Activity not found.")
+        except sqlite3.OperationalError as exc:
+            _raise_activity_store_busy(exc)
+            raise
+        activity = self.get_rider_activity(normalized_id)
+        if activity is None:
+            raise KeyError("Activity not found.")
+        return activity
+
+    def delete_rider_activity(self, activity_id: str) -> dict[str, Any]:
+        normalized_id = str(activity_id or "").strip()
+        if not normalized_id:
+            raise ValueError("Activity id is required.")
+        try:
+            with connect_database(
+                self.path,
+                busy_timeout_ms=ACTIVITY_MUTATION_BUSY_TIMEOUT_MS,
+            ) as connection:
+                row = connection.execute(
+                    "SELECT * FROM activities WHERE id = ? LIMIT 1",
+                    (normalized_id,),
+                ).fetchone()
+                if row is None:
+                    raise KeyError("Activity not found.")
+                activity = _rider_activity(row)
+                connection.execute("DELETE FROM activities WHERE id = ?", (normalized_id,))
+        except sqlite3.OperationalError as exc:
+            _raise_activity_store_busy(exc)
+            raise
+        return activity
 
     def find_activity_identity(
         self,
@@ -651,6 +788,67 @@ def _activity_entry(row: Any) -> dict[str, Any]:
     return _without_none(raw)
 
 
+def _rider_activity(row: Any, *, include_raw_session: bool = False) -> dict[str, Any]:
+    activity = {
+        "id": str(row["id"]),
+        "source": str(row["source"]),
+        "sportType": str(row["sport_type"]),
+        "subSport": row["sub_sport"],
+        "name": str(row["name"]),
+        "startedAt": row["started_at"],
+        "finishedAt": row["finished_at"],
+        "elapsedSeconds": _number(row["elapsed_seconds"]),
+        "distanceKm": _number(row["distance_km"]),
+        "ascentMeters": _number(row["ascent_meters"]),
+        "averagePower": _number(row["average_power"]),
+        "normalizedPower": _number(row["normalized_power"]),
+        "averageHr": _number(row["average_hr"]),
+        "estimatedTss": _number(row["estimated_tss"]),
+        "hasGpsTrack": bool(row["has_gps_track"]),
+        "fitFilePath": row["fit_file_path"],
+        "fitFileSizeBytes": _number(row["fit_file_size_bytes"]),
+        "fitFileCreatedAt": row["fit_file_created_at"],
+        "savedRouteId": row["saved_route_id"],
+        "routeStartDistanceMeters": _number(row["route_start_distance_meters"]),
+        "routeEndDistanceMeters": _number(row["route_end_distance_meters"]),
+        "createdAt": str(row["created_at"]),
+        "updatedAt": str(row["updated_at"]),
+    }
+    if include_raw_session:
+        activity["rawSession"] = _json_object(row["raw_json"])
+    return activity
+
+
+def _rider_activity_summary(row: Any) -> dict[str, int | float]:
+    if row is None:
+        return {
+            "activityCount": 0,
+            "totalDistanceKm": 0,
+            "totalAscentMeters": 0,
+            "totalElapsedSeconds": 0,
+            "totalEstimatedTss": 0,
+        }
+    return {
+        "activityCount": int(row["activity_count"] or 0),
+        "totalDistanceKm": float(row["total_distance_km"] or 0),
+        "totalAscentMeters": float(row["total_ascent_meters"] or 0),
+        "totalElapsedSeconds": float(row["total_elapsed_seconds"] or 0),
+        "totalEstimatedTss": float(row["total_estimated_tss"] or 0),
+    }
+
+
+def _filter_text(value: Any) -> str:
+    return str(value).strip()[:120] if isinstance(value, str) else ""
+
+
+def _clamp_integer(value: Any, *, minimum: int, maximum: int, fallback: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return min(maximum, max(minimum, number))
+
+
 def _history_view_from_metrics(activity: dict[str, Any], metrics: dict[str, Any]) -> dict[str, Any]:
     """Build a compact, fact-only history row for optional child-agent context."""
     identity = metrics.get("identity") if isinstance(metrics.get("identity"), dict) else {}
@@ -740,6 +938,12 @@ def _without_none(value: dict[str, Any]) -> dict[str, Any]:
 
 def _now() -> str:
     return datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
+
+
+def _raise_activity_store_busy(error: sqlite3.OperationalError) -> None:
+    message = str(error).lower()
+    if "locked" in message or "busy" in message:
+        raise ActivityStoreBusy("Activity library is busy. Retry the operation.") from error
 
 
 def _same_path(left: Any, right: Any) -> bool:

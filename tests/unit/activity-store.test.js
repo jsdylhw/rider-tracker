@@ -53,8 +53,7 @@ export const suite = {
                 const session = buildVirtualRideSession();
 
                 const saved = store.saveRiderSession(session);
-                const activities = store.listActivities();
-                const summary = store.getSummary();
+                const storedSession = readRawSession(dbPath, saved.id);
 
                 assert(fs.existsSync(dbPath), "database file should be created");
                 assertEqual(saved.source, "rider-tracker");
@@ -63,32 +62,8 @@ export const suite = {
                 assertApprox(saved.distanceKm, 12.34, 0.0001);
                 assertEqual(saved.elapsedSeconds, 1800);
                 assertEqual(saved.averagePower, 205);
-                assertEqual(activities.length, 1);
-                assertEqual(activities[0].id, saved.id);
-                assertEqual(summary.activityCount, 1);
-                assertApprox(summary.totalDistanceKm, 12.34, 0.0001);
-                assertEqual(summary.totalAscentMeters, 256);
-                const detail = store.getActivityDetail(saved.id);
-                assertEqual(detail.rawSession.exportMetadata.activityName, "Test Virtual Ride");
-                assertEqual(detail.rawSession.records.length, 2);
-            }
-        },
-        {
-            name: "renames and deletes saved activities",
-            run() {
-                const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
-                const dbPath = path.join(tempDir, "activities.db");
-                const store = createActivityStore(initializeManagedTestDatabase(dbPath));
-                const saved = store.saveRiderSession(buildVirtualRideSession());
-
-                const renamed = store.updateActivityName(saved.id, "Renamed Virtual Ride");
-                assertEqual(renamed.name, "Renamed Virtual Ride");
-                assertEqual(store.listActivities()[0].name, "Renamed Virtual Ride");
-
-                const deleted = store.deleteActivity(saved.id);
-                assertEqual(deleted.id, saved.id);
-                assertEqual(store.listActivities().length, 0);
-                assertEqual(store.getSummary().activityCount, 0);
+                assertEqual(storedSession.exportMetadata.activityName, "Test Virtual Ride");
+                assertEqual(storedSession.records.length, 2);
             }
         },
         {
@@ -103,7 +78,7 @@ export const suite = {
                     fitFilePath: "data/files/fit/test.fit",
                     fitFileSizeBytes: 128
                 });
-                const detail = store.getActivityDetail(saved.id);
+                const detail = store.getActivity(saved.id);
 
                 assertEqual(updated.fitFilePath, "data/files/fit/test.fit");
                 assertEqual(updated.fitFileSizeBytes, 128);
@@ -126,7 +101,7 @@ export const suite = {
 
                 assertEqual(linked.savedRouteId, "route-1");
                 assertEqual(linked.routeStartDistanceMeters, 3200);
-                assertEqual(store.getActivityDetail(saved.id).routeEndDistanceMeters, 15540);
+                assertEqual(store.getActivity(saved.id).routeEndDistanceMeters, 15540);
             }
         },
         {
@@ -150,54 +125,28 @@ export const suite = {
                     sportType: "Ride",
                     source: "fit-import"
                 });
-                const detail = store.getActivityDetail(saved.id);
+                const storedSession = readRawSession(dbPath, saved.id);
 
                 assertEqual(saved.source, "fit-import");
                 assertEqual(saved.sportType, "Ride");
                 assertEqual(saved.name, "Imported FIT Ride");
                 assertEqual(saved.hasGpsTrack, true);
                 assertApprox(saved.distanceKm, 12.34, 0.0001);
-                assertEqual(detail.rawSession.records.length, 0);
-            }
-        },
-        {
-            name: "pages and filters activity history in sqlite",
-            run() {
-                const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rider-tracker-db-"));
-                const store = createActivityStore(initializeManagedTestDatabase(path.join(tempDir, "activities.db")));
-                store.saveRiderSession(buildVirtualRideSession("virtual-new", "2026-05-03T10:00:00.000Z"), {
-                    source: "rider-tracker",
-                    sportType: "VirtualRide"
-                });
-                store.saveRiderSession(buildVirtualRideSession("outdoor", "2026-05-02T10:00:00.000Z"), {
-                    source: "fit-import",
-                    sportType: "Ride"
-                });
-                store.saveRiderSession(buildVirtualRideSession("virtual-old", "2026-05-01T10:00:00.000Z"), {
-                    source: "rider-tracker",
-                    sportType: "VirtualRide"
-                });
-
-                const firstPage = store.listActivities({ limit: 1, offset: 0 });
-                const secondPage = store.listActivities({ limit: 1, offset: 1 });
-                const virtualRides = store.listActivities({ sportType: "VirtualRide" });
-                const fitImports = store.listActivities({ source: "fit-import" });
-                const history = store.getActivityHistory({ limit: 1, sportType: "VirtualRide" });
-
-                assertEqual(store.countActivities(), 3);
-                assertEqual(firstPage[0].id, "virtual-new");
-                assertEqual(secondPage[0].id, "outdoor");
-                assertEqual(virtualRides.length, 2);
-                assertEqual(fitImports.length, 1);
-                assertEqual(fitImports[0].id, "outdoor");
-                assertEqual(history.total, 2);
-                assertEqual(history.activities.length, 1);
-                assertEqual(history.activities[0].id, "virtual-new");
-                assertEqual(history.summary.activityCount, 3);
+                assertEqual(storedSession.records.length, 0);
             }
         }
     ]
 };
+
+function readRawSession(dbPath, activityId) {
+    const db = new DatabaseSync(dbPath);
+    try {
+        const row = db.prepare("SELECT raw_json FROM activities WHERE id = ?").get(activityId);
+        return JSON.parse(row.raw_json);
+    } finally {
+        db.close();
+    }
+}
 
 function buildVirtualRideSession(id, createdAt) {
     return {

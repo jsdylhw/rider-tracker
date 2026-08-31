@@ -147,6 +147,34 @@ export const suite = {
             }
         },
         {
+            name: "forwards activity-library CRUD with bounded backend timeouts",
+            async run() {
+                const requests = [];
+                const client = createPersonalFitAgentClient({
+                    baseUrl: "http://127.0.0.1:8000",
+                    apiToken: "server-only-token",
+                    fetchImpl: async (url, options) => {
+                        requests.push({ url, options });
+                        return fakeResponse({ activity: { id: "fit-a" }, activities: [] });
+                    }
+                });
+
+                await client.listActivities({ limit: 20, offset: 5, sportType: "cycling", source: "fit-import" });
+                await client.getActivity("fit-a");
+                await client.renameActivity("fit-a", "Renamed");
+                await client.deleteActivity("fit-a");
+
+                assertEqual(
+                    requests[0].url,
+                    "http://127.0.0.1:8000/api/activities?limit=20&offset=5&sport_type=cycling&source=fit-import"
+                );
+                assertEqual(requests[1].url, "http://127.0.0.1:8000/api/activities/fit-a");
+                assertEqual(requests[2].options.method, "PATCH");
+                assertEqual(JSON.parse(requests[2].options.body).name, "Renamed");
+                assertEqual(requests[3].options.method, "DELETE");
+            }
+        },
+        {
             name: "clears a stale Rider report when the canonical backend reports none",
             run() {
                 const activity = canonicalDetailToRiderActivity(

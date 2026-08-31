@@ -28,6 +28,7 @@ from app.chat_sessions import ChatSessionStore
 from settings import cfg_get, load_config
 from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
 from storage.repositories.saved_route import SavedRouteNotFound, SavedRouteStore
+from storage.repositories.activity import ActivityStore, ActivityStoreBusy
 from services.route.single_day import compact_route_plan
 from services.route.confirmation import confirm_and_save_route
 from services.route.view import build_route_plan_view
@@ -57,6 +58,12 @@ class IngestFitRequest(BaseModel):
     source_activity_id: str | None = Field(default=None, max_length=128)
     name: str | None = Field(default=None, max_length=200)
     max_points: int = Field(default=700, ge=2, le=2000)
+
+
+class RenameActivityRequest(BaseModel):
+    # Repository validation preserves the former browser-facing HTTP 400
+    # behavior instead of leaking FastAPI's field-level 422 response.
+    name: Any = None
 
 
 class AthleteProfileRequest(BaseModel):
@@ -183,6 +190,73 @@ def ingest_fit_endpoint(request: IngestFitRequest, http_request: Request) -> dic
         name=request.name,
         max_points=request.max_points,
     )
+
+
+@app.get("/api/activities")
+def list_activities_endpoint(
+    request: Request,
+    limit: str = "50",
+    offset: str = "0",
+    sport_type: str = "",
+    source: str = "",
+) -> dict[str, Any]:
+    """Return Rider's paged activity catalogue without involving an LLM."""
+    _require_api_access(request)
+    return ActivityStore().get_rider_history(
+        limit=limit,
+        offset=offset,
+        sport_type=sport_type,
+        source=source,
+    )
+
+
+@app.get("/api/activities/{activity_id}")
+def get_activity_endpoint(activity_id: str, request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    activity = ActivityStore().get_rider_activity(activity_id, include_raw_session=True)
+    if activity is None:
+        raise HTTPException(status_code=404, detail="Activity not found.")
+    return {"activity": activity}
+
+
+@app.patch("/api/activities/{activity_id}")
+def rename_activity_endpoint(
+    activity_id: str,
+    request: RenameActivityRequest,
+    http_request: Request,
+) -> dict[str, Any]:
+    _require_api_access(http_request)
+    try:
+        return {"activity": ActivityStore().rename_rider_activity(activity_id, request.name)}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Activity not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ActivityStoreBusy as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "activity_store_busy",
+            "message": str(exc),
+            "retryable": True,
+        }) from exc
+
+
+@app.delete("/api/activities/{activity_id}")
+def delete_activity_endpoint(activity_id: str, request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    try:
+        activity = ActivityStore().delete_rider_activity(activity_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Activity not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ActivityStoreBusy as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "activity_store_busy",
+            "message": str(exc),
+            "retryable": True,
+        }) from exc
+    _delete_managed_activity_fit(activity)
+    return {"activity": activity}
 
 
 @app.get("/api/activities/{activity_id}/detail")
@@ -642,3 +716,21 @@ def _require_managed_path(
     if not candidate.is_file():
         raise HTTPException(status_code=404, detail=f"{label} does not exist.")
     return candidate
+
+
+def _delete_managed_activity_fit(activity: dict[str, Any]) -> None:
+    """Delete only FIT files owned by Rider's configured runtime directory."""
+    value = str(activity.get("fitFilePath") or "").strip()
+    if not value:
+        return
+    paths = runtime_paths()
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        candidate = paths.project_root / candidate
+    candidate = candidate.resolve()
+    try:
+        candidate.relative_to(paths.fit_root.resolve())
+    except ValueError:
+        return
+    if candidate.suffix.lower() == ".fit" and candidate.is_file():
+        candidate.unlink()

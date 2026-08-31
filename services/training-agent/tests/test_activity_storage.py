@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from storage.repositories.activity import ActivityStore, entry_from_fit_summary
+import time
+
+import pytest
+
+from storage.repositories.activity import ActivityStore, ActivityStoreBusy, entry_from_fit_summary
+from storage.database import connect_database
 
 
 def _v2_report(activity_key: str, fit_path: str) -> dict:
@@ -129,3 +134,107 @@ def test_history_uses_v2_report_only_as_legacy_fallback(tmp_path):
     assert history["kind"] == "activity_facts_history"
     assert history["count"] == 1
     assert history["activities"][0]["summary_label"] == "晨间骑行"
+
+
+def test_rider_activity_library_preserves_paging_filters_and_global_summary(tmp_path):
+    database = tmp_path / "activities.db"
+    store = ActivityStore(database)
+    entries = []
+    for index, (sport, source, distance) in enumerate([
+        ("cycling", "fit-import", 12_000),
+        ("running", "garmin_cn", 5_000),
+        ("cycling", "garmin_cn", 20_000),
+    ]):
+        fit = tmp_path / f"activity-{index}.fit"
+        fit.write_bytes(f"fit-{index}".encode())
+        entry = entry_from_fit_summary(
+            fit,
+            {
+                "sport_type": sport,
+                "start_time_local": f"2026-08-{20 + index}T08:00:00",
+                "duration_s": 1200 + index,
+                "distance_m": distance,
+            },
+            source=source,
+        )
+        store.upsert_activity({**entry, "name": f"Activity {index}", "estimated_tss": 10 + index})
+        entries.append(entry)
+
+    history = store.get_rider_history(limit=1, offset=0, sport_type="cycling", source="garmin_cn")
+
+    assert history["page"] == {"total": 1, "offset": 0, "limit": 1, "hasMore": False}
+    assert history["activities"][0]["name"] == "Activity 2"
+    assert history["activities"][0]["sportType"] == "cycling"
+    assert history["summary"]["activityCount"] == 3
+    assert history["summary"]["totalDistanceKm"] == 37
+
+
+def test_rider_activity_library_reads_renames_and_cascade_deletes(tmp_path):
+    database = tmp_path / "activities.db"
+    fit = tmp_path / "ride.fit"
+    fit.write_bytes(b"fit-data")
+    store = ActivityStore(database)
+    entry = entry_from_fit_summary(
+        fit,
+        {
+            "sport_type": "cycling",
+            "start_time_local": "2026-08-13T08:00:00",
+            "duration_s": 1200,
+            "distance_m": 8000,
+        },
+    )
+    store.upsert_activity({**entry, "name": "Original"})
+    store.save_report(_v2_report(entry["activity_key"], entry["fit_path"]))
+    with connect_database(database) as connection:
+        connection.execute(
+            """
+            UPDATE activities
+            SET saved_route_id = ?, route_start_distance_meters = ?, route_end_distance_meters = ?
+            WHERE id = ?
+            """,
+            ("route-1", 1000, 9000, entry["activity_key"]),
+        )
+
+    detail = store.get_rider_activity(entry["activity_key"], include_raw_session=True)
+    renamed = store.rename_rider_activity(entry["activity_key"], "Renamed")
+    deleted = store.delete_rider_activity(entry["activity_key"])
+
+    assert detail["rawSession"]["activity_key"] == entry["activity_key"]
+    assert detail["savedRouteId"] == "route-1"
+    assert detail["routeEndDistanceMeters"] == 9000
+    assert renamed["name"] == "Renamed"
+    assert deleted["id"] == entry["activity_key"]
+    assert store.get_rider_activity(entry["activity_key"]) is None
+    assert store.get_report(entry["activity_key"]) is None
+
+
+@pytest.mark.parametrize("operation", ["rename", "delete"])
+def test_activity_mutation_fails_before_proxy_deadline_without_late_commit(tmp_path, operation):
+    database = tmp_path / "activities.db"
+    fit = tmp_path / "ride.fit"
+    fit.write_bytes(b"fit-data")
+    store = ActivityStore(database)
+    entry = entry_from_fit_summary(
+        fit,
+        {"sport_type": "cycling", "start_time_local": "2026-08-29T08:00:00"},
+    )
+    store.upsert_activity({**entry, "name": "Original"})
+
+    locker = connect_database(database)
+    locker.execute("BEGIN IMMEDIATE")
+    started = time.monotonic()
+    try:
+        with pytest.raises(ActivityStoreBusy):
+            if operation == "rename":
+                store.rename_rider_activity(entry["activity_key"], "Late rename")
+            else:
+                store.delete_rider_activity(entry["activity_key"])
+    finally:
+        elapsed = time.monotonic() - started
+        locker.rollback()
+        locker.close()
+
+    assert elapsed < 2
+    activity = store.get_rider_activity(entry["activity_key"])
+    assert activity is not None
+    assert activity["name"] == "Original"

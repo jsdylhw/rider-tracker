@@ -15,6 +15,7 @@ const agentUrl = `http://127.0.0.1:${agentPort}`;
 const riderUrl = `http://127.0.0.1:${riderPort}`;
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "rider-agent-integration-"));
 const databasePath = path.join(tempRoot, "rider-tracker.db");
+const fitRoot = path.join(tempRoot, "fit");
 const children = [];
 
 try {
@@ -31,7 +32,8 @@ try {
             RIDER_PROJECT_ROOT: projectRoot,
             RIDER_TRACKER_DB_PATH: databasePath,
             TRAINING_AGENT_DB_PATH: databasePath,
-            TRAINING_AGENT_MANAGED_DATABASE: "1"
+            TRAINING_AGENT_MANAGED_DATABASE: "1",
+            FIT_FILE_DIR: fitRoot
         }
     }));
     await waitForJson(`${agentUrl}/health`, (value) => value.status === "ok");
@@ -53,7 +55,7 @@ try {
             HOST: "127.0.0.1",
             PERSONAL_FIT_AGENT_URL: agentUrl,
             RIDER_TRACKER_DB_PATH: databasePath,
-            FIT_FILE_DIR: path.join(tempRoot, "fit")
+            FIT_FILE_DIR: fitRoot
         }
     }));
     await waitForJson(`${riderUrl}/healthz`, (value) => value.ok === true);
@@ -65,6 +67,7 @@ try {
     if (!activities.ok || !Array.isArray(activities.activities)) {
         throw new Error(`Unexpected Rider activity payload: ${JSON.stringify(activities)}`);
     }
+    await assertActivityLibraryRoundTrip();
     const routes = await readJson(`${riderUrl}/api/routes`);
     if (!routes.ok || !Array.isArray(routes.routes)) {
         throw new Error(`Unexpected Rider route payload: ${JSON.stringify(routes)}`);
@@ -75,10 +78,41 @@ try {
     if (!proxyHealth.ok || proxyHealth.result?.status !== "ok") {
         throw new Error(`Unexpected Agent proxy health payload: ${JSON.stringify(proxyHealth)}`);
     }
-    console.log("[integration] Unified Rider page, atomic route confirmation, Python route store, Agent proxy, and removed legacy UI checks passed.");
+    console.log("[integration] Unified Rider page, Python activity/route stores, atomic route confirmation, Agent proxy, and removed legacy UI checks passed.");
 } finally {
     for (const child of children) child.kill();
     await rm(tempRoot, { recursive: true, force: true });
+}
+
+async function assertActivityLibraryRoundTrip() {
+    const activityId = "integration-activity";
+    seedActivity({
+        activity_key: activityId,
+        fit_path: "data/files/fit/integration-missing.fit",
+        file_name: "integration-missing.fit",
+        source: "fit-import",
+        sport_type: "cycling",
+        name: "Integration activity",
+        start_time_local: "2026-08-29T08:00:00",
+        duration_s: 1200,
+        distance_km: 8,
+    });
+    const listed = await readJson(`${riderUrl}/api/activities?sportType=cycling&source=fit-import`);
+    if (listed.activities?.[0]?.id !== activityId || listed.summary?.activityCount !== 1) {
+        throw new Error(`Activity list failed: ${JSON.stringify(listed)}`);
+    }
+    const detail = await readJson(`${riderUrl}/api/activities/${encodeURIComponent(activityId)}`);
+    if (detail.activity?.id !== activityId || detail.activity?.distanceKm !== 8) {
+        throw new Error(`Activity detail failed: ${JSON.stringify(detail)}`);
+    }
+    const renamed = await requestJson(`${riderUrl}/api/activities/${encodeURIComponent(activityId)}`, {
+        method: "PATCH", body: { name: "Renamed integration activity" }
+    });
+    if (renamed.activity?.name !== "Renamed integration activity") {
+        throw new Error(`Activity rename failed: ${JSON.stringify(renamed)}`);
+    }
+    await requestJson(`${riderUrl}/api/activities/${encodeURIComponent(activityId)}`, { method: "DELETE" });
+    await expectStatus(`${riderUrl}/api/activities/${encodeURIComponent(activityId)}`, 404);
 }
 
 async function assertRouteLibraryRoundTrip() {
@@ -232,6 +266,30 @@ function seedRoutePlan(plan) {
     });
     if (result.status !== 0) {
         throw new Error(`Failed to seed route plan: ${result.stderr || result.stdout}`);
+    }
+}
+
+function seedActivity(activity) {
+    const script = [
+        "import json, sys",
+        "from storage.repositories.activity import ActivityStore",
+        "ActivityStore(sys.argv[1]).upsert_activity(json.loads(sys.argv[2]))"
+    ].join("; ");
+    const result = spawnSync(python, ["-c", script, databasePath, JSON.stringify(activity)], {
+        cwd: agentRoot,
+        encoding: "utf8",
+        env: {
+            ...process.env,
+            PYTHONPATH: agentRoot,
+            RIDER_PROJECT_ROOT: projectRoot,
+            RIDER_TRACKER_DB_PATH: databasePath,
+            TRAINING_AGENT_DB_PATH: databasePath,
+            TRAINING_AGENT_MANAGED_DATABASE: "1",
+            FIT_FILE_DIR: fitRoot
+        }
+    });
+    if (result.status !== 0) {
+        throw new Error(`Failed to seed activity: ${result.stderr || result.stdout}`);
     }
 }
 

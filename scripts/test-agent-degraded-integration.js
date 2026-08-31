@@ -42,6 +42,7 @@ try {
     await assertBaseRiderApis();
     await expectAgentUnavailable();
     await expectRouteLibraryUnavailable();
+    await expectActivityLibraryUnavailable();
 
     fakeAgent = createServer((request, response) => {
         response.setHeader("Content-Type", "application/json");
@@ -81,8 +82,9 @@ try {
     fakeAgent = null;
     await expectAgentUnavailable();
     await expectRouteLibraryUnavailable();
+    await expectActivityLibraryUnavailable();
     await assertBaseRiderApis();
-    console.log("[degraded-integration] Rider core survived backend loss; Python-owned route library degraded explicitly.");
+    console.log("[degraded-integration] Rider core survived backend loss; Python-owned route and activity libraries degraded explicitly.");
 } finally {
     if (fakeAgent) await close(fakeAgent);
     launcher?.kill();
@@ -92,9 +94,14 @@ try {
 async function assertBaseRiderApis() {
     const page = await readText(`${riderUrl}/`);
     if (!page.includes("Rider Tracker")) throw new Error("Rider page is unavailable without Agent.");
-    const activities = await readJson(`${riderUrl}/api/activities`);
-    if (!activities.ok || !Array.isArray(activities.activities)) {
-        throw new Error(`Unexpected activity response: ${JSON.stringify(activities)}`);
+}
+
+async function expectActivityLibraryUnavailable() {
+    const response = await fetch(`${riderUrl}/api/activities`, requestOptions());
+    const payload = await response.json();
+    if (response.status !== 503 || payload.code !== "agent_unavailable"
+        || payload.capability !== "activity_library") {
+        throw new Error(`Unexpected activity-library degradation: HTTP ${response.status} ${JSON.stringify(payload)}`);
     }
 }
 

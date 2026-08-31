@@ -51,6 +51,7 @@ import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js"
 import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
 import { suite as routeLibraryRendererSuite } from "./unit/route-library-renderer.test.js";
 import { suite as routeLibraryRoutesSuite } from "./unit/route-library-routes.test.js";
+import { suite as activityLibraryRoutesSuite } from "./unit/activity-library-routes.test.js";
 import { suite as routeContinuationSuite } from "./unit/route-continuation.test.js";
 import { suite as activityHistoryRendererSuite } from "./unit/activity-history-renderer.test.js";
 import { suite as activityDetailRendererSuite } from "./unit/activity-detail-renderer.test.js";
@@ -130,6 +131,7 @@ const suites = [
     activityStoreSuite,
     routeLibraryRendererSuite,
     routeLibraryRoutesSuite,
+    activityLibraryRoutesSuite,
     routeContinuationSuite,
     activityHistoryRendererSuite,
     activityDetailRendererSuite,

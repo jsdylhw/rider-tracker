@@ -7,6 +7,7 @@ import importlib
 from fastapi.testclient import TestClient
 from storage.repositories.route import RoutePlanStore
 from storage.repositories.saved_route import SavedRouteStore
+from storage.repositories.activity import ActivityStore, ActivityStoreBusy, entry_from_fit_summary
 
 
 def _prepare_api(tmp_path, monkeypatch, *, web_api_token: str = "", llm_configured: bool = True):
@@ -86,7 +87,9 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
     paths = {path for path in client.get("/openapi.json").json()["paths"] if path.startswith("/api/")}
 
     assert paths == {
+        "/api/activities",
         "/api/activities/ingest-fit",
+        "/api/activities/{activity_id}",
         "/api/activities/{activity_id}/detail",
         "/api/athlete-profile",
         "/api/chat",
@@ -102,6 +105,99 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/strava/exchange-code",
         "/api/strava/upload-activity",
         "/api/strava/upload-status/{upload_id}",
+    }
+
+
+def test_activity_library_api_preserves_browser_crud_contract(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    rider_root = tmp_path / "rider"
+    fit_root = rider_root / "data" / "files" / "fit"
+    fit_root.mkdir(parents=True)
+    fit = fit_root / "ride.fit"
+    fit.write_bytes(b"fit-data")
+    monkeypatch.setenv("RIDER_PROJECT_ROOT", str(rider_root))
+    monkeypatch.setenv("RIDER_DATA_ROOT", str(rider_root / "data"))
+    monkeypatch.setenv("FIT_FILE_DIR", str(fit_root))
+    database = rider_root / "data" / "rider-tracker.db"
+    store = ActivityStore(database)
+    entry = entry_from_fit_summary(
+        fit,
+        {
+            "sport_type": "cycling",
+            "start_time_local": "2026-08-29T08:00:00",
+            "duration_s": 1800,
+            "distance_m": 12000,
+        },
+        source="fit-import",
+    )
+    store.upsert_activity({**entry, "name": "Morning Ride"})
+    monkeypatch.setattr(api, "ActivityStore", lambda: store)
+
+    listed = client.get("/api/activities?limit=10&offset=0&sport_type=cycling&source=fit-import")
+    detail = client.get(f"/api/activities/{entry['activity_key']}")
+    renamed = client.patch(
+        f"/api/activities/{entry['activity_key']}",
+        json={"name": "Renamed Ride"},
+    )
+    invalid = client.patch(f"/api/activities/{entry['activity_key']}", json={})
+    invalid_types = [
+        client.patch(f"/api/activities/{entry['activity_key']}", json={"name": value})
+        for value in (123, True, {"value": "Renamed"})
+    ]
+    deleted = client.delete(f"/api/activities/{entry['activity_key']}")
+
+    assert listed.status_code == 200
+    assert listed.json()["page"] == {"total": 1, "offset": 0, "limit": 10, "hasMore": False}
+    assert listed.json()["summary"]["activityCount"] == 1
+    assert detail.json()["activity"]["rawSession"]["activity_key"] == entry["activity_key"]
+    assert renamed.json()["activity"]["name"] == "Renamed Ride"
+    assert invalid.status_code == 400
+    assert [response.status_code for response in invalid_types] == [400, 400, 400]
+    assert deleted.json()["activity"]["id"] == entry["activity_key"]
+    assert not fit.exists()
+    assert client.get(f"/api/activities/{entry['activity_key']}").status_code == 404
+
+
+def test_activity_delete_keeps_files_outside_managed_fit_root(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    rider_root = tmp_path / "rider"
+    fit_root = rider_root / "data" / "files" / "fit"
+    fit_root.mkdir(parents=True)
+    external_fit = tmp_path / "external.fit"
+    external_fit.write_bytes(b"external")
+    store = ActivityStore(rider_root / "data" / "rider-tracker.db")
+    entry = entry_from_fit_summary(
+        external_fit,
+        {"sport_type": "cycling", "start_time_local": "2026-08-29T09:00:00"},
+    )
+    store.upsert_activity(entry)
+    monkeypatch.setattr(api, "ActivityStore", lambda: store)
+    monkeypatch.setenv("RIDER_PROJECT_ROOT", str(rider_root))
+    monkeypatch.setenv("RIDER_DATA_ROOT", str(rider_root / "data"))
+    monkeypatch.setenv("FIT_FILE_DIR", str(fit_root))
+
+    response = client.delete(f"/api/activities/{entry['activity_key']}")
+
+    assert response.status_code == 200
+    assert external_fit.exists()
+
+
+def test_activity_mutation_reports_retryable_store_contention(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+
+    class BusyActivityStore:
+        def rename_rider_activity(self, activity_id, name):
+            raise ActivityStoreBusy("Activity library is busy. Retry the operation.")
+
+    monkeypatch.setattr(api, "ActivityStore", BusyActivityStore)
+
+    response = client.patch("/api/activities/fit-1", json={"name": "Renamed"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == {
+        "code": "activity_store_busy",
+        "message": "Activity library is busy. Retry the operation.",
+        "retryable": True,
     }
 
 

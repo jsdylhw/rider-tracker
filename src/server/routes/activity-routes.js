@@ -3,40 +3,14 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeFileToken, normalizeText } from "../shared/http-utils.js";
-import { sendAgentUnavailable } from "../agent-unavailable.js";
+import { createAgentUnavailableError, sendAgentUnavailable } from "../agent-unavailable.js";
+import { DEFAULT_ACTIVITY_LIBRARY_TIMEOUT_MS } from "../personal-fit-agent-client.js";
 
 export function createActivityRoutes({ activityStore, agentClient, upload, fitFileDir, projectRoot }) {
     const router = express.Router();
+    const libraryHandlers = createActivityLibraryHandlers({ agentClient });
 
-    router.get("/api/activities", (req, res) => {
-        try {
-            const filters = {
-                sportType: req.query.sportType,
-                source: req.query.source
-            };
-            const limit = req.query.limit;
-            const offset = req.query.offset;
-            const history = activityStore.getActivityHistory({ ...filters, limit, offset });
-            const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
-            return res.json({
-                ok: true,
-                dbPath: activityStore.filePath,
-                summary: history.summary,
-                activities: history.activities,
-                page: {
-                    total: history.total,
-                    offset: safeOffset,
-                    limit: Number.parseInt(limit, 10) || 50,
-                    hasMore: safeOffset + history.activities.length < history.total
-                }
-            });
-        } catch (err) {
-            return res.status(500).json({
-                ok: false,
-                error: err.message
-            });
-        }
-    });
+    router.get("/api/activities", libraryHandlers.list);
 
     router.post("/api/activities/rider-session", (req, res) => {
         try {
@@ -102,34 +76,7 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
         }
     });
 
-    router.get("/api/activities/:activityId", async (req, res) => {
-        try {
-            const storedActivity = activityStore.getActivityDetail(req.params.activityId);
-            const activity = storedActivity?.fitFilePath
-                ? canonicalDetailToRiderActivity(
-                    await agentClient.activityDetail(req.params.activityId),
-                    storedActivity
-                )
-                : storedActivity;
-            if (!activity) {
-                return res.status(404).json({
-                    ok: false,
-                    error: "Activity not found."
-                });
-            }
-
-            return res.json({
-                ok: true,
-                activity
-            });
-        } catch (err) {
-            if (sendAgentUnavailable(res, err, { capability: "activity_detail" })) return;
-            return res.status(500).json({
-                ok: false,
-                error: err.message
-            });
-        }
-    });
+    router.get("/api/activities/:activityId", libraryHandlers.get);
 
     router.post("/api/activities/:activityId/fit", upload.single("file"), async (req, res) => {
         try {
@@ -242,41 +189,70 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
         }
     });
 
-    router.patch("/api/activities/:activityId", (req, res) => {
-        try {
-            const activity = activityStore.updateActivityName(req.params.activityId, req.body?.name);
-            return res.json({
-                ok: true,
-                activity
-            });
-        } catch (err) {
-            return res.status(err.message === "Activity not found." ? 404 : 400).json({
-                ok: false,
-                error: err.message
-            });
-        }
-    });
-
-    router.delete("/api/activities/:activityId", (req, res) => {
-        try {
-            const activity = activityStore.deleteActivity(req.params.activityId);
-            deleteFitFileIfLocal({
-                activity,
-                projectRoot
-            });
-            return res.json({
-                ok: true,
-                activity
-            });
-        } catch (err) {
-            return res.status(err.message === "Activity not found." ? 404 : 400).json({
-                ok: false,
-                error: err.message
-            });
-        }
-    });
+    router.patch("/api/activities/:activityId", libraryHandlers.rename);
+    router.delete("/api/activities/:activityId", libraryHandlers.remove);
 
     return router;
+}
+
+export function createActivityLibraryHandlers({
+    agentClient,
+    timeoutMs = DEFAULT_ACTIVITY_LIBRARY_TIMEOUT_MS,
+    now = Date.now
+}) {
+    return {
+        list: (req, res) => proxyActivityLibrary(res, () => agentClient.listActivities({
+            limit: req.query?.limit,
+            offset: req.query?.offset,
+            sportType: req.query?.sportType || "",
+            source: req.query?.source || ""
+        })),
+        get: (req, res) => proxyActivityLibrary(res, async () => {
+            const deadline = now() + timeoutMs;
+            const result = await agentClient.getActivity(req.params.activityId, {
+                requestTimeoutMs: remainingActivityLibraryTime(deadline, now)
+            });
+            const storedActivity = result?.activity ?? null;
+            const activity = storedActivity?.fitFilePath
+                ? canonicalDetailToRiderActivity(
+                    await agentClient.activityDetail(req.params.activityId, {
+                        requestTimeoutMs: remainingActivityLibraryTime(deadline, now)
+                    }),
+                    storedActivity
+                )
+                : storedActivity;
+            return { activity };
+        }),
+        rename: (req, res) => proxyActivityLibrary(res, () => (
+            agentClient.renameActivity(req.params.activityId, req.body?.name)
+        )),
+        remove: (req, res) => proxyActivityLibrary(res, () => (
+            agentClient.deleteActivity(req.params.activityId)
+        ))
+    };
+}
+
+function remainingActivityLibraryTime(deadline, now) {
+    const remainingMs = Math.floor(deadline - now());
+    if (remainingMs <= 0) {
+        throw createAgentUnavailableError("Training Agent 未能在活动详情读取时限内响应。");
+    }
+    return remainingMs;
+}
+
+async function proxyActivityLibrary(res, callback) {
+    try {
+        const result = await callback();
+        return res.status(200).json({ ok: true, ...result });
+    } catch (error) {
+        if (sendAgentUnavailable(res, error, { capability: "activity_library" })) return;
+        return res.status(Number(error?.statusCode) || 500).json({
+            ok: false,
+            error: error.message,
+            ...(error?.code ? { code: error.code } : {}),
+            ...(typeof error?.retryable === "boolean" ? { retryable: error.retryable } : {})
+        });
+    }
 }
 
 function saveFitFile({ activityId, uploadedFile, fitFileDir, projectRoot }) {
@@ -332,6 +308,7 @@ export function canonicalDetailToRiderActivity(detail, fallback = {}) {
     const heartRate = metrics.heart_rate ?? {};
     const cadence = metrics.cadence ?? {};
     const performance = metrics.performance ?? {};
+    const fallbackEnergy = fallback.rawSession?.summary?.metrics?.energy ?? {};
     const analysisReport = Object.prototype.hasOwnProperty.call(detail ?? {}, "report")
         ? detail.report
         : (fallback.analysisReport ?? null);
@@ -382,6 +359,12 @@ export function canonicalDetailToRiderActivity(detail, fallback = {}) {
         },
         load: {
             estimatedTss: metrics.load?.power_stress?.tss ?? null
+        },
+        energy: {
+            ...fallbackEnergy,
+            estimatedCaloriesKcal: scale.calories ?? fallbackEnergy.estimatedCaloriesKcal ?? null,
+            mechanicalWorkKj: power.total_work_kj ?? fallbackEnergy.mechanicalWorkKj ?? null,
+            method: scale.calories != null ? "fit" : (fallbackEnergy.method ?? null)
         }
     };
     const id = activity.activity_key ?? fallback.id;
@@ -460,17 +443,4 @@ function hasRouteGeometry(route) {
         const longitude = point?.longitude ?? point?.lng;
         return Number.isFinite(latitude) && Number.isFinite(longitude);
     }).length >= 2;
-}
-
-function deleteFitFileIfLocal({ activity, projectRoot }) {
-    if (!activity?.fitFilePath) {
-        return;
-    }
-
-    const fitPath = path.resolve(projectRoot, activity.fitFilePath);
-    if (!fitPath.startsWith(projectRoot) || !fs.existsSync(fitPath)) {
-        return;
-    }
-
-    fs.unlinkSync(fitPath);
 }

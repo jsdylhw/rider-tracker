@@ -27,13 +27,18 @@ def database_path(path: str | Path | None = None) -> Path:
     return target
 
 
-def connect_database(path: str | Path | None = None) -> sqlite3.Connection:
+def connect_database(
+    path: str | Path | None = None,
+    *,
+    busy_timeout_ms: int = 30_000,
+) -> sqlite3.Connection:
     target = database_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(target, timeout=30)
+    normalized_busy_timeout_ms = max(0, int(busy_timeout_ms))
+    connection = sqlite3.connect(target, timeout=normalized_busy_timeout_ms / 1000)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
-    connection.execute("PRAGMA busy_timeout = 30000")
+    connection.execute(f"PRAGMA busy_timeout = {normalized_busy_timeout_ms}")
     if not _managed_database():
         initialize_database(connection)
     return connection

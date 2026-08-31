@@ -269,3 +269,42 @@ confirmed metadata 测试、重复请求幂等测试、浏览器确认请求及 
 - 正常双进程集成（含 Agent 路线原子确认）：通过；
 - Python 启动失败、恢复和再次掉线的降级集成：通过；
 - Python `compileall` 与 `git diff --check`：通过。
+
+### 2026-08-29：阶段 5C 首页活动目录切换到 Python owner
+
+阶段 5C 将首页活动列表、单条详情目录、重命名和删除四项能力从 Node SQLite store 切换到 Python
+`ActivityStore`。浏览器继续使用原有 `/api/activities*` 公开 URL；Node BFF 只负责同源保护、参数映射、
+错误透传，以及把 Python 的确定性活动详情适配为现有 Rider 展示结构，不再自行查询或修改这部分活动
+业务数据。分页、运动类型和来源过滤由 Python 执行；列表页汇总继续保持原有语义，统计整个活动库而
+不是当前过滤页。
+
+删除活动时，数据库记录及其关联 facts、series、artifacts、reports 由 SQLite 外键级联清理。只有位于
+统一 `RuntimePaths.fit_root` 内的受管 FIT 文件才随活动删除；索引到外部位置的 FIT 文件不会被删除。
+重命名只修改活动目录名称，不改写原始 FIT 或外部服务中的活动名称。
+
+活动目录和路线库一样属于 Python 业务后端能力，而不是 LLM 能力。Python 正常运行但没有模型配置时，
+活动浏览、详情、重命名和删除仍可用；Python 进程不可用时，Node 在两秒预算内返回结构化
+`agent_unavailable / activity_library`，不回退到旧 Node 查询路径。该行为替代阶段 3 和阶段 5A 中
+“后端掉线时活动列表继续可用”的迁移期假设，避免同一张活动表再次形成双 owner。
+
+本切片刻意没有迁移实时骑行 session 归档、FIT 上传/导入写入以及活动与路线关联写入，因此
+`src/server/activity-store.js` 仍暂时存在并服务这些后续切片；阶段 5 尚未整体完成。新增回归覆盖 Python
+仓储的分页/过滤/汇总和级联删除、FastAPI CRUD 与受管/外部 FIT 删除边界、Node 代理协议、标准降级，
+以及经 Rider 公开 BFF 完成列表、详情、重命名和删除的双进程往返。验收结果：
+
+收尾时同步删除 Node store 中已经失去生产调用的列表、分页、详情、汇总、重命名和删除实现及其旧仓储
+测试。Node store 目前只保留后续 5D/5E 仍在使用的 session 写入、单条内部读取、FIT metadata 更新和
+活动路线关联，不再保留已经由 Python 接管的备用读写路径。
+
+代码复审进一步关闭了三个边界：活动重命名和删除使用短于 Node 两秒代理预算的 SQLite 写锁等待，锁
+竞争会在一秒左右以可重试 503 失败，且不会在浏览器超时后迟到提交或删除 FIT；重命名重新严格要求
+字符串，不再把数字、布尔值或对象强制转换成名称；FIT 活动详情的目录读取与确定性详情读取共享同一
+个两秒总预算，第一段请求消耗的时间会从第二段扣除，不再出现目录已返回但详情仍等待四分钟的情况。
+对应回归覆盖了真实 SQLite 写锁、失败后数据不变、非字符串 HTTP 400 和详情预算耗尽时不发起第二次
+请求。
+
+- Rider JavaScript：`364/364`；
+- Python Training Backend：`658/658`；
+- 正常双进程活动目录 CRUD 集成：通过；
+- Python 启动失败、恢复和再次掉线的降级集成：通过；
+- Python `compileall` 与 `git diff --check`：通过。

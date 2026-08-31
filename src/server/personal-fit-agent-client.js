@@ -3,6 +3,7 @@ import { createAgentUnavailableError } from "./agent-unavailable.js";
 const DEFAULT_TIMEOUT_MS = 240_000;
 const DEFAULT_HEALTH_TIMEOUT_MS = 1_500;
 const DEFAULT_ROUTE_LIBRARY_TIMEOUT_MS = 2_000;
+export const DEFAULT_ACTIVITY_LIBRARY_TIMEOUT_MS = 2_000;
 
 export function createPersonalFitAgentClient({
     baseUrl = "http://127.0.0.1:8000",
@@ -93,8 +94,31 @@ export function createPersonalFitAgentClient({
         health: () => get("/health", healthTimeoutMs),
         chat: (request) => post("/api/chat", request),
         ingestFit: (request) => post("/api/activities/ingest-fit", request),
-        activityDetail: (activityId, { maxPoints = 700 } = {}) => get(
-            `/api/activities/${encodeURIComponent(activityId)}/detail?max_points=${encodeURIComponent(maxPoints)}`
+        activityDetail: (activityId, { maxPoints = 700, requestTimeoutMs = timeoutMs } = {}) => get(
+            `/api/activities/${encodeURIComponent(activityId)}/detail?max_points=${encodeURIComponent(maxPoints)}`,
+            requestTimeoutMs
+        ),
+        listActivities: ({ limit = 50, offset = 0, sportType = "", source = "" } = {}) => {
+            const query = new URLSearchParams({
+                limit: String(limit),
+                offset: String(offset)
+            });
+            if (sportType) query.set("sport_type", sportType);
+            if (source) query.set("source", source);
+            return get(`/api/activities?${query}`, DEFAULT_ACTIVITY_LIBRARY_TIMEOUT_MS);
+        },
+        getActivity: (activityId, { requestTimeoutMs = DEFAULT_ACTIVITY_LIBRARY_TIMEOUT_MS } = {}) => get(
+            `/api/activities/${encodeURIComponent(activityId)}`,
+            requestTimeoutMs
+        ),
+        renameActivity: (activityId, name) => patch(
+            `/api/activities/${encodeURIComponent(activityId)}`,
+            { name },
+            DEFAULT_ACTIVITY_LIBRARY_TIMEOUT_MS
+        ),
+        deleteActivity: (activityId) => remove(
+            `/api/activities/${encodeURIComponent(activityId)}`,
+            DEFAULT_ACTIVITY_LIBRARY_TIMEOUT_MS
         ),
         athleteProfile: () => get("/api/athlete-profile"),
         updateAthleteProfile: (profile) => put("/api/athlete-profile", { profile }),
