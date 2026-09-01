@@ -10,13 +10,21 @@
     display: none;
 }
 
+.ride-dashboard.immersive-street-view {
+    --immersive-hud-surface: linear-gradient(160deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.76));
+    --immersive-hud-border: rgba(203, 213, 225, 0.24);
+    --immersive-hud-shadow: 0 18px 38px rgba(2, 6, 23, 0.28);
+    --immersive-hud-blur: blur(12px);
+}
+
 .streetview-hud-card {
-    background: rgba(15, 23, 42, 0.82);
+    background: var(--immersive-hud-surface, rgba(15, 23, 42, 0.86));
     color: #e2e8f0;
-    border: 1px solid rgba(148, 163, 184, 0.3);
+    border: 1px solid var(--immersive-hud-border, rgba(148, 163, 184, 0.3));
     border-radius: 14px;
     padding: 12px;
-    backdrop-filter: blur(6px);
+    box-shadow: var(--immersive-hud-shadow, 0 18px 38px rgba(2, 6, 23, 0.28));
+    backdrop-filter: var(--immersive-hud-blur, blur(12px));
 }
 
 .streetview-hud-card h3 {
@@ -36,10 +44,10 @@
     min-height: 400px;
     padding: 18px;
     pointer-events: auto;
-    background: linear-gradient(145deg, rgba(15, 23, 42, 0.62), rgba(17, 94, 89, 0.48));
-    border-color: rgba(153, 246, 228, 0.24);
-    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.2);
-    backdrop-filter: blur(10px);
+    background: var(--immersive-hud-surface);
+    border-color: var(--immersive-hud-border);
+    box-shadow: var(--immersive-hud-shadow);
+    backdrop-filter: var(--immersive-hud-blur);
 }
 
 .ride-dashboard.immersive-street-view .route-narration-card[hidden] {
@@ -67,6 +75,48 @@
     font-size: 20px;
 }
 
+.route-narration-media {
+    position: relative;
+    flex: 0 0 auto;
+    height: 166px;
+    margin: 12px 0 2px;
+    overflow: hidden;
+    border: 1px solid rgba(226, 232, 240, 0.16);
+    border-radius: 12px;
+    background: rgba(2, 6, 23, 0.36);
+}
+
+.route-narration-media[hidden] {
+    display: none;
+}
+
+.route-narration-media img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.route-narration-media figcaption {
+    position: absolute;
+    right: 8px;
+    bottom: 7px;
+    max-width: calc(100% - 16px);
+    padding: 3px 7px;
+    overflow: hidden;
+    color: #e2e8f0;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-radius: 999px;
+    background: rgba(2, 6, 23, 0.72);
+}
+
+.route-narration-media figcaption a {
+    color: inherit;
+    text-decoration: none;
+}
+
 .route-narration-card p {
     flex: 1;
     margin: 0;
@@ -74,6 +124,7 @@
     font-size: 14px;
     line-height: 1.7;
     overflow-y: auto;
+    white-space: pre-line;
     scrollbar-width: thin;
 }
 
@@ -190,8 +241,10 @@
 }
 
 .ride-dashboard.immersive-street-view #immersiveMetricsCard .data-item {
-    background: rgba(31, 41, 55, 0.72);
-    border: 1px solid rgba(148, 163, 184, 0.38);
+    background: var(--immersive-hud-surface);
+    border: 1px solid var(--immersive-hud-border);
+    box-shadow: var(--immersive-hud-shadow);
+    backdrop-filter: var(--immersive-hud-blur);
     border-radius: 12px;
     padding: 8px 12px;
     min-height: 66px;
@@ -235,9 +288,9 @@
     width: min(620px, 58vw);
     padding: 10px 12px;
     z-index: 48;
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.72));
-    border: 1px solid rgba(148, 163, 184, 0.3);
-    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.28);
+    background: var(--immersive-hud-surface);
+    border: 1px solid var(--immersive-hud-border);
+    box-shadow: var(--immersive-hud-shadow);
 }
 
 .ride-dashboard.immersive-street-view #workoutTargetHudCard.erg-power-hud h3 {
@@ -319,12 +372,12 @@
     bottom: 12px;
     width: min(86vw, 920px);
     z-index: 50;
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.7));
-    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: var(--immersive-hud-surface);
+    border: 1px solid var(--immersive-hud-border);
     border-radius: 12px;
     padding: 4px 6px;
-    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.26);
-    backdrop-filter: blur(8px);
+    box-shadow: var(--immersive-hud-shadow);
+    backdrop-filter: var(--immersive-hud-blur);
 }
 
 .ride-dashboard.immersive-street-view {
@@ -457,6 +510,10 @@ body.immersive-street-view-active {
 
     .ride-dashboard.immersive-street-view .route-narration-card h3 {
         font-size: 16px;
+    }
+
+    .route-narration-media {
+        height: 122px;
     }
 
     .route-narration-card p {

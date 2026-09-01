@@ -28,6 +28,7 @@
     { "method": "POST", "path": "/api/agent/route-plans/select" },
     { "method": "POST", "path": "/api/agent/route-plans/command" },
     { "method": "POST", "path": "/api/route-narrations/prepare" },
+    { "method": "GET", "path": "/api/route-narrations/photo" },
     { "method": "GET", "path": "/api/strava/config" },
     { "method": "POST", "path": "/api/strava/config" },
     { "method": "GET", "path": "/api/strava/auth/start" },

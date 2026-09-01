@@ -97,6 +97,7 @@ function normalizeItem(item, index) {
         title: text(item.title) || `沿途讲解 ${index + 1}`,
         summary,
         tts_text: text(item.tts_text) || summary,
+        media: normalizeMedia(item.media),
         trigger: Object.freeze({
             lead_distance_m: nonNegativeNumber(item.trigger?.lead_distance_m, 300),
             expire_distance_m: nonNegativeNumber(item.trigger?.expire_distance_m, 500),
@@ -105,6 +106,32 @@ function normalizeItem(item, index) {
         }),
         sources: Object.freeze(Array.isArray(item.sources) ? item.sources.filter((source) => source && typeof source === "object") : [])
     });
+}
+
+function normalizeMedia(media) {
+    if (!media || media.type !== "google_place_photo") return null;
+    const photoName = text(media.photo_name);
+    if (!/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/.test(photoName)) return null;
+    const authorAttributions = (Array.isArray(media.author_attributions) ? media.author_attributions : [])
+        .filter((item) => item && typeof item === "object")
+        .map((item) => Object.freeze({
+            display_name: text(item.display_name),
+            uri: safeHttpUrl(item.uri),
+            photo_uri: safeHttpUrl(item.photo_uri)
+        }));
+    return Object.freeze({
+        type: "google_place_photo",
+        photo_name: photoName,
+        width: nonNegativeNumber(media.width),
+        height: nonNegativeNumber(media.height),
+        author_attributions: Object.freeze(authorAttributions),
+        source_url: safeHttpUrl(media.source_url)
+    });
+}
+
+function safeHttpUrl(value) {
+    const normalized = text(value);
+    return /^https:\/\//i.test(normalized) ? normalized : "";
 }
 
 function text(value) {

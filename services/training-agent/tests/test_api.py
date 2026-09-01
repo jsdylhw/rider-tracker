@@ -94,6 +94,7 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/activities/{activity_id}/detail",
         "/api/athlete-profile",
         "/api/chat",
+        "/api/route-narrations/photo",
         "/api/route-narrations/prepare",
         "/api/route-plans/command",
         "/api/route-plans/select",
@@ -277,6 +278,11 @@ def test_route_narration_endpoint_runs_independent_agent(tmp_path, monkeypatch):
         "route_name": "测试路线",
         "total_distance_m": 10000,
         "estimated_duration_min": 30,
+        "duration_estimation": {
+            "method": "route_profile_at_60pct_ftp",
+            "target_power_w": 156,
+            "ftp_ratio": 0.6,
+        },
         "samples": [
             {"sample_id": "sample_1", "route_distance_m": 0, "latitude": 30, "longitude": 120},
             {"sample_id": "sample_2", "route_distance_m": 10000, "latitude": 30.1, "longitude": 120.1},
@@ -286,6 +292,34 @@ def test_route_narration_endpoint_runs_independent_agent(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.json()["schema_version"] == "route_narration_plan.v1"
     assert calls[0]["route_fingerprint"] == "route_1234abcd"
+    assert calls[0]["duration_estimation"]["target_power_w"] == 156
+
+
+def test_route_narration_photo_endpoint_keeps_google_key_server_side(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    calls = []
+
+    class FakePhotos:
+        def __init__(self, api_key):
+            assert api_key == "server-google-key"
+
+        def get_photo(self, **kwargs):
+            calls.append(kwargs)
+            return b"jpeg-bytes", "image/jpeg"
+
+    monkeypatch.setattr(api, "load_config", lambda: {"google": {"api_key": "server-google-key"}})
+    monkeypatch.setattr(api, "GooglePlacesClient", FakePhotos)
+
+    response = client.get(
+        "/api/route-narrations/photo",
+        params={"name": "places/place_1/photos/photo_1", "max_width": 640},
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"jpeg-bytes"
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.headers["cache-control"] == "private, no-store"
+    assert calls == [{"photo_name": "places/place_1/photos/photo_1", "max_width": 640}]
 
 
 def test_ingest_fit_uses_deterministic_managed_file_service(tmp_path, monkeypatch):

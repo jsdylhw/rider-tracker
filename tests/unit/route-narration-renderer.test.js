@@ -8,6 +8,9 @@ function createElements() {
         routeNarrationStatus: createFakeElement(),
         routeNarrationTitle: createFakeElement(),
         routeNarrationSummary: createFakeElement(),
+        routeNarrationMedia: createFakeElement(),
+        routeNarrationPhoto: createFakeElement(),
+        routeNarrationPhotoCredit: createFakeElement(),
         routeNarrationPosition: createFakeElement(),
         routeNarrationCloseBtn: createFakeElement(),
         routeNarrationLoadBtn: createFakeElement(),
@@ -20,7 +23,18 @@ function createElements() {
 function createState() {
     return {
         status: "partial",
-        item: { title: "屋岛", summary: "濑户内海沿岸的演示讲解。" },
+        item: {
+            title: "屋岛",
+            summary: "濑户内海沿岸的演示讲解。",
+            media: {
+                type: "google_place_photo",
+                photo_name: "places/place_1/photos/photo_1",
+                author_attributions: [{
+                    display_name: "测试摄影者",
+                    uri: "https://maps.google.test/author"
+                }]
+            }
+        },
         itemIndex: 1,
         itemCount: 5,
         distanceToItemMeters: 260,
@@ -71,9 +85,16 @@ export const suite = {
                 assertEqual(elements.routeNarrationSummary.textContent, "濑户内海沿岸的演示讲解。");
                 assertEqual(elements.routeNarrationStatus.textContent, "路线讲解 · 前方 260 m");
                 assertEqual(elements.routeNarrationPosition.textContent, "2 / 5");
+                assertEqual(elements.routeNarrationMedia.hidden, false);
+                assertEqual(elements.routeNarrationPhoto.src.includes("places%2Fplace_1%2Fphotos%2Fphoto_1"), true);
+                assertEqual(elements.routeNarrationPhotoCredit.textContent, "照片：测试摄影者");
+                assertEqual(elements.routeNarrationPhotoCredit.attributes.href, "https://maps.google.test/author");
                 elements.routeNarrationPreviousBtn.dispatch("click");
                 elements.routeNarrationNextBtn.dispatch("click");
                 assertEqual(actions.join(","), "previous,next");
+                elements.routeNarrationPhoto.dispatch("error");
+                renderer.render(createState(), { visible: true });
+                assertEqual(elements.routeNarrationMedia.hidden, true);
             }
         },
         {

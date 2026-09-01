@@ -41,6 +41,7 @@ def run_route_narration_agent(
                 "name": request["route_name"],
                 "total_distance_m": request["total_distance_m"],
                 "estimated_duration_min": request["estimated_duration_min"],
+                "duration_estimation": request.get("duration_estimation"),
                 "locale": request.get("locale") or "zh-CN",
             },
             "density": density,
@@ -135,6 +136,7 @@ class _NarrationWorkspace:
         self.read_ids: set[str] = set()
         self.search_requests_used = 0
         self.search_cache: dict[tuple[str, float, float, int], list[dict[str, Any]]] = {}
+        self.underfilled_submission_rejected = False
 
     def search(self, args: dict[str, Any]) -> dict[str, Any]:
         query = str(args.get("query") or "").strip()
@@ -237,7 +239,10 @@ class _NarrationWorkspace:
             source = self.sources.get(source_id)
             if source:
                 self.read_ids.add(source_id)
-                records.append(source)
+                # Photo metadata is attached deterministically after the model
+                # submits a place card. It does not help factual synthesis and
+                # would only inflate the model context.
+                records.append({key: value for key, value in source.items() if key != "photos"})
         return {"sources": records}
 
     def build_plan(self, submission: dict[str, Any], *, density: dict[str, int]) -> dict[str, Any]:
@@ -272,7 +277,7 @@ class _NarrationWorkspace:
                     continue
                 place_card_count += 1
             seen_samples.add(sample_id)
-            items.append({
+            item = {
                 "item_id": f"narration_{index + 1}",
                 "route_distance_m": sample["route_distance_m"],
                 "latitude": sample["latitude"],
@@ -288,8 +293,15 @@ class _NarrationWorkspace:
                     "minimum_gap_seconds": 75,
                     "priority": _bounded_number(raw.get("priority"), 0, 10, 5),
                 },
-                "sources": [self.sources[source_id] for source_id in source_ids],
-            })
+                "sources": [
+                    {key: value for key, value in self.sources[source_id].items() if key != "photos"}
+                    for source_id in source_ids
+                ],
+            }
+            media = self._place_photo(source_ids) if content_scope == "place" else None
+            if media is not None:
+                item["media"] = media
+            items.append(item)
         if not items:
             raise ValueError(
                 "submit_route_narration_plan contains no valid sourced cards "
@@ -297,6 +309,18 @@ class _NarrationWorkspace:
             )
         items.sort(key=lambda item: item["route_distance_m"])
         warnings = [str(value) for value in submission.get("warnings") or [] if str(value).strip()]
+        if (
+            len(items) < density["minimum"]
+            and not warnings
+            and not self.underfilled_submission_rejected
+        ):
+            self.underfilled_submission_rejected = True
+            raise ValueError(
+                f"Only {len(items)} valid cards were submitted; prepare at least "
+                f"{density['minimum']} distinct sourced cards. If the read sources truly "
+                "cannot support that many cards, resubmit the best partial plan with a "
+                "specific warning explaining the source limitation."
+            )
         if skipped_place_cards:
             warnings.append(
                 f"已忽略 {skipped_place_cards} 条超出上限的点位卡片；"
@@ -318,6 +342,23 @@ class _NarrationWorkspace:
             "items": items,
             "warnings": warnings,
         }
+
+    def _place_photo(self, source_ids: list[str]) -> dict[str, Any] | None:
+        for source_id in source_ids:
+            source = self.sources.get(source_id) or {}
+            photos = source.get("photos") if isinstance(source.get("photos"), list) else []
+            photo = photos[0] if photos and isinstance(photos[0], dict) else None
+            if not photo or not str(photo.get("photo_name") or "").strip():
+                continue
+            return {
+                "type": "google_place_photo",
+                "photo_name": str(photo["photo_name"]),
+                "width": photo.get("width"),
+                "height": photo.get("height"),
+                "author_attributions": photo.get("author_attributions") or [],
+                "source_url": str(source.get("url") or ""),
+            }
+        return None
 
 
 def _bounded_number(value: Any, minimum: float, maximum: float, fallback: float) -> float:

@@ -73,6 +73,37 @@ export const suite = {
             }
         },
         {
+            name: "normalizer accepts safe Google Place photo metadata and rejects unsafe URLs",
+            run() {
+                const route = createRoute();
+                const plan = createNarrationPlanFixture(route, { itemCount: 1 });
+                const normalized = normalizeRouteNarrationPlan({
+                    ...plan,
+                    items: [{
+                        ...plan.items[0],
+                        media: {
+                            type: "google_place_photo",
+                            photo_name: "places/place_1/photos/photo_1",
+                            width: 1200,
+                            height: 800,
+                            source_url: "javascript:alert(1)",
+                            author_attributions: [{
+                                display_name: "摄影者",
+                                uri: "https://maps.google.test/author"
+                            }]
+                        }
+                    }]
+                }, {
+                    routeFingerprint: plan.route_fingerprint,
+                    routeTotalDistanceMeters: route.totalDistanceMeters
+                });
+
+                assertEqual(normalized.items[0].media.photo_name, "places/place_1/photos/photo_1");
+                assertEqual(normalized.items[0].media.source_url, "");
+                assertEqual(normalized.items[0].media.author_attributions[0].display_name, "摄影者");
+            }
+        },
+        {
             name: "normalizer rejects a plan for another route",
             run() {
                 let error = null;

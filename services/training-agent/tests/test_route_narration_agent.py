@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from agent.narration.agent import _NarrationWorkspace, run_route_narration_agent
+from integrations.google_places import GooglePlacesClient, _normalize_place
 from services.narration.density import narration_density, narration_research_policy
 
 
@@ -42,7 +43,8 @@ class FakeLlm:
                 "title": "屋岛",
                 "summary": "屋岛位于高松一带，是可以俯瞰濑户内海的历史景胜地。",
                 "tts_text": "前方是屋岛，这里以濑户内海景观和历史遗迹闻名。",
-            }]
+            }],
+            "warnings": ["测试来源只支持一条卡片。"],
         })
 
 
@@ -69,6 +71,7 @@ class RepairingFakeLlm(FakeLlm):
                 "sample_id": "sample_2", "content_scope": "route",
                 "source_ids": ["google_place:1"], "title": "区域历史", "summary": "修正后内容。",
             }],
+            "warnings": ["测试来源只支持一条卡片。"],
         })
 
 
@@ -104,6 +107,10 @@ def test_two_hour_density_targets_twenty_four_cards():
     }
 
 
+def test_one_hour_density_does_not_collapse_to_four_cards():
+    assert narration_density(57) == {"minimum": 9, "target": 11, "maximum": 19}
+
+
 def test_route_narration_agent_searches_reads_and_submits_sourced_cards():
     plan = run_route_narration_agent(_request(), places_client=FakePlaces(), client=FakeLlm())
 
@@ -137,6 +144,17 @@ class CountingPlaces:
             "source_id": f"google_place:{kwargs['latitude']}:{kwargs['longitude']}",
             "name": "资料点",
             "summary": "区域资料",
+            "url": "https://maps.google.test/place",
+            "photos": [{
+                "photo_name": "places/place_1/photos/photo_1",
+                "width": 1200,
+                "height": 800,
+                "author_attributions": [{
+                    "display_name": "测试摄影者",
+                    "uri": "https://maps.google.test/author",
+                    "photo_uri": "https://images.google.test/author.jpg",
+                }],
+            }],
         }]
 
 
@@ -206,3 +224,93 @@ def test_place_cards_require_local_source_and_obey_limit_but_route_cards_can_reu
         ("place", "起点地点"),
         ("route", "区域历史"),
     ]
+    assert plan["items"][0]["media"]["photo_name"] == "places/place_1/photos/photo_1"
+    assert "media" not in plan["items"][1]
+
+
+def test_underfilled_plan_gets_one_repair_chance_before_partial_is_accepted():
+    request = _request()
+    workspace = _NarrationWorkspace(request, CountingPlaces(), research_policy={
+        "place_card_maximum": 2,
+        "search_request_maximum": 2,
+        "samples_per_search": 2,
+        "search_concurrency": 2,
+    })
+    searched = workspace.search({"query": "区域历史", "sample_ids": ["sample_1"]})
+    source_id = searched["results"][0]["source_id"]
+    workspace.read({"source_ids": [source_id]})
+    submission = {"items": [{
+        "sample_id": "sample_1", "content_scope": "route", "source_ids": [source_id],
+        "title": "区域历史", "summary": "有来源支持的区域历史。",
+    }]}
+
+    try:
+        workspace.build_plan(submission, density={"minimum": 2, "target": 3, "maximum": 5})
+    except ValueError as exc:
+        assert "at least 2" in str(exc)
+    else:
+        raise AssertionError("underfilled first submission should request repair")
+
+    partial = workspace.build_plan(
+        {**submission, "warnings": ["当前读取来源只支持一条可靠卡片。"]},
+        density={"minimum": 2, "target": 3, "maximum": 5},
+    )
+    assert partial["status"] == "partial"
+    assert len(partial["items"]) == 1
+
+
+def test_google_place_normalizes_photo_metadata_and_attribution():
+    place = _normalize_place({
+        "id": "place_1",
+        "displayName": {"text": "三都景点"},
+        "photos": [{
+            "name": "places/place_1/photos/photo_1",
+            "widthPx": 1600,
+            "heightPx": 900,
+            "authorAttributions": [{
+                "displayName": "摄影者",
+                "uri": "https://maps.google.test/author",
+                "photoUri": "https://images.google.test/avatar.jpg",
+            }],
+        }],
+    })
+
+    assert place["photos"] == [{
+        "photo_name": "places/place_1/photos/photo_1",
+        "width": 1600,
+        "height": 900,
+        "author_attributions": [{
+            "display_name": "摄影者",
+            "uri": "https://maps.google.test/author",
+            "photo_uri": "https://images.google.test/avatar.jpg",
+        }],
+    }]
+
+
+def test_google_place_photo_fetch_is_bounded_and_keeps_key_in_request_params(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        ok = True
+        status_code = 200
+        headers = {"content-type": "image/jpeg; charset=binary"}
+        content = b"photo-bytes"
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return FakeResponse()
+
+    monkeypatch.setattr("integrations.google_places.requests.get", fake_get)
+    client = GooglePlacesClient("server-key", timeout_seconds=7)
+
+    content, content_type = client.get_photo(
+        photo_name="places/place_1/photos/photo_1",
+        max_width=640,
+    )
+
+    assert content == b"photo-bytes"
+    assert content_type == "image/jpeg"
+    assert calls == [(
+        "https://places.googleapis.com/v1/places/place_1/photos/photo_1/media",
+        {"params": {"maxWidthPx": 640, "key": "server-key"}, "timeout": 7},
+    )]

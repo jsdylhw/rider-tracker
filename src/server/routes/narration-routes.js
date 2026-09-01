@@ -4,6 +4,27 @@ import { sendAgentUnavailable } from "../agent-unavailable.js";
 export function createNarrationRoutes({ agentClient }) {
     const router = express.Router();
 
+    router.get("/api/route-narrations/photo", async (req, res) => {
+        try {
+            const name = String(req.query.name || "").trim();
+            const maxWidth = Math.max(160, Math.min(1200, Number(req.query.max_width) || 720));
+            if (!/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/.test(name)) {
+                throw new RequestValidationError("照片引用格式无效。");
+            }
+            const photo = await agentClient.routeNarrationPhoto({ name, maxWidth });
+            res.set({
+                "Content-Type": photo.contentType,
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff"
+            });
+            return res.send(photo.body);
+        } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "route_narration" })) return;
+            const status = error instanceof RequestValidationError ? 400 : (error.statusCode || 502);
+            return res.status(status).json({ ok: false, error: error.message });
+        }
+    });
+
     router.post("/api/route-narrations/prepare", async (req, res) => {
         try {
             const request = normalizeNarrationRequest(req.body);
@@ -24,6 +45,7 @@ function normalizeNarrationRequest(body = {}) {
     const routeName = String(body.route_name || "").trim().slice(0, 200);
     const totalDistance = finiteInRange(body.total_distance_m, 1, 1_000_000, "total_distance_m");
     const duration = finiteInRange(body.estimated_duration_min, 1, 10_000, "estimated_duration_min");
+    const durationEstimation = normalizeDurationEstimation(body.duration_estimation);
     if (!/^route_[a-f0-9]{8}$/.test(fingerprint)) {
         throw new RequestValidationError("route_fingerprint 格式无效。");
     }
@@ -36,6 +58,7 @@ function normalizeNarrationRequest(body = {}) {
         route_name: routeName,
         total_distance_m: totalDistance,
         estimated_duration_min: duration,
+        duration_estimation: durationEstimation,
         locale: body.locale === "en" ? "en" : "zh-CN",
         samples: body.samples.map((sample, index) => ({
             sample_id: `sample_${index + 1}`,
@@ -46,6 +69,21 @@ function normalizeNarrationRequest(body = {}) {
             elevation_m: optionalFinite(sample?.elevation_m),
             grade_percent: optionalFinite(sample?.grade_percent)
         }))
+    };
+}
+
+function normalizeDurationEstimation(value) {
+    if (!value || typeof value !== "object") return null;
+    const supportedMethods = new Set([
+        "route_profile_at_60pct_ftp",
+        "route_duration",
+        "distance_at_24_kph"
+    ]);
+    const method = String(value.method || "");
+    return {
+        method: supportedMethods.has(method) ? method : "distance_at_24_kph",
+        target_power_w: optionalFinite(value.target_power_w),
+        ftp_ratio: optionalFinite(value.ftp_ratio)
     };
 }
 

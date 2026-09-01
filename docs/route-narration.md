@@ -20,7 +20,7 @@
 - `route-narration-service.js` 按 route fingerprint 保存当前骑行会话内的请求和结果；返回页面再进入同一路线不会重复请求，骑行结束后清空。
 - `route-narration-renderer.js` 只通过 `textContent` 写入沉浸街景右侧卡片，支持手工查看上一个/下一个。
 
-路线快照按预计时间约每 4 分钟采样，最多 48 个点。标准密度约每 5 分钟一张卡片：两小时路线目标约 24 张，允许在 20-32 张之间浮动；资料不足时宁可返回更少的 `partial` 计划，也不能编造填充。
+路线快照按预计时间约每 4 分钟采样，最多 48 个点。存在海拔剖面且运动员参数完整时，预计时间复用 Rider 骑行物理模型，按 `60% FTP` 的稳定功率逐段计算；缺少剖面或运动员参数时，才回退到路线显式时长或 `24 km/h`。因此相同距离的持续爬坡会比平路生成更多采样和讲解卡片。标准密度约每 5 分钟一张卡片：约一小时路线目标 11-12 张、最低约 9 张；两小时路线目标约 24 张，允许在 20-32 张之间浮动。资料确实不足时仍可返回更少的 `partial` 计划，但不能编造填充。
 
 卡片数量与外部搜索次数相互独立。讲解分为两类：
 
@@ -60,6 +60,14 @@
       "title": "地点名称",
       "summary": "用于屏幕阅读的介绍。",
       "tts_text": "用于语音播放的短文本。",
+      "media": {
+        "type": "google_place_photo",
+        "photo_name": "places/place_id/photos/photo_id",
+        "width": 1200,
+        "height": 800,
+        "author_attributions": [],
+        "source_url": "https://www.google.com/maps/..."
+      },
       "trigger": {
         "lead_distance_m": 300,
         "expire_distance_m": 500,
@@ -75,7 +83,9 @@
 
 `sample_id` 不进入最终计划，但后端会用它将卡片投影成 `route_distance_m` 和经纬度。`content_scope=route` 允许区域资料安排在任意合适的路线时刻；`content_scope=place` 才要求来源与该采样点一致。
 
-`summary` 是当前权威文字，`tts_text` 是后续语音稿。二者分开，避免为了 TTS 的口语化破坏页面信息。
+`summary` 是当前权威文字，通常为 160-280 个中文字、分成两个短段落，优先解释背景、具体事实及其与沿途景观或骑行体验的关系。讲解卡片允许纵向滚动并保留文本换行。`tts_text` 是独立的 40-90 字口语短稿；二者分开，避免为了 TTS 的简短口语化而压缩页面信息。
+
+`media` 只自动附加到来源和采样点一致的 `place` 卡片；区域级 `route` 卡片不强行配图，避免把单一景点误当成整段路线的代表。Places 搜索只返回短期照片引用，准备讲解时不下载图片；当前卡片出现后，浏览器才通过 Rider 的 `/api/route-narrations/photo` 请求，Node 和 Python 在本地代理 Google Place Photo，因此 Google API Key 不进入浏览器。图片失败时卡片保持纯文字，作者署名随照片显示，照片响应使用 `no-store`，不把可能过期的 photo name 当作持久资源缓存。
 
 ## 请求和缓存边界
 
@@ -84,6 +94,7 @@
 - 用户关闭提示不保存为长期拒绝；下次进入街景仍可选择加载。
 - Node 仅代理请求；Python RouteNarrationAgent 负责搜索、读取来源和结构化提交。
 - 当前搜索 provider 是 Google Places。通用网页搜索仍应通过 provider 接口补充，不能把 Places 描述冒充完整网页研究。
+- Google Places 返回的景点照片只用于补充街景无法呈现的景点视角；右侧卡片按当前项懒加载，不在讲解准备阶段批量下载。
 - 后续再增加后台 job 进度、取消、通用网页搜索，以及本地 TTS、文本哈希音频缓存和下一条预取。
 
 任何准备失败都只在讲解卡片中显示错误和重试入口，不能影响地图、街景、FTMS 或骑行开始。

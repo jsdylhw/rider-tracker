@@ -13,6 +13,7 @@ const DASHBOARD_ELEMENT_IDS = [
     "explorationTurnRightBtn", "streetViewContainer", "svPano1", "svPano2",
     "workoutTargetHudCard", "workoutTargetHudGrid", "workoutTargetChart", "liveWorkoutTargetCard",
     "routeNarrationHudCard", "routeNarrationStatus", "routeNarrationTitle", "routeNarrationSummary",
+    "routeNarrationMedia", "routeNarrationPhoto", "routeNarrationPhotoCredit",
     "routeNarrationPosition", "routeNarrationCloseBtn", "routeNarrationLoadBtn", "routeNarrationRetryBtn",
     "routeNarrationPreviousBtn", "routeNarrationNextBtn"
 ];

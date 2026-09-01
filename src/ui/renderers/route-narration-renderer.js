@@ -6,11 +6,17 @@ export function createRouteNarrationRenderer({
     onNext,
     onRetry
 } = {}) {
+    const failedPhotoNames = new Set();
+    let activePhotoName = "";
     elements.routeNarrationLoadBtn?.addEventListener("click", () => onLoad?.());
     elements.routeNarrationCloseBtn?.addEventListener("click", () => onClose?.());
     elements.routeNarrationPreviousBtn?.addEventListener("click", () => onPrevious?.());
     elements.routeNarrationNextBtn?.addEventListener("click", () => onNext?.());
     elements.routeNarrationRetryBtn?.addEventListener("click", () => onRetry?.());
+    elements.routeNarrationPhoto?.addEventListener("error", () => {
+        if (activePhotoName) failedPhotoNames.add(activePhotoName);
+        if (elements.routeNarrationMedia) elements.routeNarrationMedia.hidden = true;
+    });
 
     function render(state, { visible = false, agentCapabilities = null } = {}) {
         const panel = elements.routeNarrationHudCard;
@@ -22,14 +28,57 @@ export function createRouteNarrationRenderer({
 
         resetActions(elements);
         if (agentCapabilities !== null && agentCapabilities?.capabilities?.route_narration !== true) {
+            hideMedia(elements);
             renderUnavailable(elements, agentCapabilities);
-        } else if (status === "prompt") renderPrompt(elements);
-        else if (status === "loading") renderLoading(elements);
-        else if (status === "failed") renderFailure(elements, state);
-        else renderReady(elements, state);
+        } else if (status === "prompt") {
+            hideMedia(elements);
+            renderPrompt(elements);
+        } else if (status === "loading") {
+            failedPhotoNames.clear();
+            activePhotoName = "";
+            hideMedia(elements);
+            renderLoading(elements);
+        } else if (status === "failed") {
+            hideMedia(elements);
+            renderFailure(elements, state);
+        } else {
+            renderReady(elements, state);
+            const photoName = renderMedia(elements, state?.item?.media, failedPhotoNames, activePhotoName);
+            if (photoName !== null) activePhotoName = photoName;
+        }
     }
 
     return { render };
+}
+
+function renderMedia(elements, media, failedPhotoNames, activePhotoName) {
+    const photoName = media?.type === "google_place_photo" ? media.photo_name : "";
+    if (!photoName || failedPhotoNames.has(photoName)) {
+        hideMedia(elements);
+        return "";
+    }
+    if (elements.routeNarrationMedia) elements.routeNarrationMedia.hidden = false;
+    if (elements.routeNarrationPhoto && photoName !== activePhotoName) {
+        elements.routeNarrationPhoto.alt = "沿途景点照片";
+        elements.routeNarrationPhoto.src = buildPhotoUrl(photoName);
+    }
+    const attribution = media.author_attributions?.find((item) => item.display_name) ?? null;
+    const credit = attribution?.display_name
+        ? `照片：${attribution.display_name}`
+        : "Google Places 照片";
+    const href = attribution?.uri || media.source_url || "";
+    setText(elements.routeNarrationPhotoCredit, credit);
+    if (href) elements.routeNarrationPhotoCredit?.setAttribute("href", href);
+    else elements.routeNarrationPhotoCredit?.removeAttribute?.("href");
+    return photoName;
+}
+
+function hideMedia(elements) {
+    if (elements.routeNarrationMedia) elements.routeNarrationMedia.hidden = true;
+}
+
+function buildPhotoUrl(photoName) {
+    return `/api/route-narrations/photo?name=${encodeURIComponent(photoName)}&max_width=720`;
 }
 
 function renderUnavailable(elements, availability) {

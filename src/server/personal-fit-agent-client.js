@@ -90,6 +90,35 @@ export function createPersonalFitAgentClient({
         }
     }
 
+    async function getBinary(pathname, requestTimeoutMs = timeoutMs) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+        try {
+            const response = await fetchImpl(`${normalizedBaseUrl}${pathname}`, {
+                headers: apiToken ? { "X-API-Token": apiToken } : {},
+                signal: controller.signal
+            });
+            if (!response.ok) {
+                throw responseError(response, await readJson(response));
+            }
+            return {
+                contentType: response.headers?.get?.("content-type") || "image/jpeg",
+                body: Buffer.from(await response.arrayBuffer())
+            };
+        } catch (error) {
+            if (error?.name === "AbortError") {
+                throw createAgentUnavailableError(
+                    `Training Agent 在 ${Math.round(requestTimeoutMs / 1000)} 秒内未响应。`,
+                    { cause: error }
+                );
+            }
+            if (!error?.statusCode) throw createAgentUnavailableError("无法连接本地 Training Agent。", { cause: error });
+            throw error;
+        } finally {
+            clearTimeout(timeout);
+        }
+    }
+
     return {
         health: () => get("/health", healthTimeoutMs),
         chat: (request) => post("/api/chat", request),
@@ -164,7 +193,11 @@ export function createPersonalFitAgentClient({
         ),
         selectRouteCandidate: (request) => post("/api/route-plans/select", request),
         routePlanCommand: (request) => post("/api/route-plans/command", request),
-        prepareRouteNarration: (request) => post("/api/route-narrations/prepare", request)
+        prepareRouteNarration: (request) => post("/api/route-narrations/prepare", request),
+        routeNarrationPhoto: ({ name, maxWidth = 720 }) => getBinary(
+            `/api/route-narrations/photo?name=${encodeURIComponent(name)}&max_width=${encodeURIComponent(maxWidth)}`,
+            30_000
+        )
     };
 }
 

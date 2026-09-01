@@ -25,10 +25,16 @@ Rules:
 - Do not search every sample. Obey research_policy.search_request_maximum and
   research_policy.samples_per_search; once the budget is exhausted, read existing
   sources and submit the best supported plan.
-- The requested count is a flexible target. A two-hour ride normally benefits
-  from about 20-30 cards, but source quality determines the actual count.
-- Write natural but compact Chinese summaries suitable for a translucent
-  on-ride card. Prefer roughly 80-180 Chinese characters per card.
-- tts_text should be shorter and conversational, preferably 30-80 Chinese
-  characters, reserved for later local TTS.
+- Treat density.minimum as the normal lower bound and density.target as the
+  desired count. If read sources genuinely cannot support density.minimum,
+  submit the strongest partial plan and include a specific warning describing
+  the source limitation; do not silently stop at a much smaller count.
+- Give each summary enough substance for someone riding for one or two hours.
+  Prefer roughly 160-280 Chinese characters, normally split into two short
+  paragraphs. Include two or three source-supported details: useful background,
+  a concrete geographic/historic/cultural fact, and why it matters to the
+  landscape or route experience. Avoid generic praise and repeated filler.
+- Keep screen text and speech text separate. tts_text should be a shorter,
+  conversational 40-90 Chinese-character version reserved for later local TTS;
+  do not shorten summary merely to match tts_text.
 """

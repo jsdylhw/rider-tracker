@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from agent.main_agent.loop import run_tool_loop
@@ -39,6 +39,7 @@ from operations.activity.strava import (
     upload_stored_activity_fit,
 )
 from integrations.strava import StravaSink
+from integrations.google_places import GooglePlacesClient
 from services.activity.ingestion import get_activity_detail, ingest_fit_activity
 from services.activity.session_archive import archive_rider_session
 from services.athlete.profile import (
@@ -141,6 +142,7 @@ class RouteNarrationRequest(BaseModel):
     route_name: str = Field(min_length=1, max_length=200)
     total_distance_m: float = Field(gt=0, le=1_000_000)
     estimated_duration_min: float = Field(gt=0, le=10_000)
+    duration_estimation: dict[str, Any] | None = None
     locale: str = Field(default="zh-CN", max_length=16)
     samples: list[RouteNarrationSample] = Field(min_length=2, max_length=64)
 
@@ -506,6 +508,34 @@ def prepare_route_narration_endpoint(
     _require_api_access(http_request)
     _require_llm_capability("route_narration")
     return run_route_narration_agent(request.model_dump())
+
+
+@app.get("/api/route-narrations/photo")
+def route_narration_photo_endpoint(
+    http_request: Request,
+    name: str = Query(min_length=1, max_length=500),
+    max_width: int = Query(default=720, ge=160, le=1200),
+) -> Response:
+    """Proxy one short-lived Google Place Photo without exposing its API key."""
+    _require_api_access(http_request)
+    google = load_config().get("google")
+    api_key = str(google.get("api_key") or "") if isinstance(google, dict) else ""
+    if not api_key:
+        raise HTTPException(status_code=503, detail="google.api_key is not configured")
+    try:
+        content, content_type = GooglePlacesClient(api_key).get_photo(
+            photo_name=name,
+            max_width=max_width,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 def _require_llm_capability(capability: str) -> None:

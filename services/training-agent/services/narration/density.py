@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -17,7 +18,11 @@ def narration_density(duration_minutes: Any) -> dict[str, int]:
         duration = 60.0
     target = max(6, min(36, round(duration / 5)))
     return {
-        "minimum": max(4, target - 4),
+        # Short routes previously collapsed to four cards because target - 4
+        # is disproportionately permissive at the low end. Keep at least 75%
+        # of the duration-derived target while retaining the existing
+        # two-hour range (20-32 cards around a target of 24).
+        "minimum": max(4, target - 4, math.ceil(target * 0.75)),
         "target": target,
         "maximum": min(44, target + 8),
     }

@@ -96,7 +96,10 @@ export function createDashboardRenderer({
     });
     const routeNarrationClient = createRouteNarrationClient();
     const routeNarrationService = createRouteNarrationService({
-        preparePlan: routeNarrationClient.prepare
+        preparePlan: (route, options) => routeNarrationClient.prepare(route, {
+            ...options,
+            rideSettings: boundStore?.getState?.().settings
+        })
     });
     const routeNarrationRenderer = createRouteNarrationRenderer({
         elements,

@@ -46,6 +46,37 @@ export const suite = {
             }
         },
         {
+            name: "proxies route narration photos as binary without exposing credentials",
+            async run() {
+                let request = null;
+                const bytes = new Uint8Array([1, 2, 3]);
+                const client = createPersonalFitAgentClient({
+                    baseUrl: "http://127.0.0.1:8000",
+                    apiToken: "server-only-token",
+                    fetchImpl: async (url, options) => {
+                        request = { url, options };
+                        return {
+                            ok: true,
+                            status: 200,
+                            headers: { get: () => "image/jpeg" },
+                            async arrayBuffer() { return bytes.buffer; }
+                        };
+                    }
+                });
+
+                const photo = await client.routeNarrationPhoto({
+                    name: "places/place_1/photos/photo_1",
+                    maxWidth: 640
+                });
+
+                assertEqual(request.url.includes("server-only-token"), false);
+                assertEqual(request.options.headers["X-API-Token"], "server-only-token");
+                assertEqual(request.url.includes("places%2Fplace_1%2Fphotos%2Fphoto_1"), true);
+                assertEqual(photo.contentType, "image/jpeg");
+                assertEqual(photo.body.length, 3);
+            }
+        },
+        {
             name: "normalizes an unreachable backend as agent_unavailable",
             async run() {
                 const client = createPersonalFitAgentClient({
