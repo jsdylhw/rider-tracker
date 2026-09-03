@@ -4,7 +4,6 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
-import { createActivityStore } from "./activity-store.js";
 import { createActivityRoutes } from "./routes/activity-routes.js";
 import { createRouteLibraryRoutes } from "./routes/route-library-routes.js";
 import { createStravaRoutes } from "./routes/strava-routes.js";
@@ -38,12 +37,10 @@ const PERSONAL_FIT_AGENT_URL = process.env.PERSONAL_FIT_AGENT_URL || "http://127
 const PERSONAL_FIT_AGENT_TOKEN = process.env.PERSONAL_FIT_AGENT_TOKEN || "";
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
 
-const activityStore = createActivityStore();
 const personalFitAgentClient = createPersonalFitAgentClient({
     baseUrl: PERSONAL_FIT_AGENT_URL,
     apiToken: PERSONAL_FIT_AGENT_TOKEN
 });
-activityStore.initialize();
 
 app.use(express.json({ limit: "10mb" }));
 app.use("/api", createLocalApiOriginGuard({
@@ -56,7 +53,6 @@ app.use("/api", createLocalApiOriginGuard({
 app.use("/src", express.static(path.join(PROJECT_ROOT, "src")));
 app.use("/vendor/@garmin/fitsdk", express.static(path.join(PROJECT_ROOT, "node_modules", "@garmin", "fitsdk")));
 app.use(createActivityRoutes({
-    activityStore,
     agentClient: personalFitAgentClient,
     upload,
     fitFileDir: FIT_FILE_DIR,

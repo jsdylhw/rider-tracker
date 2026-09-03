@@ -48,7 +48,6 @@ import { suite as pipChartsSuite } from "./unit/pip-charts.test.js";
 import { suite as pipElevationChartSuite } from "./unit/pip-elevation-chart.test.js";
 import { suite as pipPreferencesSuite } from "./unit/pip-preferences.test.js";
 import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js";
-import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
 import { suite as routeLibraryRendererSuite } from "./unit/route-library-renderer.test.js";
 import { suite as routeLibraryRoutesSuite } from "./unit/route-library-routes.test.js";
 import { suite as activityLibraryRoutesSuite } from "./unit/activity-library-routes.test.js";
@@ -58,6 +57,7 @@ import { suite as activityDetailRendererSuite } from "./unit/activity-detail-ren
 import { suite as activityDetailViewSuite } from "./unit/activity-detail-view.test.js";
 import { suite as activityRouteMapControllerSuite } from "./unit/activity-route-map-controller.test.js";
 import { suite as fitBeaconClientSuite } from "./unit/fit-beacon-client.test.js";
+import { suite as serverArchitectureSuite } from "./unit/server-architecture.test.js";
 import { suite as incrementalPowerMetricsSuite } from "./unit/incremental-power-metrics.test.js";
 import { suite as oauthStateStoreSuite } from "./unit/oauth-state-store.test.js";
 import { suite as localApiSecuritySuite } from "./unit/local-api-security.test.js";
@@ -129,7 +129,6 @@ const suites = [
     pipElevationChartSuite,
     pipPreferencesSuite,
     rideSeriesChartSuite,
-    activityStoreSuite,
     routeLibraryRendererSuite,
     routeLibraryRoutesSuite,
     activityLibraryRoutesSuite,
@@ -139,6 +138,7 @@ const suites = [
     activityDetailViewSuite,
     activityRouteMapControllerSuite,
     fitBeaconClientSuite,
+    serverArchitectureSuite,
     incrementalPowerMetricsSuite,
     oauthStateStoreSuite,
     localApiSecuritySuite,

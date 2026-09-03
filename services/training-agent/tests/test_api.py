@@ -346,6 +346,11 @@ def test_ingest_fit_uses_deterministic_managed_file_service(tmp_path, monkeypatc
         "activity_id": "fit-manual",
         "source": "fit-import",
         "max_points": 500,
+        "route_link": {
+            "saved_route_id": "route-1",
+            "start_distance_meters": 3200,
+            "end_distance_meters": 15540,
+        },
     })
 
     assert response.status_code == 200
@@ -355,6 +360,11 @@ def test_ingest_fit_uses_deterministic_managed_file_service(tmp_path, monkeypatc
         "source_activity_id": None,
         "name": None,
         "max_points": 500,
+        "route_link": {
+            "saved_route_id": "route-1",
+            "start_distance_meters": 3200.0,
+            "end_distance_meters": 15540.0,
+        },
     })]
 
     outside = tmp_path / "outside.fit"
@@ -365,6 +375,18 @@ def test_ingest_fit_uses_deterministic_managed_file_service(tmp_path, monkeypatc
     })
     assert denied.status_code == 403
     assert len(calls) == 1
+
+    def raise_busy(*_args, **_kwargs):
+        raise api.ActivityStoreBusy("Activity library is busy. Retry the operation.")
+
+    monkeypatch.setattr(api, "ingest_fit_activity", raise_busy)
+    busy = client.post("/api/activities/ingest-fit", json={
+        "path": "runtime-data/imported-fit/manual.fit",
+        "activity_id": "fit-manual",
+    })
+    assert busy.status_code == 503
+    assert busy.json()["detail"]["code"] == "activity_store_busy"
+    assert busy.json()["detail"]["retryable"] is True
 
 
 def test_activity_detail_endpoint_returns_cached_contract(tmp_path, monkeypatch):

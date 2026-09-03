@@ -6,7 +6,7 @@ import { normalizeFileToken, normalizeText } from "../shared/http-utils.js";
 import { createAgentUnavailableError, sendAgentUnavailable } from "../agent-unavailable.js";
 import { DEFAULT_ACTIVITY_LIBRARY_TIMEOUT_MS } from "../personal-fit-agent-client.js";
 
-export function createActivityRoutes({ activityStore, agentClient, upload, fitFileDir, projectRoot }) {
+export function createActivityRoutes({ agentClient, upload, fitFileDir, projectRoot }) {
     const router = express.Router();
     const libraryHandlers = createActivityLibraryHandlers({ agentClient });
 
@@ -35,25 +35,20 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
                 path: savedFit.relativePath,
                 activity_id: activityId,
                 source: "fit-import",
-                name: normalizeText(req.body?.name) || path.basename(uploadedFile.originalname || activityId)
+                name: normalizeText(req.body?.name) || path.basename(uploadedFile.originalname || activityId),
+                route_link: routeLinkFromSession(session)
             });
-            const linkedActivity = attachActivityRoute(activityStore, { id: activityId }, session);
             const savedActivity = canonicalDetailToRiderActivity(ingestion.detail, {
-                ...(linkedActivity ?? {}),
+                ...(ingestion.rider_activity ?? {}),
                 rawSession: session
             });
 
             return res.json({
                 ok: true,
-                dbPath: activityStore.filePath,
                 activity: savedActivity
             });
         } catch (err) {
-            if (sendAgentUnavailable(res, err, { capability: "fit_ingestion" })) return;
-            return res.status(400).json({
-                ok: false,
-                error: err.message
-            });
+            return sendActivityWriteError(res, err, { fallbackStatus: 400 });
         }
     });
 
@@ -62,7 +57,7 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
     router.post("/api/activities/:activityId/fit", upload.single("file"), async (req, res) => {
         try {
             const activityId = normalizeText(req.params.activityId);
-            const activity = activityStore.getActivity(activityId);
+            const activity = (await agentClient.getActivity(activityId)).activity;
             const uploadedFile = req.file;
 
             if (!activity) {
@@ -85,18 +80,16 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
                 fitFileDir,
                 projectRoot
             });
-            activityStore.updateActivityFitFile(activityId, {
-                fitFilePath: savedFit.relativePath,
-                fitFileSizeBytes: uploadedFile.buffer.length
-            });
             const ingestion = await agentClient.ingestFit({
                 path: savedFit.relativePath,
                 activity_id: activityId,
                 source: activity.source || "rider-tracker",
-                source_activity_id: activity.sourceActivityId || null,
                 name: activity.name
             });
-            const updatedActivity = canonicalDetailToRiderActivity(ingestion.detail, activity);
+            const updatedActivity = canonicalDetailToRiderActivity(ingestion.detail, {
+                ...activity,
+                ...(ingestion.rider_activity ?? {})
+            });
 
             return res.json({
                 ok: true,
@@ -107,11 +100,7 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
                 }
             });
         } catch (err) {
-            if (sendAgentUnavailable(res, err, { capability: "fit_ingestion" })) return;
-            return res.status(500).json({
-                ok: false,
-                error: err.message
-            });
+            return sendActivityWriteError(res, err, { fallbackStatus: 500 });
         }
     });
 
@@ -144,29 +133,24 @@ export function createActivityRoutes({ activityStore, agentClient, upload, fitFi
                 fitFileDir,
                 projectRoot
             });
-            activityStore.updateActivityFitFile(activity.id, {
-                fitFilePath: savedFit.relativePath,
-                fitFileSizeBytes: uploadedFile.buffer.length
-            });
             const ingestion = await agentClient.ingestFit({
                 path: savedFit.relativePath,
                 activity_id: activity.id,
                 source: activity.source || "beacon",
-                name: activity.name
+                name: activity.name,
+                route_link: routeLinkFromSession(session)
             });
-            activity = attachActivityRoute(activityStore, activity, session);
-            const savedActivity = canonicalDetailToRiderActivity(ingestion.detail, activity);
+            const savedActivity = canonicalDetailToRiderActivity(ingestion.detail, {
+                ...activity,
+                ...(ingestion.rider_activity ?? {})
+            });
 
             return res.json({
                 ok: true,
                 activity: savedActivity
             });
         } catch (err) {
-            if (sendAgentUnavailable(res, err, { capability: "fit_ingestion" })) return;
-            return res.status(400).json({
-                ok: false,
-                error: err.message
-            });
+            return sendActivityWriteError(res, err, { fallbackStatus: 400 });
         }
     });
 
@@ -195,6 +179,16 @@ export function createRiderSessionArchiveHandler({ agentClient }) {
             });
         }
     };
+}
+
+export function sendActivityWriteError(res, error, { fallbackStatus }) {
+    if (sendAgentUnavailable(res, error, { capability: "fit_ingestion" })) return res;
+    return res.status(Number(error?.statusCode) || fallbackStatus).json({
+        ok: false,
+        error: error.message,
+        ...(error?.code ? { code: error.code } : {}),
+        ...(typeof error?.retryable === "boolean" ? { retryable: error.retryable } : {})
+    });
 }
 
 export function createActivityLibraryHandlers({
@@ -281,20 +275,20 @@ function parseSessionField(value) {
     }
 }
 
-function attachActivityRoute(activityStore, activity, session) {
+export function routeLinkFromSession(session) {
     const route = session?.route;
-    if (!activity?.id || !route?.savedRouteId) return activity;
+    if (!route?.savedRouteId) return null;
     const startDistanceMeters = finiteOrZero(
         route.continuation?.startDistanceMeters ?? route.savedRouteResumeDistanceMeters
     );
     const sessionDistanceMeters = finiteOrZero(
         session?.summary?.metrics?.ride?.distanceKm ?? session?.summary?.distanceKm
     ) * 1000;
-    return activityStore.updateActivityRoute(activity.id, {
-        savedRouteId: route.savedRouteId,
-        routeStartDistanceMeters: startDistanceMeters,
-        routeEndDistanceMeters: startDistanceMeters + sessionDistanceMeters
-    });
+    return {
+        saved_route_id: route.savedRouteId,
+        start_distance_meters: startDistanceMeters,
+        end_distance_meters: startDistanceMeters + sessionDistanceMeters
+    };
 }
 
 function finiteOrZero(value) {

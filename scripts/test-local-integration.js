@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolvePythonExecutable, trainingAgentRoot } from "./python-runtime.js";
+import { exportSessionAsFit } from "../src/adapters/export/fit-exporter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -83,7 +84,7 @@ try {
     if (!proxyHealth.ok || proxyHealth.result?.status !== "ok") {
         throw new Error(`Unexpected Agent proxy health payload: ${JSON.stringify(proxyHealth)}`);
     }
-    console.log("[integration] Unified Rider page, Python activity/route stores and session archive, atomic route confirmation, Agent proxy, and removed legacy UI checks passed.");
+    console.log("[integration] Unified Rider page, Python activity/route stores, atomic FIT/session/route persistence, Agent proxy, and removed legacy UI checks passed.");
 } finally {
     for (const child of children) child.kill();
     await rm(tempRoot, { recursive: true, force: true });
@@ -141,28 +142,49 @@ async function assertRouteLibraryRoundTrip() {
     const routeId = created.route?.id;
     if (!created.ok || !routeId) throw new Error(`Route creation failed: ${JSON.stringify(created)}`);
 
+    const archivedSession = {
+        id: "integration-session-activity",
+        createdAt: "2026-08-29T09:00:00Z",
+        finishedAt: "2026-08-29T09:20:00Z",
+        route: {
+            savedRouteId: routeId,
+            continuation: { startDistanceMeters: 250 }
+        },
+        summary: { metrics: { ride: { elapsedSeconds: 1200, distanceKm: 4 } } },
+        records: [
+            { elapsedSeconds: 0, distanceKm: 0, power: 150, cadence: 80, heartRate: 130 },
+            { elapsedSeconds: 1200, distanceKm: 4, power: 175, cadence: 85, heartRate: 145 }
+        ]
+    };
     const archived = await requestJson(`${riderUrl}/api/activities/rider-session`, {
         method: "POST",
         body: {
             name: "Integration fallback ride",
             sportType: "Ride",
-            session: {
-                id: "integration-session-activity",
-                createdAt: "2026-08-29T09:00:00Z",
-                finishedAt: "2026-08-29T09:20:00Z",
-                route: {
-                    savedRouteId: routeId,
-                    continuation: { startDistanceMeters: 250 }
-                },
-                summary: { metrics: { ride: { elapsedSeconds: 1200, distanceKm: 4 } } },
-                records: []
-            }
+            session: archivedSession
         }
     });
     if (archived.activity?.savedRouteId !== routeId
         || archived.activity?.routeStartDistanceMeters !== 250
         || archived.activity?.routeEndDistanceMeters !== 4250) {
         throw new Error(`Rider session archive failed: ${JSON.stringify(archived)}`);
+    }
+
+    const fitBytes = await exportSessionAsFit(archivedSession, {
+        activityName: "Integration fallback ride"
+    }, { markVirtualActivity: false });
+    const form = new FormData();
+    form.append("file", new Blob([fitBytes], { type: "application/octet-stream" }), "integration.fit");
+    const fitResponse = await fetch(
+        `${riderUrl}/api/activities/${encodeURIComponent(archivedSession.id)}/fit`,
+        { method: "POST", body: form }
+    );
+    const fitActivity = await fitResponse.json();
+    if (!fitResponse.ok
+        || !fitActivity.activity?.fitFilePath
+        || fitActivity.activity?.savedRouteId !== routeId
+        || fitActivity.activity?.routeEndDistanceMeters !== 4250) {
+        throw new Error(`FIT ingestion and route preservation failed: ${JSON.stringify(fitActivity)}`);
     }
 
     const renamed = await requestJson(`${riderUrl}/api/routes/${encodeURIComponent(routeId)}`, {

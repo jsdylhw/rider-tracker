@@ -2,13 +2,53 @@ import { createAgentUnavailableError } from "../../src/server/agent-unavailable.
 import {
     canonicalDetailToRiderActivity,
     createActivityLibraryHandlers,
-    createRiderSessionArchiveHandler
+    createRiderSessionArchiveHandler,
+    routeLinkFromSession,
+    sendActivityWriteError
 } from "../../src/server/routes/activity-routes.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
     name: "activity-library-routes",
     tests: [
+        {
+            name: "preserves Python FIT ingestion status and retry metadata",
+            run() {
+                const busyError = new Error("Activity library is busy. Retry the operation.");
+                busyError.statusCode = 503;
+                busyError.code = "activity_store_busy";
+                busyError.retryable = true;
+                const busy = response();
+                sendActivityWriteError(busy, busyError, { fallbackStatus: 400 });
+
+                assertEqual(busy.statusCode, 503);
+                assertEqual(busy.payload.code, "activity_store_busy");
+                assertEqual(busy.payload.retryable, true);
+
+                const missingError = new Error("Activity not found.");
+                missingError.statusCode = 404;
+                const missing = response();
+                sendActivityWriteError(missing, missingError, { fallbackStatus: 500 });
+                assertEqual(missing.statusCode, 404);
+            }
+        },
+        {
+            name: "maps compact Rider route progress into the Python ingestion contract",
+            run() {
+                const routeLink = routeLinkFromSession({
+                    route: {
+                        savedRouteId: "route-1",
+                        continuation: { startDistanceMeters: 3200 }
+                    },
+                    summary: { metrics: { ride: { distanceKm: 12.34 } } }
+                });
+
+                assertEqual(routeLink.saved_route_id, "route-1");
+                assertEqual(routeLink.start_distance_meters, 3200);
+                assertEqual(routeLink.end_distance_meters, 15540);
+                assertEqual(routeLinkFromSession({ route: { source: "exploration" } }), null);
+            }
+        },
         {
             name: "delegates Rider session archive to Python without a Node store",
             async run() {

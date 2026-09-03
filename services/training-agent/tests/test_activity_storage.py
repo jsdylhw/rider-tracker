@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import time
 
 import pytest
@@ -64,6 +65,68 @@ def test_activity_store_owns_catalogue_and_current_report(tmp_path):
     assert activity["has_summary"] is True
     assert activity["summary_schema_version"] == "llm_fit_file_analysis.v2"
     assert activity["estimated_tss"] == 20
+
+
+def test_fit_ingestion_rolls_back_activity_and_facts_when_artifact_write_fails(tmp_path):
+    database = tmp_path / "activities.db"
+    fit = tmp_path / "failed.fit"
+    fit.write_bytes(b"fit-data")
+    store = ActivityStore(database)
+    entry = entry_from_fit_summary(
+        fit,
+        {"sport_type": "cycling", "start_time_local": "2026-08-13T08:00:00"},
+        activity_key="failed-fit",
+    )
+    metrics = {"schema_version": "activity_metrics.v2"}
+    features = {"schema_version": "activity_features.v1", "extractor_version": "test"}
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.save_fit_ingestion(
+            entry,
+            metrics=metrics,
+            features=features,
+            artifact_type=None,
+            artifact_schema_version="activity_detail.v1",
+            artifact_input_hash="fit-hash",
+            artifact_payload={},
+        )
+
+    assert store.get_activity("failed-fit") is None
+    assert store.get_facts("failed-fit") is None
+    assert store.get_artifact("failed-fit", "activity_detail") is None
+
+
+def test_fit_ingestion_lock_failure_does_not_commit_late(tmp_path):
+    database = tmp_path / "activities.db"
+    fit = tmp_path / "locked.fit"
+    fit.write_bytes(b"fit-data")
+    store = ActivityStore(database)
+    entry = entry_from_fit_summary(
+        fit,
+        {"sport_type": "cycling", "start_time_local": "2026-08-13T08:00:00"},
+        activity_key="locked-fit",
+    )
+    locker = connect_database(database)
+    locker.execute("BEGIN IMMEDIATE")
+    started = time.monotonic()
+    try:
+        with pytest.raises(ActivityStoreBusy):
+            store.save_fit_ingestion(
+                entry,
+                metrics={"schema_version": "activity_metrics.v2"},
+                features={"schema_version": "activity_features.v1", "extractor_version": "test"},
+                artifact_type="activity_detail",
+                artifact_schema_version="activity_detail.v1",
+                artifact_input_hash="fit-hash",
+                artifact_payload={},
+            )
+    finally:
+        elapsed = time.monotonic() - started
+        locker.rollback()
+        locker.close()
+
+    assert elapsed < 2
+    assert store.get_activity("locked-fit") is None
 
 
 def test_report_store_rejects_unindexed_and_legacy_documents(tmp_path):

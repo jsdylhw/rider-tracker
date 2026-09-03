@@ -43,23 +43,60 @@ def upsert_activity_from_fit(
     """解析 FIT 并写入/更新活动索引."""
     fit = resolve_project_path(fit_path)
     parsed_fit = parsed if isinstance(parsed, dict) else parse_fit(fit)
+    entry, metrics, features = prepare_activity_from_fit(
+        fit,
+        parsed=parsed_fit,
+        activity_key=activity_key,
+        source=source,
+        source_activity_id=source_activity_id,
+        name=name,
+        path=path,
+    )
+    store = ActivityStore(path)
+    stored = store.upsert_activity(entry)
+    activity_key = str(stored.get("activity_key") or entry["activity_key"])
+    facts = store.save_facts(activity_key, metrics=metrics, features=features)
+    return {**stored, "facts_schema_version": facts["schema_version"], "facts_revision": facts["revision"]}
+
+
+def prepare_activity_from_fit(
+    fit_path: str | Path,
+    *,
+    parsed: dict[str, Any],
+    activity_key: str | None = None,
+    source: str | None = None,
+    source_activity_id: str | None = None,
+    name: str | None = None,
+    path: str | Path | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Build the deterministic activity/facts bundle without writing SQLite.
+
+    FIT parsing and metric extraction are intentionally completed before the
+    short ingestion transaction acquires a write lock.
+    """
+    fit = resolve_project_path(fit_path)
+    parsed_fit = parsed
     summary = parsed_fit.get("summary") or {}
     store = ActivityStore(path)
     stored_fit_path = project_relative_or_absolute(fit)
-    existing = store.find_activity_identity(
+    existing_by_identity = store.find_activity_identity(
         fit_path=stored_fit_path,
-        source=source,
+        source=source or None,
         source_activity_id=source_activity_id,
     )
-    stable_activity_key = activity_key or (existing or {}).get("activity_key")
+    existing_by_key = store.get_activity(str(activity_key)) if activity_key else None
+    existing = existing_by_key or existing_by_identity or {}
+    stable_activity_key = activity_key or existing.get("activity_key")
+    resolved_source = str(source or existing.get("source") or "manual")
+    resolved_source_activity_id = source_activity_id or existing.get("source_activity_id")
     entry = entry_from_fit_summary(
         fit,
         summary,
-        source=source,
-        source_activity_id=source_activity_id,
+        source=resolved_source,
+        source_activity_id=resolved_source_activity_id,
         activity_key=str(stable_activity_key) if stable_activity_key else None,
     )
-    entry["name"] = str(name or (existing or {}).get("name") or entry["file_name"])
+    entry["name"] = str(name or existing.get("name") or entry["file_name"])
     entry["has_gps_track"] = any(
         row.get("position_lat") is not None and row.get("position_long") is not None
         for row in parsed_fit.get("records") or []
@@ -90,10 +127,7 @@ def upsert_activity_from_fit(
         "average_hr": heart_rate.get("avg_hr_bpm"),
         "estimated_tss": power_stress.get("tss") if isinstance(power_stress, dict) else None,
     }))
-    stored = store.upsert_activity(entry)
-    activity_key = str(stored.get("activity_key") or entry["activity_key"])
-    facts = store.save_facts(activity_key, metrics=metrics, features=features)
-    return {**stored, "facts_schema_version": facts["schema_version"], "facts_revision": facts["revision"]}
+    return entry, metrics, features
 
 
 def persist_activity_facts(

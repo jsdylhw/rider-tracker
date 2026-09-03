@@ -53,13 +53,20 @@ app = FastAPI(title="Personal FIT Agent API")
 chat_sessions = ChatSessionStore()
 
 
+class FitRouteLinkRequest(BaseModel):
+    saved_route_id: str = Field(min_length=1, max_length=128)
+    start_distance_meters: float = Field(ge=0)
+    end_distance_meters: float = Field(ge=0)
+
+
 class IngestFitRequest(BaseModel):
     path: str
     activity_id: str | None = Field(default=None, min_length=1, max_length=128)
-    source: str = Field(default="manual", min_length=1, max_length=64)
+    source: str | None = Field(default=None, min_length=1, max_length=64)
     source_activity_id: str | None = Field(default=None, max_length=128)
     name: str | None = Field(default=None, max_length=200)
     max_points: int = Field(default=700, ge=2, le=2000)
+    route_link: FitRouteLinkRequest | None = None
 
 
 class RiderSessionArchiveRequest(BaseModel):
@@ -191,14 +198,24 @@ def ingest_fit_endpoint(request: IngestFitRequest, http_request: Request) -> dic
         suffix=".fit",
         label="FIT file",
     )
-    return ingest_fit_activity(
-        fit_path,
-        activity_key=request.activity_id,
-        source=request.source,
-        source_activity_id=request.source_activity_id,
-        name=request.name,
-        max_points=request.max_points,
-    )
+    try:
+        return ingest_fit_activity(
+            fit_path,
+            activity_key=request.activity_id,
+            source=request.source,
+            source_activity_id=request.source_activity_id,
+            name=request.name,
+            max_points=request.max_points,
+            route_link=request.route_link.model_dump() if request.route_link else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ActivityStoreBusy as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "activity_store_busy",
+            "message": str(exc),
+            "retryable": True,
+        }) from exc
 
 
 @app.post("/api/activities/rider-session")

@@ -338,3 +338,37 @@ Node `activity-store.js` 删除 session normalization、稳定 ID 和 `saveRider
 - 正常双进程经 Rider 公开 URL 验证 session 与路线距离窗口一次归档：通过；
 - Python 启动失败和再次掉线时 session archive 结构化降级：通过；
 - `git diff --check`：通过。
+
+### 2026-09-03：阶段 5E FIT ingestion 与活动路线关联切换到 Python owner
+
+阶段 5E 删除了生产 Node 对活动 SQLite 的最后一组直接读写。浏览器仍通过 Rider 的 multipart 接口上传
+FIT，Node 暂时继续把文件写入统一 `FIT_FILE_DIR`，随后只把受管相对路径和活动上下文转发给 Python。
+让 Python 直接接收 multipart 和托管文件属于阶段 7 的边缘 Web API 迁移，不在本切片提前实施。
+
+Python 现在先在事务外完成 FIT 解析、指标与展示 artifact 构建，再通过一个短 `BEGIN IMMEDIATE` 事务
+原子写入活动目录、FIT 文件 metadata、确定性 facts、`activity_detail` artifact 和可选的 SavedRoute 距离
+窗口。显式传入路线关联时由该事务更新；省略时保留 Rider session 兜底归档已经写入的路线信息。相同
+FIT 重试维持稳定 activity ID 和 facts revision，也不会清除既有报告、raw session 或路线关联。
+`fit_ingestion.v1.activity` 继续返回既有的 `facts_schema_version` 与 `facts_revision`，避免事务重构缩减
+已发布响应契约。
+
+三条公开路径保持不变：新 FIT 导入、给既有活动补 FIT、页面关闭时的 `fit-beacon`。其中既有活动查询也
+改为调用 Python 活动目录，不再从 Node SQLite 读取。Python 的 404、`activity_store_busy` 和
+`retryable` 元数据由 Node BFF 原样透传；后端不可用时继续返回能力级 `fit_ingestion` 降级，不恢复 Node
+数据库 fallback。
+
+收尾删除 `src/server/activity-store.js` 及其旧仓储测试，并增加架构回归，禁止生产 `src/server` 重新
+引入 `node:sqlite`。数据库 preflight 脚本仍可只读检查 Python 管理的 schema；它不承担业务读写，因此
+不属于生产持久化 owner。
+
+本切片没有处理 `activity_detail.v1` 重复保存 metrics，也没有实现路线库完整骑行生命周期；两项继续
+由已知问题文档跟踪。运动员档案的旧 `user-profile.json` 启动兼容仍留给阶段 5F。
+
+验收结果：
+
+- Rider JavaScript：`376/376`；
+- Python Training Backend：`675/675`；
+- FIT ingestion、事务回滚、锁超时、幂等路线保留和 FastAPI 协议定向测试：通过；
+- 正常双进程经 Rider 公开 URL 验证 session 归档、真实 FIT 编码/上传/解析及路线窗口保留：通过；
+- Python 后端启动失败、恢复和再次掉线的结构化降级集成：通过；
+- Python `compileall`、生产 Node 无 `node:sqlite` 架构检查及 `git diff --check`：通过。

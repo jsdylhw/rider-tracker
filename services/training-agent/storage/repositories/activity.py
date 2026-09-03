@@ -206,6 +206,68 @@ class ActivityStore:
             raise
         return stored
 
+    def save_fit_ingestion(
+        self,
+        entry: dict[str, Any],
+        *,
+        metrics: dict[str, Any],
+        features: dict[str, Any],
+        artifact_type: str,
+        artifact_schema_version: str,
+        artifact_input_hash: str,
+        artifact_payload: dict[str, Any],
+        route_link: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Atomically persist one parsed FIT and all deterministic derivatives.
+
+        FIT decoding happens before this method.  The short write transaction
+        owns the activity row, file metadata, facts, UI artifact and optional
+        saved-route link so a failed ingestion cannot expose a partial result.
+        Omitting ``route_link`` preserves any association created by the Rider
+        session fallback.
+        """
+        _validate_fit_ingestion(entry, metrics=metrics, features=features)
+        try:
+            with connect_database(
+                self.path,
+                busy_timeout_ms=ACTIVITY_MUTATION_BUSY_TIMEOUT_MS,
+            ) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                raw, rider_activity = _upsert_fit_activity_row(
+                    connection, entry, route_link=route_link,
+                )
+                facts = _upsert_facts_row(
+                    connection,
+                    str(entry["activity_key"]),
+                    metrics=metrics,
+                    features=features,
+                )
+                _upsert_artifact_row(
+                    connection,
+                    str(entry["activity_key"]),
+                    artifact_type=artifact_type,
+                    schema_version=artifact_schema_version,
+                    input_hash=artifact_input_hash,
+                    payload=artifact_payload,
+                )
+        except sqlite3.OperationalError as exc:
+            _raise_activity_store_busy(exc)
+            raise
+        except sqlite3.IntegrityError as exc:
+            if "FOREIGN KEY" in str(exc).upper():
+                raise ValueError("route_link.saved_route_id does not exist") from exc
+            raise
+
+        return {
+            "activity": {
+                **raw,
+                "facts_schema_version": facts["schema_version"],
+                "facts_revision": facts["revision"],
+            },
+            "rider_activity": rider_activity,
+            "facts": facts,
+        }
+
     def rename_rider_activity(self, activity_id: str, name: Any) -> dict[str, Any]:
         normalized_id = str(activity_id or "").strip()
         if not isinstance(name, str):
@@ -439,53 +501,13 @@ class ActivityStore:
         if features.get("schema_version") != ACTIVITY_FEATURES_V1:
             raise ValueError(f"features must use {ACTIVITY_FEATURES_V1}")
 
-        now = _now()
-        extractor_version = str(features.get("extractor_version") or "unknown")
-        canonical = json.dumps(
-            {"metrics": metrics, "features": features},
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        )
-        input_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         with connect_database(self.path) as connection:
-            existing = connection.execute(
-                "SELECT revision, input_hash, created_at FROM activity_facts WHERE activity_id = ?",
-                (activity_id,),
-            ).fetchone()
-            revision = int(existing["revision"] or 0) if existing else 0
-            if not existing or str(existing["input_hash"] or "") != input_hash:
-                revision += 1
-            created_at = str(existing["created_at"]) if existing else now
-            connection.execute(
-                """
-                INSERT INTO activity_facts (
-                    activity_id, schema_version, extractor_version, metrics_json,
-                    features_json, input_hash, revision, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(activity_id) DO UPDATE SET
-                    schema_version = excluded.schema_version,
-                    extractor_version = excluded.extractor_version,
-                    metrics_json = excluded.metrics_json,
-                    features_json = excluded.features_json,
-                    input_hash = excluded.input_hash,
-                    revision = excluded.revision,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    activity_id,
-                    str(features["schema_version"]),
-                    extractor_version,
-                    json.dumps(metrics, ensure_ascii=False, default=str),
-                    json.dumps(features, ensure_ascii=False, default=str),
-                    input_hash,
-                    revision,
-                    created_at,
-                    now,
-                ),
+            return _upsert_facts_row(
+                connection,
+                activity_id,
+                metrics=metrics,
+                features=features,
             )
-        return {"activity_id": activity_id, "revision": revision, "schema_version": features["schema_version"]}
 
     def get_facts(self, activity_id: str) -> dict[str, Any] | None:
         """Read structured import-time facts for one immutable activity."""
@@ -704,39 +726,15 @@ class ActivityStore:
         input_hash: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        now = _now()
         with connect_database(self.path) as connection:
-            existing = connection.execute(
-                "SELECT created_at FROM activity_artifacts WHERE activity_id = ? AND artifact_type = ?",
-                (activity_key, artifact_type),
-            ).fetchone()
-            created_at = str(existing["created_at"]) if existing else now
-            connection.execute(
-                """
-                INSERT INTO activity_artifacts (
-                    activity_id, artifact_type, schema_version, input_hash,
-                    payload_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(activity_id, artifact_type) DO UPDATE SET
-                    schema_version = excluded.schema_version,
-                    input_hash = excluded.input_hash,
-                    payload_json = excluded.payload_json,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    activity_key, artifact_type, schema_version, input_hash,
-                    json.dumps(payload, ensure_ascii=False, default=str), created_at, now,
-                ),
+            return _upsert_artifact_row(
+                connection,
+                activity_key,
+                artifact_type=artifact_type,
+                schema_version=schema_version,
+                input_hash=input_hash,
+                payload=payload,
             )
-        return {
-            "activity_key": activity_key,
-            "artifact_type": artifact_type,
-            "schema_version": schema_version,
-            "input_hash": input_hash,
-            "payload": payload,
-            "created_at": created_at,
-            "updated_at": now,
-        }
 
     def get_artifact(self, activity_key: str, artifact_type: str) -> dict[str, Any] | None:
         with connect_database(self.path) as connection:
@@ -755,6 +753,242 @@ class ActivityStore:
             "created_at": str(row["created_at"]),
             "updated_at": str(row["updated_at"]),
         }
+
+
+def _validate_fit_ingestion(
+    entry: dict[str, Any],
+    *,
+    metrics: dict[str, Any],
+    features: dict[str, Any],
+) -> None:
+    if not str(entry.get("activity_key") or "").strip() or not str(entry.get("fit_path") or "").strip():
+        raise ValueError("activity_key and fit_path are required")
+    if metrics.get("schema_version") != ACTIVITY_METRICS_V2:
+        raise ValueError(f"metrics must use {ACTIVITY_METRICS_V2}")
+    if features.get("schema_version") != ACTIVITY_FEATURES_V1:
+        raise ValueError(f"features must use {ACTIVITY_FEATURES_V1}")
+
+
+def _upsert_fit_activity_row(
+    connection: sqlite3.Connection,
+    entry: dict[str, Any],
+    *,
+    route_link: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    activity_id = str(entry["activity_key"]).strip()
+    fit_path = str(entry["fit_path"]).strip()
+    source = str(entry.get("source") or "manual")
+    source_activity_id = _text(entry.get("source_activity_id"))
+    if source_activity_id:
+        stale_rows = connection.execute(
+            """
+            SELECT id FROM activities
+            WHERE id <> ? AND (
+                fit_file_path = ? OR (source = ? AND source_activity_id = ?)
+            )
+            """,
+            (activity_id, fit_path, source, source_activity_id),
+        ).fetchall()
+    else:
+        stale_rows = connection.execute(
+            "SELECT id FROM activities WHERE fit_file_path = ? AND id <> ?",
+            (fit_path, activity_id),
+        ).fetchall()
+    for stale in stale_rows:
+        connection.execute("DELETE FROM activities WHERE id = ?", (str(stale["id"]),))
+
+    now = _now()
+    existing = connection.execute(
+        "SELECT raw_json, created_at FROM activities WHERE id = ?",
+        (activity_id,),
+    ).fetchone()
+    raw = _json_object(existing["raw_json"] if existing else None)
+    raw.update({key: value for key, value in entry.items() if value is not None})
+    for obsolete in ("summary_path", "training_load"):
+        raw.pop(obsolete, None)
+    values = _activity_values(raw, activity_id=activity_id, fit_path=fit_path, now=now)
+    normalized_route = _normalize_fit_route_link(route_link)
+    if normalized_route["replace_route_link"]:
+        saved_route = connection.execute(
+            "SELECT 1 FROM saved_routes WHERE id = ? LIMIT 1",
+            (normalized_route["saved_route_id"],),
+        ).fetchone()
+        if saved_route is None:
+            raise ValueError("route_link.saved_route_id does not exist")
+    values.update(normalized_route)
+    created_at = str(existing["created_at"]) if existing else now
+    connection.execute(
+        """
+        INSERT INTO activities (
+            id, source, source_activity_id, sport_type, sub_sport, name,
+            started_at, finished_at, elapsed_seconds, distance_km,
+            ascent_meters, average_power, normalized_power, average_hr,
+            estimated_tss, has_gps_track, fit_file_path,
+            fit_file_size_bytes, fit_file_created_at, strava_activity_id,
+            raw_json, saved_route_id, route_start_distance_meters,
+            route_end_distance_meters, created_at, updated_at
+        ) VALUES (
+            :id, :source, :source_activity_id, :sport_type, :sub_sport, :name,
+            :started_at, :finished_at, :elapsed_seconds, :distance_km,
+            :ascent_meters, :average_power, :normalized_power, :average_hr,
+            :estimated_tss, :has_gps_track, :fit_file_path,
+            :fit_file_size_bytes, :fit_file_created_at, :strava_activity_id,
+            :raw_json, :saved_route_id, :route_start_distance_meters,
+            :route_end_distance_meters, :created_at, :updated_at
+        )
+        ON CONFLICT(id) DO UPDATE SET
+            source = excluded.source,
+            source_activity_id = excluded.source_activity_id,
+            sport_type = excluded.sport_type,
+            sub_sport = excluded.sub_sport,
+            name = excluded.name,
+            started_at = excluded.started_at,
+            finished_at = excluded.finished_at,
+            elapsed_seconds = excluded.elapsed_seconds,
+            distance_km = excluded.distance_km,
+            ascent_meters = excluded.ascent_meters,
+            average_power = excluded.average_power,
+            normalized_power = excluded.normalized_power,
+            average_hr = excluded.average_hr,
+            estimated_tss = excluded.estimated_tss,
+            has_gps_track = excluded.has_gps_track,
+            fit_file_path = excluded.fit_file_path,
+            fit_file_size_bytes = excluded.fit_file_size_bytes,
+            fit_file_created_at = excluded.fit_file_created_at,
+            strava_activity_id = excluded.strava_activity_id,
+            raw_json = excluded.raw_json,
+            saved_route_id = CASE
+                WHEN :replace_route_link = 1 THEN excluded.saved_route_id
+                ELSE activities.saved_route_id
+            END,
+            route_start_distance_meters = CASE
+                WHEN :replace_route_link = 1 THEN excluded.route_start_distance_meters
+                ELSE activities.route_start_distance_meters
+            END,
+            route_end_distance_meters = CASE
+                WHEN :replace_route_link = 1 THEN excluded.route_end_distance_meters
+                ELSE activities.route_end_distance_meters
+            END,
+            updated_at = excluded.updated_at
+        """,
+        {**values, "created_at": created_at},
+    )
+    row = connection.execute(
+        "SELECT * FROM activities WHERE id = ? LIMIT 1",
+        (activity_id,),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("Ingested FIT activity was not found.")
+    return raw, _rider_activity(row)
+
+
+def _upsert_facts_row(
+    connection: sqlite3.Connection,
+    activity_id: str,
+    *,
+    metrics: dict[str, Any],
+    features: dict[str, Any],
+) -> dict[str, Any]:
+    now = _now()
+    canonical = json.dumps(
+        {"metrics": metrics, "features": features},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    input_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    existing = connection.execute(
+        "SELECT revision, input_hash, created_at FROM activity_facts WHERE activity_id = ?",
+        (activity_id,),
+    ).fetchone()
+    revision = int(existing["revision"] or 0) if existing else 0
+    if not existing or str(existing["input_hash"] or "") != input_hash:
+        revision += 1
+    created_at = str(existing["created_at"]) if existing else now
+    connection.execute(
+        """
+        INSERT INTO activity_facts (
+            activity_id, schema_version, extractor_version, metrics_json,
+            features_json, input_hash, revision, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(activity_id) DO UPDATE SET
+            schema_version = excluded.schema_version,
+            extractor_version = excluded.extractor_version,
+            metrics_json = excluded.metrics_json,
+            features_json = excluded.features_json,
+            input_hash = excluded.input_hash,
+            revision = excluded.revision,
+            updated_at = excluded.updated_at
+        """,
+        (
+            activity_id,
+            str(features["schema_version"]),
+            str(features.get("extractor_version") or "unknown"),
+            json.dumps(metrics, ensure_ascii=False, default=str),
+            json.dumps(features, ensure_ascii=False, default=str),
+            input_hash,
+            revision,
+            created_at,
+            now,
+        ),
+    )
+    return {
+        "activity_id": activity_id,
+        "revision": revision,
+        "schema_version": features["schema_version"],
+    }
+
+
+def _upsert_artifact_row(
+    connection: sqlite3.Connection,
+    activity_id: str,
+    *,
+    artifact_type: str,
+    schema_version: str,
+    input_hash: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    now = _now()
+    existing = connection.execute(
+        """
+        SELECT created_at FROM activity_artifacts
+        WHERE activity_id = ? AND artifact_type = ?
+        """,
+        (activity_id, artifact_type),
+    ).fetchone()
+    created_at = str(existing["created_at"]) if existing else now
+    connection.execute(
+        """
+        INSERT INTO activity_artifacts (
+            activity_id, artifact_type, schema_version, input_hash,
+            payload_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(activity_id, artifact_type) DO UPDATE SET
+            schema_version = excluded.schema_version,
+            input_hash = excluded.input_hash,
+            payload_json = excluded.payload_json,
+            updated_at = excluded.updated_at
+        """,
+        (
+            activity_id,
+            artifact_type,
+            schema_version,
+            input_hash,
+            json.dumps(payload, ensure_ascii=False, default=str),
+            created_at,
+            now,
+        ),
+    )
+    return {
+        "activity_key": activity_id,
+        "artifact_type": artifact_type,
+        "schema_version": schema_version,
+        "input_hash": input_hash,
+        "payload": payload,
+        "created_at": created_at,
+        "updated_at": now,
+    }
 
 
 def entry_from_fit_summary(
@@ -924,6 +1158,31 @@ def _rider_activity_summary(row: Any) -> dict[str, int | float]:
 
 def _filter_text(value: Any) -> str:
     return str(value).strip()[:120] if isinstance(value, str) else ""
+
+
+def _normalize_fit_route_link(value: dict[str, Any] | None) -> dict[str, Any]:
+    if value is None:
+        return {
+            "replace_route_link": 0,
+            "saved_route_id": None,
+            "route_start_distance_meters": None,
+            "route_end_distance_meters": None,
+        }
+    if not isinstance(value, dict):
+        raise ValueError("route_link must be an object")
+    saved_route_id = _text(value.get("saved_route_id"))
+    start = _number(value.get("start_distance_meters"))
+    end = _number(value.get("end_distance_meters"))
+    if not saved_route_id:
+        raise ValueError("route_link.saved_route_id is required")
+    if start is None or end is None or start < 0 or end < start:
+        raise ValueError("route_link distance window is invalid")
+    return {
+        "replace_route_link": 1,
+        "saved_route_id": saved_route_id[:128],
+        "route_start_distance_meters": start,
+        "route_end_distance_meters": end,
+    }
 
 
 def _clamp_integer(value: Any, *, minimum: int, maximum: int, fallback: int) -> int:

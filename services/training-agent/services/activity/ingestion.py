@@ -9,7 +9,7 @@ from typing import Any
 from domain.contracts.schemas import ACTIVITY_DETAIL_V1, FIT_INGESTION_V1
 from services.activity.fit_loader import parse_activity_fit as parse_fit
 from project_paths import resolve_project_path
-from services.activity.catalog import upsert_activity_from_fit
+from services.activity.catalog import prepare_activity_from_fit
 from storage.repositories.activity import ActivityStore, file_content_key
 
 
@@ -22,46 +22,49 @@ def ingest_fit_activity(
     fit_path: str | Path,
     *,
     activity_key: str | None = None,
-    source: str = "manual",
+    source: str | None = None,
     source_activity_id: str | None = None,
     name: str | None = None,
     max_points: int = 700,
+    route_link: dict[str, Any] | None = None,
     path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Parse one immutable FIT once, persist identity/facts and cache UI detail."""
+    """Parse one immutable FIT and atomically persist its deterministic bundle."""
     resolved = resolve_project_path(fit_path)
     parsed = parse_fit(resolved)
-    activity = upsert_activity_from_fit(
+    activity, metrics, features = prepare_activity_from_fit(
         resolved,
+        parsed=parsed,
         activity_key=activity_key,
         source=source,
         source_activity_id=source_activity_id,
         name=name,
         path=path,
-        parsed=parsed,
     )
-    stable_key = str(activity.get("activity_key") or activity_key or "")
+    stable_key = str(activity.get("activity_key") or "")
     if not stable_key:
         raise ValueError("FIT ingestion did not produce an activity ID")
     input_hash = file_content_key(resolved)
     store = ActivityStore(path)
-    facts = store.get_facts(stable_key) or {}
-    metrics = facts.get("metrics") if isinstance(facts.get("metrics"), dict) else {}
     detail = build_activity_detail_artifact(
         parsed, activity=activity, metrics=metrics, max_points=max_points,
     )
-    store.save_artifact(
-        stable_key,
+    persisted = store.save_fit_ingestion(
+        activity,
+        metrics=metrics,
+        features=features,
         artifact_type=DETAIL_ARTIFACT_TYPE,
-        schema_version=DETAIL_SCHEMA_VERSION,
-        input_hash=input_hash,
-        payload=detail,
+        artifact_schema_version=DETAIL_SCHEMA_VERSION,
+        artifact_input_hash=input_hash,
+        artifact_payload=detail,
+        route_link=route_link,
     )
     presented_detail = _attach_activity_report(detail, store=store, activity_key=stable_key)
     return {
         "schema_version": FIT_INGESTION_V1,
         "status": "completed",
-        "activity": activity,
+        "activity": persisted["activity"],
+        "rider_activity": persisted["rider_activity"],
         "detail": presented_detail,
         "input_hash": input_hash,
     }
