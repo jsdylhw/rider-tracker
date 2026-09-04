@@ -1,6 +1,5 @@
 import express from "express";
 import multer from "multer";
-import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
@@ -33,7 +32,6 @@ const APP_BASE_URL = process.env.APP_BASE_URL || buildLocalBaseUrl({
 const REDIRECT_URI = process.env.STRAVA_REDIRECT_URI || `${APP_BASE_URL}/api/strava/auth/callback`;
 const FRONTEND_REDIRECT_URL = process.env.FRONTEND_REDIRECT_URL || "";
 const FIT_FILE_DIR = process.env.FIT_FILE_DIR || path.join(PROJECT_ROOT, "data", "files", "fit");
-const USER_PROFILE_PATH = path.join(PROJECT_ROOT, "user-profile.json");
 const PERSONAL_FIT_AGENT_URL = process.env.PERSONAL_FIT_AGENT_URL || "http://127.0.0.1:8000";
 const PERSONAL_FIT_AGENT_TOKEN = process.env.PERSONAL_FIT_AGENT_TOKEN || "";
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
@@ -83,13 +81,7 @@ app.get("/api/runtime-config/maps", (_req, res) => {
 
 app.get("/api/user-profile", async (_req, res) => {
     try {
-        const localProfile = sanitizeUserProfile(await readUserProfile());
-        let athlete = await personalFitAgentClient.athleteProfile();
-        if (!athlete?.configured) {
-            if (Object.keys(localProfile).length > 0) {
-                athlete = await personalFitAgentClient.updateAthleteProfile(localProfile);
-            }
-        }
+        const athlete = await personalFitAgentClient.athleteProfile();
         res.json({
             ok: true,
             profile: athlete?.rider_settings ?? {}
@@ -113,15 +105,6 @@ app.put("/api/user-profile", async (req, res) => {
         res.status(400).json({ ok: false, error: error.message });
     }
 });
-
-async function readUserProfile() {
-    try {
-        return JSON.parse(await fs.readFile(USER_PROFILE_PATH, "utf8"));
-    } catch (error) {
-        if (error?.code === "ENOENT") return {};
-        throw error;
-    }
-}
 
 app.get("/healthz", (_req, res) => {
     res.json({ ok: true, service: "rider-tracker" });

@@ -11,9 +11,21 @@ export const suite = {
         {
             name: "keeps production Node server free of direct SQLite ownership",
             run() {
-                const offenders = javascriptFiles(path.join(PROJECT_ROOT, "src", "server"))
+                const productionFiles = [
+                    ...javascriptFiles(path.join(PROJECT_ROOT, "src", "server")),
+                    path.join(PROJECT_ROOT, "scripts", "database-preflight.js")
+                ];
+                const offenders = productionFiles
                     .filter((file) => fs.readFileSync(file, "utf8").includes("node:sqlite"));
                 assertEqual(offenders.length, 0);
+            }
+        },
+        {
+            name: "keeps legacy athlete profile migration out of the Node server",
+            run() {
+                const source = fs.readFileSync(path.join(PROJECT_ROOT, "src", "server", "index.js"), "utf8");
+                assertEqual(source.includes("user-profile.json"), false);
+                assertEqual(source.includes("readUserProfile"), false);
             }
         }
     ]

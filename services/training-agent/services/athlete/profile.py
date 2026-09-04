@@ -25,9 +25,18 @@ def get_athlete_profile() -> dict[str, Any]:
     if stored:
         return stored
     configured = normalize_athlete_profile(load_config().get("athlete") or {})
-    legacy_path = DEFAULT_ATHLETE_PATH or runtime_paths().legacy_athlete_file
+    paths = runtime_paths()
+    legacy_path = DEFAULT_ATHLETE_PATH or paths.legacy_athlete_file
     legacy = normalize_athlete_profile(load_profile_file(legacy_path))
     migrated = _merge_profiles(configured, legacy)
+    if not migrated and DEFAULT_ATHLETE_PATH is None:
+        # Rider originally stored the same flat settings at the repository
+        # root.  Read that file only while the canonical database profile is
+        # empty; once imported, all later reads come from AthleteProfileStore.
+        rider_legacy = normalize_athlete_profile(
+            load_profile_file(paths.project_root / "user-profile.json"),
+        )
+        migrated = _merge_profiles(migrated, rider_legacy)
     if migrated:
         store.save_profile(migrated)
     return migrated

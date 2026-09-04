@@ -55,6 +55,45 @@ def test_partial_legacy_profile_overrides_without_dropping_config_fields(tmp_pat
     assert profile["shared"]["max_heart_rate"] == 198
 
 
+def test_root_rider_profile_is_imported_once_when_canonical_sources_are_empty(tmp_path, monkeypatch):
+    database = tmp_path / "profile.db"
+    root_profile = tmp_path / "user-profile.json"
+    root_profile.write_text('{"ftp": 281, "mass": 78, "maxHr": 199}', encoding="utf-8")
+    paths = type("Paths", (), {
+        "legacy_athlete_file": tmp_path / "missing-athlete.json",
+        "project_root": tmp_path,
+    })()
+    monkeypatch.setattr(profile_service, "AthleteProfileStore", lambda: AthleteProfileStore(database))
+    monkeypatch.setattr(profile_service, "load_config", lambda: {})
+    monkeypatch.setattr(profile_service, "runtime_paths", lambda: paths)
+    monkeypatch.setattr(profile_service, "DEFAULT_ATHLETE_PATH", None)
+
+    imported = profile_service.get_athlete_profile()
+    root_profile.write_text('{"ftp": 100}', encoding="utf-8")
+    loaded_again = profile_service.get_athlete_profile()
+
+    assert imported["cycling"]["ftp_w"] == 281
+    assert imported["shared"]["weight_kg"] == 78
+    assert loaded_again == imported
+
+
+def test_root_rider_profile_does_not_override_unified_config(tmp_path, monkeypatch):
+    database = tmp_path / "profile.db"
+    (tmp_path / "user-profile.json").write_text('{"ftp": 100}', encoding="utf-8")
+    paths = type("Paths", (), {
+        "legacy_athlete_file": tmp_path / "missing-athlete.json",
+        "project_root": tmp_path,
+    })()
+    monkeypatch.setattr(profile_service, "AthleteProfileStore", lambda: AthleteProfileStore(database))
+    monkeypatch.setattr(profile_service, "load_config", lambda: {"athlete": {"ftp": 275}})
+    monkeypatch.setattr(profile_service, "runtime_paths", lambda: paths)
+    monkeypatch.setattr(profile_service, "DEFAULT_ATHLETE_PATH", None)
+
+    profile = profile_service.get_athlete_profile()
+
+    assert profile["cycling"]["ftp_w"] == 275
+
+
 def test_rider_settings_map_to_canonical_profile():
     profile = athlete.normalize_athlete_profile({
         "ftp": 280,

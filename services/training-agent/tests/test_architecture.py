@@ -114,16 +114,18 @@ def test_node_server_does_not_own_database_schema_ddl() -> None:
     assert violations == []
 
 
-def test_node_schema_guard_matches_python_migration_version() -> None:
-    """Node may validate the schema, but its expected version cannot drift from Python."""
-    from storage.database import SCHEMA_VERSION
-
-    source = (REPOSITORY_ROOT / "src" / "server" / "managed-database.js").read_text(
-        encoding="utf-8",
-    )
-    match = re.search(r"MANAGED_DATABASE_SCHEMA_VERSION\s*=\s*(\d+)", source)
-    assert match is not None
-    assert int(match.group(1)) == SCHEMA_VERSION
+def test_node_production_startup_does_not_open_sqlite() -> None:
+    """Database readiness and migrations belong to the Python backend."""
+    paths = [
+        *(REPOSITORY_ROOT / "src" / "server").rglob("*.js"),
+        REPOSITORY_ROOT / "scripts" / "database-preflight.js",
+    ]
+    violations = [
+        str(path.relative_to(REPOSITORY_ROOT))
+        for path in paths
+        if "node:sqlite" in path.read_text(encoding="utf-8")
+    ]
+    assert violations == []
 
 
 def _imports_with_prefix(directories: list[str], *, forbidden: tuple[str, ...]) -> list[str]:

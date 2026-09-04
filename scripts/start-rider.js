@@ -3,18 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { buildRuntimeEnv, loadUnifiedConfig } from "./local-config.js";
-import { resolvePythonExecutable } from "./python-runtime.js";
-import { ensureManagedDatabase } from "./database-preflight.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 dotenv.config({ path: path.join(projectRoot, ".env"), quiet: true });
 const runtimeEnv = buildRuntimeEnv(projectRoot, loadUnifiedConfig(projectRoot), process.env);
-ensureManagedDatabase({
-    python: resolvePythonExecutable(projectRoot, runtimeEnv),
-    projectRoot,
-    env: runtimeEnv
-});
 const child = spawn(process.execPath, [
     "--disable-warning=ExperimentalWarning",
     path.join(projectRoot, "src", "server", "index.js")

@@ -13,7 +13,6 @@ export const suite = {
                     python: "python-test",
                     projectRoot: "/rider",
                     env: { TEST_ENV: "1" },
-                    databaseReadyImpl: () => false,
                     spawnImpl(command, args, options) {
                         invocation = { command, args, options };
                         return { status: 0, stdout: "", stderr: "" };
@@ -35,7 +34,6 @@ export const suite = {
                     ensureManagedDatabase({
                         python: "python-test",
                         projectRoot: "/rider",
-                        databaseReadyImpl: () => false,
                         spawnImpl: () => ({ status: 1, stdout: "", stderr: "migration failed" })
                     });
                 } catch (caught) {
@@ -46,20 +44,19 @@ export const suite = {
             }
         },
         {
-            name: "does not require Python when the managed database is already ready",
+            name: "delegates database readiness checks to Python on every startup",
             run() {
                 let spawnCount = 0;
                 ensureManagedDatabase({
-                    python: "missing-python",
+                    python: "python-test",
                     projectRoot: "/rider",
-                    databaseReadyImpl: () => true,
                     spawnImpl: () => {
                         spawnCount += 1;
-                        return { status: 1 };
+                        return { status: 0, stdout: "", stderr: "" };
                     }
                 });
 
-                assertEqual(spawnCount, 0);
+                assertEqual(spawnCount, 1);
             }
         }
     ]

@@ -76,13 +76,16 @@ Strava 等地图和业务服务不加入该列表，继续使用操作系统现�
 ## 本地数据
 
 Rider 与 Training Agent 现在共用根目录下的 SQLite 数据库，默认路径为
-`data/rider-tracker.db`。数据库迁移必须显式运行 `npm run db:migrate`；Node 和
-Python 在正常启动时只检查 schema，不各自执行隐式迁移。
+`data/rider-tracker.db`。启动时 Node 只调用 Python 的 `database-tool.py ensure`；Python 检查
+schema，数据库不存在或版本不匹配时才初始化或备份后迁移，已就绪时不会重复迁移。也可以使用
+`npm run db:migrate` 显式执行带备份的迁移。Python 解释器完全不可用时，Rider 基础页面仍可启动，
+数据库能力明确降级；Python 存在但检查失败时则停止完整启动。Node 不打开 SQLite，也不持有 schema
+版本或表结构规则。
 
 - `activities` 保存活动身份、摘要和原始 FIT 路径。
 - `activity_facts`、`activity_reports` 保存 Agent 生成的确定性特征和报告。
 - `activity_artifacts` 保存可重建的详情曲线/地图序列，避免每次打开活动都重新解码 FIT。
-- `athlete_profiles` 是 FTP、体重、最大/静息心率和骑行模拟参数的唯一事实源；Rider 设置页通过 Node 代理访问 Python，不再直接保存这些字段到 `user-profile.json`。
+- `athlete_profiles` 是 FTP、体重、最大/静息心率和骑行模拟参数的唯一事实源；Rider 设置页通过 Node 代理访问 Python，不再直接保存这些字段到 `user-profile.json`。数据库尚无档案时，Python 可一次性兼容导入统一配置、旧 Agent 档案或 Rider 根目录旧文件，导入后始终以数据库为准。
 - `route_plans`、`route_plan_revisions` 保存 Agent 路线草稿及修改历史。
 - `saved_routes` 保存 Rider 已确认的路线资产；`route_progress` 单独保存未完成进度。
 - `activities.saved_route_id` 及路线起止里程把完成活动关联到实际骑行路线。

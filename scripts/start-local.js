@@ -26,8 +26,14 @@ let stopping = false;
 try {
     ensureManagedDatabase({ python, projectRoot, env: runtimeEnv });
 } catch (error) {
-    console.error(`[rider-tracker] database startup check failed: ${error.message}`);
-    process.exit(1);
+    if (error?.code === "ENOENT") {
+        console.warn(
+            `[rider-tracker] Python runtime unavailable; database-backed features will remain disabled: ${error.message}`
+        );
+    } else {
+        console.error(`[rider-tracker] database startup check failed: ${error.message}`);
+        process.exit(1);
+    }
 }
 
 if (!agentOnly) {

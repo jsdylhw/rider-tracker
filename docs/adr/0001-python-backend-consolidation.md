@@ -372,3 +372,24 @@ FIT 重试维持稳定 activity ID 和 facts revision，也不会清除既有报
 - 正常双进程经 Rider 公开 URL 验证 session 归档、真实 FIT 编码/上传/解析及路线窗口保留：通过；
 - Python 后端启动失败、恢复和再次掉线的结构化降级集成：通过；
 - Python `compileall`、生产 Node 无 `node:sqlite` 架构检查及 `git diff --check`：通过。
+
+### 2026-09-04：阶段 5F 运动员档案兼容与数据库启动职责收口
+
+阶段 5F 移除了 Node 对旧 `user-profile.json` 的读取和启动期导入。Rider 的公开
+`/api/user-profile` 协议保持不变，但 Node 现在只代理 Python 的 athlete profile API。统一数据库没有
+运动员档案时，Python 按统一配置、旧 Agent 档案的既有规则迁移；仅当前两者均为空时，才兼容读取
+Rider 根目录的旧 `user-profile.json`。成功写入 `athlete_profiles` 后，后续读取只认数据库，旧文件不会
+覆盖用户的新设置。兼容文件暂不自动删除，避免迁移失败或用户回退版本时丢失数据。
+
+启动预检也完成单 owner 收口。Node 不再通过 `node:sqlite` 打开数据库，不再复制 schema version、必需
+表清单或字段规则；完整启动器只执行 Python `database-tool.py ensure`。该命令每次启动都会做轻量 schema
+检查，但仅在数据库不存在或版本不匹配时执行初始化或备份迁移，正常启动不会反复迁移。Python 解释器
+完全不可用时，Rider 核心仍可独立启动，数据库能力按既有协议明确降级；单独启动 Rider BFF 时不执行
+无意义的数据库预检。Python 存在但 schema 检查或迁移失败时，完整启动仍会阻止服务进入不一致状态。原 Node
+`managed-database.js` 已删除，架构测试同时覆盖生产 server 和启动预检脚本，防止 SQLite 判断重新进入
+Node。
+
+至此阶段 5 的数据库所有权迁移完成：路线、活动目录、session 归档、FIT ingestion、活动路线关联、
+运动员档案和 schema 生命周期均由 Python 持有；Node 只保留浏览器公开协议、同源校验、multipart 文件
+接收和 Python API 转发。`activity_detail.v1` 的重复 metrics 与完整路线骑行生命周期仍是独立业务债，不
+影响本阶段的单 owner 验收。
