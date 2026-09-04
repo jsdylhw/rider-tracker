@@ -238,6 +238,34 @@ def test_invalid_cards_are_dropped_and_underfilled_plan_returns_without_repair()
     assert any("已忽略 1 条" in warning for warning in plan["warnings"])
 
 
+def test_route_card_with_unknown_explicit_source_is_not_laundered_as_unsourced():
+    workspace = _NarrationWorkspace(
+        _request(),
+        {},
+        generation_policy={"place_card_maximum": 2},
+    )
+
+    plan = workspace.build_plan({"items": [
+        {
+            "sample_id": "sample_1",
+            "content_scope": "route",
+            "source_ids": ["google_place:invented"],
+            "title": "伪造来源",
+            "summary": "显式引用不存在的资料时不能保留这张卡片。",
+        },
+        {
+            "sample_id": "sample_2",
+            "content_scope": "route",
+            "title": "无来源区域背景",
+            "summary": "没有声明来源的路线级背景仍然允许使用。",
+        },
+    ]}, density={"minimum": 1, "target": 2, "maximum": 3})
+
+    assert [item["title"] for item in plan["items"]] == ["无来源区域背景"]
+    assert plan["items"][0]["sources"] == []
+    assert any("已忽略 1 条" in warning for warning in plan["warnings"])
+
+
 def test_google_place_normalizes_photo_metadata_and_attribution():
     place = _normalize_place({
         "id": "place_1",

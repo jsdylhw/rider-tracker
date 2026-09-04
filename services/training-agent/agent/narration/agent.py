@@ -218,6 +218,13 @@ class _NarrationWorkspace:
                 str(value) for value in raw.get("source_ids") or []
             ))
             source_ids = [value for value in requested_source_ids if value in self.sources]
+            # A route-level card may intentionally have no sources, but an
+            # explicit provider reference must be fully trustworthy. Dropping
+            # unknown IDs and retaining the prose would silently turn a forged
+            # citation into an apparently valid unsourced card.
+            if len(source_ids) != len(requested_source_ids):
+                skipped_invalid_cards += 1
+                continue
             if content_scope == "place":
                 local_source_ids = [
                     value for value in source_ids
