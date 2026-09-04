@@ -2,6 +2,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { parse } from "yaml";
 
+export const DEFAULT_STRAVA_SCOPES = "read,read_all,activity:read_all,activity:write";
+
+export function withRequiredStravaScopes(value = "") {
+    const scopes = new Set(DEFAULT_STRAVA_SCOPES.split(","));
+    String(value).split(",").map((scope) => scope.trim()).filter(Boolean).forEach((scope) => scopes.add(scope));
+    return [...scopes].join(",");
+}
+
 export function loadUnifiedConfig(projectRoot, env = process.env) {
     const configPath = path.resolve(env.RIDER_CONFIG_PATH || path.join(projectRoot, "config.yaml"));
     let raw;
@@ -31,7 +39,8 @@ export function buildRuntimeEnv(projectRoot, unifiedConfig, baseEnv = process.en
     setDefault(env, "FRONTEND_REDIRECT_URL", rider.frontend_redirect_url);
     setDefault(env, "RIDER_OPEN_BROWSER", rider.open_browser);
     setDefault(env, "STRAVA_REDIRECT_URI", rider.strava_redirect_uri);
-    setDefault(env, "STRAVA_SCOPES", rider.strava_scopes);
+    setDefault(env, "STRAVA_SCOPES", rider.strava_scopes || DEFAULT_STRAVA_SCOPES);
+    env.STRAVA_SCOPES = withRequiredStravaScopes(env.STRAVA_SCOPES);
     setPathDefault(env, "RIDER_DATA_ROOT", projectRoot, rider.data_root || "data");
     const dataRoot = path.resolve(env.RIDER_DATA_ROOT);
     setPathDefault(env, "RIDER_TRACKER_DB_PATH", projectRoot, rider.database_path || path.join(dataRoot, "rider-tracker.db"));

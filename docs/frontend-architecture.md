@@ -11,13 +11,18 @@
 
 `src/ui/views/live-view.js` 只负责组合以下视图，不再直接维护整页 DOM：
 
-- `RouteWorkspaceView`：路线来源、路线库、AI 候选、地图选点、GPX 和路线预览。
+- `RouteWorkspaceView`：一级路线来源、AI 候选、地图选点和独立的当前路线预览。“我的路线”内部再区分本地路线库、Strava 路线和 GPX 文件导入；切换来源栏目不会替换当前路线。
 - `PreRideSetupView`：功率来源、debug 模拟输入、控制模式和 ERG 课程设置。
 - `DeviceSetupView`：心率带、功率计、骑行台的连接入口和设备状态。
 - `RideReadinessView`：进入骑行界面入口、阻塞原因和当前路线/控制状态。
 - `LiveRideDashboard`：骑行开始/停止、实时指标、地图、街景、海拔和 PiP 控件。
 
 各视图拥有自己的 DOM 查询和直接交互事件。现有 renderer 暂时继续消费扁平的 `elements` 对象；后续可以逐个 renderer 改成只接收对应 View，不需要再次改页面 DOM。
+
+路线工具栏的“导出 GPX”针对当前工作区路线，而不是只针对数据库中的 SavedRoute。AI 已选候选、地图
+选点、GPX 导入及从路线库加载的路线，只要已有完整坐标且不在计算中即可直接导出；导出是浏览器本地
+纯格式转换，不隐式保存路线，也不改变 AI 草稿或骑行状态。`gpx-exporter.js` 负责领域序列化，下载 Blob
+由 adapter 负责；缺少可靠海拔时必须省略 `<ele>`，不能把占位零值伪装成真实海拔。
 
 ## Dashboard renderer
 

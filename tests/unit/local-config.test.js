@@ -1,5 +1,5 @@
 import path from "node:path";
-import { buildRuntimeEnv } from "../../scripts/local-config.js";
+import { buildRuntimeEnv, DEFAULT_STRAVA_SCOPES } from "../../scripts/local-config.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
@@ -42,8 +42,22 @@ export const suite = {
                 assertEqual(env.TRAINING_AGENT_MANAGED_DATABASE, "1");
                 assertEqual(env.TRAINING_AGENT_CONFIG_PATH, path.join(root, "config.yaml"));
                 assertEqual(env.GOOGLE_MAPS_API_KEY, "google-key");
+                assertEqual(env.STRAVA_SCOPES, "read,read_all,activity:read_all,activity:write");
                 assertEqual(env.NO_PROXY, "api.deepseek.com");
                 assertEqual(env.no_proxy, "api.deepseek.com");
+            }
+        },
+        {
+            name: "uses route-capable Strava scopes by default",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: {}
+                }, {});
+
+                assertEqual(env.STRAVA_SCOPES, DEFAULT_STRAVA_SCOPES);
+                assertEqual(env.STRAVA_SCOPES, "read,read_all,activity:read_all,activity:write");
             }
         },
         {

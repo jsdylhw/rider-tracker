@@ -77,6 +77,41 @@ export const suite = {
             }
         },
         {
+            name: "forwards Strava route listing and GPX export through the private backend client",
+            async run() {
+                const requests = [];
+                const bytes = new TextEncoder().encode("<gpx></gpx>");
+                const client = createPersonalFitAgentClient({
+                    baseUrl: "http://127.0.0.1:8000",
+                    apiToken: "server-only-token",
+                    fetchImpl: async (url, options) => {
+                        requests.push({ url, options });
+                        if (url.endsWith("/gpx")) {
+                            return {
+                                ok: true,
+                                status: 200,
+                                headers: { get: () => "application/gpx+xml" },
+                                async arrayBuffer() { return bytes.buffer; }
+                            };
+                        }
+                        return fakeResponse({ routes: [{ id: "123", name: "三都经典线" }] });
+                    }
+                });
+
+                const routes = await client.stravaRoutes();
+                await client.refreshStravaRoutes();
+                const gpx = await client.stravaRouteGpx("123");
+
+                assertEqual(routes.routes[0].name, "三都经典线");
+                assertEqual(requests[0].url, "http://127.0.0.1:8000/api/strava/routes");
+                assertEqual(requests[1].url, "http://127.0.0.1:8000/api/strava/routes/refresh");
+                assertEqual(requests[1].options.method, "POST");
+                assertEqual(requests[2].url, "http://127.0.0.1:8000/api/strava/routes/123/gpx");
+                assertEqual(gpx.contentType, "application/gpx+xml");
+                assertEqual(gpx.body.length, bytes.length);
+            }
+        },
+        {
             name: "normalizes an unreachable backend as agent_unavailable",
             async run() {
                 const client = createPersonalFitAgentClient({

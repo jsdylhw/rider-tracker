@@ -3,6 +3,8 @@ import { createRouteElevationChartRenderer } from "./route-elevation-chart-rende
 import { createRouteInputController } from "./route-input-controller.js";
 import { createAgentRoutePlanner } from "./agent-route-planner.js";
 import { createRouteLibraryRenderer } from "./route-library-renderer.js";
+import { createStravaRouteImportRenderer } from "./strava-route-import-renderer.js";
+import { createRouteLibrarySourceController } from "./route-library-source-controller.js";
 
 export function createRouteRenderer({
     elements,
@@ -12,10 +14,14 @@ export function createRouteRenderer({
     onAddSegment,
     onResetRoute,
     onImportGpx,
+    onListStravaRoutes,
+    onRefreshStravaRoutes,
+    onImportStravaRoute,
     onListSavedRoutes,
     onLoadSavedRoute,
     onContinueSavedRoute,
     onSaveCurrentRoute,
+    onExportCurrentRouteGpx,
     onDeleteSavedRoute,
     onCreateMapDrawRoute,
     onPlanAgentRoutes,
@@ -41,6 +47,7 @@ export function createRouteRenderer({
     };
     const hasRouteModeControls = Boolean(elements.routeModeMapBtn || elements.mapRoutePanel);
     let routeDetailsRenderer;
+    let routeLibrarySourceController;
     const routeInputController = createRouteInputController({
         elements,
         visuals,
@@ -49,7 +56,12 @@ export function createRouteRenderer({
         onPlanMapRoute,
         onRequestRouteElevation,
         requestGoogleMapsApiKey,
-        onInputModeChange: (state) => routeDetailsRenderer?.render(state)
+        onInputModeChange: (state) => {
+            routeDetailsRenderer?.render(state);
+            if (routeInputController.getInputMode() === "library") {
+                activateCurrentLibrarySource();
+            }
+        }
     });
     routeDetailsRenderer = createRouteDetailsRenderer({
         elements,
@@ -62,6 +74,12 @@ export function createRouteRenderer({
         getInputMode: routeInputController.getInputMode
     });
     const routeElevationChartRenderer = createRouteElevationChartRenderer({ elements });
+    const stravaRouteImportRenderer = createStravaRouteImportRenderer({
+        elements,
+        onListStravaRoutes,
+        onRefreshStravaRoutes,
+        onImportStravaRoute
+    });
     const agentRoutePlanner = createAgentRoutePlanner({
         elements,
         onPlanAgentRoutes,
@@ -75,29 +93,37 @@ export function createRouteRenderer({
     const routeLibraryRenderer = createRouteLibraryRenderer({
         elements,
         onListSavedRoutes,
-        onLoadSavedRoute: (routeId) => loadLibraryRoute(onLoadSavedRoute, routeId),
-        onContinueSavedRoute: (routeId) => loadLibraryRoute(onContinueSavedRoute, routeId),
+        onLoadSavedRoute,
+        onContinueSavedRoute,
         onSaveCurrentRoute,
+        onExportCurrentRouteGpx,
         onDeleteSavedRoute
+    });
+    routeLibrarySourceController = createRouteLibrarySourceController({
+        elements,
+        onShowLocalRoutes: () => routeLibraryRenderer.ensureLoaded(),
+        onShowStravaRoutes: () => stravaRouteImportRenderer.ensureLoaded()
     });
 
     routeInputController.bindEvents();
     routeDetailsRenderer.bindEvents();
+    stravaRouteImportRenderer.bindEvents();
     agentRoutePlanner.bindEvents();
     routeLibraryRenderer.bindEvents();
+    routeLibrarySourceController.bindEvents();
 
     function render(state) {
         routeInputController.render(state);
         routeDetailsRenderer.render(state);
+        stravaRouteImportRenderer.render(state);
         agentRoutePlanner.render(state);
         routeLibraryRenderer.render(state);
     }
 
-    async function loadLibraryRoute(loader, routeId) {
-        const route = await loader?.(routeId);
-        const mode = routeModeForSource(route?.source);
-        if (mode) routeInputController.setInputMode(mode);
-        return route;
+    function activateCurrentLibrarySource() {
+        const source = routeLibrarySourceController?.getSource();
+        if (source === "local") void routeLibraryRenderer.ensureLoaded();
+        if (source === "strava") void stravaRouteImportRenderer.ensureLoaded();
     }
 
     return {
@@ -105,14 +131,4 @@ export function createRouteRenderer({
         renderElevationChart: routeElevationChartRenderer.render,
         destroy: agentRoutePlanner.destroy
     };
-}
-
-function routeModeForSource(source) {
-    return {
-        "agent-planned": "ai",
-        gpx: "gpx",
-        "map-drawn": "draw",
-        "osm-exploration": "map",
-        manual: "manual"
-    }[source] ?? null;
 }

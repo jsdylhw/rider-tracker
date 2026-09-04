@@ -11,7 +11,7 @@ export function createRouteInputController({
     onInputModeChange = () => {}
 }) {
     const hasRouteModeControls = Boolean(elements.routeModeMapBtn || elements.mapRoutePanel || elements.routeModeDrawBtn);
-    let routeInputMode = hasRouteModeControls ? "map" : "manual";
+    let routeInputMode = elements.routeModeAiBtn ? "ai" : (hasRouteModeControls ? "map" : "manual");
     let lastRenderedState = null;
     let lastRenderedMapRouteSignature = "";
     let isEditingMapRoute = false;
@@ -26,7 +26,7 @@ export function createRouteInputController({
 
     function bindEvents() {
         bindRouteModeButton(elements.routeModeAiBtn, "ai");
-        bindRouteModeButton(elements.routeModeGpxBtn, "gpx");
+        bindRouteModeButton(elements.routeModeLibraryBtn, "library");
         bindRouteModeButton(elements.routeModeManualBtn, "manual");
         bindRouteModeButton(elements.routeModeDrawBtn, "draw");
         bindRouteModeButton(elements.routeModeMapBtn, "map");
@@ -90,23 +90,22 @@ export function createRouteInputController({
     function renderRouteModePanels() {
         if (!hasRouteModeControls) return;
         const route = lastRenderedState?.route;
-        const hasActiveRouteForMode = matchesRouteInputMode(route, routeInputMode);
+        const hasCurrentRoute = hasActiveRoute(route);
         const shouldShowRouteMap = routeInputMode === "ai"
             || routeInputMode === "map"
             || routeInputMode === "draw"
-            || (hasActiveRouteForMode && hasCoordinateRoute(route));
+            || (hasCurrentRoute && hasCoordinateRoute(route));
         setPanelVisible(elements.aiRoutePanel, routeInputMode === "ai");
-        setPanelVisible(elements.gpxRoutePanel, routeInputMode === "gpx");
+        setPanelVisible(elements.routeLibraryPanel, routeInputMode === "library");
         setPanelVisible(elements.manualRoutePanel, routeInputMode === "manual");
         setPanelVisible(elements.mapDrawRoutePanel, routeInputMode === "draw");
         setPanelVisible(elements.mapRoutePanel, routeInputMode === "map");
         setPanelVisible(elements.routeMapShell, shouldShowRouteMap);
-        const shouldShowElevation = hasActiveRouteForMode
-            && !(routeInputMode === "ai" && route?.hasElevationData === false);
+        const shouldShowElevation = hasCurrentRoute && route?.hasElevationData !== false;
         setPanelVisible(elements.setupElevationChartShell, shouldShowElevation);
-        setPanelVisible(elements.routeCurrentSourceRow, hasActiveRouteForMode);
+        setPanelVisible(elements.routeCurrentSourceRow, hasCurrentRoute);
         setModeButtonActive(elements.routeModeAiBtn, routeInputMode === "ai");
-        setModeButtonActive(elements.routeModeGpxBtn, routeInputMode === "gpx");
+        setModeButtonActive(elements.routeModeLibraryBtn, routeInputMode === "library");
         setModeButtonActive(elements.routeModeManualBtn, routeInputMode === "manual");
         setModeButtonActive(elements.routeModeDrawBtn, routeInputMode === "draw");
         setModeButtonActive(elements.routeModeMapBtn, routeInputMode === "map");
@@ -390,14 +389,6 @@ function buildMapRouteSignature(route) {
         `${item.segmentId}:${item.coordinates?.length ?? 0}`
     )).join(",");
     return `${route?.networkSource ?? "default"}:${buildRouteGeometryKey(route, geometry)}:${overlays}`;
-}
-
-function matchesRouteInputMode(route, inputMode) {
-    if (inputMode === "ai") return route?.source === "agent-planned";
-    if (inputMode === "map") return route?.source === "osm-exploration";
-    if (inputMode === "draw") return route?.source === "map-drawn";
-    if (inputMode === "gpx") return route?.source === "gpx";
-    return route?.source === "manual";
 }
 
 function buildWaypointSnapSummary(route, hasGeneratedRoute) {

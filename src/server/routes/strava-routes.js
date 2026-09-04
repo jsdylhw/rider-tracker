@@ -6,6 +6,12 @@ import { normalizeText, normalizeUserId, parseBoolean } from "../shared/http-uti
 import { sendAgentUnavailable } from "../agent-unavailable.js";
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const REQUIRED_ROUTE_SCOPES = ["read", "read_all"];
+
+export function missingStravaRouteScopes(scope) {
+    const granted = new Set(String(scope || "").split(",").map((value) => value.trim()).filter(Boolean));
+    return REQUIRED_ROUTE_SCOPES.filter((required) => !granted.has(required));
+}
 
 export function createOAuthStateStore({
     ttlMs = OAUTH_STATE_TTL_MS,
@@ -144,6 +150,14 @@ export function createStravaRoutes({ agentClient, scopes, redirectUri, frontendR
                 message: "Missing code/state, or the authorization state has expired. Please try connecting again."
             });
         }
+        const missingScopes = missingStravaRouteScopes(scope);
+        if (missingScopes.length > 0) {
+            return sendOAuthResultPage(res, {
+                ok: false,
+                title: "Strava route permission missing",
+                message: `Strava 未授予路线读取权限（缺少 ${missingScopes.join(", ")}）。请重新连接并允许全部请求权限。`
+            });
+        }
         try {
             await agentClient.stravaExchangeCode({ code: String(code) });
             if (frontendRedirectUrl) {
@@ -233,6 +247,40 @@ export function createStravaRoutes({ agentClient, scopes, redirectUri, frontendR
         } catch (error) {
             if (sendAgentUnavailable(res, error, { capability: "strava" })) return;
             res.status(502).json({ ok: false, error: error.message });
+        }
+    });
+
+    router.get("/api/strava/routes", async (_req, res) => {
+        try {
+            const result = await agentClient.stravaRoutes();
+            res.json({ ok: true, routes: result.routes ?? [], cachedAt: result.cachedAt ?? null, hasCache: result.hasCache === true });
+        } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "strava" })) return;
+            res.status(error?.statusCode === 401 ? 401 : 502).json({ ok: false, error: error.message });
+        }
+    });
+
+    router.post("/api/strava/routes/refresh", async (_req, res) => {
+        try {
+            if (!await ensureConfigured(res)) return;
+            const result = await agentClient.refreshStravaRoutes();
+            res.json({ ok: true, routes: result.routes ?? [], cachedAt: result.cachedAt ?? null, hasCache: true });
+        } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "strava" })) return;
+            res.status(error?.statusCode === 401 ? 401 : 502).json({ ok: false, error: error.message });
+        }
+    });
+
+    router.get("/api/strava/routes/:routeId/gpx", async (req, res) => {
+        try {
+            if (!await ensureConfigured(res)) return;
+            const result = await agentClient.stravaRouteGpx(req.params.routeId);
+            res.set("Content-Type", result.contentType || "application/gpx+xml");
+            res.send(result.body);
+        } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "strava" })) return;
+            const status = error?.statusCode === 404 ? 404 : error?.statusCode === 401 ? 401 : 502;
+            res.status(status).json({ ok: false, error: error.message });
         }
     });
 

@@ -1,4 +1,4 @@
-import { createOAuthStateStore } from "../../src/server/routes/strava-routes.js";
+import { createOAuthStateStore, missingStravaRouteScopes } from "../../src/server/routes/strava-routes.js";
 import { assert, assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
@@ -68,6 +68,20 @@ export const suite = {
 
                 assertEqual(store.size(), 0);
                 assert(!store.has("state-1"), "expired state should be gone");
+            }
+        },
+        {
+            name: "requires both public and private Strava route read scopes",
+            run() {
+                assertEqual(
+                    missingStravaRouteScopes("read,read_all,activity:read_all,activity:write").length,
+                    0
+                );
+                assertEqual(
+                    missingStravaRouteScopes("activity:read_all,activity:write").join(","),
+                    "read,read_all"
+                );
+                assertEqual(missingStravaRouteScopes("read,activity:write").join(","), "read_all");
             }
         }
     ]

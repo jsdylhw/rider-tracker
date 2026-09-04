@@ -21,7 +21,7 @@ from uuid import uuid4
 from storage.database import connect_database
 
 
-ROUTE_SOURCES = {"gpx", "agent", "map-draw", "exploration", "manual", "imported"}
+ROUTE_SOURCES = {"gpx", "strava", "agent", "map-draw", "exploration", "manual", "imported"}
 SOURCE_ALIASES = {
     "agent-planned": "agent",
     "map-drawn": "map-draw",
@@ -365,7 +365,7 @@ def _normalize_source(value: Any) -> str:
 
 def _restore_domain_source(value: Any, stored_source: Any) -> str:
     source = str(value or "").strip().lower()
-    if source in {"agent-planned", "map-drawn", "osm-exploration", "gpx", "manual"}:
+    if source in {"agent-planned", "map-drawn", "osm-exploration", "gpx", "strava", "manual"}:
         return source
     normalized = _normalize_source(stored_source or value)
     return DOMAIN_SOURCES.get(normalized, normalized)

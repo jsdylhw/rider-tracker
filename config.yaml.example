@@ -13,7 +13,7 @@ rider:
   app_base_url: ""
   frontend_redirect_url: ""
   strava_redirect_uri: ""
-  strava_scopes: "activity:read_all,activity:write"
+  strava_scopes: "read,read_all,activity:read_all,activity:write"
 
 training_agent:
   host: "127.0.0.1"

@@ -164,6 +164,12 @@ export function createPersonalFitAgentClient({
         stravaUploadStatus: (uploadId) => get(
             `/api/strava/upload-status/${encodeURIComponent(uploadId)}`
         ),
+        stravaRoutes: () => get("/api/strava/routes"),
+        refreshStravaRoutes: () => post("/api/strava/routes/refresh", {}),
+        stravaRouteGpx: (routeId) => getBinary(
+            `/api/strava/routes/${encodeURIComponent(routeId)}/gpx`,
+            30_000
+        ),
         listSavedRoutes: ({ source = "" } = {}) => get(
             `/api/routes${source ? `?source=${encodeURIComponent(source)}` : ""}`,
             routeLibraryTimeoutMs

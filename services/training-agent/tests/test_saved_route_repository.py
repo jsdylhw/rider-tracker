@@ -78,6 +78,22 @@ def test_saved_route_fingerprint_matches_legacy_javascript_contract(tmp_path):
     assert fingerprint == "e504326a40220e9da1a28a070d0175a9bd15450214b0f881c82aafcf8fbca80d"
 
 
+def test_strava_route_is_a_supported_saved_route_source(tmp_path):
+    store = _store(tmp_path)
+    route = {**_route("gpx"), "source": "strava", "name": "三都经典线"}
+
+    saved = store.save_route({
+        "route": route,
+        "source": "strava",
+        "metadata": {"stravaRouteId": "123"},
+    })
+
+    loaded = store.get_route(saved["id"])
+    assert loaded["source"] == "strava"
+    assert loaded["route"]["source"] == "strava"
+    assert loaded["metadata"]["stravaRouteId"] == "123"
+
+
 def test_saved_route_progress_is_separate_and_cleared_near_completion(tmp_path):
     store = _store(tmp_path)
     saved = store.save_route({"route": _route("gpx"), "source": "gpx"})

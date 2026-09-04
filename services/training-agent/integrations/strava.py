@@ -125,6 +125,68 @@ class StravaSink:
         )
         return self._json_or_raise(response)
 
+    def list_routes(self, *, page: int = 1, per_page: int = 50) -> list[dict[str, Any]]:
+        """读取当前授权运动员在 Strava 中保存的路线列表."""
+        normalized_page = max(1, int(page))
+        normalized_per_page = max(1, min(100, int(per_page)))
+        athlete = self.get_athlete()
+        athlete_id = athlete.get("id")
+        if not athlete_id:
+            raise RuntimeError("Strava athlete id is unavailable")
+        response = self._get_route_response(
+            f"/athletes/{athlete_id}/routes",
+            params={"page": normalized_page, "per_page": normalized_per_page},
+        )
+        payload = self._json_or_raise(response)
+        if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+            payload = payload["data"]
+        if not isinstance(payload, list):
+            raise RuntimeError("Strava routes response is not a list")
+        return payload
+
+    def export_route_gpx(self, route_id: int | str) -> bytes:
+        """下载一条已有 Strava 路线的 GPX，包括 Strava 提供的海拔轨迹."""
+        normalized_id = self._positive_route_id(route_id)
+        response = self._get_route_response(f"/routes/{normalized_id}/export_gpx")
+        if response.status_code >= 400:
+            self._json_or_raise(response)
+        if not response.content:
+            raise RuntimeError("Strava route GPX is empty")
+        return response.content
+
+    def _get_route_response(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> requests.Response:
+        """执行只读路线请求，并对瞬时网络错误作有限重试."""
+        attempts = max(1, min(3, int(self.config.get("route_read_attempts", 2))))
+        delay = max(0.0, float(self.config.get("route_retry_delay_seconds", 0.25)))
+        for attempt in range(attempts):
+            try:
+                return requests.get(
+                    f"{STRAVA_API_BASE}{path}",
+                    headers=self._headers(),
+                    params=params,
+                    timeout=float(self.config.get("timeout_seconds", 120)),
+                )
+            except requests.RequestException:
+                if attempt + 1 >= attempts:
+                    raise
+                time.sleep(delay * (attempt + 1))
+        raise AssertionError("unreachable")
+
+    @staticmethod
+    def _positive_route_id(route_id: int | str) -> int:
+        try:
+            normalized_id = int(route_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("route_id must be a positive integer") from exc
+        if normalized_id <= 0:
+            raise ValueError("route_id must be a positive integer")
+        return normalized_id
+
     def connection_status(self) -> dict[str, Any]:
         """Return non-secret local OAuth state for Rider's connection UI."""
         token = self._stored_tokens
@@ -199,7 +261,7 @@ class StravaSink:
 
     def build_authorize_url(
         self, *, redirect_uri: str = "http://localhost",
-        scope: str = "read,activity:read_all,activity:write",
+        scope: str = "read,read_all,activity:read_all,activity:write",
         approval_prompt: str = "force",
         state: str | None = None,
     ) -> str:
@@ -351,7 +413,7 @@ class StravaSink:
                 raise RuntimeError(
                     "Strava API failed: token is missing activity:write permission. "
                     "Generate a new Strava authorization URL with scope "
-                    "'read,activity:read_all,activity:write', authorize it, exchange the returned code, "
+                    "'read,read_all,activity:read_all,activity:write', authorize it, exchange the returned code, "
                     "and update strava.refresh_token in config.yaml."
                 )
             raise RuntimeError(f"Strava API failed: HTTP {response.status_code}; body={data}")

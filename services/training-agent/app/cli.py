@@ -144,7 +144,7 @@ def update_strava_description_command(activity_id: str, activity_key: str) -> No
 @app.command("strava-auth-url")
 def strava_auth_url_command(
     redirect_uri: str = "http://localhost",
-    scope: str = "read,activity:read_all,activity:write",
+    scope: str = "read,read_all,activity:read_all,activity:write",
 ) -> None:
     sink = StravaSink(require_access_token=False)
     typer.echo(sink.build_authorize_url(redirect_uri=redirect_uri, scope=scope))

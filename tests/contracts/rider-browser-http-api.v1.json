@@ -34,6 +34,9 @@
     { "method": "GET", "path": "/api/strava/auth/start" },
     { "method": "GET", "path": "/api/strava/auth/callback" },
     { "method": "GET", "path": "/api/strava/connection" },
+    { "method": "GET", "path": "/api/strava/routes" },
+    { "method": "POST", "path": "/api/strava/routes/refresh" },
+    { "method": "GET", "path": "/api/strava/routes/{routeId}/gpx" },
     { "method": "POST", "path": "/api/strava/upload-fit" },
     { "method": "POST", "path": "/api/strava/upload-activity-fit" },
     { "method": "GET", "path": "/api/strava/upload-status/{uploadId}" }

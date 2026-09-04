@@ -105,6 +105,9 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/strava/config",
         "/api/strava/connection",
         "/api/strava/exchange-code",
+        "/api/strava/routes",
+        "/api/strava/routes/refresh",
+        "/api/strava/routes/{route_id}/gpx",
         "/api/strava/upload-activity",
         "/api/strava/upload-status/{upload_id}",
     }
@@ -431,6 +434,10 @@ def test_athlete_profile_api_returns_and_updates_rider_settings(tmp_path, monkey
 
 def test_strava_owner_endpoints_delegate_to_python_sink(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    from storage.repositories.strava_route_catalog import StravaRouteCatalogStore
+
+    cache_path = tmp_path / "cache" / "strava-routes.json"
+    monkeypatch.setattr(api, "StravaRouteCatalogStore", lambda: StravaRouteCatalogStore(cache_path))
     monkeypatch.setattr(api, "load_config", lambda: {
         "strava": {"client_id": "123", "client_secret": "secret"}
     })
@@ -448,6 +455,21 @@ def test_strava_owner_endpoints_delegate_to_python_sink(tmp_path, monkeypatch):
         def exchange_authorization_code(self, code):
             return {"access_token": "token", "athlete": {"id": 1}, "expires_at": 456}
 
+        def list_routes(self, *, per_page):
+            assert per_page == 100
+            return [{
+                "id": 123,
+                "name": "三都经典线",
+                "distance": 51182.9,
+                "elevation_gain": 423,
+                "estimated_moving_time": 9813,
+                "starred": True,
+            }]
+
+        def export_route_gpx(self, route_id):
+            assert route_id == 123
+            return b"<gpx><trk></trk></gpx>"
+
     monkeypatch.setattr(api, "StravaSink", FakeSink)
 
     config = client.get("/api/strava/config")
@@ -457,11 +479,21 @@ def test_strava_owner_endpoints_delegate_to_python_sink(tmp_path, monkeypatch):
         "state": "state-1",
     })
     exchange = client.post("/api/strava/exchange-code", json={"code": "code-1"})
+    empty_cache = client.get("/api/strava/routes")
+    refreshed_routes = client.post("/api/strava/routes/refresh")
+    routes = client.get("/api/strava/routes")
+    route_gpx = client.get("/api/strava/routes/123/gpx")
 
     assert config.json()["configured"] is True
     assert connection.json()["connected"] is True
     assert auth.json()["auth_url"].endswith("state=state-1")
     assert exchange.json()["athlete"]["id"] == 1
+    assert empty_cache.json()["hasCache"] is False
+    assert refreshed_routes.json()["hasCache"] is True
+    assert routes.json()["routes"][0]["name"] == "三都经典线"
+    assert routes.json()["routes"][0]["distanceMeters"] == 51182.9
+    assert route_gpx.headers["content-type"].startswith("application/gpx+xml")
+    assert route_gpx.content.startswith(b"<gpx")
 
 
 def test_strava_activity_upload_and_status_delegate_to_owner_service(tmp_path, monkeypatch):

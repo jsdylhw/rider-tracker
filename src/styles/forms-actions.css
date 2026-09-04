@@ -73,10 +73,11 @@ tbody tr:last-child td {
 }
 
 .route-summary {
-    margin-top: 16px;
+    margin: 0;
     padding: 14px 16px;
     border-radius: 14px;
-    background: #f8fafc;
+    border: 1px solid #dbeafe;
+    background: linear-gradient(135deg, #f8fbff 0%, #f1f5f9 100%);
     color: var(--muted);
     line-height: 1.6;
 }
@@ -107,19 +108,17 @@ tbody tr:last-child td {
     flex: 1 1 auto;
 }
 
-.btn.route-library-toggle {
+.btn.route-export-gpx {
     flex: 0 0 auto;
-    border: 1px solid var(--border);
-    background: #ffffff;
-    color: var(--text);
+    border: 1px solid #a7f3d0;
+    background: #ecfdf5;
+    color: #047857;
     font-weight: 750;
 }
 
-.btn.route-library-toggle:hover,
-.btn.route-library-toggle.active {
-    border-color: var(--primary);
-    background: #f0f7ff;
-    color: var(--primary);
+.btn.route-export-gpx:hover:not(:disabled) {
+    border-color: #10b981;
+    background: #d1fae5;
 }
 
 .route-mode-tab {
@@ -153,37 +152,76 @@ tbody tr:last-child td {
     background: #ffffff;
 }
 
-.route-library-panel {
-    display: grid;
-    grid-template-columns: minmax(120px, 0.22fr) minmax(0, 1fr);
-    gap: 10px 16px;
-    margin: 12px 0;
-    padding: 14px 16px;
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--primary);
-    border-radius: 14px;
-    background: #ffffff;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+.route-import-status {
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.5;
 }
 
-.route-library-panel[hidden] {
+.route-library-workspace {
+    display: grid;
+    gap: 14px;
+}
+
+.route-library-workspace[hidden],
+.route-library-source-panel[hidden] {
     display: none;
 }
 
-.route-library-heading,
-.route-library-actions {
+.route-library-source-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 5px;
+    border-radius: 12px;
+    background: #f1f5f9;
+}
+
+.route-library-source-tab {
+    flex: 1 1 0;
+    border: 0;
+    border-radius: 9px;
+    padding: 9px 12px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+.route-library-source-tab:hover,
+.route-library-source-tab.active {
+    background: #ffffff;
+    color: var(--primary);
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.07);
+}
+
+.route-library-source-panel {
+    display: grid;
+    gap: 16px;
+    padding: 18px;
+    border: 1px solid #dbe4ef;
+    border-radius: 16px;
+    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.route-library-source-heading,
+.route-library-control-row,
+.route-library-footer-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-}
-
-.route-library-heading {
     justify-content: space-between;
+    gap: 14px;
 }
 
-.route-library-heading > div {
+.route-library-source-copy {
     display: grid;
-    gap: 1px;
+    gap: 3px;
+}
+
+.route-library-source-copy strong {
+    color: var(--text);
+    font-size: 1.02rem;
 }
 
 .route-library-kicker {
@@ -193,12 +231,10 @@ tbody tr:last-child td {
     letter-spacing: 0.08em;
 }
 
-.route-library-heading strong {
-    color: var(--text);
-    font-size: 1rem;
+.route-library-kicker.strava {
+    color: #fc4c02;
 }
 
-.route-library-refresh,
 .route-library-text-action {
     border: 0;
     padding: 4px 6px;
@@ -209,7 +245,6 @@ tbody tr:last-child td {
     font-size: 0.8rem;
 }
 
-.route-library-refresh:hover,
 .route-library-text-action:hover {
     color: var(--primary);
 }
@@ -218,21 +253,42 @@ tbody tr:last-child td {
     color: var(--danger);
 }
 
-.route-library-refresh:disabled,
 .route-library-text-action:disabled {
     cursor: default;
     opacity: 0.45;
 }
 
-.route-library-actions {
+.route-library-source-copy p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.route-library-header-action {
+    flex: 0 0 auto;
+}
+
+.route-library-header-action.strava {
+    border-color: #fed7aa;
+    color: #c2410c;
+    background: #fff7ed;
+}
+
+.route-library-control-row {
     min-width: 0;
 }
 
-.route-library-actions select {
+.route-library-control-row select {
     flex: 1 1 300px;
     min-width: 200px;
     height: 40px;
+    padding: 0 12px;
+    border: 1px solid #cbd5e1;
     border-radius: 10px;
+    background: #ffffff;
+    color: var(--text);
+    font: inherit;
 }
 
 .route-library-primary-actions,
@@ -244,15 +300,58 @@ tbody tr:last-child td {
 }
 
 .route-library-secondary-actions {
-    padding-left: 4px;
-    border-left: 1px solid var(--border);
+    flex: 0 0 auto;
 }
 
 .route-library-status {
-    grid-column: 2;
     color: var(--muted);
     font-size: 0.78rem;
     line-height: 1.35;
+}
+
+.route-file-picker {
+    display: grid;
+    gap: 5px;
+    padding: 18px;
+    border: 1px dashed #94a3b8;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.route-file-picker:hover {
+    border-color: var(--primary);
+    background: #f0f7ff;
+    transform: translateY(-1px);
+}
+
+.route-file-picker-title {
+    color: var(--text);
+    font-weight: 750;
+}
+
+.route-file-picker-description {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.route-file-picker input {
+    margin-top: 8px;
+    color: var(--muted);
+    font: inherit;
+}
+
+.route-file-picker input::file-selector-button {
+    margin-right: 12px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--primary);
+    color: #ffffff;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
 }
 
 @media (max-width: 900px) {
@@ -260,24 +359,23 @@ tbody tr:last-child td {
         flex-direction: column;
     }
 
-    .route-library-toggle {
-        width: 100%;
-    }
-
-    .route-library-panel {
-        grid-template-columns: 1fr;
-    }
-
-    .route-library-status {
-        grid-column: 1;
-    }
-
-    .route-library-actions {
+    .current-route-preview-heading {
         align-items: stretch;
         flex-direction: column;
     }
 
-    .route-library-actions select {
+    .route-export-gpx {
+        width: 100%;
+    }
+
+    .route-library-control-row,
+    .route-library-footer-row,
+    .route-library-source-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .route-library-control-row select {
         flex-basis: auto;
         width: 100%;
     }
@@ -287,6 +385,27 @@ tbody tr:last-child td {
         border-left: 0;
         padding-left: 0;
     }
+}
+
+.current-route-preview {
+    display: grid;
+    gap: 12px;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+}
+
+.current-route-preview-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.current-route-preview-heading h3 {
+    margin: 2px 0 0;
+    color: var(--text);
+    font-size: 1.05rem;
 }
 
 .route-panel-head {

@@ -9,6 +9,7 @@ import { createRouteElevationService } from "./route-elevation-service.js";
 import { createMapDrawRouteService } from "./map-draw-route-service.js";
 import { createAgentRoutePreviewService } from "./agent-route-preview-service.js";
 import { createRouteOperationCoordinator } from "./route-operation-coordinator.js";
+import { listStravaRoutes, loadStravaRouteGpx, refreshStravaRoutes } from "../../adapters/strava/strava-route-client.js";
 import {
     clearRouteProgress,
     deleteSavedRoute,
@@ -34,7 +35,8 @@ export function createRouteService({
         deleteSavedRoute,
         saveRouteProgress,
         clearRouteProgress
-    }
+    },
+    stravaRouteLibrary = { listStravaRoutes, refreshStravaRoutes, loadStravaRouteGpx }
 }) {
     const operations = createRouteOperationCoordinator({ store });
     let elevationService;
@@ -57,7 +59,8 @@ export function createRouteService({
         operations,
         defaultRouteSegments,
         invalidateExploration: explorationService.clearActiveExploration,
-        routeLibrary
+        routeLibrary,
+        stravaRouteLibrary
     });
     const mapDrawRouteService = createMapDrawRouteService({
         store,

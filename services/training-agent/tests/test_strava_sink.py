@@ -196,6 +196,7 @@ class TestStravaSinkBuildAuthorizeUrl:
         assert "response_type=code" in url
         # URL-encoded scope
         assert "scope=read%2C" in url
+        assert "read_all" in url
         assert "activity%3Awrite" in url
 
     def test_custom_scope(self):
@@ -304,6 +305,40 @@ class TestStravaSinkSegments:
 
         mock_get.assert_called_once()
         mock_sleep.assert_not_called()
+
+
+class TestStravaSinkRoutes:
+    @patch("integrations.strava.requests.get")
+    def test_lists_current_athlete_routes(self, mock_get):
+        athlete_response = MagicMock()
+        athlete_response.ok = True
+        athlete_response.json.return_value = {"id": 89811447}
+        routes_response = MagicMock()
+        routes_response.ok = True
+        routes_response.json.return_value = [{"id": 123, "name": "三都经典线"}]
+        mock_get.side_effect = [athlete_response, routes_response]
+
+        routes = _make_sink().list_routes(per_page=200)
+
+        assert routes[0]["name"] == "三都经典线"
+        assert mock_get.call_args_list[1].args[0].endswith("/athletes/89811447/routes")
+        assert mock_get.call_args_list[1].kwargs["params"] == {"page": 1, "per_page": 100}
+
+    @patch("integrations.strava.requests.get")
+    def test_exports_route_gpx(self, mock_get):
+        response = MagicMock()
+        response.status_code = 200
+        response.content = b"<gpx><trk></trk></gpx>"
+        mock_get.return_value = response
+
+        result = _make_sink().export_route_gpx("123")
+
+        assert result.startswith(b"<gpx")
+        assert mock_get.call_args.args[0].endswith("/routes/123/export_gpx")
+
+    def test_rejects_invalid_route_id(self):
+        with pytest.raises(ValueError, match="positive integer"):
+            _make_sink().export_route_gpx("not-a-route")
 
 
 class TestStravaSinkUpdateDescription:

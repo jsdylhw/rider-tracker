@@ -28,6 +28,7 @@ from app.chat_sessions import ChatSessionStore
 from settings import cfg_get, load_config
 from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
 from storage.repositories.saved_route import SavedRouteNotFound, SavedRouteStore
+from storage.repositories.strava_route_catalog import StravaRouteCatalogStore
 from storage.repositories.activity import ActivityStore, ActivityStoreBusy
 from services.route.single_day import compact_route_plan
 from services.route.confirmation import confirm_and_save_route
@@ -87,7 +88,7 @@ class AthleteProfileRequest(BaseModel):
 
 class StravaAuthorizeRequest(BaseModel):
     redirect_uri: str = Field(min_length=1, max_length=2000)
-    scope: str = Field(default="read,activity:read_all,activity:write", max_length=500)
+    scope: str = Field(default="read,read_all,activity:read_all,activity:write", max_length=500)
     state: str = Field(min_length=1, max_length=256)
 
 
@@ -478,6 +479,55 @@ def strava_upload_activity_endpoint(
 def strava_upload_status_endpoint(upload_id: str, request: Request) -> dict[str, Any]:
     _require_api_access(request)
     return get_strava_upload_status(upload_id)
+
+
+@app.get("/api/strava/routes")
+def strava_routes_endpoint(request: Request) -> dict[str, Any]:
+    """Return the last explicitly refreshed Strava route catalogue."""
+    _require_api_access(request)
+    return StravaRouteCatalogStore().load()
+
+
+@app.post("/api/strava/routes/refresh")
+def refresh_strava_routes_endpoint(request: Request) -> dict[str, Any]:
+    """Refresh and persist the current athlete's Strava route catalogue."""
+    _require_api_access(request)
+    try:
+        routes = StravaSink().list_routes(per_page=100)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Strava route listing failed: {exc}") from exc
+    summaries = [_strava_route_summary(route) for route in routes if route.get("id") or route.get("id_str")]
+    return StravaRouteCatalogStore().replace(summaries)
+
+
+def _strava_route_summary(route: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(route.get("id") or route.get("id_str") or ""),
+        "name": str(route.get("name") or "Strava 路线"),
+        "distanceMeters": float(route.get("distance") or 0),
+        "elevationGainMeters": float(route.get("elevation_gain") or 0),
+        "estimatedMovingTimeSeconds": int(route.get("estimated_moving_time") or 0),
+        "private": bool(route.get("private")),
+        "starred": bool(route.get("starred")),
+        "updatedAt": route.get("updated_at"),
+    }
+
+
+@app.get("/api/strava/routes/{route_id}/gpx")
+def strava_route_gpx_endpoint(route_id: int, request: Request) -> Response:
+    """Proxy an existing Strava route GPX for Rider's local import flow."""
+    _require_api_access(request)
+    if route_id <= 0:
+        raise HTTPException(status_code=400, detail="route_id must be a positive integer")
+    try:
+        content = StravaSink().export_route_gpx(route_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Strava route GPX export failed: {exc}") from exc
+    return Response(content=content, media_type="application/gpx+xml")
 
 
 @app.post("/api/chat")

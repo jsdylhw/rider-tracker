@@ -626,7 +626,7 @@ function buildRideExportMetadata(exportMetadata, route) {
 }
 
 function inferActivityName(route, fallbackName = DEFAULT_ACTIVITY_NAME) {
-    if (route?.source === "gpx") {
+    if (route?.source === "gpx" || route?.source === "strava") {
         return String(route.importFileName ?? route.name ?? "GPX 路线").trim().slice(0, 48);
     }
     if (route?.source === "agent-planned" && route.name) {

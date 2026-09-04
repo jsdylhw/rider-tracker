@@ -14,7 +14,7 @@ export function createRouteDetailsRenderer({
 
     function bindEvents() {
         elements.addSegmentBtn?.addEventListener("click", () => {
-            if (!isRouteEditingLocked() && !isRouteLoading()) onAddSegment();
+            if (isManualRouteEditingAllowed()) onAddSegment();
         });
         elements.resetRouteBtn?.addEventListener("click", () => {
             if (!isRouteEditingLocked() && !isRouteLoading()) onResetRoute();
@@ -41,7 +41,7 @@ export function createRouteDetailsRenderer({
 
     function renderRouteTable(state) {
         const route = state.route;
-        const isGpx = route.source === "gpx";
+        const isGpx = route.source === "gpx" || route.source === "strava";
         const routeEditingLocked = state.liveRide?.isActive === true;
         const isEditable = !hasRouteModeControls
             ? !isGpx
@@ -96,28 +96,22 @@ export function createRouteDetailsRenderer({
         const inputMode = getInputMode();
         const isRouteLoading = route?.isLoading === true;
         const isGpx = route.source === "gpx";
+        const isStrava = route.source === "strava";
         const isExploration = route.source === "osm-exploration";
         const isMapDrawn = route.source === "map-drawn";
         const isAgentPlanned = route.source === "agent-planned";
         const isAgentDraft = isAgentPlanned && route.isDraft === true;
         const hasUsableRoute = Number.isFinite(route.totalDistanceMeters) && route.totalDistanceMeters > 0;
-        const isPendingMapExploration = inputMode === "map" && !isExploration;
-        const isPendingMapDrawing = inputMode === "draw" && !isMapDrawn;
-        const isPendingAgentRoute = inputMode === "ai" && !isAgentPlanned;
-        const isPendingGpxImport = inputMode === "gpx" && !isGpx;
+        const isPendingMapExploration = !hasUsableRoute && inputMode === "map" && !isExploration;
+        const isPendingMapDrawing = !hasUsableRoute && inputMode === "draw" && !isMapDrawn;
+        const isPendingAgentRoute = !hasUsableRoute && inputMode === "ai" && !isAgentPlanned;
+        const isPendingLibraryRoute = !hasUsableRoute && inputMode === "library";
 
         if (elements.routeSourceLabel) {
             elements.routeSourceLabel.textContent = isRouteLoading
                 ? "路线处理中"
-                : isPendingMapExploration
-                    ? "地图探索（待生成）"
-                    : isPendingAgentRoute
-                        ? "AI 路线（等待预览）"
-                    : isPendingMapDrawing
-                        ? "地图选择路线（待生成）"
-                    : isPendingGpxImport
-                        ? "GPX（待导入）"
-                        : isExploration
+                    : hasUsableRoute
+                        ? isExploration
                             ? "OSM 街景探索"
                             : isAgentPlanned
                                 ? `AI 路线：${route.name}`
@@ -125,11 +119,27 @@ export function createRouteDetailsRenderer({
                                 ? "Google 地图选择路线"
                             : isGpx
                                 ? `GPX：${route.name}`
-                                : "手工路线";
+                            : isStrava
+                                ? `Strava：${route.name}`
+                                : "手工路线"
+                    : isPendingMapExploration
+                    ? "地图探索（待生成）"
+                    : isPendingAgentRoute
+                        ? "AI 路线（等待预览）"
+                    : isPendingMapDrawing
+                        ? "地图选择路线（待生成）"
+                    : isPendingLibraryRoute
+                        ? "我的路线（等待选择）"
+                        : "尚未选择";
         }
 
         const routeEditingLocked = state.liveRide?.isActive === true;
-        if (elements.addSegmentBtn) elements.addSegmentBtn.disabled = inputMode !== "manual" || isGpx || routeEditingLocked || isRouteLoading;
+        if (elements.addSegmentBtn) {
+            elements.addSegmentBtn.disabled = inputMode !== "manual"
+                || route.source !== "manual"
+                || routeEditingLocked
+                || isRouteLoading;
+        }
         if (elements.resetRouteBtn) elements.resetRouteBtn.disabled = routeEditingLocked || isRouteLoading;
         if (elements.gpxFileInput) elements.gpxFileInput.disabled = routeEditingLocked || isRouteLoading;
         if (elements.routeDistanceChip) elements.routeDistanceChip.textContent = `${formatNumber(route.totalDistanceMeters / 1000, 2)} km`;
@@ -152,8 +162,8 @@ export function createRouteDetailsRenderer({
             elements.routeSummary.innerHTML = "<strong>地图选择路线</strong><br>在 OSM 地图上依次点击起点、途经点和终点。系统会调用 Google Routes API 生成实际可骑行道路路线，再自动请求 Google 海拔。";
             return;
         }
-        if (isPendingGpxImport) {
-            elements.routeSummary.innerHTML = "<strong>GPX 导入</strong><br>选择 GPX 文件后显示路线距离、海拔和坡度图。";
+        if (isPendingLibraryRoute) {
+            elements.routeSummary.innerHTML = "<strong>我的路线</strong><br>从本地路线库、Strava 路线或 GPX 文件中选择一条路线。";
             return;
         }
         if (!hasUsableRoute) {
@@ -162,8 +172,8 @@ export function createRouteDetailsRenderer({
         }
 
         const usedDrivingFallback = isMapDrawn && route.travelMode === "DRIVE";
-        const sourceText = isAgentPlanned ? "Personal FIT Agent 虚拟路线" : isExploration ? "OSM 地图探索" : isMapDrawn ? usedDrivingFallback ? "Google 道路路线（驾车回退）" : "Google 骑行路线" : isGpx ? "GPX 导入" : "手工输入";
-        const segmentsText = isGpx ? "" : `，共 ${route.segments.length} 段`;
+        const sourceText = isAgentPlanned ? "Personal FIT Agent 虚拟路线" : isExploration ? "OSM 地图探索" : isMapDrawn ? usedDrivingFallback ? "Google 道路路线（驾车回退）" : "Google 骑行路线" : isStrava ? "Strava 路线" : isGpx ? "GPX 导入" : "手工输入";
+        const segmentsText = isGpx || isStrava ? "" : `，共 ${route.segments.length} 段`;
         const elevationWarning = route.hasElevationData === false && !isAgentPlanned
             ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : isMapDrawn ? "骑行路线" : "GPX"}尚无海拔数据，坡度按 0 处理。${isExploration ? "可在骑行界面主动请求海拔。" : isMapDrawn ? "可在地图选择路线中请求海拔。" : ""}</span>`
             : "";
@@ -175,7 +185,7 @@ export function createRouteDetailsRenderer({
         const prototypeWarning = isAgentDraft
             ? "<br><span style=\"color: var(--danger);\">当前仍是路线草稿；请点击“最终确认”后再开始骑行。</span>"
             : isAgentPlanned
-            ? "<br><span class=\"muted\">AI 虚拟路线已确认，不包含海拔，坡度按 0 处理；建议配合 ERG 模式骑行。</span>"
+            ? "<br><span class=\"muted\">AI 虚拟路线已确认，不包含海拔，坡度按 0 处理；建议配合 ERG 模式骑行。也可导出 GPX 上传至 Strava，待 Strava 补充海拔后，再从“我的路线 → Strava 路线”重新加载。</span>"
             : "";
         elements.routeSummary.innerHTML = `
             <strong>路线概览</strong><br>
@@ -191,6 +201,13 @@ export function createRouteDetailsRenderer({
 
     function isRouteLoading() {
         return lastRenderedState?.route?.isLoading === true;
+    }
+
+    function isManualRouteEditingAllowed() {
+        return getInputMode() === "manual"
+            && lastRenderedState?.route?.source === "manual"
+            && !isRouteEditingLocked()
+            && !isRouteLoading();
     }
 
     return { bindEvents, render };

@@ -12,6 +12,7 @@ import { createNarrationRoutes } from "./routes/narration-routes.js";
 import { createPersonalFitAgentClient } from "./personal-fit-agent-client.js";
 import { sendAgentUnavailable } from "./agent-unavailable.js";
 import { buildAllowedLocalOrigins, buildLocalBaseUrl, createLocalApiOriginGuard } from "./local-api-security.js";
+import { withRequiredStravaScopes } from "../../scripts/local-config.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,7 +25,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "127.0.0.1";
-const SCOPES = process.env.STRAVA_SCOPES || "activity:read_all,activity:write";
+const SCOPES = withRequiredStravaScopes(process.env.STRAVA_SCOPES);
 const APP_BASE_URL = process.env.APP_BASE_URL || buildLocalBaseUrl({
     host: HOST === "127.0.0.1" ? "localhost" : HOST,
     port: PORT
