@@ -300,11 +300,16 @@ export const suite = {
             }
         },
         {
-            name: "手工路线进入沉浸街景时不显示路线小地图",
+            name: "没有坐标的手工路线进入沉浸街景时不显示路线小地图",
             run() {
                 const elements = createElements();
                 const state = createBaseState();
                 state.route.source = "manual";
+                state.route.points = state.route.points.map((point) => ({
+                    ...point,
+                    latitude: null,
+                    longitude: null
+                }));
                 const store = createStore(state);
                 const renderer = createDashboardRenderer({
                     elements,
@@ -322,6 +327,33 @@ export const suite = {
                 elements.immersiveStreetViewBtn.dispatch("click");
 
                 assertEqual(elements.rideDashboardMap.hidden, true);
+            }
+        },
+        {
+            name: "沉浸街景按实际轨迹显示 Strava AI 和地图选点路线小地图",
+            run() {
+                for (const source of ["strava", "agent-planned", "map-drawn"]) {
+                    const elements = createElements();
+                    const state = createBaseState();
+                    state.route.source = source;
+                    const store = createStore(state);
+                    const renderer = createDashboardRenderer({
+                        elements,
+                        rideVisuals: {
+                            hasStreetView: () => true,
+                            enableStreetView: async () => {},
+                            syncMap() {},
+                            syncStreetView() {}
+                        },
+                        streetViewDebugEnabled: true
+                    });
+
+                    renderer.bindEvents(store);
+                    renderer.render(store.getState());
+                    elements.immersiveStreetViewBtn.dispatch("click");
+
+                    assertEqual(elements.rideDashboardMap.hidden, false);
+                }
             }
         },
         {

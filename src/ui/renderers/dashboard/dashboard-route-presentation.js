@@ -1,4 +1,5 @@
 import { buildStreetViewTargetFromRoute } from "../../map/street-view-controller.js";
+import { hasRouteMapGeometry } from "../../map/map-controller.js";
 
 export function createDashboardRoutePresentation({ elements, onMapShown = () => {} }) {
     function render({ route, currentRecord, ride, immersiveStreetViewMode }) {
@@ -15,7 +16,7 @@ export function createDashboardRoutePresentation({ elements, onMapShown = () => 
             elements.rideRouteContext.textContent = `当前路线：${routeName} · 当前位置：${formatRoutePosition(route, currentRecord)}`;
         }
 
-        const hasMappableRoute = ["gpx", "osm-map", "osm-exploration"].includes(route?.source);
+        const hasMappableRoute = hasRouteMapGeometry(route);
         const hideRouteMiniMap = immersiveStreetViewMode && !hasMappableRoute;
         if (elements.rideDashboardMap && Boolean(elements.rideDashboardMap.hidden) !== hideRouteMiniMap) {
             elements.rideDashboardMap.hidden = hideRouteMiniMap;

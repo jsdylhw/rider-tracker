@@ -386,6 +386,11 @@ export function collectRouteMapLatLngs(route) {
         : normalizeRouteMapLatLngs(route?.points);
 }
 
+/** Route source is metadata; actual coordinate geometry decides map visibility. */
+export function hasRouteMapGeometry(route) {
+    return collectRouteMapLatLngs(route).length >= 2;
+}
+
 function normalizeRouteMapLatLngs(geometry) {
     return (geometry ?? [])
         .map((point) => {
