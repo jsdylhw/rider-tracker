@@ -203,7 +203,7 @@ live:  activate_skill -> Skill tools -> Sandbox handlers
 - `integrations/garmin.py`：认证与下载。
 - `integrations/strava.py`：OAuth、上传与描述更新 HTTP 客户端。
 - `integrations/llm.py`：Anthropic Messages API 兼容客户端，不导入 Agent Tool 或 Skill。
-- `services/route/`：主 Agent 使用的持久化路线规划服务；当前仍有部分 provider 从 `demo/` 导入，后续应迁入正式 integrations。
+- `services/route/`：主 Agent 使用的持久化路线规划服务；地图和 Strava Provider 位于正式 `integrations/route_providers/`，不依赖仓库根目录的路线实验。
 
 ## 当前边界
 

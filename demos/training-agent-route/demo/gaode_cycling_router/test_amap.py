@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint, _successful_path, parse_polyline
-from integrations.route_providers.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
+from demo.gaode_cycling_router.amap import AmapCyclingRouter, AmapPoint, _successful_path, parse_polyline
+from demo.gaode_cycling_router.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
 
 
 class AmapAdapterTests(unittest.TestCase):

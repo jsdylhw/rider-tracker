@@ -54,11 +54,11 @@ def test_removed_legacy_packages_are_not_imported() -> None:
 
 
 def test_production_code_does_not_depend_on_demo() -> None:
-    """Experiments may use production modules, never the reverse direction."""
-    assert _import_edges_with_prefix(
-        ["agent", "app", "domain", "fit", "integrations", "operations", "services", "storage"],
-        prefix="demo",
-    ) == set()
+    """Production and standalone experiments must remain separate source trees."""
+    directories = ["agent", "app", "domain", "fit", "integrations", "operations", "services", "storage"]
+    assert not (ROOT / "demo").exists()
+    assert _import_edges_with_prefix(directories, prefix="demo") == set()
+    assert _import_edges_with_prefix(directories, prefix="demos") == set()
 
 
 def test_browser_http_surface_matches_migration_contract() -> None:

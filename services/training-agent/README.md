@@ -105,9 +105,8 @@ npm run agent:cli -- debug rebuild-v2-reports --scope all
 国内地点按路线顺序解析：首点使用高德关键字搜索，后续点优先在前一点周边检索并结合名称匹配和距离选择，周边无结果才降级到带行政区偏置的关键字搜索。语义修改途经点后，候选名称会根据新的途经顺序重新生成。
 
 生产路线服务只依赖 `integrations/route_providers/`、统一 `integrations/google_places.py` 和
-`services/route/`。`demo/gaode_cycling_router/`、`demo/global_cycling_router/`、
-`demo/osm_cycling_router/` 仅保留独立实验入口，并通过兼容导入复用正式 Provider；生产代码禁止反向
-导入 `demo`。
+`services/route/`。历史路线实验已原样迁到仓库根目录 `demos/training-agent-route/demo/`，不属于
+Training Agent Python 包；正式代码与正式测试均不得导入这些实验模块，实验模块也不复用正式 Provider。
 
 ## Agent 评测
 

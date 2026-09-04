@@ -53,10 +53,14 @@ jobs:
 
       - name: Check route demo JavaScript syntax
         run: |
-          node --check services/training-agent/demo/global_cycling_router/web/app.js
-          node --check services/training-agent/demo/gaode_cycling_router/web/app.js
-          node --check services/training-agent/demo/gaode_cycling_router/web/bootstrap.js
-          node --check services/training-agent/demo/osm_cycling_router/web/app.js
+          node --check demos/training-agent-route/demo/global_cycling_router/web/app.js
+          node --check demos/training-agent-route/demo/gaode_cycling_router/web/app.js
+          node --check demos/training-agent-route/demo/gaode_cycling_router/web/bootstrap.js
+          node --check demos/training-agent-route/demo/osm_cycling_router/web/app.js
+
+      - name: Run standalone route demo tests
+        working-directory: demos/training-agent-route
+        run: python -m pytest -q demo
 
       - name: Run Rider to Training Backend integration test
         run: npm run test:integration
