@@ -29,18 +29,17 @@ def narration_density(duration_minutes: Any) -> dict[str, int]:
 
 
 def narration_research_policy(duration_minutes: Any) -> dict[str, int]:
-    """Bound provider work independently from the desired card count.
+    """Choose a small set of route anchors independently from card count.
 
-    A narration card is a presentation unit, not a Google Places request. Most
-    cards describe the route region, landscape, history or local culture and
-    may reuse a small set of read sources. Only a minority describe a precise
-    point of interest and therefore need a source tied to that route sample.
+    One Google Places request is made for each representative anchor.  The
+    resulting place bundle is then sent to the model once; narration cards do
+    not fan out into their own provider requests.
     """
     density = narration_density(duration_minutes)
     target = density["target"]
     return {
         "place_card_maximum": max(3, min(8, round(target / 3))),
-        "search_request_maximum": max(8, min(18, round(target * 0.75))),
-        "samples_per_search": 3,
-        "search_concurrency": 4,
+        "anchor_count": max(4, min(8, round(target / 4))),
+        "places_per_anchor": 4,
+        "search_concurrency": 8,
     }

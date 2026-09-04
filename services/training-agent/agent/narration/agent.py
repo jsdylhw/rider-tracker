@@ -1,4 +1,9 @@
-"""Independent sourced route-narration tool loop."""
+"""Prepare a route narration plan with bounded research and one LLM call.
+
+Google Places is queried deterministically at a small number of representative
+route anchors. The complete research bundle is then handed to the model once
+for composition. Card count must not multiply search or model requests.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ from agent.narration.prompts import ROUTE_NARRATION_SYSTEM_PROMPT
 from agent.tools.spec import ToolRegistry
 from domain.contracts.schemas import ROUTE_NARRATION_PLAN_V1
 from integrations.google_places import GooglePlacesClient
-from integrations.llm import AnthropicMessagesClient, build_tool_result_block, extract_text
+from integrations.llm import AnthropicMessagesClient, extract_text
 from services.narration.density import narration_density, narration_research_policy
 from settings import load_config
 
@@ -22,260 +27,214 @@ def run_route_narration_agent(
     places_client: GooglePlacesClient | None = None,
     client: AnthropicMessagesClient | None = None,
 ) -> dict[str, Any]:
+    """Research representative places, then compose the whole plan once."""
     samples = request.get("samples") if isinstance(request.get("samples"), list) else []
     if len(samples) < 2:
         raise ValueError("At least two route samples are required.")
+
     config = load_config()
     google = config.get("google") if isinstance(config.get("google"), dict) else {}
     places_client = places_client or GooglePlacesClient(str(google.get("api_key") or ""))
     client = client or AnthropicMessagesClient()
-    registry = ToolRegistry(ROUTE_NARRATION_TOOLS)
     density = narration_density(request.get("estimated_duration_min"))
-    research_policy = narration_research_policy(request.get("estimated_duration_min"))
-    workspace = _NarrationWorkspace(request, places_client, research_policy=research_policy)
-    messages: list[dict[str, Any]] = [{
-        "role": "user",
-        "content": json.dumps({
-            "instruction": "Research this route and submit the complete narration plan.",
-            "route": {
-                "name": request["route_name"],
-                "total_distance_m": request["total_distance_m"],
-                "estimated_duration_min": request["estimated_duration_min"],
-                "duration_estimation": request.get("duration_estimation"),
-                "locale": request.get("locale") or "zh-CN",
-            },
-            "density": density,
-            "research_policy": research_policy,
-            "samples": samples,
-        }, ensure_ascii=False),
-    }]
+    generation_policy = narration_research_policy(request.get("estimated_duration_min"))
+    research = _research_route_places(request, places_client, policy=generation_policy)
 
-    max_steps = min(12, max(6, (research_policy["search_request_maximum"] + 1) // 2 + 3))
-    for _step in range(max_steps):
-        response = client.create_messages(
-            system=ROUTE_NARRATION_SYSTEM_PROMPT,
-            messages=messages,
-            max_tokens=8000,
-            temperature=0.2,
-            tools=registry.to_anthropic(),
-        )
-        messages.append({"role": "assistant", "content": response.get("content") or []})
-        tool_results = []
-        for block in response.get("content") or []:
-            if not isinstance(block, dict) or block.get("type") != "tool_use":
-                continue
-            name = str(block.get("name") or "")
-            args = block.get("input") if isinstance(block.get("input"), dict) else {}
-            if name == "submit_route_narration_plan":
-                try:
-                    return workspace.build_plan(args, density=density)
-                except ValueError as exc:
-                    # A model may use an unread source or accidentally treat a
-                    # regional card as a point card. Return the contract error
-                    # to the same tool loop so it can repair the submission
-                    # without repeating the external research.
-                    tool_results.append({
-                        **build_tool_result_block(
-                            block["id"],
-                            json.dumps({
-                                "error": "invalid_narration_plan",
-                                "message": str(exc),
-                                "hint": (
-                                    "Reuse read source_ids. Use content_scope=route when the source "
-                                    "supports regional content but was found at another sample."
-                                ),
-                            }, ensure_ascii=False),
-                        ),
-                        "is_error": True,
-                    })
-                    continue
-            try:
-                if name == "search_route_knowledge":
-                    output = workspace.search(args)
-                elif name == "read_route_source":
-                    output = workspace.read(args)
-                else:
-                    output = {"error": "unknown_tool", "name": name}
-                tool_results.append(build_tool_result_block(
-                    block["id"], json.dumps(output, ensure_ascii=False, default=str),
-                ))
-            except Exception as exc:
-                tool_results.append({
-                    **build_tool_result_block(
-                        block["id"],
-                        json.dumps({"error": type(exc).__name__, "message": str(exc)}, ensure_ascii=False),
-                    ),
-                    "is_error": True,
-                })
-        if tool_results:
-            messages.append({"role": "user", "content": tool_results})
-            continue
-        messages.append({
+    response = client.create_messages(
+        system=ROUTE_NARRATION_SYSTEM_PROMPT,
+        messages=[{
             "role": "user",
-            "content": (
-                "Continue the research with tools, or call submit_route_narration_plan. "
-                f"Do not answer as plain text. Previous text: {extract_text(response)[:300]}"
-            ),
+            "content": json.dumps({
+                "instruction": "Compose and submit the complete narration plan now.",
+                "route": {
+                    "name": request["route_name"],
+                    "total_distance_m": request["total_distance_m"],
+                    "estimated_duration_min": request["estimated_duration_min"],
+                    "duration_estimation": request.get("duration_estimation"),
+                    "locale": request.get("locale") or "zh-CN",
+                },
+                "density": density,
+                "generation_policy": generation_policy,
+                "samples": samples,
+                "representative_places": research["anchors"],
+                "research_warnings": research["warnings"],
+            }, ensure_ascii=False),
+        }],
+        max_tokens=8000,
+        temperature=0.2,
+        tools=ToolRegistry(ROUTE_NARRATION_TOOLS).to_anthropic(),
+        tool_choice={"type": "tool", "name": "submit_route_narration_plan"},
+        thinking="disabled",
+    )
+    workspace = _NarrationWorkspace(
+        request,
+        research["sources"],
+        generation_policy=generation_policy,
+        research_warnings=research["warnings"],
+    )
+    return workspace.build_plan(_extract_submission(response), density=density)
+
+
+def _research_route_places(
+    request: dict[str, Any],
+    places_client: Any,
+    *,
+    policy: dict[str, int],
+) -> dict[str, Any]:
+    """Run one Places search per representative anchor, concurrently."""
+    anchors = _representative_values(
+        request["samples"], min(policy["anchor_count"], len(request["samples"])),
+    )
+    route_name = str(request.get("route_name") or "骑行路线").strip()
+    query = f"{route_name} 周边 景点 历史文化 自然风景"
+    results_by_index: dict[int, list[dict[str, Any]]] = {}
+    errors_by_index: dict[int, str] = {}
+    workers = min(policy["search_concurrency"], len(anchors))
+
+    with ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="narration-places") as executor:
+        pending = {
+            executor.submit(
+                places_client.search_near_route_point,
+                query=query,
+                latitude=float(sample["latitude"]),
+                longitude=float(sample["longitude"]),
+                limit=policy["places_per_anchor"],
+            ): index
+            for index, sample in enumerate(anchors)
+        }
+        for future in as_completed(pending):
+            index = pending[future]
+            try:
+                value = future.result()
+                results_by_index[index] = value if isinstance(value, list) else []
+            except Exception as exc:  # One bad anchor must not discard all research.
+                errors_by_index[index] = str(exc)[:300]
+
+    sources: dict[str, dict[str, Any]] = {}
+    anchor_payloads = []
+    for index, sample in enumerate(anchors):
+        sample_id = str(sample["sample_id"])
+        places = []
+        for raw in results_by_index.get(index, []):
+            if not isinstance(raw, dict):
+                continue
+            source_id = str(raw.get("source_id") or "").strip()
+            if not source_id or source_id == "google_place:":
+                continue
+            previous = sources.get(source_id) or {}
+            sample_ids = list(dict.fromkeys([*previous.get("sample_ids", []), sample_id]))
+            normalized = {**previous, **raw, "sample_ids": sample_ids}
+            sources[source_id] = normalized
+            places.append(_source_for_model(normalized))
+        anchor_payloads.append({
+            "sample": sample,
+            "places": places,
+            "search_error": errors_by_index.get(index),
         })
-    raise RuntimeError("RouteNarrationAgent did not submit a plan within its tool budget.")
+
+    warnings = [
+        f"代表点 {anchors[index]['sample_id']} 的地点检索失败：{message}"
+        for index, message in sorted(errors_by_index.items())
+    ]
+    if not sources:
+        warnings.append("Google Places 未返回可用地点；本次仅生成路线级背景讲解。")
+    return {"anchors": anchor_payloads, "sources": sources, "warnings": warnings}
+
+
+def _source_for_model(source: dict[str, Any]) -> dict[str, Any]:
+    """Exclude bulky photo metadata from the LLM context."""
+    return {key: value for key, value in source.items() if key not in {"photos", "types"}}
+
+
+def _extract_submission(response: dict[str, Any]) -> dict[str, Any]:
+    """Read the single structured submission, with a JSON-text fallback."""
+    for block in response.get("content") or []:
+        if (
+            isinstance(block, dict)
+            and block.get("type") == "tool_use"
+            and block.get("name") == "submit_route_narration_plan"
+            and isinstance(block.get("input"), dict)
+        ):
+            return block["input"]
+
+    text = extract_text(response).strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        lines = lines[1:] if lines and lines[0].startswith("```") else lines
+        lines = lines[:-1] if lines and lines[-1].strip() == "```" else lines
+        text = "\n".join(lines).strip()
+    try:
+        parsed = json.loads(text)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "Route narration model did not return submit_route_narration_plan."
+        ) from exc
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("items"), list):
+        raise RuntimeError("Route narration model returned an invalid plan payload.")
+    return parsed
 
 
 class _NarrationWorkspace:
+    """Validate model output and attach trusted provider metadata."""
+
     def __init__(
         self,
         request: dict[str, Any],
-        places_client: Any,
+        sources: dict[str, dict[str, Any]],
         *,
-        research_policy: dict[str, int],
+        generation_policy: dict[str, int],
+        research_warnings: list[str] | None = None,
     ) -> None:
         self.request = request
-        self.places_client = places_client
-        self.research_policy = research_policy
+        self.sources = sources
+        self.generation_policy = generation_policy
+        self.research_warnings = list(research_warnings or [])
         self.samples = {str(item["sample_id"]): item for item in request["samples"]}
-        self.sources: dict[str, dict[str, Any]] = {}
-        self.read_ids: set[str] = set()
-        self.search_requests_used = 0
-        self.search_cache: dict[tuple[str, float, float, int], list[dict[str, Any]]] = {}
-        self.underfilled_submission_rejected = False
-
-    def search(self, args: dict[str, Any]) -> dict[str, Any]:
-        query = str(args.get("query") or "").strip()
-        if not query:
-            raise ValueError("query is required")
-        limit = max(1, min(6, int(args.get("limit_per_sample") or 4)))
-        requested_ids = list(dict.fromkeys(str(value) for value in args.get("sample_ids") or []))[:8]
-        sample_ids = _representative_values(
-            requested_ids,
-            self.research_policy["samples_per_search"],
-        )
-        remaining = max(
-            0,
-            self.research_policy["search_request_maximum"] - self.search_requests_used,
-        )
-        searches: list[tuple[str, dict[str, Any], tuple[str, float, float, int]]] = []
-        cached_results: list[tuple[str, list[dict[str, Any]]]] = []
-        for sample_id in sample_ids:
-            sample = self.samples.get(sample_id)
-            if not sample:
-                continue
-            cache_key = (
-                query.casefold(),
-                round(float(sample["latitude"]), 3),
-                round(float(sample["longitude"]), 3),
-                limit,
-            )
-            if cache_key in self.search_cache:
-                cached_results.append((sample_id, self.search_cache[cache_key]))
-            elif len(searches) < remaining:
-                searches.append((sample_id, sample, cache_key))
-
-        fetched: list[tuple[str, list[dict[str, Any]]]] = []
-        errors: list[dict[str, str]] = []
-        if searches:
-            self.search_requests_used += len(searches)
-            workers = min(self.research_policy["search_concurrency"], len(searches))
-            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="narration-places") as executor:
-                future_searches = {
-                    executor.submit(
-                        self.places_client.search_near_route_point,
-                        query=query,
-                        latitude=float(sample["latitude"]),
-                        longitude=float(sample["longitude"]),
-                        limit=limit,
-                    ): (sample_id, cache_key)
-                    for sample_id, sample, cache_key in searches
-                }
-                for future in as_completed(future_searches):
-                    sample_id, cache_key = future_searches[future]
-                    try:
-                        sources = future.result()
-                    except Exception as exc:  # A failed place must not discard the whole batch.
-                        errors.append({"sample_id": sample_id, "message": str(exc)[:300]})
-                        continue
-                    self.search_cache[cache_key] = sources
-                    fetched.append((sample_id, sources))
-
-        results = []
-        result_groups = [*cached_results, *fetched]
-        result_groups.sort(key=lambda item: sample_ids.index(item[0]))
-        for sample_id, sources in result_groups:
-            for source in sources:
-                source_id = str(source.get("source_id") or "")
-                if not source_id:
-                    continue
-                previous = self.sources.get(source_id) or {}
-                associated_sample_ids = list(dict.fromkeys([
-                    *previous.get("sample_ids", []),
-                    sample_id,
-                ]))
-                normalized = {**previous, **source, "sample_ids": associated_sample_ids}
-                self.sources[source_id] = normalized
-                results.append({
-                    "source_id": source_id,
-                    "sample_id": sample_id,
-                    "name": normalized.get("name"),
-                    "address": normalized.get("address"),
-                    "primary_type": normalized.get("primary_type"),
-                    "summary": normalized.get("summary"),
-                })
-        return {
-            "query": query,
-            "searched_sample_ids": [sample_id for sample_id, _sources in result_groups],
-            "results": results[:40],
-            "errors": errors,
-            "research_budget": {
-                "used": self.search_requests_used,
-                "maximum": self.research_policy["search_request_maximum"],
-                "remaining": max(
-                    0,
-                    self.research_policy["search_request_maximum"] - self.search_requests_used,
-                ),
-            },
-        }
-
-    def read(self, args: dict[str, Any]) -> dict[str, Any]:
-        records = []
-        for source_id in list(dict.fromkeys(str(value) for value in args.get("source_ids") or []))[:20]:
-            source = self.sources.get(source_id)
-            if source:
-                self.read_ids.add(source_id)
-                # Photo metadata is attached deterministically after the model
-                # submits a place card. It does not help factual synthesis and
-                # would only inflate the model context.
-                records.append({key: value for key, value in source.items() if key != "photos"})
-        return {"sources": records}
 
     def build_plan(self, submission: dict[str, Any], *, density: dict[str, int]) -> dict[str, Any]:
         items = []
         seen_samples: set[str] = set()
         place_card_count = 0
-        skipped_place_cards = 0
+        skipped_invalid_cards = 0
+
         for index, raw in enumerate(submission.get("items") or []):
+            if len(items) >= density["maximum"]:
+                break
             if not isinstance(raw, dict):
+                skipped_invalid_cards += 1
                 continue
             sample_id = str(raw.get("sample_id") or "")
             sample = self.samples.get(sample_id)
-            content_scope = str(raw.get("content_scope") or "place").lower()
+            content_scope = str(raw.get("content_scope") or "route").lower()
             if content_scope not in {"route", "place"}:
-                content_scope = "place"
-            source_ids = [
-                str(value) for value in raw.get("source_ids") or []
-                if str(value) in self.sources
-                and str(value) in self.read_ids
-                and (
-                    content_scope == "route"
-                    or sample_id in self.sources[str(value)].get("sample_ids", [])
-                )
-            ]
+                content_scope = "route"
             title = str(raw.get("title") or "").strip()
             summary = str(raw.get("summary") or "").strip()
-            if not sample or not source_ids or not title or not summary or sample_id in seen_samples:
+            if not sample or not title or not summary or sample_id in seen_samples:
+                skipped_invalid_cards += 1
                 continue
+
+            requested_source_ids = list(dict.fromkeys(
+                str(value) for value in raw.get("source_ids") or []
+            ))
+            source_ids = [value for value in requested_source_ids if value in self.sources]
             if content_scope == "place":
-                if place_card_count >= self.research_policy["place_card_maximum"]:
-                    skipped_place_cards += 1
+                local_source_ids = [
+                    value for value in source_ids
+                    if sample_id in self.sources[value].get("sample_ids", [])
+                ]
+                if not source_ids:
+                    skipped_invalid_cards += 1
                     continue
-                place_card_count += 1
+                if local_source_ids and place_card_count < self.generation_policy["place_card_maximum"]:
+                    source_ids = local_source_ids
+                    place_card_count += 1
+                else:
+                    # Keep useful regional material, but remove the precise
+                    # point/photo claim when its source is not local to this
+                    # sample or the place-card budget is already full.
+                    content_scope = "route"
+
             seen_samples.add(sample_id)
             item = {
                 "item_id": f"narration_{index + 1}",
@@ -283,7 +242,7 @@ class _NarrationWorkspace:
                 "latitude": sample["latitude"],
                 "longitude": sample["longitude"],
                 "content_scope": content_scope,
-                "category": str(raw.get("category") or "place")[:40],
+                "category": str(raw.get("category") or "route")[:40],
                 "title": title[:80],
                 "summary": summary[:600],
                 "tts_text": str(raw.get("tts_text") or summary).strip()[:300],
@@ -302,32 +261,23 @@ class _NarrationWorkspace:
             if media is not None:
                 item["media"] = media
             items.append(item)
+
         if not items:
             raise ValueError(
-                "submit_route_narration_plan contains no valid sourced cards "
-                f"(known_sources={len(self.sources)}, read_sources={len(self.read_ids)})"
+                "submit_route_narration_plan contains no valid cards "
+                f"(known_sources={len(self.sources)})"
             )
+
         items.sort(key=lambda item: item["route_distance_m"])
-        warnings = [str(value) for value in submission.get("warnings") or [] if str(value).strip()]
-        if (
-            len(items) < density["minimum"]
-            and not warnings
-            and not self.underfilled_submission_rejected
-        ):
-            self.underfilled_submission_rejected = True
-            raise ValueError(
-                f"Only {len(items)} valid cards were submitted; prepare at least "
-                f"{density['minimum']} distinct sourced cards. If the read sources truly "
-                "cannot support that many cards, resubmit the best partial plan with a "
-                "specific warning explaining the source limitation."
-            )
-        if skipped_place_cards:
-            warnings.append(
-                f"已忽略 {skipped_place_cards} 条超出上限的点位卡片；"
-                f"点位卡片最多 {self.research_policy['place_card_maximum']} 条。"
-            )
+        warnings = [*self.research_warnings]
+        warnings.extend(
+            str(value) for value in submission.get("warnings") or [] if str(value).strip()
+        )
+        if skipped_invalid_cards:
+            warnings.append(f"已忽略 {skipped_invalid_cards} 条格式或来源关联无效的卡片。")
         if len(items) < density["minimum"]:
-            warnings.append(f"有效资料只支持 {len(items)} 条卡片，少于建议的 {density['minimum']} 条。")
+            warnings.append(f"本次生成 {len(items)} 条有效卡片，少于建议的 {density['minimum']} 条。")
+
         return {
             "schema_version": ROUTE_NARRATION_PLAN_V1,
             "plan_id": f"narration_{uuid.uuid4().hex}",
@@ -340,7 +290,7 @@ class _NarrationWorkspace:
                 "total_distance_m": self.request["total_distance_m"],
             },
             "items": items,
-            "warnings": warnings,
+            "warnings": list(dict.fromkeys(warnings)),
         }
 
     def _place_photo(self, source_ids: list[str]) -> dict[str, Any] | None:
@@ -368,7 +318,7 @@ def _bounded_number(value: Any, minimum: float, maximum: float, fallback: float)
         return fallback
 
 
-def _representative_values(values: list[str], maximum: int) -> list[str]:
+def _representative_values(values: list[Any], maximum: int) -> list[Any]:
     """Keep evenly distributed values while preserving their original order."""
     if len(values) <= maximum:
         return values

@@ -96,6 +96,32 @@ class TestAnthropicMessagesClient:
         assert result["id"] == "msg_123"
 
     @patch("integrations.llm.urlopen")
+    def test_call_can_disable_configured_thinking(self, mock_urlopen):
+        client = AnthropicMessagesClient({
+            "base_url": "https://api.test.com/anthropic",
+            "api_key": "sk-test",
+            "model": "test-model",
+            "thinking": "enabled",
+            "reasoning_effort": "low",
+        })
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "id": "msg_disabled",
+            "content": [{"type": "text", "text": "ok"}],
+        }).encode("utf-8")
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+
+        client.create_messages(
+            messages=[{"role": "user", "content": "Hi"}],
+            thinking="disabled",
+        )
+
+        request = mock_urlopen.call_args[0][0]
+        payload = json.loads(request.data.decode("utf-8"))
+        assert payload["thinking"] == {"type": "disabled"}
+        assert "output_config" not in payload
+
+    @patch("integrations.llm.urlopen")
     def test_create_message_single(self, mock_urlopen, client):
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({

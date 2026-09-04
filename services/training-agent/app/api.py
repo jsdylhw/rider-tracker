@@ -571,7 +571,7 @@ def prepare_route_narration_endpoint(
     request: RouteNarrationRequest,
     http_request: Request,
 ) -> dict[str, Any]:
-    """Run one independent RouteNarrationAgent session for a route snapshot."""
+    """Prepare one narration plan with bounded place research and one model call."""
     _require_api_access(http_request)
     _require_llm_capability("route_narration")
     return run_route_narration_agent(request.model_dump())

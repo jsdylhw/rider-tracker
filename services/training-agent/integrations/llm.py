@@ -54,6 +54,8 @@ class AnthropicMessagesClient:
         self, *, system: str | None = None, user: str | list[dict[str, Any]],
         max_tokens: int | None = None, temperature: float | None = None,
         tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | None = None,
+        thinking: str | None = None,
     ) -> dict[str, Any]:
         """单条 user 消息调用(guided/direct 模式使用)."""
         payload = {
@@ -66,13 +68,17 @@ class AnthropicMessagesClient:
             payload["system"] = system
         if tools:
             payload["tools"] = tools
-        self._apply_reasoning_config(payload)
+        if tool_choice:
+            payload["tool_choice"] = tool_choice
+        self._apply_reasoning_config(payload, thinking=thinking)
         return self._post_messages(payload)
 
     def create_messages(
         self, *, system: str | None = None, messages: list[dict[str, Any]],
         max_tokens: int | None = None, temperature: float | None = None,
         tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | None = None,
+        thinking: str | None = None,
     ) -> dict[str, Any]:
         """多轮 messages 调用(tool loop 模式使用)."""
         payload = {
@@ -85,23 +91,25 @@ class AnthropicMessagesClient:
             payload["system"] = system
         if tools:
             payload["tools"] = tools
-        self._apply_reasoning_config(payload)
+        if tool_choice:
+            payload["tool_choice"] = tool_choice
+        self._apply_reasoning_config(payload, thinking=thinking)
         return self._post_messages(payload)
 
-    def _apply_reasoning_config(self, payload: dict[str, Any]) -> None:
+    def _apply_reasoning_config(self, payload: dict[str, Any], *, thinking: str | None = None) -> None:
         """Map local settings to DeepSeek's Anthropic-compatible controls.
 
         The fields stay absent when they are not configured so other
         Anthropic-compatible providers keep their existing request contract.
         """
-        thinking = self.config.get("thinking")
-        if thinking:
-            payload["thinking"] = {"type": thinking}
+        effective_thinking = thinking if thinking is not None else self.config.get("thinking")
+        if effective_thinking:
+            payload["thinking"] = {"type": effective_thinking}
 
         # Effort is meaningful only while thinking is enabled. Omitting it for
         # disabled mode also avoids sending a contradictory provider request.
         reasoning_effort = self.config.get("reasoning_effort")
-        if thinking != "disabled" and reasoning_effort:
+        if effective_thinking != "disabled" and reasoning_effort:
             payload["output_config"] = {"effort": reasoning_effort}
 
     def _post_messages(self, payload: dict[str, Any]) -> dict[str, Any]:

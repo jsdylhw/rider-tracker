@@ -1,44 +1,6 @@
-"""Tools exposed only to RouteNarrationAgent."""
+"""Structured output contract for the one-shot narration composer."""
 
-from agent.tools.spec import CATEGORY_ANALYSIS, CATEGORY_FIT_QUERY, ToolDef
-
-SEARCH_ROUTE_KNOWLEDGE = ToolDef(
-    name="search_route_knowledge",
-    description=(
-        "Search factual places and regional route knowledge from representative "
-        "route samples. The server applies a strict external-request budget, so "
-        "use focused queries and do not search every display position."
-    ),
-    input_schema={
-        "type": "object",
-        "required": ["query", "sample_ids"],
-        "properties": {
-            "query": {"type": "string", "minLength": 2, "maxLength": 160},
-            "sample_ids": {
-                "type": "array", "minItems": 1, "maxItems": 8,
-                "items": {"type": "string"},
-            },
-            "limit_per_sample": {"type": "integer", "minimum": 1, "maximum": 6, "default": 4},
-        },
-    },
-    category=CATEGORY_FIT_QUERY,
-)
-
-READ_ROUTE_SOURCE = ToolDef(
-    name="read_route_source",
-    description="Read full normalized source records previously returned by search_route_knowledge.",
-    input_schema={
-        "type": "object",
-        "required": ["source_ids"],
-        "properties": {
-            "source_ids": {
-                "type": "array", "minItems": 1, "maxItems": 20,
-                "items": {"type": "string"},
-            }
-        },
-    },
-    category=CATEGORY_FIT_QUERY,
-)
+from agent.tools.spec import CATEGORY_ANALYSIS, ToolDef
 
 SUBMIT_ROUTE_NARRATION_PLAN = ToolDef(
     name="submit_route_narration_plan",
@@ -51,7 +13,7 @@ SUBMIT_ROUTE_NARRATION_PLAN = ToolDef(
                 "type": "array", "minItems": 1, "maxItems": 44,
                 "items": {
                     "type": "object",
-                    "required": ["sample_id", "content_scope", "source_ids", "title", "summary"],
+                    "required": ["sample_id", "content_scope", "title", "summary"],
                     "properties": {
                         "sample_id": {"type": "string"},
                         "content_scope": {
@@ -61,7 +23,7 @@ SUBMIT_ROUTE_NARRATION_PLAN = ToolDef(
                                 "place means the subject is physically near this sample."
                             ),
                         },
-                        "source_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                        "source_ids": {"type": "array", "items": {"type": "string"}},
                         "category": {"type": "string"},
                         "title": {"type": "string", "maxLength": 80},
                         "summary": {"type": "string", "maxLength": 600},
@@ -77,7 +39,5 @@ SUBMIT_ROUTE_NARRATION_PLAN = ToolDef(
 )
 
 ROUTE_NARRATION_TOOLS = (
-    SEARCH_ROUTE_KNOWLEDGE,
-    READ_ROUTE_SOURCE,
     SUBMIT_ROUTE_NARRATION_PLAN,
 )

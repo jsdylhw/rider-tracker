@@ -1,77 +1,70 @@
 from __future__ import annotations
 
+import json
+
 from agent.narration.agent import _NarrationWorkspace, run_route_narration_agent
 from integrations.google_places import GooglePlacesClient, _normalize_place
 from services.narration.density import narration_density, narration_research_policy
 
 
-class FakePlaces:
+class CountingPlaces:
+    def __init__(self, *, fail_latitude: float | None = None):
+        self.calls = []
+        self.fail_latitude = fail_latitude
+
     def search_near_route_point(self, **kwargs):
+        self.calls.append(kwargs)
+        if kwargs["latitude"] == self.fail_latitude:
+            raise RuntimeError("provider unavailable")
         return [{
-            "source_id": "google_place:1",
-            "name": "屋岛",
-            "address": "香川县高松市",
+            "source_id": f"google_place:{kwargs['latitude']}:{kwargs['longitude']}",
+            "name": "资料点",
+            "address": "测试地址",
             "primary_type": "景胜地",
-            "summary": "濑户内海沿岸的历史景胜地。",
+            "summary": "区域资料",
             "latitude": kwargs["latitude"],
             "longitude": kwargs["longitude"],
-            "url": "https://example.test/place/1",
+            "url": "https://maps.google.test/place",
+            "photos": [{
+                "photo_name": "places/place_1/photos/photo_1",
+                "width": 1200,
+                "height": 800,
+                "author_attributions": [{
+                    "display_name": "测试摄影者",
+                    "uri": "https://maps.google.test/author",
+                    "photo_uri": "https://images.google.test/author.jpg",
+                }],
+            }],
         }]
 
 
-class FakeLlm:
+class OneShotLlm:
     def __init__(self):
-        self.step = 0
+        self.calls = []
 
-    def create_messages(self, **_kwargs):
-        self.step += 1
-        if self.step == 1:
-            return _tool("search_route_knowledge", "search-1", {
-                "query": "屋岛 历史 景观",
-                "sample_ids": ["sample_1"],
-            })
-        if self.step == 2:
-            return _tool("read_route_source", "read-1", {
-                "source_ids": ["google_place:1"],
-            })
-        return _tool("submit_route_narration_plan", "submit-1", {
-            "items": [{
-                "sample_id": "sample_2",
-                "content_scope": "route",
-                "source_ids": ["google_place:1"],
-                "category": "history",
-                "title": "屋岛",
-                "summary": "屋岛位于高松一带，是可以俯瞰濑户内海的历史景胜地。",
-                "tts_text": "前方是屋岛，这里以濑户内海景观和历史遗迹闻名。",
-            }],
-            "warnings": ["测试来源只支持一条卡片。"],
-        })
-
-
-class RepairingFakeLlm(FakeLlm):
     def create_messages(self, **kwargs):
-        self.step += 1
-        if self.step == 1:
-            return _tool("search_route_knowledge", "search-1", {
-                "query": "屋岛 历史 景观",
-                "sample_ids": ["sample_1"],
-            })
-        if self.step == 2:
-            return _tool("read_route_source", "read-1", {"source_ids": ["google_place:1"]})
-        if self.step == 3:
-            return _tool("submit_route_narration_plan", "bad-submit", {
-                "items": [{
-                    "sample_id": "sample_2", "content_scope": "place",
-                    "source_ids": ["google_place:1"], "title": "错误绑定", "summary": "错误。",
-                }],
-            })
-        assert kwargs["messages"][-1]["content"][0]["is_error"] is True
-        return _tool("submit_route_narration_plan", "fixed-submit", {
-            "items": [{
-                "sample_id": "sample_2", "content_scope": "route",
-                "source_ids": ["google_place:1"], "title": "区域历史", "summary": "修正后内容。",
-            }],
-            "warnings": ["测试来源只支持一条卡片。"],
+        self.calls.append(kwargs)
+        payload = json.loads(kwargs["messages"][0]["content"])
+        source_id = payload["representative_places"][0]["places"][0]["source_id"]
+        return _tool("submit_route_narration_plan", "submit-1", {
+            "items": [
+                {
+                    "sample_id": "sample_1",
+                    "content_scope": "place",
+                    "source_ids": [source_id],
+                    "category": "landscape",
+                    "title": "沿途景观",
+                    "summary": "这是与路线起点直接关联的景观资料。",
+                },
+                {
+                    "sample_id": "sample_2",
+                    "content_scope": "route",
+                    "category": "history",
+                    "title": "区域历史",
+                    "summary": "这是根据路线区域和模型知识生成的历史背景。",
+                },
+            ],
+            "warnings": ["测试仅生成两条卡片。"],
         })
 
 
@@ -97,13 +90,13 @@ def _request():
     }
 
 
-def test_two_hour_density_targets_twenty_four_cards():
+def test_two_hour_density_targets_twenty_four_cards_with_bounded_research():
     assert narration_density(120) == {"minimum": 20, "target": 24, "maximum": 32}
     assert narration_research_policy(120) == {
         "place_card_maximum": 8,
-        "search_request_maximum": 18,
-        "samples_per_search": 3,
-        "search_concurrency": 4,
+        "anchor_count": 6,
+        "places_per_anchor": 4,
+        "search_concurrency": 8,
     }
 
 
@@ -111,54 +104,7 @@ def test_one_hour_density_does_not_collapse_to_four_cards():
     assert narration_density(57) == {"minimum": 9, "target": 11, "maximum": 19}
 
 
-def test_route_narration_agent_searches_reads_and_submits_sourced_cards():
-    plan = run_route_narration_agent(_request(), places_client=FakePlaces(), client=FakeLlm())
-
-    assert plan["schema_version"] == "route_narration_plan.v1"
-    assert plan["route_fingerprint"] == "route_1234abcd"
-    assert plan["status"] == "partial"
-    assert plan["items"][0]["title"] == "屋岛"
-    assert plan["items"][0]["content_scope"] == "route"
-    assert plan["items"][0]["route_distance_m"] == 30000
-    assert plan["items"][0]["sources"][0]["source_id"] == "google_place:1"
-
-
-def test_route_narration_agent_repairs_an_invalid_submission_without_researching_again():
-    places = FakePlaces()
-    llm = RepairingFakeLlm()
-
-    plan = run_route_narration_agent(_request(), places_client=places, client=llm)
-
-    assert llm.step == 4
-    assert plan["items"][0]["content_scope"] == "route"
-    assert plan["items"][0]["title"] == "区域历史"
-
-
-class CountingPlaces:
-    def __init__(self):
-        self.calls = []
-
-    def search_near_route_point(self, **kwargs):
-        self.calls.append(kwargs)
-        return [{
-            "source_id": f"google_place:{kwargs['latitude']}:{kwargs['longitude']}",
-            "name": "资料点",
-            "summary": "区域资料",
-            "url": "https://maps.google.test/place",
-            "photos": [{
-                "photo_name": "places/place_1/photos/photo_1",
-                "width": 1200,
-                "height": 800,
-                "author_attributions": [{
-                    "display_name": "测试摄影者",
-                    "uri": "https://maps.google.test/author",
-                    "photo_uri": "https://images.google.test/author.jpg",
-                }],
-            }],
-        }]
-
-
-def test_narration_search_uses_representative_samples_and_hard_provider_budget():
+def test_route_narration_uses_bounded_places_and_exactly_one_llm_call():
     request = _request()
     request["samples"] = [
         {
@@ -167,56 +113,71 @@ def test_narration_search_uses_representative_samples_and_hard_provider_budget()
             "latitude": 34 + index / 100,
             "longitude": 134 + index / 100,
         }
-        for index in range(1, 7)
+        for index in range(1, 13)
     ]
+    # Keep the IDs used by the fake submission in the selected sample set.
+    request["samples"][0]["sample_id"] = "sample_1"
+    request["samples"][-1]["sample_id"] = "sample_2"
     places = CountingPlaces()
-    workspace = _NarrationWorkspace(request, places, research_policy={
-        "place_card_maximum": 2,
-        "search_request_maximum": 2,
-        "samples_per_search": 3,
-        "search_concurrency": 2,
-    })
+    llm = OneShotLlm()
 
-    first = workspace.search({
-        "query": "区域历史",
-        "sample_ids": [f"sample_{index}" for index in range(1, 7)],
-    })
-    second = workspace.search({
-        "query": "地方文化",
-        "sample_ids": [f"sample_{index}" for index in range(1, 7)],
-    })
+    plan = run_route_narration_agent(request, places_client=places, client=llm)
+
+    assert len(places.calls) == 6
+    assert len(llm.calls) == 1
+    assert len(llm.calls[0]["tools"]) == 1
+    assert llm.calls[0]["tools"][0]["name"] == "submit_route_narration_plan"
+    assert llm.calls[0]["tool_choice"] == {
+        "type": "tool", "name": "submit_route_narration_plan",
+    }
+    assert llm.calls[0]["thinking"] == "disabled"
+    model_payload = json.loads(llm.calls[0]["messages"][0]["content"])
+    assert len(model_payload["representative_places"]) == 6
+    assert "photos" not in model_payload["representative_places"][0]["places"][0]
+    assert plan["schema_version"] == "route_narration_plan.v1"
+    assert plan["route_fingerprint"] == "route_1234abcd"
+    assert [item["content_scope"] for item in plan["items"]] == ["place", "route"]
+    assert plan["items"][0]["media"]["photo_name"] == "places/place_1/photos/photo_1"
+    assert plan["items"][1]["sources"] == []
+
+
+def test_failed_anchor_becomes_warning_without_extra_llm_turn():
+    places = CountingPlaces(fail_latitude=34.4)
+    llm = OneShotLlm()
+
+    plan = run_route_narration_agent(_request(), places_client=places, client=llm)
 
     assert len(places.calls) == 2
-    assert first["research_budget"] == {"used": 2, "maximum": 2, "remaining": 0}
-    assert second["results"] == []
-    assert second["research_budget"]["remaining"] == 0
+    assert len(llm.calls) == 1
+    assert plan["status"] == "partial"
+    assert any("sample_2" in warning and "provider unavailable" in warning for warning in plan["warnings"])
 
 
-def test_place_cards_require_local_source_and_obey_limit_but_route_cards_can_reuse_source():
+def test_route_cards_need_no_place_source_but_place_cards_require_local_source():
     request = _request()
-    places = CountingPlaces()
-    workspace = _NarrationWorkspace(request, places, research_policy={
-        "place_card_maximum": 1,
-        "search_request_maximum": 4,
-        "samples_per_search": 2,
-        "search_concurrency": 2,
-    })
-    searched = workspace.search({"query": "历史", "sample_ids": ["sample_1", "sample_2"]})
-    source_ids = [result["source_id"] for result in searched["results"]]
-    workspace.read({"source_ids": source_ids})
-
+    sources = {
+        "google_place:start": {
+            "source_id": "google_place:start",
+            "name": "起点景观",
+            "sample_ids": ["sample_1"],
+            "url": "https://maps.google.test/place",
+            "photos": [{"photo_name": "places/place_1/photos/photo_1"}],
+        },
+    }
+    workspace = _NarrationWorkspace(
+        request,
+        sources,
+        generation_policy={"place_card_maximum": 1},
+    )
     plan = workspace.build_plan({"items": [
         {
-            "sample_id": "sample_1", "content_scope": "place", "source_ids": [source_ids[0]],
+            "sample_id": "sample_1", "content_scope": "place",
+            "source_ids": ["google_place:start"],
             "title": "起点地点", "summary": "与起点直接相关。",
         },
         {
-            "sample_id": "sample_2", "content_scope": "place", "source_ids": [source_ids[1]],
-            "title": "超额地点卡片", "summary": "来源与终点直接相关但超过点位卡片上限。",
-        },
-        {
-            "sample_id": "sample_2", "content_scope": "route", "source_ids": [source_ids[0]],
-            "title": "区域历史", "summary": "在路线后段播放的区域介绍。",
+            "sample_id": "sample_2", "content_scope": "route",
+            "title": "区域历史", "summary": "模型知识提供的区域背景。",
         },
     ]}, density={"minimum": 2, "target": 2, "maximum": 4})
 
@@ -225,38 +186,56 @@ def test_place_cards_require_local_source_and_obey_limit_but_route_cards_can_reu
         ("route", "区域历史"),
     ]
     assert plan["items"][0]["media"]["photo_name"] == "places/place_1/photos/photo_1"
-    assert "media" not in plan["items"][1]
+    assert plan["items"][1]["sources"] == []
 
 
-def test_underfilled_plan_gets_one_repair_chance_before_partial_is_accepted():
-    request = _request()
-    workspace = _NarrationWorkspace(request, CountingPlaces(), research_policy={
-        "place_card_maximum": 2,
-        "search_request_maximum": 2,
-        "samples_per_search": 2,
-        "search_concurrency": 2,
-    })
-    searched = workspace.search({"query": "区域历史", "sample_ids": ["sample_1"]})
-    source_id = searched["results"][0]["source_id"]
-    workspace.read({"source_ids": [source_id]})
-    submission = {"items": [{
-        "sample_id": "sample_1", "content_scope": "route", "source_ids": [source_id],
-        "title": "区域历史", "summary": "有来源支持的区域历史。",
-    }]}
-
-    try:
-        workspace.build_plan(submission, density={"minimum": 2, "target": 3, "maximum": 5})
-    except ValueError as exc:
-        assert "at least 2" in str(exc)
-    else:
-        raise AssertionError("underfilled first submission should request repair")
-
-    partial = workspace.build_plan(
-        {**submission, "warnings": ["当前读取来源只支持一条可靠卡片。"]},
-        density={"minimum": 2, "target": 3, "maximum": 5},
+def test_sourced_place_at_another_sample_is_kept_as_route_content():
+    workspace = _NarrationWorkspace(
+        _request(),
+        {
+            "google_place:start": {
+                "source_id": "google_place:start",
+                "name": "起点景观",
+                "sample_ids": ["sample_1"],
+                "photos": [{"photo_name": "places/place_1/photos/photo_1"}],
+            },
+        },
+        generation_policy={"place_card_maximum": 1},
     )
-    assert partial["status"] == "partial"
-    assert len(partial["items"]) == 1
+
+    plan = workspace.build_plan({"items": [{
+        "sample_id": "sample_2", "content_scope": "place",
+        "source_ids": ["google_place:start"],
+        "title": "区域景观", "summary": "作为区域背景展示，而非当前点位提示。",
+    }]}, density={"minimum": 1, "target": 1, "maximum": 2})
+
+    assert plan["items"][0]["content_scope"] == "route"
+    assert "media" not in plan["items"][0]
+    assert plan["status"] == "ready"
+
+
+def test_invalid_cards_are_dropped_and_underfilled_plan_returns_without_repair():
+    request = _request()
+    workspace = _NarrationWorkspace(
+        request,
+        {},
+        generation_policy={"place_card_maximum": 2},
+    )
+    plan = workspace.build_plan({"items": [
+        {
+            "sample_id": "sample_1", "content_scope": "place",
+            "source_ids": ["invented"], "title": "虚构地点", "summary": "应被丢弃。",
+        },
+        {
+            "sample_id": "sample_2", "content_scope": "route",
+            "title": "路线节奏", "summary": "唯一有效的路线级卡片。",
+        },
+    ]}, density={"minimum": 3, "target": 4, "maximum": 5})
+
+    assert [item["title"] for item in plan["items"]] == ["路线节奏"]
+    assert plan["status"] == "partial"
+    assert any("少于建议的 3 条" in warning for warning in plan["warnings"])
+    assert any("已忽略 1 条" in warning for warning in plan["warnings"])
 
 
 def test_google_place_normalizes_photo_metadata_and_attribution():
@@ -302,7 +281,6 @@ def test_google_place_photo_fetch_is_bounded_and_keeps_key_in_request_params(mon
 
     monkeypatch.setattr("integrations.google_places.requests.get", fake_get)
     client = GooglePlacesClient("server-key", timeout_seconds=7)
-
     content, content_type = client.get_photo(
         photo_name="places/place_1/photos/photo_1",
         max_width=640,

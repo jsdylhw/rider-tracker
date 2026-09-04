@@ -167,6 +167,32 @@ class TestClientToolsParam:
         sent = json.loads(call_args.data.decode("utf-8"))
         assert "tools" in sent
 
+    @patch("integrations.llm.urlopen")
+    def test_create_messages_can_force_one_tool(self, mock_urlopen):
+        from integrations.llm import AnthropicMessagesClient
+
+        client = AnthropicMessagesClient({
+            "base_url": "https://api.test.com/anthropic",
+            "api_key": "sk-test",
+            "model": "test-model",
+        })
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "id": "msg_4",
+            "content": [{"type": "tool_use", "name": "submit", "input": {}}],
+        }).encode("utf-8")
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+
+        choice = {"type": "tool", "name": "submit"}
+        client.create_messages(
+            messages=[{"role": "user", "content": "Hi"}],
+            tools=[{"name": "submit", "input_schema": {"type": "object"}}],
+            tool_choice=choice,
+        )
+
+        request = mock_urlopen.call_args[0][0]
+        assert json.loads(request.data.decode("utf-8"))["tool_choice"] == choice
+
 
 # -- extract_tool_use helpers --------------------------------------------
 
