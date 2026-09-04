@@ -393,3 +393,20 @@ Node。
 运动员档案和 schema 生命周期均由 Python 持有；Node 只保留浏览器公开协议、同源校验、multipart 文件
 接收和 Python API 转发。`activity_detail.v1` 的重复 metrics 与完整路线骑行生命周期仍是独立业务债，不
 影响本阶段的单 owner 验收。
+
+### 2026-09-04：阶段 6A 路线 Provider 正式化
+
+阶段 6A 将生产路线规划实际使用的高德骑行、WGS-84/GCJ-02 转换、Google Routes 和 Strava Segment
+实现从 `demo/` 提升到正式 `integrations/route_providers/`。纯球面距离计算不属于外部 Provider，移入
+`services/route/geometry.py`。`popular_loop`、`single_day`、`segment_aware` 和 `segments` 均改为只依赖
+正式层，生产 Python 对 `demo` 的导入基线由 15 条收紧为 0，架构测试禁止以后重新引入。
+
+原先路线规划和路线讲解各自维护一套 Google Places 客户端。本切片将两类查询统一到
+`integrations/google_places.py`，共享密钥校验、传输、重试和错误处理，同时保留不同的稳定返回形态和
+字段掩码：路线锚点只请求地点、坐标和国家等必要字段，讲解代表点才请求简介、地图链接和照片元数据。
+因此收敛实现不会让普通路线规划承担讲解资料的响应体和延迟。
+
+三个 Demo 目录继续保留实验算法、调试 Web 页面和 CLI；原 Provider 模块变成面向正式实现的兼容入口，
+依赖方向固定为 `demo -> integrations/services`。本切片不改变公开 HTTP、路线 schema、数据库、候选选择
+或前端行为，也不提前引入长任务 Job。阶段 6B 将在这个稳定 Provider 边界上单独实现持久化 Job、Worker
+和轮询/取消协议。

@@ -11,29 +11,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = ROOT.parents[1]
 
-# Production route planning still imports these modules from the historical
-# demo tree.  Stage 0 freezes that debt so no new dependency can be added while
-# the providers are promoted into the root src tree.  Delete entries as each
-# import is migrated; never add a new entry to make this test pass.
-DEMO_IMPORT_BASELINE = {
-    "services/route/popular_loop.py -> demo.gaode_cycling_router.amap",
-    "services/route/popular_loop.py -> demo.gaode_cycling_router.coordinates",
-    "services/route/popular_loop.py -> demo.global_cycling_router.google_places",
-    "services/route/popular_loop.py -> demo.osm_cycling_router.segment_loop",
-    "services/route/popular_loop.py -> demo.osm_cycling_router.strava_segments",
-    "services/route/segment_aware.py -> demo.gaode_cycling_router.amap",
-    "services/route/segment_aware.py -> demo.gaode_cycling_router.coordinates",
-    "services/route/segment_aware.py -> demo.global_cycling_router.google_routes",
-    "services/route/segment_aware.py -> demo.osm_cycling_router.segment_loop",
-    "services/route/segment_aware.py -> demo.osm_cycling_router.strava_segments",
-    "services/route/segments.py -> demo.osm_cycling_router.strava_segments",
-    "services/route/single_day.py -> demo.gaode_cycling_router.amap",
-    "services/route/single_day.py -> demo.gaode_cycling_router.coordinates",
-    "services/route/single_day.py -> demo.global_cycling_router.google_places",
-    "services/route/single_day.py -> demo.global_cycling_router.google_routes",
-}
-
-
 def test_non_agent_layers_do_not_depend_on_agent() -> None:
     """Keep reusable business and infrastructure code callable without a chat Agent."""
     violations = _imports_with_prefix(
@@ -76,12 +53,12 @@ def test_removed_legacy_packages_are_not_imported() -> None:
     assert violations == []
 
 
-def test_production_demo_dependency_does_not_expand() -> None:
-    """Freeze known route debt until production providers move out of demo."""
+def test_production_code_does_not_depend_on_demo() -> None:
+    """Experiments may use production modules, never the reverse direction."""
     assert _import_edges_with_prefix(
         ["agent", "app", "domain", "fit", "integrations", "operations", "services", "storage"],
         prefix="demo",
-    ) == DEMO_IMPORT_BASELINE
+    ) == set()
 
 
 def test_browser_http_surface_matches_migration_contract() -> None:

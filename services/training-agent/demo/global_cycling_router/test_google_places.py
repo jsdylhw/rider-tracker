@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from demo.global_cycling_router.google_places import GOOGLE_PLACES_FIELD_MASK, GooglePlacesClient, TransientProviderError
+from integrations.google_places import GOOGLE_PLACES_FIELD_MASK, GooglePlacesClient, TransientProviderError
 
 
 def test_search_builds_text_request_and_normalizes_places():

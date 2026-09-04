@@ -104,7 +104,10 @@ npm run agent:cli -- debug rebuild-v2-reports --scope all
 
 国内地点按路线顺序解析：首点使用高德关键字搜索，后续点优先在前一点周边检索并结合名称匹配和距离选择，周边无结果才降级到带行政区偏置的关键字搜索。语义修改途经点后，候选名称会根据新的途经顺序重新生成。
 
-`demo/gaode_cycling_router/`、`demo/global_cycling_router/` 和 `demo/osm_cycling_router/` 保留为供应商接入与算法实验；主 Agent 使用 `services/route/` 下的持久化路线服务。
+生产路线服务只依赖 `integrations/route_providers/`、统一 `integrations/google_places.py` 和
+`services/route/`。`demo/gaode_cycling_router/`、`demo/global_cycling_router/`、
+`demo/osm_cycling_router/` 仅保留独立实验入口，并通过兼容导入复用正式 Provider；生产代码禁止反向
+导入 `demo`。
 
 ## Agent 评测
 

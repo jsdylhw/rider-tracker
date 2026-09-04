@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from demo.global_cycling_router.google_routes import GOOGLE_ROUTES_FIELD_MASK, GoogleRoutesClient, TransientProviderError, WgsPoint
+from integrations.route_providers.google_routes import GOOGLE_ROUTES_FIELD_MASK, GoogleRoutesClient, TransientProviderError, WgsPoint
 
 
 def route_payload(distance=17250, duration="4020s"):

@@ -7,11 +7,11 @@ from collections.abc import Callable, Sequence
 from typing import Any
 from uuid import uuid4
 
-from demo.gaode_cycling_router.amap import AmapCyclingRouter, AmapPoint
-from demo.gaode_cycling_router.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
-from demo.osm_cycling_router.segment_loop import haversine_m
-from demo.osm_cycling_router.strava_segments import segment_detail_feature
-from demo.global_cycling_router.google_places import GooglePlacesClient
+from integrations.google_places import GooglePlacesClient
+from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint
+from integrations.route_providers.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
+from integrations.route_providers.strava_segments import segment_detail_feature
+from services.route.geometry import haversine_m
 from integrations.strava import StravaSink
 from services.route.segment_aware import build_connector_router
 from services.route.single_day import _elevation_profile, _search_amap_place, create_single_day_plan

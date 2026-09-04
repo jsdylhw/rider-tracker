@@ -12,10 +12,10 @@ from urllib.parse import urlencode
 from urllib.request import ProxyHandler, build_opener
 from uuid import uuid4
 
-from demo.gaode_cycling_router.amap import AmapCyclingRouter, AmapPoint
-from demo.gaode_cycling_router.coordinates import gcj02_to_wgs84
-from demo.global_cycling_router.google_places import GooglePlacesClient
-from demo.global_cycling_router.google_routes import GoogleRoutesClient, WgsPoint
+from integrations.google_places import GooglePlacesClient
+from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint
+from integrations.route_providers.coordinates import gcj02_to_wgs84
+from integrations.route_providers.google_routes import GoogleRoutesClient, WgsPoint
 from settings import load_config
 
 

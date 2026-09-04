@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from demo.gaode_cycling_router.amap import AmapCyclingRouter, AmapPoint
+from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint
 from demo.gaode_cycling_router.planner import candidate_preview_feature, plan_ordered_wgs84_segments_with_amap
 from demo.osm_cycling_router.router import Point
 from demo.osm_cycling_router.segment_loop import DirectedSegment, candidate_geojson

@@ -6,7 +6,7 @@ import math
 from copy import deepcopy
 from typing import Any, Callable, Sequence
 
-from demo.osm_cycling_router.strava_segments import decode_polyline, explore_segments
+from integrations.route_providers.strava_segments import decode_polyline, explore_segments
 
 
 SegmentExplorer = Callable[[str, str], dict[str, Any]]

@@ -67,6 +67,10 @@ Rider 的虚拟 ERG 路线通过 `/api/chat` 的请求级 `route_options` 明确
 统一启动器会把 `agent.base_url` 的主机追加到 `NO_PROXY/no_proxy`，让模型请求直连；Google、
 Strava 等地图和业务服务不加入该列表，继续使用操作系统现有代理配置。
 
+高德、Google Routes、Google Places 和 Strava Segment 的网络适配器位于正式 `integrations` 层。
+路线服务不再导入 `demo`；Demo 仅作为实验入口反向复用正式 Provider。Google Places 的路线地点解析与
+路线讲解共用请求构造、重试和错误处理实现，但分别请求必要字段，路线检索不会额外拉取照片和介绍字段。
+
 ## 代码来源
 
 `services/training-agent/` 从 Personal FIT Agent 的固定提交导入。运行时数据、FIT、日志、SQLite、地图数据和 Token 不属于迁移内容。后续同步原仓改动时应使用明确提交，不要直接复制脏工作区。

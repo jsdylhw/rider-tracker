@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 from urllib.error import URLError
 
 from demo.osm_cycling_router.router import Point, SEMICIRCLE_TO_DEGREES, round_trip, semicircles_to_degrees
-from demo.osm_cycling_router.strava_segments import (
+from integrations.route_providers.strava_segments import (
     COMPATIBLE_API_BASE_URL,
     DEFAULT_API_BASE_URL,
     decode_polyline,
@@ -27,8 +27,8 @@ class RouterHelpersTest(unittest.TestCase):
         self.assertEqual(Point(lat=31.12345678, lon=121.12345678).query_value(), "31.1234568,121.1234568")
 
     def test_segment_explorer_reports_tls_failure_without_disabling_verification(self):
-        with patch("demo.osm_cycling_router.strava_segments.urlopen", side_effect=URLError("TLS EOF")), \
-             patch("demo.osm_cycling_router.strava_segments.time.sleep"):
+        with patch("integrations.route_providers.strava_segments.urlopen", side_effect=URLError("TLS EOF")), \
+             patch("integrations.route_providers.strava_segments.time.sleep"):
             with self.assertRaisesRegex(RuntimeError, "network/TLS"):
                 explore_segments("31.0,121.0,31.1,121.1", "token", retry_attempts=2)
 
@@ -62,7 +62,7 @@ class RouterHelpersTest(unittest.TestCase):
 
         payload = json.dumps({"segments": [{"id": 1, "name": "测试路段"}]}).encode()
         with patch(
-            "demo.osm_cycling_router.strava_segments.urlopen",
+            "integrations.route_providers.strava_segments.urlopen",
             side_effect=[URLError("TLS EOF"), Response(payload)],
         ) as open_request:
             result = explore_segments("31.0,121.0,31.1,121.1", "token", retry_attempts=1)

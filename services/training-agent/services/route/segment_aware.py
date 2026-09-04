@@ -6,11 +6,11 @@ from copy import deepcopy
 from typing import Any, Callable, Sequence
 from uuid import uuid4
 
-from demo.gaode_cycling_router.amap import AmapCyclingRouter, AmapPoint
-from demo.gaode_cycling_router.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
-from demo.global_cycling_router.google_routes import GoogleRoutesClient, WgsPoint
-from demo.osm_cycling_router.segment_loop import haversine_m
-from demo.osm_cycling_router.strava_segments import segment_detail_feature
+from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint
+from integrations.route_providers.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
+from integrations.route_providers.google_routes import GoogleRoutesClient, WgsPoint
+from integrations.route_providers.strava_segments import segment_detail_feature
+from services.route.geometry import haversine_m
 from services.route.segments import enrich_route_plan_with_segments
 from services.route.single_day import normalize_waypoint_queries, reverse_waypoint_queries
 
