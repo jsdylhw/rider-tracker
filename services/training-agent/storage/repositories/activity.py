@@ -523,89 +523,9 @@ class ActivityStore:
         *,
         export_path: str | Path | None = None,
     ) -> dict[str, Any]:
-        document = dict(document)
-        for obsolete in ("summary_path", "history_entry", "history_before"):
-            document.pop(obsolete, None)
-        activity_id = str(document.get("activity_key") or "").strip()
-        if not activity_id:
-            raise ValueError("report activity_key is required")
-        if self.get_activity(activity_id) is None:
-            raise KeyError(f"activity must be indexed before saving its report: {activity_id}")
-
-        schema = summary_schema_version(document)
-        if schema != SUMMARY_SCHEMA_V2:
-            raise ValueError(f"unsupported report schema: {document.get('schema_version')!r}")
-        now = _now()
-        metrics = document.get("activity_metrics") if isinstance(document.get("activity_metrics"), dict) else {}
-        if metrics.get("schema_version") != ACTIVITY_METRICS_V2:
-            raise ValueError(f"report activity_metrics must use {ACTIVITY_METRICS_V2}")
-        analysis = get_analysis_summary(document)
-        canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
-        input_hash = str(document.get("input_hash") or hashlib.sha256(canonical.encode("utf-8")).hexdigest())
         with connect_database(self.path) as connection:
-            existing = connection.execute(
-                "SELECT revision, created_at, input_hash, export_path FROM activity_reports WHERE activity_id = ?",
-                (activity_id,),
-            ).fetchone()
-            stored_export_path = (
-                str(Path(export_path).expanduser())
-                if export_path is not None
-                else (str(existing["export_path"]) if existing and existing["export_path"] else None)
-            )
-            revision = int(existing["revision"] or 0) if existing else 0
-            if not existing or str(existing["input_hash"] or "") != input_hash:
-                revision += 1
-            created_at = str(existing["created_at"]) if existing else now
-            connection.execute(
-                """
-                INSERT INTO activity_reports (
-                    activity_id, schema_version, status, metrics_json, analysis_json,
-                    markdown_report, strava_summary, model, prompt_version, input_hash,
-                    revision, export_path, report_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(activity_id) DO UPDATE SET
-                    schema_version = excluded.schema_version,
-                    status = excluded.status,
-                    metrics_json = excluded.metrics_json,
-                    analysis_json = excluded.analysis_json,
-                    markdown_report = excluded.markdown_report,
-                    strava_summary = excluded.strava_summary,
-                    model = excluded.model,
-                    prompt_version = excluded.prompt_version,
-                    input_hash = excluded.input_hash,
-                    revision = excluded.revision,
-                    export_path = excluded.export_path,
-                    report_json = excluded.report_json,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    activity_id,
-                    schema,
-                    str(document.get("status") or "completed"),
-                    json.dumps(metrics, ensure_ascii=False, default=str),
-                    json.dumps(analysis, ensure_ascii=False, default=str),
-                    document.get("markdown_report"),
-                    document.get("strava_summary"),
-                    document.get("model"),
-                    document.get("prompt_version"),
-                    input_hash,
-                    revision,
-                    stored_export_path,
-                    json.dumps(document, ensure_ascii=False, default=str),
-                    created_at,
-                    now,
-                ),
-            )
-
-        activity = self.get_activity(activity_id) or {}
-        activity.update(_activity_enrichment_from_report(document))
-        self.upsert_activity(activity)
-        return {
-            "activity_id": activity_id,
-            "schema_version": schema,
-            "revision": revision,
-            "export_path": stored_export_path,
-        }
+            connection.execute("BEGIN IMMEDIATE")
+            return save_report_in_transaction(connection, document, export_path=export_path)
 
     def get_report(self, activity_id: str) -> dict[str, Any] | None:
         with connect_database(self.path) as connection:
@@ -1295,3 +1215,93 @@ def _parse_datetime(value: Any) -> datetime | None:
         return parsed
     local_tz = datetime.now().astimezone().tzinfo
     return parsed.astimezone(local_tz).replace(tzinfo=None)
+
+
+def save_report_in_transaction(connection, document, *, export_path=None):
+    """Save report and catalogue enrichment in the caller-owned short transaction."""
+    document = dict(document)
+    for obsolete in ("summary_path", "history_entry", "history_before"):
+        document.pop(obsolete, None)
+    activity_id = str(document.get("activity_key") or "").strip()
+    if not activity_id:
+        raise ValueError("report activity_key is required")
+    activity_row = connection.execute("""SELECT a.*,r.schema_version report_schema_version,
+        r.status report_status,r.export_path,r.analysis_json,r.strava_summary report_strava_summary,
+        f.schema_version facts_schema_version FROM activities a
+        LEFT JOIN activity_reports r ON r.activity_id=a.id LEFT JOIN activity_facts f ON f.activity_id=a.id
+        WHERE a.id=?""", (activity_id,)).fetchone()
+    if activity_row is None:
+        raise KeyError(f"activity must be indexed before saving its report: {activity_id}")
+
+    schema = summary_schema_version(document)
+    if schema != SUMMARY_SCHEMA_V2:
+        raise ValueError(f"unsupported report schema: {document.get('schema_version')!r}")
+    now = _now()
+    metrics = document.get("activity_metrics") if isinstance(document.get("activity_metrics"), dict) else {}
+    if metrics.get("schema_version") != ACTIVITY_METRICS_V2:
+        raise ValueError(f"report activity_metrics must use {ACTIVITY_METRICS_V2}")
+    analysis = get_analysis_summary(document)
+    canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    input_hash = str(document.get("input_hash") or hashlib.sha256(canonical.encode("utf-8")).hexdigest())
+    existing = connection.execute(
+        "SELECT revision, created_at, input_hash, export_path FROM activity_reports WHERE activity_id = ?",
+        (activity_id,),
+    ).fetchone()
+    stored_export_path = (
+        str(Path(export_path).expanduser())
+        if export_path is not None
+        else (str(existing["export_path"]) if existing and existing["export_path"] else None)
+    )
+    revision = int(existing["revision"] or 0) if existing else 0
+    if not existing or str(existing["input_hash"] or "") != input_hash:
+        revision += 1
+    created_at = str(existing["created_at"]) if existing else now
+    connection.execute(
+        """
+        INSERT INTO activity_reports (
+            activity_id, schema_version, status, metrics_json, analysis_json,
+            markdown_report, strava_summary, model, prompt_version, input_hash,
+            revision, export_path, report_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(activity_id) DO UPDATE SET
+            schema_version = excluded.schema_version,
+            status = excluded.status,
+            metrics_json = excluded.metrics_json,
+            analysis_json = excluded.analysis_json,
+            markdown_report = excluded.markdown_report,
+            strava_summary = excluded.strava_summary,
+            model = excluded.model,
+            prompt_version = excluded.prompt_version,
+            input_hash = excluded.input_hash,
+            revision = excluded.revision,
+            export_path = excluded.export_path,
+            report_json = excluded.report_json,
+            updated_at = excluded.updated_at
+        """,
+        (
+            activity_id,
+            schema,
+            str(document.get("status") or "completed"),
+            json.dumps(metrics, ensure_ascii=False, default=str),
+            json.dumps(analysis, ensure_ascii=False, default=str),
+            document.get("markdown_report"),
+            document.get("strava_summary"),
+            document.get("model"),
+            document.get("prompt_version"),
+            input_hash,
+            revision,
+            stored_export_path,
+            json.dumps(document, ensure_ascii=False, default=str),
+            created_at,
+            now,
+        ),
+    )
+    activity = _activity_entry(activity_row)
+    activity.update(_activity_enrichment_from_report(document))
+    fit_path = portable_path_text(activity["fit_path"])
+    values = _activity_values(activity, activity_id=activity_id, fit_path=fit_path, now=now)
+    fields = [key for key in values if key != "id"]
+    connection.execute(
+        f"UPDATE activities SET {','.join(key + '=:' + key for key in fields)} WHERE id=:id", values,
+    )
+    return {"activity_id": activity_id, "schema_version": schema, "revision": revision, "export_path": stored_export_path}

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from app.job_api import create_job_router
 from pydantic import BaseModel, Field
 
 from agent.main_agent.loop import run_tool_loop
@@ -548,11 +549,13 @@ def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]
         if cached is not None:
             return cached
         session.context.route_request_options = _normalized_route_options(request.route_options)
+        session.context.request_id = request.request_id
         try:
             result = run_tool_loop(request.message, context=session.context)
             response = public_turn_dict(result)
         finally:
             session.context.route_request_options = {}
+            session.context.request_id = None
         session.cache_response(request.request_id, request_fingerprint, response)
         return response
 
@@ -862,3 +865,6 @@ def _delete_managed_activity_fit(activity: dict[str, Any]) -> None:
         return
     if candidate.suffix.lower() == ".fit" and candidate.is_file():
         candidate.unlink()
+
+
+app.include_router(create_job_router(_require_api_access))

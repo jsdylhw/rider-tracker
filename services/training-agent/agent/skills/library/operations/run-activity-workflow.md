@@ -13,6 +13,8 @@ Choose one coarse workflow tool and pass the user's terminal goals. Do not impro
 - Set `force_download=true` only for an explicit refresh of an already downloaded Garmin activity. “The phone has synced a new activity” is a normal sync, not a forced refresh.
 - Use `run_activity_workflow` for local activities already present in SQLite.
 - Use the report rebuild job for an explicit bulk rebuild.
+- Report jobs run in a separate Worker. A queued job with worker=unavailable stays queued until the Worker starts; do not claim it is running.
+- Fetch the report job for current progress; a prior tool result is only a snapshot. Use `cancel_activity_report_job` only when the user asks to stop it. Cancellation is cooperative and may wait for the current model call to return.
 - Use get or retry tools with the persisted identifier for status and recovery.
 
 Report the persisted workflow or job status. Do not claim completion from a submitted or partial state.

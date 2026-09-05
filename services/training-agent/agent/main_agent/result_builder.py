@@ -230,6 +230,7 @@ def with_execution_header(
         "retry_activity_workflow": "重试工作流",
         "rebuild_activity_reports": "后台重建 V2 报告",
         "get_activity_report_job": "查看报告任务",
+        "cancel_activity_report_job": "取消报告任务",
     }
     operations = [labels.get(str(step.get("tool") or ""), str(step.get("tool") or "")) for step in steps]
     compact_operations: list[str] = []

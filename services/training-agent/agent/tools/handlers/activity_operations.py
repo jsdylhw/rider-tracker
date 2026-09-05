@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from hashlib import sha256
 
 from agent.main_agent.context import AgentContext
 from domain.activity.models import ActivityHandle
@@ -86,13 +87,23 @@ def run_activity_workflow(args: dict[str, Any], context: AgentContext) -> dict[s
 def rebuild_activity_reports(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
     from operations.activity.report_batch import submit_activity_report_rebuild
 
-    return submit_activity_report_rebuild(scope=str(args.get("scope") or "all"))
+    request_id = None
+    if context.request_id:
+        identity = f"{context.workspace_id or context.session_id}:{context.request_id}:report-rebuild"
+        request_id = sha256(identity.encode()).hexdigest()
+    return submit_activity_report_rebuild(scope=str(args.get("scope") or "all"),
+                                         activity_keys=args.get("activity_keys"), request_id=request_id)
 
 
 def get_activity_report_job(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
     from operations.activity.report_batch import get_activity_report_job as get_job
 
     return get_job(str(args.get("job_id") or ""))
+
+
+def cancel_activity_report_job(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
+    from operations.activity.report_batch import cancel_activity_report_job as cancel_job
+    return cancel_job(str(args.get("job_id") or ""))
 
 
 def get_activity_workflow(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
@@ -117,6 +128,7 @@ HANDLERS = {
     "run_activity_workflow": run_activity_workflow,
     "rebuild_activity_reports": rebuild_activity_reports,
     "get_activity_report_job": get_activity_report_job,
+    "cancel_activity_report_job": cancel_activity_report_job,
     "get_activity_workflow": get_activity_workflow,
     "retry_activity_workflow": retry_activity_workflow,
 }

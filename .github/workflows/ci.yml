@@ -53,7 +53,7 @@ jobs:
 
       - name: Compile Training Backend Python modules
         working-directory: services/training-agent
-        run: python -m compileall -q agent app domain evaluation fit integrations operations services storage
+        run: python -m compileall -q agent app domain evaluation fit integrations operations services storage worker
 
       - name: Check route demo JavaScript syntax
         run: |

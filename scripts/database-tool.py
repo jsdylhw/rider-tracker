@@ -20,6 +20,9 @@ from storage.database import SCHEMA_VERSION, initialize_database  # noqa: E402
 
 
 REQUIRED_TABLES = {
+    "jobs",
+    "job_workers",
+    "report_job_items",
     "activities",
     "activity_reports",
     "activity_facts",
@@ -37,6 +40,16 @@ REQUIRED_ACTIVITY_COLUMNS = {
     "id", "source", "source_activity_id", "sport_type", "sub_sport", "name",
     "fit_file_path", "strava_activity_id", "raw_json", "created_at", "updated_at",
     "saved_route_id", "route_start_distance_meters", "route_end_distance_meters",
+}
+REQUIRED_JOB_COLUMNS = {
+    "job_id", "job_type", "request_id", "scope", "input_json", "input_hash", "status",
+    "progress_json", "result_ref_json", "error_json", "cancel_requested", "attempt",
+    "max_attempts", "recovery", "worker_id", "claim_token", "lease_until",
+    "created_at", "updated_at", "started_at", "finished_at",
+}
+REQUIRED_REPORT_ITEM_COLUMNS = {
+    "job_id", "activity_id", "ordinal", "fit_path", "report_revision", "facts_revision",
+    "input_hash", "status", "error_code",
 }
 
 
@@ -118,10 +131,15 @@ def check_database(target: Path) -> dict[str, object]:
         version = int(connection.execute("PRAGMA user_version").fetchone()[0])
         missing_tables = sorted(REQUIRED_TABLES - tables)
         missing_columns = sorted(REQUIRED_ACTIVITY_COLUMNS - columns)
-        if version != SCHEMA_VERSION or missing_tables or missing_columns:
+        job_columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(jobs)").fetchall()}
+        missing_job_columns = sorted(REQUIRED_JOB_COLUMNS - job_columns)
+        report_item_columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(report_job_items)").fetchall()}
+        missing_report_item_columns = sorted(REQUIRED_REPORT_ITEM_COLUMNS - report_item_columns)
+        if version != SCHEMA_VERSION or missing_tables or missing_columns or missing_job_columns or missing_report_item_columns:
             raise SystemExit(
                 f"Database schema mismatch: version={version}, "
-                f"missing_tables={missing_tables}, missing_activity_columns={missing_columns}. "
+                f"missing_tables={missing_tables}, missing_activity_columns={missing_columns}, "
+                f"missing_job_columns={missing_job_columns}, missing_report_item_columns={missing_report_item_columns}. "
                 "Run npm run db:migrate."
             )
         counts = {

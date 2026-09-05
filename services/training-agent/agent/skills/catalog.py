@@ -106,6 +106,7 @@ SKILL_CATALOG: tuple[SkillSpec, ...] = (
             "run_activity_workflow",
             "rebuild_activity_reports",
             "get_activity_report_job",
+            "cancel_activity_report_job",
             "get_activity_workflow",
             "retry_activity_workflow",
         ),

@@ -40,6 +40,7 @@ from __future__ import annotations
 # 一轮 Agent 对话的公开响应。包含 answer、状态、精简 executions 和 presentations；
 # 不包含 AgentContext、工具原始输入、FIT 路径或其他进程内状态。
 AGENT_TURN_V1 = "agent_turn.v1"
+JOB_V1 = "job.v1"
 
 # 单个 UI 展示块。具体组件通过 type 区分：markdown、metric_cards、
 # line_chart、table、route_map、activity_workflow。浏览器不需要认识活动分析的内部 result kind。
@@ -91,6 +92,7 @@ AGENT_TRACE_V1 = "agent_trace.v1"
 # PUBLIC_SCHEMAS 会直接跨 HTTP/进程边界。注意 activity_detail 同时也可缓存，
 # 这里按它最主要的消费者边界归类；两个集合无需互斥表达全部属性。
 PUBLIC_SCHEMAS = frozenset({
+    JOB_V1,
     AGENT_TURN_V1,
     PRESENTATION_V1,
     FIT_INGESTION_V1,

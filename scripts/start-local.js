@@ -14,6 +14,7 @@ dotenv.config({ path: path.join(projectRoot, ".env"), quiet: true });
 const unifiedConfig = loadUnifiedConfig(projectRoot);
 const runtimeEnv = buildRuntimeEnv(projectRoot, unifiedConfig, process.env);
 const agentOnly = process.argv.includes("--agent-only");
+const workerOnly = process.argv.includes("--worker-only");
 const agentUrl = runtimeEnv.PERSONAL_FIT_AGENT_URL || "http://127.0.0.1:8000";
 const parsedAgentUrl = new URL(agentUrl);
 const agentHost = runtimeEnv.PERSONAL_FIT_AGENT_HOST || parsedAgentUrl.hostname;
@@ -36,7 +37,7 @@ try {
     }
 }
 
-if (!agentOnly) {
+if (!agentOnly && !workerOnly) {
     const rider = launch("rider-tracker", process.execPath, [
         "--disable-warning=ExperimentalWarning",
         path.join(projectRoot, "src", "server", "index.js")
@@ -55,34 +56,43 @@ if (!agentOnly) {
         .catch((error) => console.error(`[rider-tracker] Rider startup failed: ${error.message}`));
 }
 
-const agent = launch("training-agent", python, [
-    "-m", "uvicorn", "app.api:app",
-    "--host", agentHost,
-    "--port", String(agentPort),
-    "--log-level", "warning",
-    "--no-access-log"
-], {
-    cwd: agentRoot,
-    env: { ...runtimeEnv, PYTHONUNBUFFERED: "1" }
-}, { critical: agentOnly });
+if (!workerOnly) {
+    const agent = launch("training-agent", python, [
+        "-m", "uvicorn", "app.api:app",
+        "--host", agentHost,
+        "--port", String(agentPort),
+        "--log-level", "warning",
+        "--no-access-log"
+    ], {
+        cwd: agentRoot,
+        env: { ...runtimeEnv, PYTHONUNBUFFERED: "1" }
+    }, { critical: agentOnly });
 
-if (agentOnly) {
-    try {
-        await waitForHealth(`${agentUrl.replace(/\/+$/, "")}/health`, agent, "Training Agent");
-        console.log(`[rider-tracker] training agent ready at ${agentUrl}`);
-    } catch (error) {
-        console.error(`[rider-tracker] startup failed: ${error.message}`);
-        stopAll(1);
+    if (agentOnly) {
+        try {
+            await waitForHealth(`${agentUrl.replace(/\/+$/, "")}/health`, agent, "Training Agent");
+            console.log(`[rider-tracker] training agent ready at ${agentUrl}`);
+        } catch (error) {
+            console.error(`[rider-tracker] startup failed: ${error.message}`);
+            stopAll(1);
+        }
+    } else {
+        void waitForHealth(`${agentUrl.replace(/\/+$/, "")}/health`, agent, "Training Agent")
+            .catch((error) => console.warn(
+                `[rider-tracker] training agent unavailable; Rider remains usable without AI: ${error.message}`
+            ));
     }
-} else {
-    void waitForHealth(`${agentUrl.replace(/\/+$/, "")}/health`, agent, "Training Agent")
-        .catch((error) => console.warn(
-            `[rider-tracker] training agent unavailable; Rider remains usable without AI: ${error.message}`
-        ));
 }
+
+launch("training-worker", python, ["-m", "worker.main"], {
+    cwd: agentRoot,
+    env: { ...runtimeEnv, PYTHONUNBUFFERED: "1", TRAINING_AGENT_MANAGED_DATABASE: "1" }
+}, { critical: workerOnly });
 
 process.on("SIGINT", () => stopAll(0));
 process.on("SIGTERM", () => stopAll(0));
+// A supervising Node process can own the complete local service lifecycle via IPC.
+process.on("disconnect", () => stopAll(0));
 
 function launch(name, command, args, options, { critical = false } = {}) {
     const child = spawn(command, args, { ...options, stdio: "inherit" });

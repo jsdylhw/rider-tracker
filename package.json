@@ -9,6 +9,7 @@
     "start": "node --disable-warning=ExperimentalWarning scripts/start-local.js",
     "start:rider": "node --disable-warning=ExperimentalWarning scripts/start-rider.js",
     "start:agent": "node scripts/start-local.js --agent-only",
+    "start:worker": "node scripts/start-local.js --worker-only",
     "agent:cli": "node scripts/run-agent-cli.js",
     "setup:agent": "node scripts/setup-agent.js",
     "db:init": "node scripts/run-database-tool.js init",

@@ -86,6 +86,8 @@ def analyze_fit_file(
     force: bool = False,
     user_request: str = "",
     persist: bool = True,
+    activity_key: str | None = None,
+    database_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Analyze one FIT file through an independent child-agent session."""
     path = resolve_project_path(fit_path)
@@ -94,8 +96,13 @@ def analyze_fit_file(
     if path.suffix.lower() != ".fit":
         raise ValueError(f"Only .fit files are supported: {path}")
 
-    activity_key = _activity_key(path)
-    store = ActivityStore()
+    store = ActivityStore(database_path)
+    if activity_key is not None:
+        indexed = store.get_activity(activity_key)
+        if not indexed or resolve_project_path(indexed.get("fit_path") or "") != path:
+            raise ValueError("Requested activity does not own this FIT file.")
+    else:
+        activity_key = _activity_key(path)
     previous_summary = store.get_report(activity_key)
     # A focused question must reach the child agent even if a generic summary
     # already exists.  The caller can set persist=False to keep that answer
@@ -196,6 +203,7 @@ def analyze_fit_file(
                 parsed,
                 activity_key=activity_key,
                 fit_path=project_relative_or_absolute(path),
+                path=database_path,
             )
         store.save_report(result)
 

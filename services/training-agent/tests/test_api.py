@@ -87,6 +87,11 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
     paths = {path for path in client.get("/openapi.json").json()["paths"] if path.startswith("/api/")}
 
     assert paths == {
+        "/api/jobs",
+        "/api/jobs/capabilities",
+        "/api/jobs/{job_id}",
+        "/api/jobs/{job_id}/cancel",
+        "/api/jobs/{job_id}/report-rebuild",
         "/api/activities",
         "/api/activities/ingest-fit",
         "/api/activities/rider-session",

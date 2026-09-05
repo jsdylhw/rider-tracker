@@ -31,6 +31,8 @@ class AgentContext:
     session_id: str
     # session_id traces one process; workspace_id restores analysis focus across processes.
     workspace_id: str | None = None
+    # Supplied by the trusted Web API for durable side-effect request deduplication.
+    request_id: str | None = None
     messages: list[dict[str, Any]] = field(default_factory=list)
     history_enabled: bool = True
     last_tool_result: dict[str, Any] | None = None

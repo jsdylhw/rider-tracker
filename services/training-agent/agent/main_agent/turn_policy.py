@@ -78,7 +78,7 @@ def is_terminal_tool_result(name: str, output: object) -> bool:
         "analyze_selection", "create_route_plan", "create_itinerary_plan",
         "update_route_plan", "get_route_plan", "explore_route_segments", "sync_garmin_activities",
         "sync_and_run_activity_workflow", "run_activity_workflow", "get_activity_workflow",
-        "retry_activity_workflow", "rebuild_activity_reports", "get_activity_report_job",
+        "retry_activity_workflow", "rebuild_activity_reports", "get_activity_report_job", "cancel_activity_report_job",
     }
     if name not in terminal_tools:
         return False
@@ -87,7 +87,7 @@ def is_terminal_tool_result(name: str, output: object) -> bool:
     side_effect_tools = {
         "sync_garmin_activities", "sync_and_run_activity_workflow", "run_activity_workflow",
         "get_activity_workflow", "retry_activity_workflow", "rebuild_activity_reports",
-        "get_activity_report_job",
+        "get_activity_report_job", "cancel_activity_report_job",
     }
     if name in side_effect_tools:
         return output.get("status") not in {None, "failed", "busy", "not_found"}

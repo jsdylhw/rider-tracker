@@ -2,6 +2,11 @@
   "schema_version": "rider_browser_http_surface.v1",
   "description": "Migration baseline for the browser-facing Rider HTTP method/path surface. Ownership may move from Node to Python without silently changing these routes.",
   "routes": [
+    { "method": "POST", "path": "/api/jobs" },
+    { "method": "GET", "path": "/api/jobs/capabilities" },
+    { "method": "GET", "path": "/api/jobs/{jobId}" },
+    { "method": "POST", "path": "/api/jobs/{jobId}/cancel" },
+    { "method": "GET", "path": "/api/jobs/{jobId}/report-rebuild" },
     { "method": "GET", "path": "/" },
     { "method": "GET", "path": "/healthz" },
     { "method": "GET", "path": "/api/runtime-config/maps" },

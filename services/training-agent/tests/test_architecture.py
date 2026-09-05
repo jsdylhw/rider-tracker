@@ -44,10 +44,15 @@ def test_operations_do_not_depend_on_main_agent_state() -> None:
     assert violations == []
 
 
+def test_worker_has_no_web_or_test_runtime_dependencies() -> None:
+    assert _imports_with_prefix(["worker"], forbidden=("app", "tests", "fastapi", "uvicorn")) == []
+    assert _imports_with_prefix(["domain", "services", "storage"], forbidden=("worker",)) == []
+
+
 def test_removed_legacy_packages_are_not_imported() -> None:
     """Prevent old core/activity/workflow package names from returning after migration."""
     violations = _imports_with_prefix(
-        ["agent", "app", "domain", "services", "fit", "storage", "integrations", "operations"],
+        ["agent", "app", "domain", "services", "fit", "storage", "integrations", "operations", "worker"],
         forbidden=("core", "sinks", "agent.activity", "agent.route", "agent.runtime.workflow"),
     )
     assert violations == []
@@ -55,7 +60,7 @@ def test_removed_legacy_packages_are_not_imported() -> None:
 
 def test_production_code_does_not_depend_on_demo() -> None:
     """Production and standalone experiments must remain separate source trees."""
-    directories = ["agent", "app", "domain", "fit", "integrations", "operations", "services", "storage"]
+    directories = ["agent", "app", "domain", "fit", "integrations", "operations", "services", "storage", "worker"]
     assert not (ROOT / "demo").exists()
     assert _import_edges_with_prefix(directories, prefix="demo") == set()
     assert _import_edges_with_prefix(directories, prefix="demos") == set()

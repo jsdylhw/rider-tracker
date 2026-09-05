@@ -160,9 +160,9 @@ def last_workflow_result(context: AgentContext) -> dict[str, Any] | None:
 
 
 def last_report_job(context: AgentContext) -> dict[str, Any] | None:
-    """Return the latest in-memory report rebuild job for follow-up queries."""
+    """Return the last observed durable report job; fresh status requires the get tool."""
     last = context.last_tool_result or {}
-    if last.get("step_name") not in {"rebuild_activity_reports", "get_activity_report_job"}:
+    if last.get("step_name") not in {"rebuild_activity_reports", "get_activity_report_job", "cancel_activity_report_job"}:
         return None
     result = last.get("result")
     return result if isinstance(result, dict) and result.get("job_id") else None

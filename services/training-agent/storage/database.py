@@ -16,7 +16,7 @@ from project_paths import DEFAULT_PROJECT_ROOT, runtime_paths
 # Compatibility export only. Actual connections call runtime_paths() so
 # environment/config overrides are never frozen at module import time.
 DEFAULT_DATABASE_PATH = DEFAULT_PROJECT_ROOT / "data" / "rider-tracker.db"
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 11
 
 
 def database_path(path: str | Path | None = None) -> Path:
@@ -48,6 +48,50 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     _ensure_activity_catalog(connection)
     connection.executescript(
         """
+        CREATE TABLE IF NOT EXISTS jobs (
+            job_id TEXT PRIMARY KEY,
+            job_type TEXT NOT NULL,
+            request_id TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            input_json TEXT NOT NULL,
+            input_hash TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled')),
+            progress_json TEXT NOT NULL DEFAULT '{}',
+            result_ref_json TEXT,
+            error_json TEXT,
+            cancel_requested INTEGER NOT NULL DEFAULT 0,
+            attempt INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 1,
+            recovery TEXT NOT NULL CHECK(recovery IN ('retry','fail')),
+            worker_id TEXT,
+            claim_token TEXT,
+            lease_until REAL,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL,
+            started_at REAL,
+            finished_at REAL,
+            UNIQUE(scope, request_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_jobs_queue ON jobs(status, created_at);
+        CREATE TABLE IF NOT EXISTS report_job_items (
+            job_id TEXT NOT NULL,
+            activity_id TEXT NOT NULL,
+            ordinal INTEGER NOT NULL,
+            fit_path TEXT NOT NULL,
+            report_revision INTEGER NOT NULL,
+            facts_revision INTEGER NOT NULL,
+            input_hash TEXT,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','succeeded','failed')),
+            error_code TEXT,
+            PRIMARY KEY(job_id, activity_id),
+            FOREIGN KEY(job_id) REFERENCES jobs(job_id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS job_workers (
+            worker_id TEXT PRIMARY KEY,
+            job_types_json TEXT NOT NULL,
+            heartbeat_at REAL NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS activities (
             id TEXT PRIMARY KEY,
             source TEXT NOT NULL,

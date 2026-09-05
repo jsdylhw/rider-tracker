@@ -635,8 +635,16 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
             "type": "object",
             "properties": {
                 "scope": {"type": "string", "enum": ["all", "outdated"], "default": "all"},
+                "activity_keys": {"type": "array", "items": {"type": "string"}, "maxItems": 1000,
+                                  "description": "只重建指定活动；重试失败项时传入失败活动 ID。"},
             },
         },
+        category=CATEGORY_WORKFLOW,
+    ),
+    ToolDef(
+        name="cancel_activity_report_job",
+        description="用户明确要求停止报告重建时，请求取消持久化任务；运行中的模型请求可能需要返回后才能停止。",
+        input_schema={"type": "object", "properties": {"job_id": {"type": "string"}}, "required": ["job_id"]},
         category=CATEGORY_WORKFLOW,
     ),
     ToolDef(

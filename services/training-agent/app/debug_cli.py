@@ -125,19 +125,34 @@ def storage_status_command() -> None:
 def rebuild_v2_reports_command(
     scope: str = "all",
     activity_key: list[str] | None = typer.Option(None, "--activity-key", help="只重建指定 activity_key，可重复传入。"),
+    request_id: str | None = typer.Option(None, "--request-id", help="使用相同 ID 重放同一次提交。"),
+    wait: bool = typer.Option(False, "--wait", help="等待独立 Worker 完成，默认仅提交。"),
+    timeout_seconds: float = typer.Option(300, "--timeout-seconds", min=1),
 ) -> None:
-    """提交全量 V2 报告任务，并在 CLI 进程中等待最终结果。"""
+    """提交 V2 报告任务到独立 Worker；可选择等待最终结果。"""
     from operations.activity.report_batch import get_activity_report_job, submit_activity_report_rebuild
 
-    submitted = submit_activity_report_rebuild(scope=scope, activity_keys=activity_key)
+    submitted = submit_activity_report_rebuild(scope=scope, activity_keys=activity_key, request_id=request_id)
     typer.echo(f"report job {submitted.get('job_id')}: {submitted.get('status')}")
+    if not wait or submitted.get("worker") != "available":
+        _echo_json(submitted)
+        if wait and submitted.get("worker") != "available":
+            typer.echo("任务已保存，请启动 npm run start:worker 后查询进度。")
+        return
     job_id = str(submitted.get("job_id") or "")
+    deadline = time.monotonic() + timeout_seconds
     while job_id:
         current = get_activity_report_job(job_id)
-        if current.get("status") not in {"queued", "running"}:
+        if current.get("status") not in {"queued", "running"} or time.monotonic() >= deadline:
             _echo_json(current)
             return
         time.sleep(0.5)
+
+
+@app.command("report-job")
+def report_job_command(job_id: str, cancel: bool = typer.Option(False, "--cancel")) -> None:
+    from operations.activity.report_batch import cancel_activity_report_job, get_activity_report_job
+    _echo_json(cancel_activity_report_job(job_id) if cancel else get_activity_report_job(job_id))
 
 
 @app.command("list-activities")

@@ -79,7 +79,7 @@ def format_tool_args(block: dict[str, Any]) -> str:
         return f"工作流 {args.get('workflow_id') or '未提供'}"
     if name == "rebuild_activity_reports":
         return f"后台重建 V2 报告 · {args.get('scope') or 'all'}"
-    if name == "get_activity_report_job":
+    if name in {"get_activity_report_job", "cancel_activity_report_job"}:
         return f"报告任务 {args.get('job_id') or '未提供'}"
     return ", ".join(f"{key}={json.dumps(value, ensure_ascii=False)}" for key, value in args.items()) or "no args"
 
@@ -133,7 +133,7 @@ def summarize_tool_output(name: str, output: Any) -> str:
         return f"同步完成：下载 {int(payload.get('downloaded') or 0)} 条，跳过 {int(payload.get('skipped') or 0)} 条，失败 {int(payload.get('failed') or 0)} 条；未分析"
     if name in {"run_activity_workflow", "sync_and_run_activity_workflow", "retry_activity_workflow"}:
         return f"工作流 {output.get('workflow_id') or payload.get('workflow_id') or ''}：{output.get('status') or payload.get('status') or 'completed'}".rstrip("：")
-    if name in {"rebuild_activity_reports", "get_activity_report_job"}:
+    if name in {"rebuild_activity_reports", "get_activity_report_job", "cancel_activity_report_job"}:
         return f"报告任务 {payload.get('job_id') or ''}：{payload.get('status') or 'unknown'}（{int(payload.get('completed') or 0)}/{int(payload.get('total') or 0)}）"
     if "status" in output:
         return f"完成：{output.get('status')}"
@@ -153,6 +153,7 @@ def tool_label(name: str) -> str:
         "sync_garmin_activities": "同步 Garmin 活动", "sync_and_run_activity_workflow": "同步并处理活动",
         "run_activity_workflow": "处理本地活动", "get_activity_workflow": "查看工作流", "retry_activity_workflow": "重试工作流",
         "rebuild_activity_reports": "重建 V2 报告", "get_activity_report_job": "查看报告任务",
+        "cancel_activity_report_job": "取消报告任务",
     }.get(name, name)
 
 

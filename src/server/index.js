@@ -8,6 +8,7 @@ import { createRouteLibraryRoutes } from "./routes/route-library-routes.js";
 import { createStravaRoutes } from "./routes/strava-routes.js";
 import { createAgentRoutes } from "./routes/agent-routes.js";
 import { createNarrationRoutes } from "./routes/narration-routes.js";
+import { createJobRoutes } from "./routes/job-routes.js";
 import { createPersonalFitAgentClient } from "./personal-fit-agent-client.js";
 import { sendAgentUnavailable } from "./agent-unavailable.js";
 import { buildAllowedLocalOrigins, buildLocalBaseUrl, createLocalApiOriginGuard } from "./local-api-security.js";
@@ -66,6 +67,7 @@ app.use(createStravaRoutes({
 }));
 app.use(createAgentRoutes({ agentClient: personalFitAgentClient }));
 app.use(createNarrationRoutes({ agentClient: personalFitAgentClient }));
+app.use(createJobRoutes({ agentClient: personalFitAgentClient }));
 
 app.get("/", (_req, res) => {
     res.sendFile(path.join(PROJECT_ROOT, "index.html"));

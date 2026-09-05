@@ -121,6 +121,11 @@ export function createPersonalFitAgentClient({
 
     return {
         health: () => get("/health", healthTimeoutMs),
+        jobCapabilities: () => get("/api/jobs/capabilities", 2_000),
+        submitJob: (request) => post("/api/jobs", request, 2_000),
+        getJob: (id) => get(`/api/jobs/${encodeURIComponent(id)}`, 2_000),
+        cancelJob: (id) => post(`/api/jobs/${encodeURIComponent(id)}/cancel`, {}, 2_000),
+        reportRebuildJob: (id) => get(`/api/jobs/${encodeURIComponent(id)}/report-rebuild`, 2_000),
         chat: (request) => post("/api/chat", request),
         ingestFit: (request) => post("/api/activities/ingest-fit", request),
         archiveRiderSession: (request) => post(
@@ -211,12 +216,13 @@ function responseError(response, payload) {
     const detail = payload?.detail;
     const message = typeof detail === "string"
         ? detail
-        : detail?.message || payload?.error || `Personal FIT Agent 请求失败（HTTP ${response.status}）`;
+        : detail?.message || payload?.message || payload?.error || `Personal FIT Agent 请求失败（HTTP ${response.status}）`;
     const error = new Error(message);
     error.statusCode = response.status;
     error.detail = detail;
     error.code = detail?.code || payload?.code || null;
     error.retryable = detail?.retryable ?? payload?.retryable;
+    error.envelope = payload?.schema_version === "error.v1" ? payload : null;
     return error;
 }
 
