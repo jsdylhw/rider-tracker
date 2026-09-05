@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import pytest
+import sqlite3
 
 from services.activity.ingestion import get_activity_detail, ingest_fit_activity
 from storage.repositories.activity import ActivityStore
 from storage.repositories.saved_route import SavedRouteStore
 
 
+@pytest.mark.parametrize("legacy_separator", [False, True])
 def test_ingestion_reuses_existing_rider_identity_and_caches_detail(
-    monkeypatch, tmp_path, sample_parsed_fit,
+    monkeypatch, tmp_path, sample_parsed_fit, legacy_separator,
 ):
     monkeypatch.setenv("RIDER_PROJECT_ROOT", str(tmp_path))
     database = tmp_path / "activities.db"
@@ -23,6 +25,9 @@ def test_ingestion_reuses_existing_rider_identity_and_caches_detail(
         "sport_type": "VirtualRide",
         "name": "保留名称",
     })
+    if legacy_separator:
+        with sqlite3.connect(database) as conn:
+            conn.execute("UPDATE activities SET fit_file_path=? WHERE id='rt-existing'", (r"data\files\fit\ride.fit",))
     monkeypatch.setattr("services.activity.ingestion.parse_fit", lambda _path: sample_parsed_fit)
 
     result = ingest_fit_activity(

@@ -106,20 +106,37 @@ def runtime_paths(
 
 def resolve_project_path(path: str | Path, *, base: Path | None = None) -> Path:
     """Resolve a persisted path without making it depend on the process cwd."""
-    candidate = Path(path).expanduser()
+    # Persisted paths use '/' on every platform; also accept older Windows rows.
+    candidate = Path(portable_path_text(path)).expanduser()
     if candidate.is_absolute():
         return candidate.resolve()
     return (project_root(base=base) / candidate).resolve()
 
 
 def project_relative_or_absolute(path: str | Path, *, base: Path | None = None) -> str:
-    """Return a project-relative path when possible, otherwise an absolute path."""
-    candidate = Path(path).expanduser().resolve()
+    """Return a portable project-relative path, or an absolute path outside it."""
+    candidate = resolve_project_path(path, base=base)
     root = project_root(base=base)
     try:
-        return str(candidate.relative_to(root))
+        return candidate.relative_to(root).as_posix()
     except ValueError:
-        return str(candidate)
+        return candidate.as_posix()
+
+
+def portable_path_text(path: str | Path) -> str:
+    """Rider persisted path syntax treats both slash forms as separators."""
+    return str(path).replace("\\", "/")
+
+
+def persisted_path_variants(path: str | Path) -> tuple[str, ...]:
+    """Indexed lookup aliases for historical relative/absolute Windows paths.
+
+    Absolute paths remain local to the current OS; this does not guess drive
+    mappings between Windows and WSL. Shared databases should use relative paths.
+    """
+    resolved = resolve_project_path(path)
+    values = (portable_path_text(path), project_relative_or_absolute(resolved), resolved.as_posix())
+    return tuple(dict.fromkeys(alias for value in values for alias in (value, value.replace("/", "\\"))))
 
 
 def _root_from(values: Mapping[str, str], *, base: Path | None) -> Path:

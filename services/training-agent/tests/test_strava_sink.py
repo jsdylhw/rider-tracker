@@ -1,12 +1,25 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from integrations.strava import StravaSink, _missing_activity_write
+
+
+def _assert_token_file_permissions(path):
+    mode = path.stat().st_mode
+    if os.name == "nt":
+        # Windows st_mode does not describe ACL access. Verify the supported
+        # read/write attributes; the JSON and token rotation assertions still run.
+        assert mode & stat.S_IREAD
+        assert mode & stat.S_IWRITE
+    else:
+        assert stat.S_IMODE(mode) == 0o600
 
 
 def _make_sink(config_overrides: dict | None = None) -> StravaSink:
@@ -101,7 +114,7 @@ class TestStravaSinkInit:
             "refresh_token": "refresh_new",
             "expires_at": mock_response.json.return_value["expires_at"],
         }
-        assert token_store.stat().st_mode & 0o777 == 0o600
+        _assert_token_file_permissions(token_store)
 
     @patch("integrations.strava.requests.post")
     def test_reuses_unexpired_persisted_access_token(self, mock_post, tmp_path):
@@ -152,7 +165,7 @@ class TestStravaSinkInit:
             "expires_at": sink.connection_status()["expires_at"],
             "athlete": {"id": 42},
         }
-        assert token_store.stat().st_mode & 0o777 == 0o600
+        _assert_token_file_permissions(token_store)
 
     @patch("integrations.strava.requests.post")
     def test_uses_still_valid_cached_token_when_refresh_network_fails(self, mock_post, tmp_path):

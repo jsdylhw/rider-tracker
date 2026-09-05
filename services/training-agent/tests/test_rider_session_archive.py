@@ -79,7 +79,7 @@ def test_session_retry_does_not_clear_existing_fit_or_report(tmp_path):
 
     archived = archive_rider_session(session, path=database)
 
-    assert archived["fitFilePath"] == str(fit)
+    assert archived["fitFilePath"] == fit.as_posix()
     assert store.get_report("fit-backed-ride") is not None
 
 

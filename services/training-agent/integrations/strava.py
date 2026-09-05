@@ -376,6 +376,8 @@ class StravaSink:
                 json.dump(updated, handle, ensure_ascii=False, indent=2)
                 handle.write("\n")
             os.replace(temporary, self.token_store)
+            # POSIX: owner read/write only. Windows chmod controls the read-only
+            # attribute; access permissions continue to come from directory ACLs.
             os.chmod(self.token_store, 0o600)
         finally:
             temporary.unlink(missing_ok=True)

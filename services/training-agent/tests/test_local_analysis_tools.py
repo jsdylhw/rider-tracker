@@ -651,7 +651,7 @@ class TestAnalyzeFitFileResultTimes:
 
         result = analyze_fit_file(external_fit, persist=False, force=True)
 
-        assert result["fit_path"] == str(external_fit.resolve())
+        assert result["fit_path"] == external_fit.resolve().as_posix()
         assert result["analysis_summary"]["schema_version"] == "activity_analysis_summary.v1"
         assert result["activity_metrics"]["schema_version"] == "activity_metrics.v2"
         assert result["activity_metrics"]["load"]["power_stress"]["tss"] == 45.0

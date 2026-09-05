@@ -17,7 +17,7 @@ from domain.analysis.artifacts import (
     get_tss,
     summary_schema_version,
 )
-from project_paths import project_relative_or_absolute, resolve_project_path
+from project_paths import persisted_path_variants, portable_path_text, project_relative_or_absolute, resolve_project_path
 from storage.database import connect_database
 from domain.time import local_time_without_timezone
 
@@ -327,8 +327,9 @@ class ActivityStore:
         clauses: list[str] = []
         values: list[str] = []
         if fit_path:
-            clauses.append("fit_file_path = ?")
-            values.append(str(fit_path))
+            variants = persisted_path_variants(fit_path)
+            clauses.append(f"fit_file_path IN ({','.join('?' for _ in variants)})")
+            values.extend(variants)
         if source and source_activity_id:
             clauses.append("(source = ? AND source_activity_id = ?)")
             values.extend([str(source), str(source_activity_id)])
@@ -351,7 +352,7 @@ class ActivityStore:
 
     def upsert_activity(self, entry: dict[str, Any]) -> dict[str, Any]:
         activity_id = str(entry.get("activity_key") or "").strip()
-        fit_path = str(entry.get("fit_path") or "").strip()
+        fit_path = portable_path_text(entry.get("fit_path") or "").strip()
         if not activity_id:
             raise ValueError("activity_key is required")
         if not fit_path:
@@ -364,21 +365,7 @@ class ActivityStore:
             # discard stale derived facts/reports through the FK cascade.
             source = str(entry.get("source") or "manual")
             source_activity_id = _text(entry.get("source_activity_id"))
-            if source_activity_id:
-                stale_rows = connection.execute(
-                    """
-                    SELECT id FROM activities
-                    WHERE id <> ? AND (
-                        fit_file_path = ? OR (source = ? AND source_activity_id = ?)
-                    )
-                    """,
-                    (activity_id, fit_path, source, source_activity_id),
-                ).fetchall()
-            else:
-                stale_rows = connection.execute(
-                    "SELECT id FROM activities WHERE fit_file_path = ? AND id <> ?",
-                    (fit_path, activity_id),
-                ).fetchall()
+            stale_rows = _stale_fit_rows(connection, activity_id, fit_path, source, source_activity_id)
             for stale in stale_rows:
                 connection.execute("DELETE FROM activities WHERE id = ?", (str(stale["id"]),))
             existing = connection.execute(
@@ -387,6 +374,7 @@ class ActivityStore:
             ).fetchone()
             raw = _json_object(existing["raw_json"] if existing else None)
             raw.update({key: value for key, value in entry.items() if value is not None})
+            raw["fit_path"] = fit_path
             for obsolete in ("summary_path", "training_load"):
                 raw.pop(obsolete, None)
             values = _activity_values(raw, activity_id=activity_id, fit_path=fit_path, now=now)
@@ -483,11 +471,11 @@ class ActivityStore:
 
     def get_activity_by_fit_path(self, fit_path: str | Path) -> dict[str, Any] | None:
         """Resolve the database row without relying on an activity index file."""
-        value = str(fit_path)
+        variants = persisted_path_variants(fit_path)
         with connect_database(self.path) as connection:
             row = connection.execute(
-                "SELECT id FROM activities WHERE fit_file_path = ?",
-                (value,),
+                f"SELECT id FROM activities WHERE fit_file_path IN ({','.join('?' for _ in variants)})",
+                variants,
             ).fetchone()
         return self.get_activity(str(row["id"])) if row else None
 
@@ -776,24 +764,10 @@ def _upsert_fit_activity_row(
     route_link: dict[str, Any] | None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     activity_id = str(entry["activity_key"]).strip()
-    fit_path = str(entry["fit_path"]).strip()
+    fit_path = portable_path_text(entry["fit_path"]).strip()
     source = str(entry.get("source") or "manual")
     source_activity_id = _text(entry.get("source_activity_id"))
-    if source_activity_id:
-        stale_rows = connection.execute(
-            """
-            SELECT id FROM activities
-            WHERE id <> ? AND (
-                fit_file_path = ? OR (source = ? AND source_activity_id = ?)
-            )
-            """,
-            (activity_id, fit_path, source, source_activity_id),
-        ).fetchall()
-    else:
-        stale_rows = connection.execute(
-            "SELECT id FROM activities WHERE fit_file_path = ? AND id <> ?",
-            (fit_path, activity_id),
-        ).fetchall()
+    stale_rows = _stale_fit_rows(connection, activity_id, fit_path, source, source_activity_id)
     for stale in stale_rows:
         connection.execute("DELETE FROM activities WHERE id = ?", (str(stale["id"]),))
 
@@ -804,6 +778,7 @@ def _upsert_fit_activity_row(
     ).fetchone()
     raw = _json_object(existing["raw_json"] if existing else None)
     raw.update({key: value for key, value in entry.items() if value is not None})
+    raw["fit_path"] = fit_path
     for obsolete in ("summary_path", "training_load"):
         raw.pop(obsolete, None)
     values = _activity_values(raw, activity_id=activity_id, fit_path=fit_path, now=now)
@@ -1030,6 +1005,18 @@ def file_content_key(path: Path) -> str:
     return digest.hexdigest()[:16]
 
 
+def _stale_fit_rows(connection, activity_id, fit_path, source, source_activity_id):
+    variants = persisted_path_variants(fit_path)
+    clauses = [f"fit_file_path IN ({','.join('?' for _ in variants)})"]
+    values = [activity_id, *variants]
+    if source_activity_id:
+        clauses.append("(source = ? AND source_activity_id = ?)")
+        values.extend((source, source_activity_id))
+    return connection.execute(
+        f"SELECT id FROM activities WHERE id <> ? AND ({' OR '.join(clauses)})", values,
+    ).fetchall()
+
+
 def _activity_values(raw: dict[str, Any], *, activity_id: str, fit_path: str, now: str) -> dict[str, Any]:
     path = resolve_project_path(fit_path)
     started_at = raw.get("start_time_local") or raw.get("started_at")
@@ -1058,7 +1045,7 @@ def _activity_values(raw: dict[str, Any], *, activity_id: str, fit_path: str, no
             else _text(raw.get("fit_file_created_at"))
         ),
         "strava_activity_id": _text(raw.get("strava_activity_id")),
-        "raw_json": json.dumps(raw, ensure_ascii=False, default=str),
+        "raw_json": json.dumps({**raw, "fit_path": fit_path}, ensure_ascii=False, default=str),
         "updated_at": now,
     }
 

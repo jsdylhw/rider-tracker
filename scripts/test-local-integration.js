@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -86,8 +87,13 @@ try {
     }
     console.log("[integration] Unified Rider page, Python activity/route stores, atomic FIT/session/route persistence, Agent proxy, and removed legacy UI checks passed.");
 } finally {
-    for (const child of children) child.kill();
-    await rm(tempRoot, { recursive: true, force: true });
+    await Promise.all(children.map(async (child) => {
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        const closed = once(child, "close");
+        child.kill();
+        await closed;
+    }));
+    await rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
 async function assertActivityLibraryRoundTrip() {
