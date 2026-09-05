@@ -8,6 +8,26 @@ export const suite = {
     name: "personal-fit-agent-client",
     tests: [
         {
+            name: "browser report jobs use raw job contracts and bounded requests",
+            async run() {
+                const calls = [];
+                const client = createAgentApiClient({ storage: null, fetchImpl: async (url, options) => {
+                    calls.push({ url, options });
+                    return { ok: true, json: async () => ({ job_id: "job", status: "queued" }) };
+                } });
+                assertEqual((await client.getReportJob("a/b")).job_id, "job");
+                await client.cancelReportJob("job");
+                await client.retryReportJob(["ride"], "request-1");
+                assertEqual(calls[0].url, "/api/jobs/a%2Fb/report-rebuild");
+                assertEqual(calls[0].options.method, "GET");
+                assertEqual(Boolean(calls[0].options.signal), true);
+                assertEqual(calls[1].url, "/api/jobs/job/cancel");
+                const body = JSON.parse(calls[2].options.body);
+                assertEqual(body.request_id, "request-1");
+                assertEqual(body.payload.activity_keys[0], "ride");
+            }
+        },
+        {
             name: "checks embedded agent health through the server-side client",
             async run() {
                 let request = null;

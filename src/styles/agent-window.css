@@ -631,6 +631,33 @@
     gap: 14px;
 }
 
+.agent-report-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+.agent-report-actions button {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 7px 12px;
+    background: #fff;
+    color: #334155;
+    cursor: pointer;
+    font: inherit;
+}
+
+.agent-report-actions button:disabled { opacity: .55; cursor: default; }
+.agent-report-actions button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.agent-workflow-result details { margin-top: 12px; overflow-wrap: anywhere; }
+
+[data-report-card] { font-size: 12px; line-height: 1.6; }
+[data-report-card] > p { margin: 0; }
+[data-report-card] details { margin-top: 0; }
+[data-report-card] details p { margin: 8px 0 0; }
+[data-report-card] summary { cursor: pointer; }
+
 .agent-workflow-summary {
     display: flex;
     flex-wrap: wrap;
@@ -994,6 +1021,17 @@
 
     .agent-window.is-expanded .agent-workspace {
         display: none;
+    }
+
+    .agent-window.is-expanded.has-report-jobs .agent-window-body {
+        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .agent-window.is-expanded.has-report-jobs .agent-workspace {
+        display: block;
+        padding: 12px;
+        border-left: 0;
+        border-top: 1px solid #dce3ed;
     }
 
     .agent-window-controls #agentExpandBtn {

@@ -2,6 +2,7 @@ import { createAgentApiClient } from "../../adapters/agent/personal-fit-agent-cl
 import { createAgentPresentationRenderer } from "./agent-presentation-renderer.js";
 import { replaceWithSafeMarkdown } from "../shared/safe-markdown-renderer.js";
 import { capabilityMessage } from "../../domain/agent/agent-capabilities.js";
+import { createReportJobService } from "../../app/services/report-job-service.js";
 
 const QUICK_PROMPTS = {
     sync: "同步 Garmin 最新一个活动并分析，不要上传 Strava",
@@ -13,6 +14,7 @@ export function createAgentFloatingWindow({
     root = document,
     schedule = setTimeout,
     seedConversation = true,
+    reportJobOptions = {},
     agentClient = createAgentApiClient({ sessionStorageKey: "rider-tracker:home-agent-session-id" })
 } = {}) {
     const elements = collectElements(root);
@@ -24,8 +26,26 @@ export function createAgentFloatingWindow({
     const presentationRenderer = createAgentPresentationRenderer({
         root,
         container: elements.workspaceContent,
-        titleElement: elements.workspaceTitle
+        titleElement: elements.workspaceTitle,
+        onReportAction: (id, action) => reportJobs.action(id, action)
     });
+    let workspaceBlocks = [];
+    let workspaceFallback = "";
+    const reportJobs = createReportJobService({ ...reportJobOptions, client: agentClient, onChange: renderWorkspace });
+    function renderWorkspace() {
+        const tasks = reportJobs.blocks();
+        elements.window.classList.toggle("has-report-jobs", tasks.length > 0);
+        presentationRenderer.render([...workspaceBlocks, ...tasks], { fallbackText: workspaceFallback });
+    }
+    function present(blocks, fallbackText = "") {
+        workspaceBlocks = (blocks || []).filter((block) => block.type !== "report_job");
+        workspaceFallback = fallbackText;
+        for (const block of blocks || []) if (block.type === "report_job") {
+            reportJobs.track(block.data?.job_id);
+            setExpanded(true);
+        }
+        renderWorkspace();
+    }
     let requestSequence = 0;
     let contextCleared = false;
     let visible = true;
@@ -124,7 +144,7 @@ export function createAgentFloatingWindow({
         if (kind === "route") {
             const answer = "路线规划请进入“实时骑行设置 → AI 路线”，候选和地图预览会在那里联动。";
             addTextMessage("agent", answer);
-            presentationRenderer.render([], { fallbackText: answer });
+            present([], answer);
             updateContext("路线规划入口");
             return { answer, presentations: [] };
         }
@@ -137,7 +157,7 @@ export function createAgentFloatingWindow({
             thinking.remove();
             const answer = String(result?.answer || "本轮已完成，但没有返回文字说明。");
             addTextMessage("agent", workflowConversationSummary(result) || answer);
-            presentationRenderer.render(result?.presentations, { fallbackText: answer });
+            present(result?.presentations, answer);
             updateContext(resolveContextLabel(result));
             if (elements.window.hidden) elements.badge.hidden = false;
             return result;
@@ -146,7 +166,7 @@ export function createAgentFloatingWindow({
             thinking.remove();
             const message = `请求失败：${error?.message || "无法连接本地 Personal FIT Agent"}`;
             addTextMessage("agent", message, { error: true });
-            presentationRenderer.render([], { fallbackText: message });
+            present([], message);
             updateContext("连接失败");
             return null;
         } finally {
@@ -167,8 +187,11 @@ export function createAgentFloatingWindow({
         contextCleared = true;
         elements.contextBar.hidden = true;
         elements.messages.replaceChildren();
+        workspaceBlocks = [];
+        workspaceFallback = "";
         presentationRenderer.clear();
-        addTextMessage("agent", "已开始一个新的本地分析会话。下一条消息不会继承之前选择的活动。 ");
+        if (reportJobs.blocks().length) renderWorkspace();
+        addTextMessage("agent", "已开始一个新的本地分析会话。下一条消息不会继承之前选择的活动。已提交的后台任务和卡片会保留，清除上下文不会取消任务。 ");
     }
 
     function setCapabilities(value) {
@@ -202,6 +225,8 @@ export function createAgentFloatingWindow({
         addTextMessage("agent", "你好，我可以读取本地活动数据库，分析单次活动或训练历史。路线规划请使用骑行设置中的“AI 路线”栏目。 ");
         presentationRenderer.clear();
     }
+    reportJobs.restore();
+    if (reportJobs.blocks().length) setExpanded(true);
 
     return {
         open: () => setWindowOpen(true),
@@ -211,6 +236,7 @@ export function createAgentFloatingWindow({
         sendMessage,
         destroy() {
             requestSequence += 1;
+            reportJobs.destroy();
             listeners.splice(0).forEach((remove) => remove());
         },
         getState: () => ({

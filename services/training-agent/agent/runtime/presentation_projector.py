@@ -23,7 +23,13 @@ def project_presentations(executions: list[ToolExecution]) -> list[PresentationB
     for execution in executions:
         payload = _schema_payload(execution.result)
         result_kind = _result_kind(payload)
-        if payload.get("operation") == "activity_workflow":
+        if result_kind == "activity_report_job" and payload.get("job_id"):
+            blocks.append(PresentationBlock(
+                presentation_id=f"report-job-{payload['job_id']}",
+                type="report_job", title="报告重建任务",
+                data={"job_id": str(payload["job_id"])},
+            ))
+        elif payload.get("operation") == "activity_workflow":
             blocks.extend(_activity_workflow_blocks(execution, payload))
         elif result_kind == "training_history_analysis":
             blocks.extend(_training_history_blocks(execution, payload))

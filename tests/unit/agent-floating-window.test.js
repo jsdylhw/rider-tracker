@@ -10,6 +10,39 @@ export const suite = {
     name: "agent-floating-window",
     tests: [
         {
+            name: "report cards survive later replies and context reset; cancel remains available without AI",
+            async run() {
+                const { root, elements } = createAgentTestDom();
+                const id = "a".repeat(32);
+                let cancelled = 0;
+                const controller = createAgentFloatingWindow({ root, seedConversation: false,
+                    reportJobOptions: { storage: null, schedule: () => 1, unschedule: () => {} },
+                    agentClient: {
+                        chat: async () => ({ answer: "已提交", presentations: [{ type: "report_job", data: { job_id: id } }] }),
+                        getReportJob: async () => ({ kind: "activity_report_job", job_id: id,
+                            status: cancelled ? "cancelled" : "running", total: 2, completed: 1, failed: 0, activities: [] }),
+                        cancelReportJob: async () => { cancelled++; }, resetSession() {}
+                    }
+                });
+                await controller.sendMessage("重建报告");
+                for (let i = 0; i < 8; i++) await Promise.resolve();
+                assertEqual(elements.agentWorkspaceContent.children.length, 1);
+                await controller.sendMessage("规划路线");
+                elements.agentClearContextBtn.dispatch("click");
+                assertEqual(elements.agentWorkspaceContent.children.length, 1);
+                controller.setCapabilities({ capabilities: { activity_analysis: false } });
+                const card = elements.agentWorkspaceContent.children[0];
+                const cancel = card.children.at(-1).children[0];
+                assertEqual(cancel.textContent, "取消任务");
+                assertEqual(Boolean(cancel.disabled), false);
+                cancel.dispatch("click");
+                for (let i = 0; i < 10; i++) await Promise.resolve();
+                assertEqual(cancelled, 1);
+                assertEqual(elements.agentWorkspaceContent.children[0].children[1].textContent, "已取消");
+                controller.destroy();
+            }
+        },
+        {
             name: "classifies route, activity and live-ride mock prompts",
             run() {
                 assertEqual(inferPromptKind("规划京都 30km 路线"), "route");

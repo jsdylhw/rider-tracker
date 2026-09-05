@@ -44,8 +44,12 @@ const DIMENSION_LABELS = {
 const CONFIDENCE_LABELS = { low: "低", medium: "中", high: "高" };
 const UNIT_LABELS = { min: "分钟", count: "次", day: "天" };
 
-export function createAgentPresentationRenderer({ root = document, container, titleElement }) {
+export function createAgentPresentationRenderer({ root = document, container, titleElement, onReportAction = () => {} }) {
     function render(presentations, { fallbackText = "" } = {}) {
+        const opened = new Set([...container?.querySelectorAll?.("[data-report-job-id]") || []]
+            .filter((card) => card.querySelector("details")?.open).map((card) => card.dataset.reportJobId));
+        const focused = root.activeElement?.dataset;
+        const focusId = focused?.reportJobId, focusAction = focused?.reportAction;
         const blocks = (Array.isArray(presentations) ? presentations : [])
             .map(renderBlock)
             .filter(Boolean);
@@ -56,6 +60,15 @@ export function createAgentPresentationRenderer({ root = document, container, ti
             blocks.push(createNote("本轮没有可展示的结构化结果。"));
         }
         container?.replaceChildren(...blocks);
+        for (const card of container?.querySelectorAll?.("[data-report-card]") || []) {
+            const details = card.querySelector("details");
+            if (details && opened.has(card.dataset.reportJobId)) details.open = true;
+        }
+        if (focusId && focusAction) {
+            for (const button of container?.querySelectorAll?.("[data-report-action]") || []) {
+                if (button.dataset.reportJobId === focusId && button.dataset.reportAction === focusAction) button.focus();
+            }
+        }
         if (titleElement) {
             titleElement.textContent = presentations?.[0]?.title || "Agent 分析结果";
         }
@@ -73,7 +86,72 @@ export function createAgentPresentationRenderer({ root = document, container, ti
         if (block.type === "table") return renderTable(block);
         if (block.type === "markdown") return renderMarkdown(block);
         if (block.type === "activity_workflow") return renderActivityWorkflow(block);
+        if (block.type === "report_job") return renderReportJob(block);
         return null;
+    }
+
+    function renderReportJob(block) {
+        const job = block.data || {};
+        const section = createSection(block.title);
+        section.classList.add("agent-workflow-result");
+        section.dataset.reportCard = "true";
+        section.dataset.reportJobId = job.job_id;
+        const statuses = { queued: "排队中", running: "处理中", completed: "已完成", partial: "部分失败",
+            failed: "失败", cancelled: "已取消" };
+        const terminal = ["completed", "partial", "failed", "cancelled"].includes(job.status);
+        const status = root.createElement("p");
+        status.setAttribute("role", "status");
+        status.textContent = job.connectionError || (job.cancel_requested && !terminal ? "正在取消，等待当前分析结束" : statuses[job.status] || "正在读取任务进度…");
+        section.append(status);
+        if (Number.isInteger(job.total)) {
+            const summary = root.createElement("div");
+            summary.className = "agent-workflow-summary";
+            appendSummaryPill(summary, `共 ${job.total} 项`, "neutral");
+            appendSummaryPill(summary, `成功 ${job.completed || 0}`, "success");
+            appendSummaryPill(summary, `失败 ${job.failed || 0}`, job.failed ? "error" : "neutral");
+            appendSummaryPill(summary, `${terminal ? "未处理" : "剩余"} ${Math.max(0, job.total - (job.completed || 0) - (job.failed || 0))}`, "neutral");
+            section.append(summary);
+        }
+        if (!terminal && job.worker === "unavailable" && !job.connectionError) {
+            section.append(createNote("后台处理服务未连接，任务和已保存的进度会保留，服务恢复后继续。"));
+        }
+        if (job.actionError) section.append(createNote(job.actionError));
+        if (job.error?.code === "worker_interrupted") section.append(createNote("后台处理多次中断，自动恢复已停止。可以重新提交未完成项。"));
+        if (job.retried) section.append(createNote("已提交重试，请查看新的任务卡片。"));
+        const failures = (job.activities || []).filter((item) => item.status === "failed");
+        const interrupted = ["failed", "partial"].includes(job.status)
+            && (job.activities || []).some((item) => item.status === "pending");
+        if (failures.length) {
+            const details = root.createElement("details");
+            const heading = root.createElement("summary");
+            heading.textContent = `查看 ${failures.length} 项失败原因`;
+            details.append(heading);
+            const errors = { ai_unavailable: "分析模型未配置", input_changed: "活动或报告已更新，请重新分析",
+                fit_unavailable: "活动文件无法读取", analysis_failed: "分析失败，可重试" };
+            for (const item of failures) {
+                const row = root.createElement("p");
+                row.textContent = `${item.title || "未命名活动"}：${errors[item.error] || "处理失败"}`;
+                details.append(row);
+            }
+            section.append(details);
+        }
+        const actions = root.createElement("div");
+        actions.className = "agent-report-actions";
+        function button(label, action, disabled = false) {
+            const element = root.createElement("button");
+            element.type = "button";
+            element.textContent = label;
+            element.dataset.reportJobId = job.job_id;
+            element.dataset.reportAction = action;
+            element.disabled = job.busy || disabled;
+            element.addEventListener("click", () => void onReportAction(job.job_id, action));
+            actions.append(element);
+        }
+        if (!terminal && !job.missing && job.status) button(job.cancel_requested ? "正在取消…" : "取消任务", "cancel", job.cancel_requested);
+        if (terminal && (failures.length || interrupted) && !job.retried) button(interrupted ? "重试未完成项" : "仅重试失败项", "retry", Boolean(job.connectionError));
+        if (terminal || job.missing) button("移除卡片", "dismiss");
+        section.append(actions);
+        return section;
     }
 
     function renderActivityWorkflow(block) {

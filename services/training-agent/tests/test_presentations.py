@@ -4,6 +4,18 @@ from agent.runtime.models import ToolExecution, TurnResult
 from agent.runtime.presentation_projector import project_presentations
 
 
+def test_report_job_presentation_exposes_only_identifier_for_live_lookup():
+    execution = ToolExecution(index=0, tool="rebuild_activity_reports", result={
+        "kind": "activity_report_job", "job_id": "a" * 32, "status": "queued",
+        "fit_path": "C:/private.fit", "error": "secret", "completed": 0,
+    })
+    blocks = project_presentations([execution])
+    assert len(blocks) == 1
+    assert blocks[0].type == "report_job"
+    assert blocks[0].data == {"job_id": "a" * 32}
+    assert "private" not in str(blocks[0].to_dict())
+
+
 def _history_execution() -> ToolExecution:
     return ToolExecution(
         index=1,

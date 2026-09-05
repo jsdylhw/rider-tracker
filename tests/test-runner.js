@@ -65,6 +65,7 @@ import { suite as incrementalPowerMetricsSuite } from "./unit/incremental-power-
 import { suite as oauthStateStoreSuite } from "./unit/oauth-state-store.test.js";
 import { suite as localApiSecuritySuite } from "./unit/local-api-security.test.js";
 import { suite as agentFloatingWindowSuite } from "./unit/agent-floating-window.test.js";
+import { suite as reportJobSuite } from "./unit/report-job-service.test.js";
 import { suite as agentCapabilitiesSuite } from "./unit/agent-capabilities.test.js";
 import { suite as safeMarkdownRendererSuite } from "./unit/safe-markdown-renderer.test.js";
 import { suite as agentRouteContractSuite } from "./unit/agent-route-contract.test.js";
@@ -149,6 +150,7 @@ const suites = [
     oauthStateStoreSuite,
     localApiSecuritySuite,
     agentFloatingWindowSuite,
+    reportJobSuite,
     agentCapabilitiesSuite,
     safeMarkdownRendererSuite,
     agentRouteContractSuite,

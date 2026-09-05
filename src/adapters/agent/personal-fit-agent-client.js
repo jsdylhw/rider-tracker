@@ -8,6 +8,22 @@ export function createAgentApiClient({
 } = {}) {
     let sessionId = loadOrCreateSessionId(storage, sessionStorageKey);
 
+    async function jobRequest(pathname, body) {
+        const response = await fetchImpl(`${baseUrl}${pathname}`, {
+            method: body === undefined ? "GET" : "POST",
+            headers: { "Content-Type": "application/json" },
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+            signal: AbortSignal.timeout(10_000)
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const error = new Error("暂时无法连接任务服务，请稍后重试。");
+            error.status = response.status;
+            throw error;
+        }
+        return payload;
+    }
+
     async function post(pathname, body) {
         const response = await fetchImpl(`${baseUrl}${pathname}`, {
             method: "POST",
@@ -23,6 +39,12 @@ export function createAgentApiClient({
 
     return {
         get sessionId() { return sessionId; },
+        getReportJob: (id) => jobRequest(`/api/jobs/${encodeURIComponent(id)}/report-rebuild`),
+        cancelReportJob: (id) => jobRequest(`/api/jobs/${encodeURIComponent(id)}/cancel`, {}),
+        retryReportJob: (activityKeys, requestId) => jobRequest("/api/jobs", {
+            job_type: "activity_report_rebuild.v1", request_id: requestId,
+            payload: { scope: "all", activity_keys: activityKeys }
+        }),
         chat(message, { routeOptions = null } = {}) {
             return post("/api/agent/chat", {
                 session_id: sessionId,
