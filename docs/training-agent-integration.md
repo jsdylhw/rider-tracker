@@ -4,11 +4,18 @@
 
 Rider Tracker 是唯一面向浏览器的产品入口。Node 服务负责页面、Web Bluetooth、FTMS、实时骑行、活动文件和确定性安全控制；内置 Python Training Agent 负责对话、历史活动分析、Garmin/Strava 工作流以及路线规划。
 
-两个运行时位于同一 Git 仓，但保持两个进程：
+两个运行时位于同一 Git 仓，HTTP 请求经过独立服务进程：
 
 ```text
 Browser -> Rider Node -> Training Agent Python
 ```
+
+阶段 6B-1 增加独立 Python Worker，共用 SQLite 任务表，由统一启动器管理。阶段 6B-2 将批量报告
+重建接入 `activity_report_rebuild.v1`：Agent 工具和调试 CLI 只提交、查询或取消，分析在 Worker 中执行。
+报告保存与逐项检查点在同一个事务中提交，API 或 Worker 重启后保留进度；已保存项不重复分析。
+取消是协作式的：正在进行的模型请求可能仍会结束，但取消后结果不会写入。部分失败可通过指定
+失败活动 ID、新 request_id 重新提交。Agent 对话、路线规划与其他工作流尚未迁入 Worker。
+具体执行边界与恢复约束见 ADR 的阶段 6B-1、6B-2 实施记录。
 
 Rider 是唯一浏览器入口。Python Backend 的 `/` 只返回服务元信息，`/health` 用于启动检查；
 它不再提供独立 HTML、CSS 或浏览器 JavaScript。

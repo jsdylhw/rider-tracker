@@ -88,7 +88,21 @@ Training Backend 暂时不可用，Rider 基础页面仍可启动。无桌面环
 ```bash
 npm run start:rider
 npm run start:agent
+npm run start:worker
 ```
+
+`npm start` 同时启动 Rider Node、Python API 和独立任务 Worker；`start:agent` 启动 Python API 与
+Worker，`start:worker` 只启动 Worker。Worker 退出不会停止基础页面或 Python API，可用
+`npm run start:worker` 单独恢复。启动器先检查数据库，Worker 本身不执行 schema 初始化或迁移。
+
+目前已完成批量报告迁移（6B-2）：`activity_report_rebuild.v1` 由独立 Worker 执行，提交立即返回任务 ID。
+任务和逐项进度保存在 SQLite，重启后跳过已保存报告，支持取消和指定失败活动重新提交。
+Agent 对话和路线规划仍使用原有执行方式。
+`GET /api/jobs/capabilities` 返回 Worker 存活状态和支持的任务类型；这不代表模型配置可用。
+Worker 未启动时任务保持排队，异常退出后存活状态最多延迟 15 秒更新。
+`GET /api/jobs/{job_id}/report-rebuild` 查询报告逐项状态，`POST /api/jobs/{job_id}/cancel` 请求取消。
+CLI 使用 `npm run agent:cli -- debug rebuild-v2-reports` 提交，使用
+`npm run agent:cli -- debug report-job <job_id>` 查询，追加 `--cancel` 取消。
 
 `config.yaml` 中的 `google.api_key` 同时供 Python 路线服务和浏览器 Google Maps/Street View 使用。
 街景会优先直接使用该 Key；仅在未配置或实际加载失败时才显示备用 Key 输入框，调试模式也不会重复询问。
@@ -152,10 +166,14 @@ Token 仅由 Rider Node 服务读取，不会发送给浏览器。
 
 ## 项目结构与测试
 
-浏览器只访问 Rider Node；Node 负责实时骑行、设备控制和页面，并代理 Agent 请求。`services/training-agent/` 中的 Python 服务负责对话、活动分析、工作流和路线规划。两者仍是独立进程，避免模型调用影响 FTMS 实时控制。
+浏览器只访问 Rider Node；实时骑行和设备控制在浏览器中执行，Node 负责页面、同源安全与 Python 请求代理。
+`services/training-agent/` 中的 Python API 负责活动、路线、对话与工作流。独立 Python Worker 已接入
+统一启动，目前负责批量报告重建，其余耗时业务将分批迁入。
 
 ```text
 浏览器 -> Rider Node :8787 -> Training Agent Python :8000
+                                   |
+                              SQLite 任务表 <- Python Worker
 ```
 
 运行测试：
