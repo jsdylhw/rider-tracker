@@ -12,6 +12,7 @@ from typing import Any
 
 import fitdecode
 import pandas as pd
+from settings import get_local_timezone
 
 # FIT 文件中包含训练元数据的 message 类型
 TRAINING_MESSAGE_NAMES = {
@@ -260,12 +261,11 @@ def _utc_iso(value: Any) -> str | None:
 
 
 def _local_iso(value: Any) -> str | None:
-    """转为服务器本地时区——这是近似值,不代表活动实际发生的时区."""
+    """转为 Rider 配置的本地时区——这是近似值,不代表活动实际发生地."""
     dt = _parse_datetime(value)
     if dt is None:
         return None
-    local_tz = datetime.now().astimezone().tzinfo
-    return dt.astimezone(local_tz).replace(tzinfo=None).isoformat(timespec="seconds")
+    return dt.astimezone(get_local_timezone()).replace(tzinfo=None).isoformat(timespec="seconds")
 
 
 def _parse_datetime(value: Any) -> datetime | None:

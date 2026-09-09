@@ -88,6 +88,16 @@ class TestSummarizeFit:
         assert result["has_heart_rate"] is True
         assert result["has_position"] is True
 
+    def test_local_time_uses_configured_timezone_not_host_timezone(
+        self, sample_records, sample_laps, sample_sessions, sample_sports, monkeypatch,
+    ):
+        monkeypatch.setenv("TZ", "UTC")
+        monkeypatch.setenv("RIDER_TIMEZONE", "Asia/Shanghai")
+
+        result = summarize_fit(sample_records, sample_laps, sample_sessions, sample_sports)
+
+        assert result["start_time_local"] == "2026-05-14T16:00:00"
+
     def test_empty_records(self, sample_laps, sample_sessions, sample_sports):
         result = summarize_fit([], sample_laps, sample_sessions, sample_sports)
         assert result["sport_type"] == "cycling"

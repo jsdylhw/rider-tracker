@@ -8,6 +8,7 @@ from settings import (
     cfg_get,
     ensure_data_dirs,
     get_agent_config,
+    get_local_timezone,
     load_agent_config,
     load_config,
 )
@@ -34,6 +35,19 @@ class TestConfigHelpers:
         assert cfg_bool({"enabled": "yes"}, "enabled") is True
         assert cfg_bool({"enabled": "off"}, "enabled") is False
         assert cfg_bool({}, "enabled", default=True) is True
+
+    def test_local_timezone_defaults_to_project_timezone(self, monkeypatch):
+        monkeypatch.delenv("RIDER_TIMEZONE", raising=False)
+        assert get_local_timezone({}).key == "Asia/Shanghai"
+
+    def test_local_timezone_accepts_environment_override(self, monkeypatch):
+        monkeypatch.setenv("RIDER_TIMEZONE", "UTC")
+        assert get_local_timezone({"timezone": "Asia/Shanghai"}).key == "UTC"
+
+    def test_local_timezone_rejects_invalid_name(self, monkeypatch):
+        monkeypatch.delenv("RIDER_TIMEZONE", raising=False)
+        with pytest.raises(ValueError, match="无效的 IANA 时区"):
+            get_local_timezone({"timezone": "not/a-timezone"})
 
 
 class TestLoadAgentConfig:

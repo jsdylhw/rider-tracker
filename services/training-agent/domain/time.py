@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from settings import get_local_timezone
+
 
 def local_time_without_timezone(value: Any) -> str | None:
     """Normalize an ISO-ish time to local wall-clock format without +08:00/Z."""
@@ -13,7 +15,7 @@ def local_time_without_timezone(value: Any) -> str | None:
     if isinstance(value, datetime):
         dt = value
         if dt.tzinfo is not None:
-            dt = dt.astimezone(datetime.now().astimezone().tzinfo)
+            dt = dt.astimezone(get_local_timezone())
         return dt.replace(tzinfo=None).isoformat(timespec="seconds")
     text = str(value)
     try:
@@ -21,7 +23,7 @@ def local_time_without_timezone(value: Any) -> str | None:
     except ValueError:
         return _strip_timezone_suffix(text)
     if dt.tzinfo is not None:
-        dt = dt.astimezone(datetime.now().astimezone().tzinfo)
+        dt = dt.astimezone(get_local_timezone())
     return dt.replace(tzinfo=None).isoformat(timespec="seconds")
 
 

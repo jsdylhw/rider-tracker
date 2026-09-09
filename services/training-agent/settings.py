@@ -7,6 +7,7 @@ not depend on CLI or HTTP entry points. ``config.yaml`` remains git-ignored.
 import os
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 from project_paths import DEFAULT_PROJECT_ROOT, resolve_project_path, runtime_paths
@@ -15,6 +16,7 @@ from project_paths import DEFAULT_PROJECT_ROOT, resolve_project_path, runtime_pa
 # the functions below so environment overrides are evaluated at call time.
 DEFAULT_DATA_DIR = DEFAULT_PROJECT_ROOT / "data"
 DEFAULT_CONFIG_PATH = DEFAULT_PROJECT_ROOT / "config.yaml"
+DEFAULT_TIMEZONE = "Asia/Shanghai"
 
 
 def get_data_dir() -> Path:
@@ -53,6 +55,22 @@ def cfg_bool(config: dict[str, Any], name: str, default: bool = False) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y", "on"}
     return bool(value)
+
+
+def get_local_timezone(config: dict[str, Any] | None = None) -> ZoneInfo:
+    """返回 Rider 用于活动展示和归档的固定本地时区.
+
+    不使用操作系统时区，因为同一份数据会在 Windows、WSL 和 CI 等
+    不同宿主环境中处理。部署时可用 ``RIDER_TIMEZONE`` 覆盖配置文件。
+    """
+    timezone_name = str(
+        os.environ.get("RIDER_TIMEZONE")
+        or cfg_get(config if config is not None else load_config(), "timezone", DEFAULT_TIMEZONE)
+    ).strip()
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(f"无效的 IANA 时区: {timezone_name}") from exc
 
 
 def load_agent_config(path: str | Path | None = None) -> dict[str, Any]:

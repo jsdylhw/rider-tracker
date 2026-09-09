@@ -1,6 +1,9 @@
 # Rider Tracker + Training Agent unified local configuration.
 # Copy this file to config.yaml. The real file is ignored by Git.
 
+# Activity timestamps are rendered consistently across Windows, WSL and CI.
+timezone: "Asia/Shanghai"
+
 rider:
   host: "127.0.0.1"
   port: 8787
