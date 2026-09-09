@@ -28,3 +28,19 @@ def test_remember_failed_action_clears_after_same_workflow_tool_succeeds():
 
     remember_failed_action(context, "retry_activity_workflow", {"workflow_id": "run-1"}, {"status": "completed"})
     assert context.last_failed_action is None
+
+
+def test_non_retryable_failure_is_not_saved_as_retry_action():
+    context = AgentContext(
+        session_id="tool-result-auth-failure",
+        last_failed_action={"tool": "sync_garmin_activities", "input": {"count": 3}},
+    )
+
+    remember_failed_action(
+        context,
+        "sync_garmin_activities",
+        {"count": 3},
+        {"status": "failed", "error": "garmin_auth_failed", "retryable": False},
+    )
+
+    assert context.last_failed_action is None

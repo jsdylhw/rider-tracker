@@ -12,11 +12,13 @@ def sync_recent(*, count: int = 5, force_download: bool = False) -> dict[str, An
     try:
         result = sync_garmin_activities_tool(count=count, force_download=force_download)
     except Exception as exc:
+        from integrations.garmin import garmin_error_payload
+
+        failure = garmin_error_payload(exc)
         return {
             "operation": "sync_recent",
             "status": "failed",
-            "error": type(exc).__name__,
-            "message": str(exc),
+            **failure,
             "activities": [],
         }
 

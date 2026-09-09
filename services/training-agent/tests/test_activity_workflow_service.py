@@ -229,6 +229,28 @@ def test_sync_service_surfaces_index_failure_without_creating_workflow(monkeypat
     assert list(tmp_path.glob("*.json")) == []
 
 
+def test_sync_service_preserves_retryable_garmin_failure_contract(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "operations.activity.workflow_service.sync_recent",
+        lambda count, force_download=False: {
+            "status": "failed",
+            "error": "garmin_profile_unavailable",
+            "message": "Garmin Connect 暂时无法读取账户资料，请稍后重试；本次未下载活动。",
+            "retryable": True,
+            "activities": [],
+        },
+    )
+
+    result = sync_and_start_activity_workflow(count=3, directory=tmp_path)
+
+    assert result["status"] == "failed"
+    assert result["error"] == "garmin_profile_unavailable"
+    assert result["retryable"] is True
+    assert result["sync"]["retryable"] is True
+    assert result["sync"]["requested_count"] == 3
+    assert list(tmp_path.glob("*.json")) == []
+
+
 def test_synced_activities_hydrates_mutable_state_from_sqlite(monkeypatch):
     class Store:
         def get_activity(self, activity_key):

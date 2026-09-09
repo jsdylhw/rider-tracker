@@ -112,6 +112,22 @@ sequenceDiagram
 
 核心原则是：LLM 只负责理解用户目标和选择粗粒度工具；下载、去重、任务状态、报告复用和重试必须由确定性代码负责。
 
+### Garmin 失败分类
+
+Garmin 第三方客户端会把“社交资料接口读取失败”包装成认证异常，因此不能只按异常类名判断账号失效。`integrations/garmin.py` 会检查完整异常链，并向上层只返回脱敏后的稳定字段：`error`、`message` 和 `retryable`。
+
+| 错误码 | 含义 | 可直接重试 |
+| --- | --- | --- |
+| `garmin_not_configured` | 本地没有配置账号凭据 | 否 |
+| `garmin_auth_failed` | 有明确的 401 或无效凭据证据 | 否 |
+| `garmin_rate_limited` | Garmin 限流 | 是，需稍后 |
+| `garmin_profile_unavailable` | 登录阶段无法读取账户资料 | 是 |
+| `garmin_settings_unavailable` | 登录阶段无法读取账户设置 | 是 |
+| `garmin_network_error` | TLS、超时、连接失败或服务端 5xx | 是 |
+| `garmin_service_error` | 未识别的 Garmin 服务异常 | 是 |
+
+所有登录阶段失败都会明确说明“本次未下载活动”。底层响应正文、账号、Token 和请求地址不会进入 Agent 返回；只有 `retryable=true` 的失败才会被记录为对话中的“重试”动作。
+
 ## 4. 活动的三种身份
 
 ### Garmin 远端身份

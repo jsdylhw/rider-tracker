@@ -92,12 +92,14 @@ def sync_garmin_activities_tool(
                 "paths": [str(p) for p in saved],
             })
         except Exception as exc:
+            from integrations.garmin import garmin_error_payload
+
+            failure = garmin_error_payload(exc, operation="download_activity")
             failed.append({
                 "activity_id": activity_id,
                 "name": activity.get("activityName"),
                 "start_time": activity.get("startTimeLocal"),
-                "error": type(exc).__name__,
-                "message": str(exc),
+                **failure,
             })
 
     return {

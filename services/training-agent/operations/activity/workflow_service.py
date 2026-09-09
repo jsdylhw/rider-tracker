@@ -81,6 +81,7 @@ def sync_and_start_activity_workflow(
             "status": "failed",
             "error": sync.get("error") or "garmin_sync_failed",
             "message": sync.get("message") or "Garmin 同步失败",
+            "retryable": bool(sync.get("retryable")),
             "sync": _sync_overview(sync, requested_count=count),
         }
 
@@ -354,7 +355,7 @@ def _synced_activities(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _sync_overview(sync: dict[str, Any], *, requested_count: int) -> dict[str, Any]:
-    return {
+    overview = {
         "requested_count": requested_count,
         "status": sync.get("status"),
         "downloaded": int(sync.get("downloaded") or 0),
@@ -370,3 +371,8 @@ def _sync_overview(sync: dict[str, Any], *, requested_count: int) -> dict[str, A
         "index_errors": sync.get("index_errors") or [],
         "force_download": bool(sync.get("force_download")),
     }
+    if sync.get("error"):
+        overview["error"] = sync.get("error")
+        overview["message"] = sync.get("message")
+        overview["retryable"] = bool(sync.get("retryable"))
+    return overview

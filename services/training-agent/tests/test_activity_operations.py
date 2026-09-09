@@ -65,6 +65,26 @@ def test_sync_recent_marks_fit_index_errors_partial(monkeypatch):
     assert result["index_errors"][0]["error"] == "FitParseError"
 
 
+def test_sync_recent_returns_sanitized_retryable_garmin_failure(monkeypatch):
+    class GarminConnectAuthenticationError(Exception):
+        pass
+
+    failure = GarminConnectAuthenticationError("Failed to retrieve social profile")
+    failure.__cause__ = OSError("SSL EOF from sensitive upstream URL")
+    monkeypatch.setattr(
+        "operations.activity.sync.sync_garmin_activities_tool",
+        lambda count, force_download=False: (_ for _ in ()).throw(failure),
+    )
+
+    result = sync_recent(count=3)
+
+    assert result["status"] == "failed"
+    assert result["error"] == "garmin_profile_unavailable"
+    assert result["retryable"] is True
+    assert result["activities"] == []
+    assert "sensitive upstream URL" not in result["message"]
+
+
 def test_ensure_summary_requires_persisted_artifact(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     fit = tmp_path / "activity.fit"

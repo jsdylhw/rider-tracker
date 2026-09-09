@@ -21,6 +21,129 @@ from settings import cfg_bool, cfg_get, resolve_project_path
 CN_DI_TOKEN_URL = "https://diauth.garmin.cn/di-oauth2-service/oauth/token"
 
 
+class GarminServiceError(RuntimeError):
+    """A sanitized Garmin failure that is safe to expose through APIs and Agent tools."""
+
+    def __init__(self, code: str, message: str, *, retryable: bool) -> None:
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
+
+
+def normalize_garmin_error(exc: Exception, *, operation: str = "sync") -> GarminServiceError:
+    """Separate credential failures from temporary Garmin/API connectivity failures.
+
+    ``garminconnect`` currently wraps a failed profile/settings request in
+    ``GarminConnectAuthenticationError``.  The exception type alone therefore
+    cannot prove that the credentials are invalid; inspect the complete cause
+    chain and only report an authentication failure for explicit evidence.
+    """
+    if isinstance(exc, GarminServiceError):
+        return exc
+
+    chain = _exception_chain(exc)
+    text = " | ".join(str(item) for item in chain).lower()
+    type_names = " ".join(type(item).__name__.lower() for item in chain)
+    statuses = {
+        status
+        for item in chain
+        if (status := _http_status(item)) is not None
+    }
+
+    if "username and password are required" in text or "please set garmin_username" in text:
+        return GarminServiceError(
+            "garmin_not_configured",
+            "尚未配置 Garmin Connect 账号和密码。",
+            retryable=False,
+        )
+    if 429 in statuses or "toomanyrequests" in type_names or "too many login attempts" in text:
+        return GarminServiceError(
+            "garmin_rate_limited",
+            "Garmin Connect 请求过于频繁，请稍后再试；本次未下载活动。",
+            retryable=True,
+        )
+    if 401 in statuses or "401 unauthorized" in text or "invalid credentials" in text:
+        return GarminServiceError(
+            "garmin_auth_failed",
+            "Garmin Connect 登录失败，请检查账号、密码或授权状态；本次未下载活动。",
+            retryable=False,
+        )
+
+    # Profile/settings failures happen after a session or token has been
+    # established.  They are often transient network/service failures and must
+    # not be presented as proof that the user's password is wrong.
+    if "failed to retrieve social profile" in text or "invalid profile data" in text:
+        return GarminServiceError(
+            "garmin_profile_unavailable",
+            "Garmin Connect 暂时无法读取账户资料，请稍后重试；本次未下载活动。",
+            retryable=True,
+        )
+    if "failed to retrieve user settings" in text or "invalid user settings" in text:
+        return GarminServiceError(
+            "garmin_settings_unavailable",
+            "Garmin Connect 暂时无法读取账户设置，请稍后重试；本次未下载活动。",
+            retryable=True,
+        )
+
+    network_markers = (
+        "timeout", "timed out", "connectionerror", "connection error",
+        "connection reset", "max retries", "ssl", "unexpected_eof",
+        "name resolution", "temporary failure", "network is unreachable",
+    )
+    if statuses.intersection({500, 502, 503, 504}) or any(
+        marker in text or marker in type_names for marker in network_markers
+    ):
+        action = "登录 Garmin Connect" if operation == "login" else "连接 Garmin Connect"
+        return GarminServiceError(
+            "garmin_network_error",
+            f"{action}时网络或服务暂时不可用，请稍后重试；本次未下载活动。",
+            retryable=True,
+        )
+
+    if "authenticationerror" in type_names or "authentication failed" in text:
+        return GarminServiceError(
+            "garmin_auth_failed",
+            "Garmin Connect 登录失败，请检查账号、密码或授权状态；本次未下载活动。",
+            retryable=False,
+        )
+    return GarminServiceError(
+        "garmin_service_error",
+        "Garmin Connect 请求未能完成，请稍后重试；本次未下载活动。",
+        retryable=True,
+    )
+
+
+def garmin_error_payload(exc: Exception, *, operation: str = "sync") -> dict[str, Any]:
+    """Return the stable public error contract used by sync/workflow callers."""
+    error = normalize_garmin_error(exc, operation=operation)
+    return {
+        "error": error.code,
+        "message": str(error),
+        "retryable": error.retryable,
+    }
+
+
+def _exception_chain(exc: Exception) -> list[BaseException]:
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    return chain
+
+
+def _http_status(exc: BaseException) -> int | None:
+    value = getattr(getattr(exc, "response", None), "status_code", None)
+    if value is None:
+        value = getattr(exc, "status_code", None)
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def safe_filename(value: Any) -> str:
     text = str(value or "activity").strip()
     text = re.sub(r"[\\/:*?\"<>|\r\n]+", "_", text)
@@ -124,20 +247,29 @@ class GarminChinaDownloader:
 
         self.Garmin = Garmin
         self.client = Garmin(self.username, self.password, is_cn=True)
-        self.client.login(self.tokenstore)
+        try:
+            self.client.login(self.tokenstore)
+        except Exception as exc:
+            raise normalize_garmin_error(exc, operation="login") from exc
 
     def list_activities(self, count: int) -> list[dict[str, Any]]:
         if self.client is None:
             raise RuntimeError("Downloader is not logged in")
-        return self.client.get_activities(0, count)
+        try:
+            return self.client.get_activities(0, count)
+        except Exception as exc:
+            raise normalize_garmin_error(exc, operation="list_activities") from exc
 
     def download_original(self, activity_id: Any) -> bytes:
         if self.client is None or self.Garmin is None:
             raise RuntimeError("Downloader is not logged in")
-        return self.client.download_activity(
-            activity_id,
-            self.Garmin.ActivityDownloadFormat.ORIGINAL,
-        )
+        try:
+            return self.client.download_activity(
+                activity_id,
+                self.Garmin.ActivityDownloadFormat.ORIGINAL,
+            )
+        except Exception as exc:
+            raise normalize_garmin_error(exc, operation="download_activity") from exc
 
 
 def build_downloader(config: dict[str, Any]) -> GarminChinaDownloader:

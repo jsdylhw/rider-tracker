@@ -14,7 +14,8 @@ def remember_failed_action(
     output: Any,
 ) -> None:
     """Track the latest retryable failed action on the context."""
-    if is_failed_tool_output(output):
+    retryable = not isinstance(output, dict) or output.get("retryable") is not False
+    if is_failed_tool_output(output) and retryable:
         context.last_failed_action = {"tool": tool_name, "input": tool_input}
     elif tool_name == (context.last_failed_action or {}).get("tool"):
         context.last_failed_action = None

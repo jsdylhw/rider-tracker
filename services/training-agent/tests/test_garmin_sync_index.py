@@ -212,4 +212,6 @@ def test_sync_garmin_continues_after_one_activity_download_fails(monkeypatch, tm
     assert result["downloaded"] == 1
     assert result["failed"] == 1
     assert result["failed_items"][0]["activity_id"] == 1
-    assert result["failed_items"][0]["error"] == "ConnectionError"
+    assert result["failed_items"][0]["error"] == "garmin_network_error"
+    assert result["failed_items"][0]["retryable"] is True
+    assert "网络或服务暂时不可用" in result["failed_items"][0]["message"]
