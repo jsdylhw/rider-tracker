@@ -71,11 +71,16 @@ function createState() {
                 lastUpdated: Date.now()
             },
             heartRate: { value: 130 },
-            powerMeter: { power: 260, cadence: 88 }
+            powerMeter: { power: 260, cadence: 88, isConnected: true, sourceType: "trainer", lastUpdated: Date.now() },
+            trainer: {
+                isConnected: true,
+                connectionState: "connected",
+                controlState: "ready",
+                capabilities: { resistanceSupported: true, powerSupported: true, gradeControlSupported: true }
+            }
         },
         exportMetadata: {},
         session: null,
-        hasPersistedSession: false,
         statusText: ""
     };
 }
@@ -157,6 +162,57 @@ export const suite = {
             }
         },
         {
+            name: "路线名称会覆盖旧的全局活动名称",
+            run() {
+                const cases = [
+                    {
+                        route: { source: "gpx", name: "GPX 内部名称", importFileName: "260805Fuji" },
+                        expected: "260805Fuji"
+                    },
+                    {
+                        route: { source: "agent-planned", name: "三都经典线" },
+                        expected: "三都经典线"
+                    },
+                    {
+                        route: { source: "osm-exploration", name: "OSM 探索路线" },
+                        expected: "自由探索骑行"
+                    }
+                ];
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval() { return 1; },
+                    clearInterval() {}
+                };
+
+                try {
+                    for (const testCase of cases) {
+                        const baseState = createState();
+                        const store = createStore({
+                            ...baseState,
+                            route: { ...baseState.route, ...testCase.route },
+                            exportMetadata: { activityName: "Rider Tracker Virtual Ride TTTTTT" }
+                        });
+                        const service = createRideService({
+                            store,
+                            deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                            exportService: { downloadFit() {} }
+                        });
+
+                        service.startRide();
+
+                        assertEqual(
+                            store.getState().liveRide.session.exportMetadata.activityName,
+                            testCase.expected
+                        );
+                    }
+                } finally {
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
             name: "startRide 会根据稳定采样频率选择更接近的物理推进档位",
             run() {
                 const timestamp = Date.now();
@@ -213,10 +269,15 @@ export const suite = {
             }
         },
         {
-            name: "街景调试模式允许无功率源启动骑行预览",
+            name: "街景调试模式明确选择模拟功率后可启动骑行预览",
             run() {
                 const state = createState();
                 state.liveRide.canStart = false;
+                state.rideInput = {
+                    powerSource: "virtual",
+                    virtualPowerWatts: 220,
+                    virtualCadenceRpm: 85
+                };
                 state.ble.sampling = {
                     heartRate: { value: null, timestamp: null },
                     power: { value: null, timestamp: null, sourceType: "none" },
@@ -248,7 +309,7 @@ export const suite = {
                     service.startRide();
                     const startedState = store.getState();
                     assertEqual(startedState.liveRide.isActive, true);
-                    assertEqual(startedState.liveRide.session.sampledSensors.powerSourceType, "street-view-debug");
+                    assertEqual(startedState.liveRide.session.sampledSensors.powerSourceType, "virtual");
                     assertEqual(startedState.liveRide.session.sampledSensors.power, 220);
                     assertGreaterThan(timerCallbacks.length, 0);
                 } finally {
@@ -556,7 +617,7 @@ export const suite = {
             }
         },
         {
-            name: "finalizeRideSync 只做同步收尾，不触发异步 FIT 归档",
+            name: "finalizeRideSync 只做同步收尾，不写最近 session 或触发异步 FIT 归档",
             run() {
                 const store = createStore({
                     ...createState(),
@@ -604,7 +665,7 @@ export const suite = {
                     assertEqual(nextState.liveRide.isActive, false);
                     assertEqual(Boolean(result), true);
                     assertEqual(Boolean(result.summary), true);
-                    assertEqual(localStorageSaved?.key, "rider-tracker:last-session");
+                    assertEqual(localStorageSaved, null);
                     assertEqual(archiveCalled, false);
                 } finally {
                     if (originalLocalStorage === undefined) delete globalThis.localStorage;

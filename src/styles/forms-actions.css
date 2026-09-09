@@ -73,10 +73,11 @@ tbody tr:last-child td {
 }
 
 .route-summary {
-    margin-top: 16px;
+    margin: 0;
     padding: 14px 16px;
     border-radius: 14px;
-    background: #f8fafc;
+    border: 1px solid #dbeafe;
+    background: linear-gradient(135deg, #f8fbff 0%, #f1f5f9 100%);
     color: var(--muted);
     line-height: 1.6;
 }
@@ -89,12 +90,35 @@ tbody tr:last-child td {
 
 .route-mode-tabs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 6px;
     padding: 6px;
     border: 1px solid var(--border);
     border-radius: 14px;
     background: #f8fafc;
+}
+
+.route-source-toolbar {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+}
+
+.route-source-toolbar .route-mode-tabs {
+    flex: 1 1 auto;
+}
+
+.btn.route-export-gpx {
+    flex: 0 0 auto;
+    border: 1px solid #a7f3d0;
+    background: #ecfdf5;
+    color: #047857;
+    font-weight: 750;
+}
+
+.btn.route-export-gpx:hover:not(:disabled) {
+    border-color: #10b981;
+    background: #d1fae5;
 }
 
 .route-mode-tab {
@@ -126,6 +150,262 @@ tbody tr:last-child td {
     border: 1px solid var(--border);
     border-radius: 14px;
     background: #ffffff;
+}
+
+.route-import-status {
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.route-library-workspace {
+    display: grid;
+    gap: 14px;
+}
+
+.route-library-workspace[hidden],
+.route-library-source-panel[hidden] {
+    display: none;
+}
+
+.route-library-source-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 5px;
+    border-radius: 12px;
+    background: #f1f5f9;
+}
+
+.route-library-source-tab {
+    flex: 1 1 0;
+    border: 0;
+    border-radius: 9px;
+    padding: 9px 12px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+.route-library-source-tab:hover,
+.route-library-source-tab.active {
+    background: #ffffff;
+    color: var(--primary);
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.07);
+}
+
+.route-library-source-panel {
+    display: grid;
+    gap: 16px;
+    padding: 18px;
+    border: 1px solid #dbe4ef;
+    border-radius: 16px;
+    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.route-library-source-heading,
+.route-library-control-row,
+.route-library-footer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.route-library-source-copy {
+    display: grid;
+    gap: 3px;
+}
+
+.route-library-source-copy strong {
+    color: var(--text);
+    font-size: 1.02rem;
+}
+
+.route-library-kicker {
+    color: var(--primary);
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.route-library-kicker.strava {
+    color: #fc4c02;
+}
+
+.route-library-text-action {
+    border: 0;
+    padding: 4px 6px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+}
+
+.route-library-text-action:hover {
+    color: var(--primary);
+}
+
+.route-library-text-action.danger:hover {
+    color: var(--danger);
+}
+
+.route-library-text-action:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+.route-library-source-copy p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.route-library-header-action {
+    flex: 0 0 auto;
+}
+
+.route-library-header-action.strava {
+    border-color: #fed7aa;
+    color: #c2410c;
+    background: #fff7ed;
+}
+
+.route-library-control-row {
+    min-width: 0;
+}
+
+.route-library-control-row select {
+    flex: 1 1 300px;
+    min-width: 200px;
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #ffffff;
+    color: var(--text);
+    font: inherit;
+}
+
+.route-library-primary-actions,
+.route-library-secondary-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.route-library-secondary-actions {
+    flex: 0 0 auto;
+}
+
+.route-library-status {
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.route-file-picker {
+    display: grid;
+    gap: 5px;
+    padding: 18px;
+    border: 1px dashed #94a3b8;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.route-file-picker:hover {
+    border-color: var(--primary);
+    background: #f0f7ff;
+    transform: translateY(-1px);
+}
+
+.route-file-picker-title {
+    color: var(--text);
+    font-weight: 750;
+}
+
+.route-file-picker-description {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.route-file-picker input {
+    margin-top: 8px;
+    color: var(--muted);
+    font: inherit;
+}
+
+.route-file-picker input::file-selector-button {
+    margin-right: 12px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--primary);
+    color: #ffffff;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+@media (max-width: 900px) {
+    .route-source-toolbar {
+        flex-direction: column;
+    }
+
+    .current-route-preview-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .route-export-gpx {
+        width: 100%;
+    }
+
+    .route-library-control-row,
+    .route-library-footer-row,
+    .route-library-source-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .route-library-control-row select {
+        flex-basis: auto;
+        width: 100%;
+    }
+
+    .route-library-primary-actions,
+    .route-library-secondary-actions {
+        border-left: 0;
+        padding-left: 0;
+    }
+}
+
+.current-route-preview {
+    display: grid;
+    gap: 12px;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+}
+
+.current-route-preview-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.current-route-preview-heading h3 {
+    margin: 2px 0 0;
+    color: var(--text);
+    font-size: 1.05rem;
 }
 
 .route-panel-head {
@@ -253,6 +533,10 @@ tbody tr:last-child td {
 }
 
 @media (max-width: 640px) {
+    .route-mode-tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .map-route-planner-head,
     .map-route-settings {
         grid-template-columns: 1fr;

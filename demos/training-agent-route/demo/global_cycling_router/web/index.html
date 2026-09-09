@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>国外骑行路线 Demo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="layout">
+    <aside class="panel">
+      <header>
+        <p class="eyebrow">Google Places + Google Routes</p>
+        <h1>国外骑行路线</h1>
+        <p class="intro">搜索国外地点，选择起终点，然后生成真实骑行路线。坐标统一为 WGS-84。</p>
+      </header>
+
+      <section class="search-card" data-kind="origin">
+        <label for="origin-query">起点</label>
+        <div class="search-row">
+          <input id="origin-query" placeholder="例如：宇治站，日本" autocomplete="off">
+          <button id="origin-search" type="button">搜索</button>
+        </div>
+        <p id="origin-selected" class="selected">尚未选择</p>
+        <ul id="origin-results" class="results"></ul>
+      </section>
+
+      <section class="search-card" data-kind="destination">
+        <label for="destination-query">终点</label>
+        <div class="search-row">
+          <input id="destination-query" placeholder="例如：伏见稻荷大社，日本" autocomplete="off">
+          <button id="destination-search" type="button">搜索</button>
+        </div>
+        <p id="destination-selected" class="selected">尚未选择</p>
+        <ul id="destination-results" class="results"></ul>
+      </section>
+
+      <button id="route-button" class="primary" type="button" disabled>生成骑行路线</button>
+      <div id="route-summary" class="summary" hidden></div>
+      <p id="status" class="status">正在连接本地服务……</p>
+    </aside>
+    <section id="map" aria-label="路线地图"></section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

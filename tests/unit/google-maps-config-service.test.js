@@ -14,7 +14,7 @@ export const suite = {
     name: "google-maps-config-service",
     tests: [
         {
-            name: "keeps one Google Key in session-only runtime config",
+            name: "keeps one Google Key in browser-local runtime config",
             run() {
                 const storage = createStorage();
                 const service = createGoogleMapsConfigService({ storage });
@@ -43,6 +43,45 @@ export const suite = {
                     error = caught;
                 }
                 assert(Boolean(error), "changing a loaded Google Maps key should require a page refresh");
+            }
+        },
+        {
+            name: "uses config.yaml key as the startup source without duplicating browser storage",
+            async run() {
+                const storage = createStorage();
+                storage.setItem("rider-tracker:google-maps-api-key", "stale-browser-key");
+                const service = createGoogleMapsConfigService({
+                    storage,
+                    fetchImpl: async () => ({
+                        ok: true,
+                        async json() { return { configured: true, apiKey: " config-key " }; }
+                    })
+                });
+
+                await service.loadRuntimeConfig();
+
+                assertEqual(service.getApiKey(), "config-key");
+                assertEqual(service.getConfig().source, "config");
+                assertEqual(storage.getItem("rider-tracker:google-maps-api-key"), "stale-browser-key");
+            }
+        },
+        {
+            name: "keeps browser fallback when runtime config has no key",
+            async run() {
+                const storage = createStorage();
+                storage.setItem("rider-tracker:google-maps-api-key", "browser-key");
+                const service = createGoogleMapsConfigService({
+                    storage,
+                    fetchImpl: async () => ({
+                        ok: true,
+                        async json() { return { configured: false, apiKey: "" }; }
+                    })
+                });
+
+                await service.loadRuntimeConfig();
+
+                assertEqual(service.getApiKey(), "browser-key");
+                assertEqual(service.getConfig().source, "browser");
             }
         }
     ]

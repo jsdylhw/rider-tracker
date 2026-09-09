@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>高德骑行路线 Demo</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">AMAP BICYCLING + EXISTING ROUTE PLANNER</p>
+        <h1>高德骑行路线实验台</h1>
+      </div>
+      <span id="status" class="status">正在加载高德地图…</span>
+    </header>
+    <main>
+      <aside>
+        <section>
+          <h2>骑行连接段</h2>
+          <p class="hint">在高德底图上点击起点和终点；第三次点击会重设起点。坐标为 GCJ‑02。</p>
+          <label>起点 <input id="origin" value="118.789980,32.023248" placeholder="经度,纬度"></label>
+          <label>终点 <input id="destination" value="118.700830,32.035920" placeholder="经度,纬度"></label>
+          <button id="route-button">调用高德骑行导航</button>
+          <output id="route-summary">尚未计算</output>
+        </section>
+        <section>
+          <h2>已有路线骨架</h2>
+          <p class="hint">可选读取原 OSM Demo 生成的 WGS‑84 探针；服务会转换为 GCJ‑02 后叠加在高德底图。它保留 Strava 骨架、接缝和原有候选算法的语义。</p>
+          <label>探针名 <input id="probe-name" placeholder="例如 fuzimiao-jiangxinzhou-via-jiajiang-bridge"></label>
+          <button id="probe-button" class="secondary">显示探针</button>
+          <ul id="probe-items" aria-live="polite"></ul>
+        </section>
+        <p class="notice">本地实验：高德 Web Service Key 只保留在 Python 服务；JS Key 会暴露给浏览器，请在高德控制台限制 Referer。骑行 API 的几何和高德地图均为 GCJ‑02。</p>
+      </aside>
+      <div id="map" aria-label="高德骑行路线地图"></div>
+    </main>
+    <script src="/static/bootstrap.js"></script>
+  </body>
+</html>

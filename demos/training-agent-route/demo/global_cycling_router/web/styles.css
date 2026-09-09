@@ -1,0 +1,32 @@
+:root { color-scheme: light; font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif; color: #17252a; background: #eaf1ef; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input { font: inherit; }
+.layout { display: grid; grid-template-columns: minmax(320px, 410px) 1fr; min-height: 100vh; }
+.panel { background: #fbfdfc; padding: 30px 26px; overflow-y: auto; border-right: 1px solid #cbdad6; }
+#map { min-height: 100vh; }
+.eyebrow { margin: 0 0 5px; color: #087f6c; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+h1 { margin: 0; font-size: 30px; }
+.intro { margin: 10px 0 24px; color: #536b66; line-height: 1.55; }
+.search-card { margin: 0 0 16px; padding: 16px; background: #f2f7f5; border: 1px solid #d6e3df; border-radius: 12px; }
+label { display: block; margin-bottom: 8px; font-weight: 750; }
+.search-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+input { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid #b7cbc5; border-radius: 8px; background: white; }
+button { border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; background: #dceae6; color: #17463e; font-weight: 700; }
+button:hover:not(:disabled) { filter: brightness(.97); }
+button:disabled { cursor: not-allowed; opacity: .48; }
+.primary { width: 100%; padding: 13px; background: #087f6c; color: white; }
+.selected { margin: 9px 0 0; color: #526c66; font-size: 13px; }
+.results { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.place-result { width: 100%; text-align: left; background: white; border: 1px solid #d5e2de; }
+.place-result strong, .place-result small { display: block; }
+.place-result small { margin-top: 3px; color: #627873; font-weight: 400; line-height: 1.35; }
+.summary { margin-top: 14px; padding: 13px; border-radius: 9px; background: #e4f3ed; color: #175c4e; font-weight: 750; }
+.status { min-height: 22px; margin: 14px 0 0; color: #526c66; }
+.status.ready { color: #087f6c; }
+.status.error { color: #b43c32; }
+@media (max-width: 760px) {
+  .layout { display: block; }
+  .panel { border-right: 0; }
+  #map { min-height: 58vh; }
+}

@@ -1,5 +1,6 @@
 import { enrichTrackPointsWithGoogleElevation } from "../../src/adapters/maps/google-elevation-client.js";
-import { assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
+import { calculateWindowedGrades } from "../../src/domain/route/track-route.js";
+import { assert, assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
 
 export const suite = {
     name: "google-elevation-client",
@@ -54,6 +55,23 @@ export const suite = {
                 assertEqual(elevationRequests.length, 0);
                 assertEqual(result.summary.skippedByQuota, true);
                 assertEqual(result.hasElevationData, false);
+            }
+        },
+        {
+            name: "uses a denoised long window so one elevation outlier does not create a trainer-grade spike",
+            run() {
+                const points = Array.from({ length: 16 }, (_, index) => ({
+                    latitude: 37,
+                    longitude: -122 + index * 0.0002,
+                    distanceMeters: index * 20,
+                    elevationMeters: index === 7 || index === 8 ? index * 0.6 - 5 : index * 0.6
+                }));
+
+                const graded = calculateWindowedGrades(points);
+                const grades = graded.map((point) => point.gradePercent);
+
+                assert(Math.max(...grades) < 5, "local Google Elevation noise should not become a steep uphill spike");
+                assert(Math.min(...grades) > 0.5, "a steady uphill should not become a downhill because of a short elevation dip");
             }
         }
     ]

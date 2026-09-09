@@ -1,4 +1,8 @@
-import { hasRouteGeometryChanged, shouldRenderDashboard } from "../../src/ui/renderers/main-view.js";
+import {
+    hasRouteGeometryChanged,
+    shouldRenderDashboard,
+    shouldRenderDeviceReadiness
+} from "../../src/ui/renderers/main-view.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
 function createState(settings) {
@@ -37,6 +41,45 @@ export const suite = {
                 };
 
                 assertEqual(shouldRenderDashboard(dependencies, dependencies), false);
+            }
+        },
+        {
+            name: "切换模拟功率会刷新 dashboard 开始状态",
+            run() {
+                const previousState = {
+                    liveRide: {},
+                    route: {},
+                    ble: {},
+                    rideInput: { powerSource: "device" },
+                    workout: {},
+                    settings: { ftp: 250 },
+                    uiMode: "live"
+                };
+                const state = {
+                    ...previousState,
+                    rideInput: { powerSource: "virtual", virtualPowerWatts: 220 }
+                };
+
+                assertEqual(shouldRenderDashboard(state, previousState), true);
+            }
+        },
+        {
+            name: "路线完成加载会重新计算骑行准备状态",
+            run() {
+                const loadingRoute = { totalDistanceMeters: 51_030, isLoading: true };
+                const readyRoute = { ...loadingRoute, isLoading: false, hasElevationData: true };
+                const dependencies = {
+                    liveRide: {},
+                    route: loadingRoute,
+                    ble: {},
+                    rideInput: { powerSource: "virtual" },
+                    workout: {},
+                    settings: { ftp: 250 },
+                    uiMode: "live"
+                };
+
+                assertEqual(shouldRenderDeviceReadiness({ ...dependencies, route: readyRoute }, dependencies), true);
+                assertEqual(shouldRenderDeviceReadiness(dependencies, dependencies), false);
             }
         },
         {

@@ -15,6 +15,7 @@ import { createExportView } from "../views/export-view.js";
 import { createActivityDetailView } from "../views/activity-detail-view.js";
 import { buildActivityDetailPageHtml } from "./activity-detail-renderer.js";
 import { buildRouteGeometryKey, collectRouteMapLatLngs } from "../map/map-controller.js";
+import { replaceWithSafeMarkdown } from "../shared/safe-markdown-renderer.js";
 
 export function createMainView({ store, pipController, actions }) {
     const { navigation, workout, route, ride, device, export: exportActions, googleMaps, pip } = actions;
@@ -55,18 +56,37 @@ export function createMainView({ store, pipController, actions }) {
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
     const rideVisuals = createRideVisualsController({ elements, googleMapsConfig: googleMaps });
+    const googleMapsServiceModal = createGoogleMapsServiceModal({ elements, googleMapsConfig: googleMaps });
     const routeRenderer = createRouteRenderer({
         elements,
         rideVisuals,
         onAddSegment: route.addSegment,
         onResetRoute: route.resetRoute,
         onImportGpx: route.importGpx,
+        onListStravaRoutes: route.listStravaRoutes,
+        onRefreshStravaRoutes: route.refreshStravaRoutes,
+        onImportStravaRoute: route.importStravaRoute,
+        onListSavedRoutes: route.listSavedRoutes,
+        onLoadSavedRoute: route.loadSavedRoute,
+        onContinueSavedRoute: route.continueSavedRoute,
+        onSaveCurrentRoute: route.saveCurrentRoute,
+        onExportCurrentRouteGpx: route.exportCurrentRouteGpx,
+        onDeleteSavedRoute: route.deleteSavedRoute,
+        onCreateMapDrawRoute: route.createMapDrawRoute,
+        onPlanAgentRoutes: route.planAgentRoutes,
+        onPreviewAgentRoute: route.previewAgentRoute,
+        onConfirmAgentRoute: route.confirmAgentRoute,
+        onExploreAgentRouteSegments: route.exploreAgentRouteSegments,
+        onComposeAgentRouteSegments: route.composeAgentRouteSegments,
+        onReverseAgentRoute: route.reverseAgentRoute,
+        onUndoAgentRoute: route.undoAgentRoute,
         onInvalidateMapRoute: route.invalidatePendingMapRoute,
         onPlanMapRoute: route.planMapRoute,
+        onRequestRouteElevation: route.requestCurrentRouteElevation,
+        requestGoogleMapsApiKey: googleMapsServiceModal.requestApiKey,
         onUpdateRouteSegment: route.updateSegment,
         onRemoveRouteSegment: route.removeSegment
     });
-    const googleMapsServiceModal = createGoogleMapsServiceModal({ elements, googleMapsConfig: googleMaps });
     const dashboardRenderer = createDashboardRenderer({
         elements,
         rideVisuals,
@@ -82,7 +102,6 @@ export function createMainView({ store, pipController, actions }) {
         onTogglePowerMeter: device.togglePowerMeter,
         onToggleTrainer: device.toggleTrainer,
         onOpenRideDashboard: ride.openRideDashboard,
-        onStartRide: ride.startRide,
         onStopRide: ride.stopRide
     });
     const workoutRenderer = createWorkoutRenderer({
@@ -135,7 +154,7 @@ export function createMainView({ store, pipController, actions }) {
             workoutRenderer.render(state);
             customWorkoutTargetRenderer.render(state);
         }
-        if (initialRender || state.ble !== previousState.ble || state.liveRide !== previousState.liveRide || state.rideInput !== previousState.rideInput || state.workout !== previousState.workout) {
+        if (shouldRenderDeviceReadiness(state, previousState)) {
             deviceRenderer.render(state);
         }
         if (initialRender || state.liveRide !== previousState.liveRide || state.session !== previousState.session || state.settings !== previousState.settings || state.statusText !== previousState.statusText || state.route !== previousState.route || state.workout !== previousState.workout) {
@@ -145,7 +164,11 @@ export function createMainView({ store, pipController, actions }) {
         if (shouldRenderDashboard(state, previousState)) {
             dashboardRenderer.render(state);
         }
-        if (initialRender || state.selectedActivity !== previousState.selectedActivity) renderActivityDetail(state);
+        if (
+            initialRender
+            || state.selectedActivity !== previousState.selectedActivity
+            || state.settings !== previousState.settings
+        ) renderActivityDetail(state);
         if (!initialRender && state.uiMode === "activity-detail" && state.uiMode !== previousState.uiMode) {
             activityDetailView.invalidateMapSize();
         }
@@ -170,13 +193,24 @@ export function createMainView({ store, pipController, actions }) {
                 activity.updatedAt ?? "",
                 activity.rawSession?.records?.length ?? 0,
                 activity.rawSession?.createdAt ?? "",
+                state.settings?.ftp ?? "",
+                state.settings?.restingHr ?? "",
+                state.settings?.maxHr ?? "",
                 activity.isSaving === true,
-                activity.saveError ?? ""
+                activity.saveError ?? "",
+                activity.analysisReport?.revision ?? "",
+                activity.analysisReport?.updated_at ?? ""
             ].join("|")
             : "empty";
         if (signature === lastRenderedActivityDetailSignature) return;
         lastRenderedActivityDetailSignature = signature;
-        elements.activityDetailContent.innerHTML = buildActivityDetailPageHtml(activity);
+        elements.activityDetailContent.innerHTML = buildActivityDetailPageHtml(activity, {
+            fallbackSettings: state.settings
+        });
+        const reportContainer = elements.activityDetailContent.querySelector("[data-activity-analysis-report]");
+        if (reportContainer) {
+            replaceWithSafeMarkdown(document, reportContainer, activity?.analysisReport?.markdown_report ?? "");
+        }
         activityDetailView.setActivity(activity);
     }
 
@@ -200,6 +234,7 @@ export function createMainView({ store, pipController, actions }) {
 
     return {
         destroy: () => {
+            routeRenderer.destroy?.();
             googleMapsServiceModal.destroy();
             rideVisuals.destroy();
             activityDetailView.destroy();
@@ -212,9 +247,19 @@ export function shouldRenderDashboard(state, previousState) {
         || state.liveRide !== previousState.liveRide
         || state.route !== previousState.route
         || state.ble !== previousState.ble
+        || state.rideInput !== previousState.rideInput
         || state.workout !== previousState.workout
         || state.settings !== previousState.settings
         || state.uiMode !== previousState.uiMode;
+}
+
+export function shouldRenderDeviceReadiness(state, previousState) {
+    return previousState === undefined
+        || state.route !== previousState.route
+        || state.ble !== previousState.ble
+        || state.liveRide !== previousState.liveRide
+        || state.rideInput !== previousState.rideInput
+        || state.workout !== previousState.workout;
 }
 
 export function hasRouteGeometryChanged(previousRoute, nextRoute) {

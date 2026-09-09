@@ -1,15 +1,18 @@
 import express from "express";
 import multer from "multer";
-import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
-import { createConfigStore } from "./config-store.js";
-import { createTokenStore } from "./token-store.js";
-import { createActivityStore } from "./activity-store.js";
 import { createActivityRoutes } from "./routes/activity-routes.js";
+import { createRouteLibraryRoutes } from "./routes/route-library-routes.js";
 import { createStravaRoutes } from "./routes/strava-routes.js";
+import { createAgentRoutes } from "./routes/agent-routes.js";
+import { createNarrationRoutes } from "./routes/narration-routes.js";
+import { createJobRoutes } from "./routes/job-routes.js";
+import { createPersonalFitAgentClient } from "./personal-fit-agent-client.js";
+import { sendAgentUnavailable } from "./agent-unavailable.js";
 import { buildAllowedLocalOrigins, buildLocalBaseUrl, createLocalApiOriginGuard } from "./local-api-security.js";
+import { withRequiredStravaScopes } from "../../scripts/local-config.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,26 +25,24 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "127.0.0.1";
-const CLIENT_ID = process.env.STRAVA_CLIENT_ID;
-const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
-const SCOPES = process.env.STRAVA_SCOPES || "activity:read_all,activity:write";
+const SCOPES = withRequiredStravaScopes(process.env.STRAVA_SCOPES);
 const APP_BASE_URL = process.env.APP_BASE_URL || buildLocalBaseUrl({
     host: HOST === "127.0.0.1" ? "localhost" : HOST,
     port: PORT
 });
 const REDIRECT_URI = process.env.STRAVA_REDIRECT_URI || `${APP_BASE_URL}/api/strava/auth/callback`;
 const FRONTEND_REDIRECT_URL = process.env.FRONTEND_REDIRECT_URL || "";
-const CONFIG_STORE_PATH = process.env.STRAVA_CONFIG_PATH;
-const TOKEN_STORE_PATH = process.env.TOKEN_STORE_PATH;
 const FIT_FILE_DIR = process.env.FIT_FILE_DIR || path.join(PROJECT_ROOT, "data", "files", "fit");
-const USER_PROFILE_PATH = path.join(PROJECT_ROOT, "user-profile.json");
+const PERSONAL_FIT_AGENT_URL = process.env.PERSONAL_FIT_AGENT_URL || "http://127.0.0.1:8000";
+const PERSONAL_FIT_AGENT_TOKEN = process.env.PERSONAL_FIT_AGENT_TOKEN || "";
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
 
-const configStore = createConfigStore(CONFIG_STORE_PATH);
-const tokenStore = createTokenStore(TOKEN_STORE_PATH);
-const activityStore = createActivityStore();
-activityStore.initialize();
+const personalFitAgentClient = createPersonalFitAgentClient({
+    baseUrl: PERSONAL_FIT_AGENT_URL,
+    apiToken: PERSONAL_FIT_AGENT_TOKEN
+});
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use("/api", createLocalApiOriginGuard({
     allowedOrigins: buildAllowedLocalOrigins({
         host: HOST,
@@ -52,59 +53,60 @@ app.use("/api", createLocalApiOriginGuard({
 app.use("/src", express.static(path.join(PROJECT_ROOT, "src")));
 app.use("/vendor/@garmin/fitsdk", express.static(path.join(PROJECT_ROOT, "node_modules", "@garmin", "fitsdk")));
 app.use(createActivityRoutes({
-    activityStore,
+    agentClient: personalFitAgentClient,
     upload,
     fitFileDir: FIT_FILE_DIR,
     projectRoot: PROJECT_ROOT
 }));
+app.use(createRouteLibraryRoutes({ agentClient: personalFitAgentClient }));
 app.use(createStravaRoutes({
-    configStore,
-    tokenStore,
-    activityStore,
-    upload,
-    projectRoot: PROJECT_ROOT,
-    clientId: CLIENT_ID,
-    clientSecret: CLIENT_SECRET,
+    agentClient: personalFitAgentClient,
     scopes: SCOPES,
     redirectUri: REDIRECT_URI,
     frontendRedirectUrl: FRONTEND_REDIRECT_URL
 }));
+app.use(createAgentRoutes({ agentClient: personalFitAgentClient }));
+app.use(createNarrationRoutes({ agentClient: personalFitAgentClient }));
+app.use(createJobRoutes({ agentClient: personalFitAgentClient }));
 
 app.get("/", (_req, res) => {
     res.sendFile(path.join(PROJECT_ROOT, "index.html"));
 });
 
+app.get("/api/runtime-config/maps", (_req, res) => {
+    res.json({
+        ok: true,
+        configured: Boolean(GOOGLE_MAPS_API_KEY),
+        apiKey: GOOGLE_MAPS_API_KEY
+    });
+});
+
 app.get("/api/user-profile", async (_req, res) => {
     try {
-        const profile = await readUserProfile();
-        res.json({ ok: true, profile: sanitizeUserProfile(profile) });
+        const athlete = await personalFitAgentClient.athleteProfile();
+        res.json({
+            ok: true,
+            profile: athlete?.rider_settings ?? {}
+        });
     } catch (error) {
+        if (sendAgentUnavailable(res, error, { capability: "athlete_profile" })) return;
         res.status(500).json({ ok: false, error: error.message });
     }
 });
 
 app.put("/api/user-profile", async (req, res) => {
     try {
-        const currentProfile = await readUserProfile();
-        const profile = {
-            ...currentProfile,
-            ...sanitizeUserProfile(req.body ?? {})
-        };
-        await fs.writeFile(USER_PROFILE_PATH, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
-        res.json({ ok: true, profile: sanitizeUserProfile(profile) });
+        const requested = sanitizeUserProfile(req.body ?? {});
+        const athlete = await personalFitAgentClient.updateAthleteProfile(requested);
+        res.json({
+            ok: true,
+            profile: athlete?.rider_settings ?? {}
+        });
     } catch (error) {
+        if (sendAgentUnavailable(res, error, { capability: "athlete_profile" })) return;
         res.status(400).json({ ok: false, error: error.message });
     }
 });
-
-async function readUserProfile() {
-    try {
-        return JSON.parse(await fs.readFile(USER_PROFILE_PATH, "utf8"));
-    } catch (error) {
-        if (error?.code === "ENOENT") return {};
-        throw error;
-    }
-}
 
 app.get("/healthz", (_req, res) => {
     res.json({ ok: true, service: "rider-tracker" });
@@ -118,9 +120,6 @@ const server = app.listen(PORT, HOST, (err) => {
     }
 
     console.log(`[rider-tracker] listening on ${APP_BASE_URL}`);
-    if (!CLIENT_ID || !CLIENT_SECRET) {
-        console.warn(`[rider-tracker] Strava env credentials are not configured. Use ${APP_BASE_URL}/strava/login to save local credentials.`);
-    }
 });
 
 server.on("error", (err) => {

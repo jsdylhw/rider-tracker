@@ -195,6 +195,10 @@ function createLayerSet(map) {
             opacity: 0.85,
             dashArray: "8 10"
         }).addTo(map),
+        plannerWaypointMarkers: [],
+        agentSegmentLines: [],
+        requestedWaypointLinks: [],
+        requestedWaypointMarkers: [],
         routeLineOpacity: 0.95,
         hasVisibleRoute: false,
         lastRouteKey: ""
@@ -224,6 +228,7 @@ function renderRoute(map, layers, route, currentRecord, {
 
     const geoPoints = collectRouteMapLatLngs(route);
     const routeKey = buildRouteGeometryKey(route, geoPoints);
+    renderAgentSegmentOverlays(map, layers, route?.agentSegmentOverlays);
 
     if (geoPoints.length < 2) {
         layers.routeLine.setLatLngs([]);
@@ -231,6 +236,7 @@ function renderRoute(map, layers, route, currentRecord, {
         layers.currentMarker.setStyle({ opacity: 0, fillOpacity: 0 });
         layers.startMarker.setStyle({ opacity: 0, fillOpacity: 0 });
         layers.endMarker.setStyle({ opacity: 0, fillOpacity: 0 });
+        clearRequestedWaypointSnaps(layers);
         layers.hasVisibleRoute = false;
         layers.lastRouteKey = "";
         return;
@@ -240,7 +246,6 @@ function renderRoute(map, layers, route, currentRecord, {
     layers.routeLineOpacity = routeLineStyle.opacity;
     const routeChanged = layers.lastRouteKey !== routeKey;
     const shouldRenderStaticRoute = routeChanged || forceFocus || !layers.hasVisibleRoute;
-
     if (shouldRenderStaticRoute) {
         map.invalidateSize({ pan: false });
         layers.routeLine.setStyle(routeLineStyle);
@@ -248,6 +253,7 @@ function renderRoute(map, layers, route, currentRecord, {
         layers.routeLine.bringToFront?.();
         layers.startMarker.setLatLng(geoPoints[0]).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
         layers.endMarker.setLatLng(geoPoints.at(-1)).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
+        renderRequestedWaypointSnaps(map, layers, route);
         layers.hasVisibleRoute = true;
         layers.lastRouteKey = routeKey;
         focusRouteAfterLayout(map, layers, geoPoints, routeKey);
@@ -270,6 +276,82 @@ function renderRoute(map, layers, route, currentRecord, {
     layers.riddenLine.bringToFront?.();
     layers.currentMarker.setLatLng(currentLatLng).setStyle({ opacity: 1, fillOpacity: 1 }).bringToFront?.();
     map.panTo(currentLatLng, { animate: true, duration: 0.5 });
+}
+
+function renderAgentSegmentOverlays(map, layers, overlays) {
+    for (const line of layers.agentSegmentLines ?? []) map.removeLayer?.(line);
+    layers.agentSegmentLines = [];
+    for (const overlay of overlays ?? []) {
+        const points = (overlay?.coordinates ?? []).map((coordinate) => [
+            Number(coordinate?.[1]), Number(coordinate?.[0]),
+        ]).filter(([latitude, longitude]) => (
+            Number.isFinite(latitude) && Number.isFinite(longitude)
+        ));
+        if (points.length < 2) continue;
+        const line = window.L.polyline(points, {
+            color: "#fc7f3f",
+            weight: 5,
+            opacity: 0.8,
+            dashArray: "8 6",
+        }).addTo(map);
+        const label = document.createElement("span");
+        label.textContent = `Strava · ${overlay.name || overlay.segmentId}`;
+        line.bindTooltip?.(label, { sticky: true });
+        line.bringToFront?.();
+        layers.agentSegmentLines.push(line);
+    }
+    layers.routeLine.bringToFront?.();
+}
+
+function renderRequestedWaypointSnaps(map, layers, route) {
+    clearRequestedWaypointSnaps(layers);
+    if (route?.source !== "map-drawn") return;
+
+    for (const snap of route.waypointSnaps ?? []) {
+        const requested = normalizeSnapPoint(snap?.requested);
+        const snapped = normalizeSnapPoint(snap?.snapped);
+        const offsetMeters = Number(snap?.offsetMeters);
+        if (!requested || !snapped || !Number.isFinite(offsetMeters) || offsetMeters < 3) continue;
+
+        const link = window.L.polyline([requested, snapped], {
+            color: "#f59e0b",
+            weight: 2,
+            opacity: 0.85,
+            dashArray: "5 7"
+        }).addTo(map);
+        const marker = window.L.circleMarker(requested, {
+            radius: 7,
+            color: "#f59e0b",
+            weight: 3,
+            fillColor: "#ffffff",
+            fillOpacity: 0.95
+        }).addTo(map);
+        const label = snap.index === 1 ? "原始起点" : `原始选点 ${snap.index}`;
+        marker.bindTooltip?.(`${label}，已吸附至道路（${Math.round(offsetMeters)} m）`, {
+            direction: "top",
+            offset: [0, -8],
+            opacity: 0.95
+        });
+        link.bringToFront?.();
+        marker.bringToFront?.();
+        layers.requestedWaypointLinks.push(link);
+        layers.requestedWaypointMarkers.push(marker);
+    }
+}
+
+function clearRequestedWaypointSnaps(layers) {
+    for (const layer of [...(layers?.requestedWaypointLinks ?? []), ...(layers?.requestedWaypointMarkers ?? [])]) {
+        layer.remove?.();
+    }
+    if (!layers) return;
+    layers.requestedWaypointLinks = [];
+    layers.requestedWaypointMarkers = [];
+}
+
+function normalizeSnapPoint(point) {
+    const lat = Number(point?.lat ?? point?.latitude);
+    const lng = Number(point?.lng ?? point?.longitude);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
 }
 
 function focusRouteAfterLayout(map, layers, geoPoints, routeKey) {
@@ -304,6 +386,11 @@ export function collectRouteMapLatLngs(route) {
         : normalizeRouteMapLatLngs(route?.points);
 }
 
+/** Route source is metadata; actual coordinate geometry decides map visibility. */
+export function hasRouteMapGeometry(route) {
+    return collectRouteMapLatLngs(route).length >= 2;
+}
+
 function normalizeRouteMapLatLngs(geometry) {
     return (geometry ?? [])
         .map((point) => {
@@ -335,6 +422,19 @@ function renderPlannerSelection(map, layers, selection) {
         return;
     }
 
+    const waypointPoints = normalizePlannerPoints(selection?.waypoints);
+    if (waypointPoints.length > 0) {
+        setOptionalMarker(layers.plannerStartMarker, null);
+        setOptionalMarker(layers.plannerDestinationMarker, null);
+        renderPlannerWaypointMarkers(map, layers, waypointPoints);
+        layers.plannerGuideLine.setLatLngs(waypointPoints);
+        // Keep the user's current viewport stable while they add multiple waypoints.
+        // The finished route is fitted once it is committed through syncRoute().
+        return;
+    }
+
+    clearPlannerWaypointMarkers(layers);
+
     setOptionalMarker(layers.plannerStartMarker, selection?.start);
     setOptionalMarker(layers.plannerDestinationMarker, selection?.destination);
 
@@ -352,8 +452,41 @@ function renderPlannerSelection(map, layers, selection) {
     }
 }
 
+function normalizePlannerPoints(points) {
+    return (points ?? [])
+        .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lng))
+        .map((point) => [point.lat, point.lng]);
+}
+
+function renderPlannerWaypointMarkers(map, layers, points) {
+    clearPlannerWaypointMarkers(layers);
+    layers.plannerWaypointMarkers = points.map((point, index) => {
+        const marker = window.L.circleMarker(point, {
+            radius: 8,
+            color: "#ffffff",
+            weight: 2,
+            fillColor: index === 0 ? "#22c55e" : "#2563eb",
+            fillOpacity: 1
+        }).addTo(map);
+        const label = index === 0 ? "起点 1" : `途经点 ${index + 1}`;
+        marker.bindTooltip?.(label, {
+            direction: "top",
+            offset: [0, -8],
+            opacity: 0.95
+        });
+        return marker;
+    });
+}
+
+function clearPlannerWaypointMarkers(layers) {
+    for (const marker of layers?.plannerWaypointMarkers ?? []) {
+        marker.remove?.();
+    }
+    if (layers) layers.plannerWaypointMarkers = [];
+}
+
 export function shouldFitPlannerSelection(layers, pointCount) {
-    return pointCount === 2 && layers?.hasVisibleRoute !== true;
+    return pointCount >= 2 && layers?.hasVisibleRoute !== true;
 }
 
 function resolveRouteLineStyle(route) {
@@ -365,7 +498,7 @@ function resolveRouteLineStyle(route) {
         };
     }
 
-    if (route?.source === "osm-map" || route?.source === "osm-exploration") {
+    if (route?.source === "osm-map" || route?.source === "osm-exploration" || route?.source === "map-drawn") {
         return {
             color: "#2563eb",
             weight: 7,

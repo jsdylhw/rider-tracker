@@ -27,9 +27,11 @@ export function buildNextRideSessionState({
     const nextCommandSequence = (currentSession?.commandSequence ?? 0) + 1;
     const rideId = currentSession.startedAt;
     const nextElapsedSeconds = (currentSummary?.metrics?.ride?.elapsedSeconds ?? 0) + dt;
+    const nextErgElapsedSeconds = (currentSession?.ergElapsedSeconds ?? 0)
+        + (trainerControlMode === TRAINER_CONTROL_MODES.ERG ? dt : 0);
     const resolvedWorkoutTarget = resolveWorkoutTargetAtElapsed({
         target: customWorkoutTargetPlan,
-        elapsedSeconds: nextElapsedSeconds,
+        elapsedSeconds: nextErgElapsedSeconds,
         ftp: state.settings.ftp
     });
 
@@ -43,10 +45,11 @@ export function buildNextRideSessionState({
         workoutTarget: resolvedWorkoutTarget,
         dt
     });
+    nextSession.ergElapsedSeconds = nextErgElapsedSeconds;
 
     const workoutTargetRuntime = buildWorkoutTargetRuntime({
         target: customWorkoutTargetPlan,
-        elapsedSeconds: nextSession.summary.metrics.ride.elapsedSeconds,
+        elapsedSeconds: nextErgElapsedSeconds,
         ftp: state.settings.ftp
     });
 
@@ -70,7 +73,7 @@ export function buildNextRideSessionState({
             rideId,
             commandSequence: nextCommandSequence,
             customWorkoutTargetPlan,
-            elapsedSeconds: nextSession.summary.metrics.ride.elapsedSeconds
+            elapsedSeconds: nextErgElapsedSeconds
         });
 
     return buildRideSessionState({

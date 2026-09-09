@@ -5,6 +5,7 @@ import { createDefaultCustomWorkoutTarget } from "../../domain/workout/custom-wo
 import { createInitialSensorSamplingState } from "../realtime/sensor-sampling.js";
 import { clamp, normalizeText } from "../../shared/utils/common.js";
 import { DEFAULT_PIP_CHART_SELECTION, DEFAULT_PIP_METRIC_SELECTION } from "../../shared/live-metrics.js";
+import { DEFAULT_AGENT_CAPABILITIES } from "../../domain/agent/agent-capabilities.js";
 
 const DEFAULT_STRAVA_SERVER_URL = globalThis.location?.origin || "http://localhost:8787";
 
@@ -35,7 +36,7 @@ export const defaultExportMetadata = {
 
 export const STREET_VIEW_UPDATE_INTERVAL_MS = 3000;
 
-export function createInitialState(session, options = {}) {
+export function createInitialState(options = {}) {
     const route = buildRoute(sanitizeSegments(defaultRouteSegments));
     const pipPreferences = options.pipPreferences ?? {};
 
@@ -49,15 +50,15 @@ export function createInitialState(session, options = {}) {
             virtualCadenceRpm: 85
         },
         workout: createInitialWorkoutState(),
-        session,
+        session: null,
         selectedActivity: null,
         liveRide: createInitialLiveRideState(),
         ble: createInitialBleState(),
-        exportMetadata: {
-            ...defaultExportMetadata,
-            ...(session?.exportMetadata ?? {})
+        agentCapabilities: {
+            ...DEFAULT_AGENT_CAPABILITIES,
+            capabilities: { ...DEFAULT_AGENT_CAPABILITIES.capabilities }
         },
-        hasPersistedSession: Boolean(session),
+        exportMetadata: { ...defaultExportMetadata },
         pipConfig: normalizeSelection(pipPreferences.pipConfig, DEFAULT_PIP_METRIC_SELECTION),
         pipChartConfig: normalizeSelection(pipPreferences.pipChartConfig, DEFAULT_PIP_CHART_SELECTION),
         pipLayout: ["compact", "grid", "wide"].includes(pipPreferences.pipLayout) ? pipPreferences.pipLayout : "grid",
@@ -121,7 +122,6 @@ function normalizeSelection(selection, fallbackSelection) {
 function createInitialLiveRideState() {
     return {
         isActive: false,
-        canStart: false,
         dashboardOpen: false,
         session: null,
         records: [],
@@ -143,6 +143,7 @@ function createInitialLiveRideState() {
 function createInitialWorkoutState() {
     return {
         mode: WORKOUT_MODES.GRADE_SIM,
+        modeTransition: { status: "ready", from: null, to: WORKOUT_MODES.GRADE_SIM, error: null },
         gradeSimulation: {
             difficultyPercent: 100,
             lookaheadMeters: 120,
@@ -181,7 +182,7 @@ function createInitialWorkoutState() {
             customWorkoutTargetRemainingSeconds: null,
             customWorkoutTargetProgress: 0,
             pendingTrainerCommand: null,
-            controlStatus: "坡度模拟待命：已基于当前路线实时梯度生成目标模拟坡度，开始骑行后按预先锁定模式下发 trainer 指令。"
+            controlStatus: "坡度模拟待命：已基于当前路线实时梯度生成目标模拟坡度；骑行中仍可切换控制模式。"
         }
     };
 }
@@ -194,6 +195,8 @@ function createInitialBleState() {
         heartRate: {
             isConnecting: false,
             isConnected: false,
+            connectionState: bluetoothSupported ? "disconnected" : "unsupported",
+            lastError: null,
             statusLabel: bluetoothSupported ? "未连接" : "不支持",
             deviceName: bluetoothSupported ? "等待连接" : "当前浏览器不支持 Web Bluetooth",
             value: null,
@@ -202,6 +205,8 @@ function createInitialBleState() {
         powerMeter: {
             isConnecting: false,
             isConnected: false,
+            connectionState: bluetoothSupported ? "disconnected" : "unsupported",
+            lastError: null,
             statusLabel: bluetoothSupported ? "未连接" : "不支持",
             deviceName: bluetoothSupported ? "等待连接" : "当前浏览器不支持 Web Bluetooth",
             sourceType: "none",
@@ -216,8 +221,27 @@ function createInitialBleState() {
         trainer: {
             isConnecting: false,
             isConnected: false,
+            connectionState: bluetoothSupported ? "disconnected" : "unsupported",
             controlActivating: false,
             controlReady: false,
+            controlState: "idle",
+            dataStreamReady: false,
+            controlPointNotificationsReady: false,
+            capabilitiesState: "unknown",
+            capabilities: {
+                simulationSupported: null,
+                inclinationSupported: null,
+                gradeControlSupported: null,
+                resistanceSupported: null,
+                powerSupported: null,
+                minInclinePercent: null,
+                maxInclinePercent: null,
+                minResistanceLevel: null,
+                maxResistanceLevel: null,
+                minPowerWatts: null,
+                maxPowerWatts: null
+            },
+            lastError: null,
             statusLabel: bluetoothSupported ? "未连接" : "不支持",
             deviceName: bluetoothSupported ? "等待连接" : "当前浏览器不支持 Web Bluetooth",
             lastUpdated: null

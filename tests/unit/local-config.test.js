@@ -1,0 +1,148 @@
+import path from "node:path";
+import { buildRuntimeEnv, DEFAULT_STRAVA_SCOPES } from "../../scripts/local-config.js";
+import { assertEqual } from "../helpers/test-harness.js";
+
+export const suite = {
+    name: "local-config",
+    tests: [
+        {
+            name: "maps one YAML configuration to Rider and Agent runtime variables",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: {
+                        rider: {
+                            host: "127.0.0.2",
+                            port: 9000,
+                            open_browser: false,
+                            database_path: "runtime/rider.db",
+                            fit_file_dir: "runtime/fit",
+                            strava_scopes: "activity:write"
+                        },
+                        training_agent: { host: "127.0.0.3", port: 9100 },
+                        agent: { base_url: "https://api.deepseek.com/anthropic" },
+                        strava: { client_id: "client", client_secret: "secret" },
+                        google: { api_key: "google-key" },
+                        web_api_token: "shared-token"
+                    }
+                }, {});
+                assertEqual(env.HOST, "127.0.0.2");
+                assertEqual(env.PORT, "9000");
+                assertEqual(env.RIDER_OPEN_BROWSER, "false");
+                assertEqual(env.PERSONAL_FIT_AGENT_URL, "http://127.0.0.3:9100");
+                assertEqual(env.PERSONAL_FIT_AGENT_TOKEN, "shared-token");
+                assertEqual(env.STRAVA_CLIENT_ID, undefined);
+                assertEqual(env.RIDER_TRACKER_DB_PATH, path.join(root, "runtime", "rider.db"));
+                assertEqual(env.TRAINING_AGENT_DB_PATH, path.join(root, "runtime", "rider.db"));
+                assertEqual(env.RIDER_DATA_ROOT, path.join(root, "data"));
+                assertEqual(env.STRAVA_TOKEN_STORE, path.join(root, "data", "credentials", "strava-tokens.json"));
+                assertEqual(env.RIDER_ACTIVITY_WORKFLOW_DIR, path.join(root, "data", "workflows", "activity-runs"));
+                assertEqual(env.RIDER_LOG_DIR, path.join(root, "data", "logs"));
+                assertEqual(env.TRAINING_AGENT_MANAGED_DATABASE, "1");
+                assertEqual(env.TRAINING_AGENT_CONFIG_PATH, path.join(root, "config.yaml"));
+                assertEqual(env.GOOGLE_MAPS_API_KEY, "google-key");
+                assertEqual(env.STRAVA_SCOPES, "read,read_all,activity:read_all,activity:write");
+                assertEqual(env.NO_PROXY, "api.deepseek.com");
+                assertEqual(env.no_proxy, "api.deepseek.com");
+            }
+        },
+        {
+            name: "uses route-capable Strava scopes by default",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: {}
+                }, {});
+
+                assertEqual(env.STRAVA_SCOPES, DEFAULT_STRAVA_SCOPES);
+                assertEqual(env.STRAVA_SCOPES, "read,read_all,activity:read_all,activity:write");
+            }
+        },
+        {
+            name: "bypasses the proxy only for the configured LLM host",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: { agent: { base_url: "https://api.deepseek.com/anthropic" } }
+                }, {
+                    HTTPS_PROXY: "http://127.0.0.1:7897",
+                    NO_PROXY: "localhost,127.0.0.1"
+                });
+                assertEqual(env.HTTPS_PROXY, "http://127.0.0.1:7897");
+                assertEqual(env.NO_PROXY, "localhost,127.0.0.1,api.deepseek.com");
+                assertEqual(env.NO_PROXY.includes("googleapis.com"), false);
+                assertEqual(env.NO_PROXY.includes("strava.com"), false);
+            }
+        },
+        {
+            name: "environment variables override YAML values",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: { rider: { port: 9000 }, training_agent: { port: 9100 } }
+                }, { PORT: "9999", PERSONAL_FIT_AGENT_URL: "http://127.0.0.1:9998" });
+                assertEqual(env.PORT, "9999");
+                assertEqual(env.PERSONAL_FIT_AGENT_URL, "http://127.0.0.1:9998");
+                assertEqual(env.PERSONAL_FIT_AGENT_PORT, "9998");
+            }
+        },
+        {
+            name: "uses the unified Rider database when legacy config has no Rider section",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: { download_count: 1 }
+                }, {});
+                const databasePath = path.join(root, "data", "rider-tracker.db");
+                assertEqual(env.RIDER_TRACKER_DB_PATH, databasePath);
+                assertEqual(env.TRAINING_AGENT_DB_PATH, databasePath);
+                assertEqual(env.FIT_FILE_DIR, path.join(root, "data", "files", "fit"));
+            }
+        },
+        {
+            name: "derives all default mutable paths from a custom data root",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: { rider: { data_root: "runtime-data" } }
+                }, {});
+                const dataRoot = path.join(root, "runtime-data");
+                assertEqual(env.RIDER_DATA_ROOT, dataRoot);
+                assertEqual(env.RIDER_TRACKER_DB_PATH, path.join(dataRoot, "rider-tracker.db"));
+                assertEqual(env.FIT_FILE_DIR, path.join(dataRoot, "files", "fit"));
+                assertEqual(env.STRAVA_TOKEN_STORE, path.join(dataRoot, "credentials", "strava-tokens.json"));
+                assertEqual(env.RIDER_ACTIVITY_WORKFLOW_DIR, path.join(dataRoot, "workflows", "activity-runs"));
+                assertEqual(env.RIDER_LOG_DIR, path.join(dataRoot, "logs"));
+            }
+        },
+        {
+            name: "explicit Agent port override also updates the generated URL",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: { training_agent: { host: "127.0.0.3", port: 9100 } }
+                }, { PERSONAL_FIT_AGENT_PORT: "9200" });
+                assertEqual(env.PERSONAL_FIT_AGENT_URL, "http://127.0.0.3:9200");
+            }
+        },
+        {
+            name: "does not expose the example Google placeholder as configured",
+            run() {
+                const root = path.resolve("/tmp/rider-config-test");
+                const env = buildRuntimeEnv(root, {
+                    configPath: path.join(root, "config.yaml"),
+                    values: { google: { api_key: "replace-with-google-maps-api-key" } }
+                }, {});
+
+                assertEqual(env.GOOGLE_MAPS_API_KEY, undefined);
+            }
+        }
+    ]
+};

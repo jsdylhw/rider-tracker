@@ -6,14 +6,30 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning src/server/index.js",
-    "test": "node --disable-warning=ExperimentalWarning tests/test-runner.js"
+    "start": "node --disable-warning=ExperimentalWarning scripts/start-local.js",
+    "start:rider": "node --disable-warning=ExperimentalWarning scripts/start-rider.js",
+    "start:agent": "node scripts/start-local.js --agent-only",
+    "start:worker": "node scripts/start-local.js --worker-only",
+    "agent:cli": "node scripts/run-agent-cli.js",
+    "setup:agent": "node scripts/setup-agent.js",
+    "db:init": "node scripts/run-database-tool.js init",
+    "db:migrate": "node scripts/run-database-tool.js migrate",
+    "db:check": "node scripts/run-database-tool.js check",
+    "db:ensure": "node scripts/run-database-tool.js ensure",
+    "data:audit": "node scripts/run-runtime-data-tool.js audit",
+    "data:migrate": "node scripts/run-runtime-data-tool.js migrate",
+    "test": "node --disable-warning=ExperimentalWarning tests/test-runner.js",
+    "test:agent": "node scripts/run-agent-tests.js",
+    "test:integration": "node scripts/test-local-integration.js",
+    "test:degraded": "node scripts/test-agent-degraded-integration.js",
+    "test:all": "npm test && npm run test:agent && npm run test:integration && npm run test:degraded"
   },
   "dependencies": {
     "@garmin/fitsdk": "^21.178.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "multer": "^2.1.1"
+    "multer": "^2.1.1",
+    "yaml": "^2.9.0"
   }
 }

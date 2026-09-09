@@ -45,6 +45,21 @@ export const suite = {
             }
         },
         {
+            name: "exposes a safe-rendering target for a stored activity report",
+            run() {
+                const html = buildActivityDetailPageHtml({
+                    ...buildActivity(),
+                    analysisReport: {
+                        markdown_report: "# 训练结论\n\n<script>alert('x')</script>"
+                    }
+                });
+
+                assert(html.includes("活动分析报告"), "stored report should have a Rider detail section");
+                assert(html.includes("data-activity-analysis-report"), "report should expose a safe DOM rendering target");
+                assert(!html.includes("<script>"), "raw report markdown must not be interpolated into HTML");
+            }
+        },
+        {
             name: "hides the map card for manual activity routes",
             run() {
                 const activity = buildActivity();
@@ -68,6 +83,20 @@ export const suite = {
                 assert(html.includes("FIT 已保存"), "standalone detail should show archived FIT status");
                 assert(html.includes("导出 JSON"), "standalone detail should expose JSON export");
                 assert(html.includes("导出 FIT"), "standalone detail should expose browser FIT export");
+            }
+        },
+        {
+            name: "falls back to current Rider thresholds when an imported FIT has no settings",
+            run() {
+                const activity = buildActivity();
+                activity.rawSession.settings = { ftp: null, restingHr: null, maxHr: null };
+
+                const html = buildActivityDetailPageHtml(activity, {
+                    fallbackSettings: { ftp: 260, restingHr: 50, maxHr: 200 }
+                });
+
+                assert(!html.includes("缺少 FTP"));
+                assert(!html.includes("缺少静息/最大心率"));
             }
         },
         {

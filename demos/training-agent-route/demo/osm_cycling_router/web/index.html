@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OSM 骑行路线 Demo</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">LOCAL OSM + GRAPHHOPPER</p>
+        <h1>骑行路线实验台</h1>
+      </div>
+      <span id="status" class="status">正在连接本地服务…</span>
+    </header>
+    <main>
+      <aside>
+        <section>
+          <h2>路线</h2>
+          <label>模式
+            <select id="planner-mode">
+              <option value="point-to-point">两点路线</option>
+              <option value="free-loop">自由环线</option>
+            </select>
+          </label>
+          <p id="route-hint" class="hint">在地图上依次点击起点、终点；第三次点击会重设起点。</p>
+          <label>起点 <input id="origin" value="30.2420,120.0960" placeholder="纬度,经度"></label>
+          <label id="destination-field">终点 <input id="destination" value="30.2670,120.0920" placeholder="纬度,经度"></label>
+          <label>车型
+            <select id="profile"><option value="racingbike">公路车</option><option value="bike">通用自行车</option><option value="car">汽车（避开高速）</option></select>
+          </label>
+          <label id="loop-distance-field">目标距离（km）<input id="loop-distance" type="number" min="1" max="300" step="1" value="20"></label>
+          <button id="route-button">计算路线</button>
+          <button id="free-loop-button">生成自由环线</button>
+          <output id="route-summary">尚未计算</output>
+          <ul id="loop-candidates" aria-live="polite"></ul>
+        </section>
+        <section>
+          <h2>路线骨架实验</h2>
+          <p class="hint">用 Strava 主爬段作为骨架，再由本地 GraphHopper 连接。仅显示本地已生成的试验数据。</p>
+          <button id="show-hangzhou-nw-probe" class="secondary">显示杭州西北主爬闭环</button>
+          <button id="show-hangzhou-nw-reversible-probe" class="secondary">显示杭州西北可反向闭环</button>
+          <button id="show-jingshan-town-probe" class="secondary">显示径山镇出发闭环</button>
+          <button id="show-hangzhou-retrace-probe" class="secondary">显示王位山连接候选</button>
+          <ul id="route-probes" aria-live="polite"></ul>
+        </section>
+        <section>
+          <h2>风景点检索</h2>
+          <form id="search-form">
+            <label>名称 <input id="search-query" value="灵隐寺" placeholder="例如：淀山湖"></label>
+            <button>搜索</button>
+          </form>
+          <button id="nearby-button" class="secondary">查地图中心 5km 内景点</button>
+          <ul id="places" aria-live="polite"></ul>
+        </section>
+        <p class="notice">仅供路线与数据验证。地图瓦片来自 OpenStreetMap；路线和 POI 数据均来自本地服务。</p>
+      </aside>
+      <div id="map" aria-label="路线地图"></div>
+    </main>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

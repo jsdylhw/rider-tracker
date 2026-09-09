@@ -133,12 +133,12 @@ export async function saveActivityFitFile(activityId, {
 export async function importActivityFitFile({
     fitBytes,
     filename,
-    session,
+    session = null,
     name = session?.exportMetadata?.activityName,
     sportType = "Ride",
     serverUrl = globalThis.location?.origin || ""
 } = {}) {
-    if (!fitBytes || !session || !serverUrl) {
+    if (!fitBytes || !serverUrl) {
         return null;
     }
 
@@ -146,7 +146,7 @@ export async function importActivityFitFile({
     const fitBlob = new Blob([payload], { type: "application/vnd.ant.fit" });
     const formData = new FormData();
     formData.append("file", fitBlob, filename || "activity.fit");
-    formData.append("session", JSON.stringify(session));
+    if (session) formData.append("session", JSON.stringify(session));
     if (name) formData.append("name", name);
     if (sportType) formData.append("sportType", sportType);
 

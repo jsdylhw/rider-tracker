@@ -1,0 +1,85 @@
+.live-setup-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    align-items: stretch;
+}
+
+.live-setup-grid > .column {
+    width: 100%;
+}
+
+.pre-ride-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+    gap: 20px;
+    align-items: start;
+}
+
+.pre-ride-card-grid > .card {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+}
+
+.device-setup-card {
+    padding: 18px;
+}
+
+.device-setup-card .controls {
+    margin-top: 12px;
+}
+
+.device-meta {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.device-status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.device-status-item {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #f8fafc;
+}
+
+.device-status-item > span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.device-status-item > strong {
+    color: var(--text);
+    font-size: 15px;
+}
+
+.device-status-item .device-meta {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ride-readiness-message {
+    grid-column: 1 / -1;
+    color: var(--text);
+    line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+    .device-status-grid {
+        grid-template-columns: 1fr;
+    }
+}

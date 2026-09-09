@@ -1,0 +1,51 @@
+services:
+  graphhopper:
+    build:
+      context: .
+      args:
+        GRAPHHOPPER_VERSION: "11.0"
+    # Rootless Docker on WSL cannot otherwise reach a proxy listening only on
+    # the host loopback interface. GraphHopper itself binds to 127.0.0.1 in
+    # graphhopper.yml, so the API remains local-only.
+    network_mode: host
+    volumes:
+      - ./data:/app/data
+    environment:
+      JAVA_OPTS: "-Xms1g -Xmx6g"
+      HTTP_PROXY: "${HTTP_PROXY:-}"
+      HTTPS_PROXY: "${HTTPS_PROXY:-}"
+      NO_PROXY: "${NO_PROXY:-}"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8989/info"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10m
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      args:
+        GRAPHHOPPER_VERSION: "11.0"
+    entrypoint: ["python3", "/app/web_server.py"]
+    # The UI server binds only to 127.0.0.1:8080. Host networking keeps it in
+    # the same local-only topology as GraphHopper and preserves WSL proxy use.
+    network_mode: host
+    volumes:
+      - ./data:/app/data:ro
+    environment:
+      WEB_HOST: "127.0.0.1"
+      WEB_PORT: "8080"
+      PLACES_DB: "/app/data/scenic_places.sqlite"
+      ROUTE_PROBE_DIR: "/app/data/route-probes"
+      GRAPHHOPPER_URL: "http://127.0.0.1:8989"
+    depends_on:
+      graphhopper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

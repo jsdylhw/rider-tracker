@@ -42,17 +42,6 @@ export function createWorkoutRenderer({
                 onUpdateResistanceLevel(Number(event.target.value));
             });
         }
-        
-        // Handle new radio buttons for live.html
-        if (elements.workoutModeRadios) {
-            elements.workoutModeRadios.forEach(radio => {
-                radio.addEventListener("change", (e) => {
-                    if (e.target.checked) {
-                        onUpdateWorkoutMode(e.target.value);
-                    }
-                });
-            });
-        }
     }
 
     function render(state) {
@@ -73,12 +62,6 @@ export function createWorkoutRenderer({
 
         if (elements.workoutModeSelect && document.activeElement !== elements.workoutModeSelect) {
             elements.workoutModeSelect.value = workout.mode;
-        }
-
-        if (elements.workoutModeRadios) {
-            elements.workoutModeRadios.forEach(radio => {
-                radio.checked = (radio.value === workout.mode);
-            });
         }
 
         syncNumberField(elements.gradeDifficultyInput, gradeSimulation.difficultyPercent);

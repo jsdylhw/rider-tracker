@@ -4,7 +4,7 @@ import { buildEffectiveSensorSnapshot } from "../realtime/sensor-sampling.js";
 import { formatDuration, formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { resolveRideMetrics } from "../../domain/metrics/ride-metrics.js";
-import { isRouteReadyForRide } from "../../domain/route/route-builder.js";
+import { deriveRideReadiness } from "../../domain/ride/ride-readiness.js";
 import {
     DEFAULT_PIP_CHART_SELECTION,
     DEFAULT_PIP_METRIC_SELECTION,
@@ -49,11 +49,19 @@ export function buildRideSnapshot(state) {
     const distanceKm = metrics.ride.distanceKm;
     const remainingKm = Math.max(0, totalDistanceKm - distanceKm);
     const progressPercent = Math.round((metrics.ride.routeProgress ?? 0) * 100);
+    const readiness = deriveRideReadiness({
+        route,
+        workout: state.workout,
+        rideInput: state.rideInput,
+        ble: state.ble,
+        debugEnabled: streetViewDebugEnabled
+    });
 
     return {
         dashboardOpen: Boolean(liveRide.dashboardOpen),
         isActive: Boolean(liveRide.isActive),
-        canStart: Boolean((liveRide.canStart || streetViewDebugEnabled) && isRouteReadyForRide(route)),
+        canStart: readiness.canStart,
+        readiness,
         session,
         route,
         summary,

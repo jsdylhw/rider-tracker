@@ -45,6 +45,6 @@ function saveUserProfile(settings) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings)
     }).catch((error) => {
-        console.error("保存根目录 user-profile.json 失败", error);
+        console.error("保存统一运动员档案失败", error);
     });
 }

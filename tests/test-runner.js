@@ -1,18 +1,22 @@
 import { runSuites, renderResults } from "./helpers/test-harness.js";
 import { installDomParserPolyfill } from "./helpers/dom-parser-polyfill.js";
 import { suite as routeSuite } from "./unit/route-builder.test.js";
+import { suite as mapDrawRouteSuite } from "./unit/map-draw-route.test.js";
 import { suite as osmRoadNetworkSuite } from "./unit/osm-road-network.test.js";
 import { suite as mapControllerSuite } from "./unit/map-controller.test.js";
 import { suite as overpassClientSuite } from "./unit/overpass-client.test.js";
 import { suite as streetViewTargetSuite } from "./unit/street-view-target.test.js";
 import { suite as googleElevationClientSuite } from "./unit/google-elevation-client.test.js";
+import { suite as googleRoutesClientSuite } from "./unit/google-routes-client.test.js";
 import { suite as googleMapsConfigServiceSuite } from "./unit/google-maps-config-service.test.js";
 import { suite as googleMapsServiceModalSuite } from "./unit/google-maps-service-modal.test.js";
 import { suite as homeViewModalSuite } from "./unit/home-view-modal.test.js";
 import { suite as routeServiceElevationSuite } from "./unit/route-service-elevation.test.js";
+import { suite as routeCurrentGpxExportSuite } from "./unit/route-current-gpx-export.test.js";
+import { suite as stravaRouteImportSuite } from "./unit/strava-route-import.test.js";
 import { suite as gpxSuite } from "./unit/gpx-parser.test.js";
+import { suite as gpxExporterSuite } from "./unit/gpx-exporter.test.js";
 import { suite as physicsSuite } from "./unit/cycling-model.test.js";
-import { suite as heartRateModelSuite } from "./unit/heart-rate-model.test.js";
 import { suite as initialStateSuite } from "./unit/initial-state.test.js";
 import { suite as appStoreSuite } from "./unit/app-store.test.js";
 import { suite as mainViewRenderingSuite } from "./unit/main-view-rendering.test.js";
@@ -21,11 +25,11 @@ import { suite as simulatorSuite } from "./unit/simulator.test.js";
 import { suite as liveRideSuite } from "./unit/live-ride-session.test.js";
 import { suite as rideMetricsSuite } from "./unit/ride-metrics.test.js";
 import { suite as fitExporterSuite } from "./unit/fit-exporter.test.js";
-import { suite as fitImporterSuite } from "./unit/fit-importer.test.js";
 import { suite as gradeSimSuite } from "./unit/grade-sim-mode.test.js";
 import { suite as ergSuite } from "./unit/erg-mode.test.js";
 import { suite as resistanceSuite } from "./unit/resistance-mode.test.js";
 import { suite as trainerCommandSuite } from "./unit/trainer-command.test.js";
+import { suite as rideReadinessSuite } from "./unit/ride-readiness.test.js";
 import { suite as workoutServiceSuite } from "./unit/workout-service.test.js";
 import { suite as customWorkoutTargetSuite } from "./unit/custom-workout-target.test.js";
 import { suite as customWorkoutTargetRendererSuite } from "./unit/custom-workout-target-renderer.test.js";
@@ -47,33 +51,57 @@ import { suite as pipChartsSuite } from "./unit/pip-charts.test.js";
 import { suite as pipElevationChartSuite } from "./unit/pip-elevation-chart.test.js";
 import { suite as pipPreferencesSuite } from "./unit/pip-preferences.test.js";
 import { suite as rideSeriesChartSuite } from "./unit/ride-series-chart.test.js";
-import { suite as activityStoreSuite } from "./unit/activity-store.test.js";
+import { suite as routeLibraryRendererSuite } from "./unit/route-library-renderer.test.js";
+import { suite as routeLibraryRoutesSuite } from "./unit/route-library-routes.test.js";
+import { suite as activityLibraryRoutesSuite } from "./unit/activity-library-routes.test.js";
+import { suite as routeContinuationSuite } from "./unit/route-continuation.test.js";
 import { suite as activityHistoryRendererSuite } from "./unit/activity-history-renderer.test.js";
 import { suite as activityDetailRendererSuite } from "./unit/activity-detail-renderer.test.js";
 import { suite as activityDetailViewSuite } from "./unit/activity-detail-view.test.js";
 import { suite as activityRouteMapControllerSuite } from "./unit/activity-route-map-controller.test.js";
 import { suite as fitBeaconClientSuite } from "./unit/fit-beacon-client.test.js";
+import { suite as serverArchitectureSuite } from "./unit/server-architecture.test.js";
 import { suite as incrementalPowerMetricsSuite } from "./unit/incremental-power-metrics.test.js";
-import { suite as tokenStoreSuite } from "./unit/token-store.test.js";
 import { suite as oauthStateStoreSuite } from "./unit/oauth-state-store.test.js";
 import { suite as localApiSecuritySuite } from "./unit/local-api-security.test.js";
+import { suite as agentFloatingWindowSuite } from "./unit/agent-floating-window.test.js";
+import { suite as reportJobSuite } from "./unit/report-job-service.test.js";
+import { suite as agentCapabilitiesSuite } from "./unit/agent-capabilities.test.js";
+import { suite as safeMarkdownRendererSuite } from "./unit/safe-markdown-renderer.test.js";
+import { suite as agentRouteContractSuite } from "./unit/agent-route-contract.test.js";
+import { suite as personalFitAgentClientSuite } from "./unit/personal-fit-agent-client.test.js";
+import { suite as agentRouteServiceSuite } from "./unit/agent-route-service.test.js";
+import { suite as agentRoutesSuite } from "./unit/agent-routes.test.js";
+import { suite as agentRoutePlannerSuite } from "./unit/agent-route-planner.test.js";
+import { suite as localConfigSuite } from "./unit/local-config.test.js";
+import { suite as browserLauncherSuite } from "./unit/browser-launcher.test.js";
+import { suite as databasePreflightSuite } from "./unit/database-preflight.test.js";
+import { suite as narrationPlanSuite } from "./unit/narration-plan.test.js";
+import { suite as narrationTimelineSuite } from "./unit/narration-timeline.test.js";
+import { suite as routeNarrationServiceSuite } from "./unit/route-narration-service.test.js";
+import { suite as routeNarrationRendererSuite } from "./unit/route-narration-renderer.test.js";
+import { suite as routeNarrationClientSuite } from "./unit/route-narration-client.test.js";
 
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
 const suites = [
     routeSuite,
+    mapDrawRouteSuite,
     osmRoadNetworkSuite,
     mapControllerSuite,
     overpassClientSuite,
     streetViewTargetSuite,
     googleElevationClientSuite,
+    googleRoutesClientSuite,
     googleMapsConfigServiceSuite,
     googleMapsServiceModalSuite,
     homeViewModalSuite,
     routeServiceElevationSuite,
+    routeCurrentGpxExportSuite,
+    stravaRouteImportSuite,
     gpxSuite,
+    gpxExporterSuite,
     physicsSuite,
-    heartRateModelSuite,
     initialStateSuite,
     appStoreSuite,
     mainViewRenderingSuite,
@@ -82,11 +110,11 @@ const suites = [
     liveRideSuite,
     rideMetricsSuite,
     fitExporterSuite,
-    fitImporterSuite,
     gradeSimSuite,
     ergSuite,
     resistanceSuite,
     trainerCommandSuite,
+    rideReadinessSuite,
     workoutServiceSuite,
     customWorkoutTargetSuite,
     customWorkoutTargetRendererSuite,
@@ -108,16 +136,36 @@ const suites = [
     pipElevationChartSuite,
     pipPreferencesSuite,
     rideSeriesChartSuite,
-    activityStoreSuite,
+    routeLibraryRendererSuite,
+    routeLibraryRoutesSuite,
+    activityLibraryRoutesSuite,
+    routeContinuationSuite,
     activityHistoryRendererSuite,
     activityDetailRendererSuite,
     activityDetailViewSuite,
     activityRouteMapControllerSuite,
     fitBeaconClientSuite,
+    serverArchitectureSuite,
     incrementalPowerMetricsSuite,
-    tokenStoreSuite,
     oauthStateStoreSuite,
-    localApiSecuritySuite
+    localApiSecuritySuite,
+    agentFloatingWindowSuite,
+    reportJobSuite,
+    agentCapabilitiesSuite,
+    safeMarkdownRendererSuite,
+    agentRouteContractSuite,
+    personalFitAgentClientSuite,
+    agentRouteServiceSuite,
+    agentRoutesSuite,
+    agentRoutePlannerSuite,
+    localConfigSuite,
+    browserLauncherSuite,
+    databasePreflightSuite,
+    narrationPlanSuite,
+    narrationTimelineSuite,
+    routeNarrationServiceSuite,
+    routeNarrationRendererSuite,
+    routeNarrationClientSuite
 ];
 
 runSuites(suites).then((results) => {

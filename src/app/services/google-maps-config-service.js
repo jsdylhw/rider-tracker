@@ -1,8 +1,13 @@
 const STORAGE_KEY = "rider-tracker:google-maps-api-key";
 
-export function createGoogleMapsConfigService({ storage = getSessionStorage() } = {}) {
+export function createGoogleMapsConfigService({
+    storage = getLocalStorage(),
+    fetchImpl = globalThis.fetch
+} = {}) {
+    const storedApiKey = readStoredApiKey(storage);
     let config = {
-        apiKey: readStoredApiKey(storage)
+        apiKey: storedApiKey,
+        source: storedApiKey ? "browser" : "none"
     };
     let activeApiKey = "";
     const listeners = new Set();
@@ -17,11 +22,26 @@ export function createGoogleMapsConfigService({ storage = getSessionStorage() } 
             throw new Error("Google Maps 已使用当前 Key 初始化；如需更换 Key，请刷新页面后重试。");
         }
 
-        config = {
-            apiKey
-        };
+        config = { apiKey, source: apiKey ? "browser" : "none" };
         persistApiKey(storage, apiKey);
         notify();
+        return getConfig();
+    }
+
+    async function loadRuntimeConfig() {
+        if (typeof fetchImpl !== "function") return getConfig();
+        try {
+            const response = await fetchImpl("/api/runtime-config/maps");
+            if (!response.ok) return getConfig();
+            const payload = await response.json();
+            const apiKey = typeof payload?.apiKey === "string" ? payload.apiKey.trim() : "";
+            if (apiKey && !activeApiKey) {
+                config = { apiKey, source: "config" };
+                notify();
+            }
+        } catch {
+            // Browser-local input remains a valid fallback when runtime config is unavailable.
+        }
         return getConfig();
     }
 
@@ -52,12 +72,12 @@ export function createGoogleMapsConfigService({ storage = getSessionStorage() } 
         listeners.forEach((listener) => listener(snapshot));
     }
 
-    return { getConfig, getApiKey, lockApiKey, subscribe, updateConfig };
+    return { getConfig, getApiKey, loadRuntimeConfig, lockApiKey, subscribe, updateConfig };
 }
 
-function getSessionStorage() {
+function getLocalStorage() {
     try {
-        return globalThis.sessionStorage ?? null;
+        return globalThis.localStorage ?? null;
     } catch {
         return null;
     }

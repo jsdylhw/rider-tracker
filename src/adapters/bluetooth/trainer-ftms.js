@@ -50,10 +50,10 @@ export function createTrainerFtms({ onStatus, onData }) {
     let pendingResponse = null;
     let ergConfirmationUnavailable = false;
     let capabilities = {
-        simulationSupported: true,
-        inclinationSupported: true,
-        resistanceSupported: true,
-        powerSupported: true,
+        simulationSupported: null,
+        inclinationSupported: null,
+        resistanceSupported: null,
+        powerSupported: null,
         minInclinePercent: -15,
         maxInclinePercent: 20,
         minResistanceLevel: 0,
@@ -576,10 +576,10 @@ export function createTrainerFtms({ onStatus, onData }) {
         }
 
         capabilities = {
-            simulationSupported: true,
-            inclinationSupported: true,
-            resistanceSupported: true,
-            powerSupported: true,
+            simulationSupported: null,
+            inclinationSupported: null,
+            resistanceSupported: null,
+            powerSupported: null,
             minInclinePercent: -15,
             maxInclinePercent: 20,
             minResistanceLevel: 0,
@@ -672,6 +672,10 @@ export function createTrainerFtms({ onStatus, onData }) {
             ...status,
             deviceName: device?.name || "未命名设备",
             capabilities: { ...capabilities },
+            capabilitiesState: !capabilitiesHydrated ? "unknown"
+                : [capabilities.simulationSupported, capabilities.inclinationSupported,
+                    capabilities.resistanceSupported, capabilities.powerSupported].every((value) => typeof value === "boolean")
+                    ? "known" : "partial",
             dataStreamReady: indoorBikeDataReady,
             controlReady,
             controlPointNotificationsReady

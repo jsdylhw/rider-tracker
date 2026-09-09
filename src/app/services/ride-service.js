@@ -15,7 +15,6 @@ import {
     buildRideLogMessage,
     buildRuntimeByControlMode
 } from "../realtime/ride-engine.js";
-import { saveLastSession } from "../../adapters/storage/session-storage.js";
 import { saveRiderSessionActivity } from "../../adapters/storage/activity-history-client.js";
 import { formatNumber } from "../../shared/format.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
@@ -24,13 +23,13 @@ import { encodeFitSync } from "../../adapters/export/fit-exporter.js";
 import { sendFitBeacon } from "../../adapters/upload/fit-beacon-client.js";
 import { loadFitSdk } from "../../adapters/fit/fit-sdk-loader.js";
 import { buildRoute, isRouteReadyForRide } from "../../domain/route/route-builder.js";
+import { deriveRideReadiness, formatReadinessMessages } from "../../domain/ride/ride-readiness.js";
 
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
 const TRAINER_COMMAND_MIN_INTERVAL_MS = 500;
 const STREET_VIEW_DEBUG_POWER_WATTS = 180;
 const STREET_VIEW_DEBUG_CADENCE_RPM = 85;
-const STREET_VIEW_DEBUG_HEART_RATE_BPM = 130;
 const DEFAULT_ACTIVITY_NAME = "Rider Tracker Virtual Ride";
 
 export function createRideService({ store, deviceService, exportService, routeService = null }) {
@@ -39,12 +38,18 @@ export function createRideService({ store, deviceService, exportService, routeSe
 
     function startRide() {
         let state = store.getState();
-        if (!isRouteReadyForRide(state.route)) {
+        const readiness = deriveRideReadiness({
+            route: state.route,
+            workout: state.workout,
+            rideInput: state.rideInput,
+            ble: state.ble,
+            debugEnabled: isStreetViewDebugEnabled()
+        });
+        if (!readiness.canStart) {
             store.setState((currentState) => ({
                 ...currentState,
-                statusText: currentState.route?.isLoading
-                    ? "路线仍在处理中，请等待完成后再开始骑行。"
-                    : "请先设置一条有效路线后再开始骑行。"
+                statusText: readiness.blockers[0]?.message || "当前状态不能开始骑行。",
+                liveRide: { ...currentState.liveRide, statusMeta: formatReadinessMessages(readiness.blockers) }
             }));
             return;
         }
@@ -54,8 +59,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
             return;
         }
         const streetViewDebugEnabled = isStreetViewDebugEnabled();
-        const virtualRideEnabled = streetViewDebugEnabled && state.rideInput?.powerSource === "virtual";
-        if ((!state.liveRide.canStart && !virtualRideEnabled && !streetViewDebugEnabled) || state.liveRide.isActive) {
+        if (state.liveRide.isActive) {
             return;
         }
 
@@ -70,8 +74,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
         const baseSession = createLiveRideSession({
             route: state.route,
             settings: state.settings,
-            startedAt,
-            initialHeartRate: sampledSensors.heartRate
+            startedAt
         });
 
         baseSession.exportMetadata = buildRideExportMetadata(state.exportMetadata, state.route);
@@ -123,6 +126,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
         const completedSession = finalizeRideSync();
 
         if (completedSession) {
+            const completedDistanceMeters = (completedSession.summary?.metrics?.ride?.distanceKm ?? 0) * 1000;
             const completedRideId = completedSession.startedAt;
             const pendingActivity = buildPendingActivity(completedSession);
             store.setState((currentState) => ({
@@ -152,6 +156,12 @@ export function createRideService({ store, deviceService, exportService, routeSe
                             statusText: "骑行已结束，活动已保存。"
                         }
                         : currentState);
+                    return persistCompletedRouteProgress({
+                        routeService,
+                        completedSession,
+                        completedDistanceMeters,
+                        activityId: activity.id
+                    });
                 })
                 .catch((error) => {
                     console.warn("[RideService] 保存骑后报告失败:", error);
@@ -166,6 +176,11 @@ export function createRideService({ store, deviceService, exportService, routeSe
                             statusText: "骑行已结束，但 FIT 保存失败。"
                         }
                         : currentState);
+                    return persistCompletedRouteProgress({
+                        routeService,
+                        completedSession,
+                        completedDistanceMeters
+                    });
                 });
         }
     }
@@ -209,7 +224,6 @@ export function createRideService({ store, deviceService, exportService, routeSe
             ...currentState,
             session: completedSession ?? currentState.session,
             route: buildRoute([]),
-            hasPersistedSession: Boolean(completedSession) || currentState.hasPersistedSession,
             workout: {
                 ...currentState.workout,
                 runtime: stoppedRuntime
@@ -229,7 +243,6 @@ export function createRideService({ store, deviceService, exportService, routeSe
         }));
 
         if (completedSession) {
-            saveLastSession(completedSession);
             if (options.sendBeacon === true) {
                 trySendFitBeacon(completedSession);
             }
@@ -265,7 +278,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
             fitBytes,
             filename,
             session: compactSession,
-            name: state.exportMetadata?.activityName,
+            name: session.exportMetadata?.activityName,
             sportType: "VirtualRide"
         });
 
@@ -430,16 +443,14 @@ export function createRideService({ store, deviceService, exportService, routeSe
         const state = store.getState();
         const session = {
             ...simulateRide({ route: state.route, settings: state.settings }),
-            exportMetadata: sanitizeSessionExportMetadata(state.exportMetadata)
+            exportMetadata: buildRideExportMetadata(state.exportMetadata, state.route)
         };
 
-        saveLastSession(session);
         archiveSimulationSession(session, exportService);
 
         store.setState((currentState) => ({
             ...currentState,
             session,
-            hasPersistedSession: true,
             statusText: `模拟完成：${formatNumber(session.summary.metrics.ride.distanceKm, 2)} km / 平均速度 ${formatNumber(session.summary.metrics.speed.averageKph, 1)} km/h`
         }));
     }
@@ -474,12 +485,6 @@ export function createRideService({ store, deviceService, exportService, routeSe
                 powerSource,
                 virtualPowerWatts: clampVirtualPower(input?.virtualPowerWatts, state.rideInput?.virtualPowerWatts),
                 virtualCadenceRpm: clampVirtualCadence(input?.virtualCadenceRpm, state.rideInput?.virtualCadenceRpm)
-            },
-            liveRide: {
-                ...state.liveRide,
-                canStart: powerSource === "device"
-                    ? Boolean(state.ble.trainer.isConnected || state.ble.powerMeter.sourceType !== "none")
-                    : true
             },
             statusText: powerSource === "device"
                 ? "已切换为已连接设备功率。"
@@ -527,6 +532,24 @@ export function createRideService({ store, deviceService, exportService, routeSe
         }
         liveRideTimerId = null;
         liveRideTickIntervalMs = DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS;
+    }
+}
+
+async function persistCompletedRouteProgress({
+    routeService,
+    completedSession,
+    completedDistanceMeters,
+    activityId = null
+}) {
+    try {
+        await routeService?.updateSavedRouteProgress?.({
+            route: completedSession.route,
+            sessionDistanceMeters: completedDistanceMeters,
+            lastActivityId: activityId,
+            startedAt: completedSession.startedAt
+        });
+    } catch (error) {
+        console.warn("[RideService] 保存未完成路线进度失败:", error);
     }
 }
 
@@ -596,27 +619,26 @@ function buildPendingActivity(session) {
 
 function buildRideExportMetadata(exportMetadata, route) {
     const metadata = sanitizeSessionExportMetadata(exportMetadata);
-    if (metadata.activityName !== DEFAULT_ACTIVITY_NAME) {
-        return metadata;
-    }
-
     return {
         ...metadata,
-        activityName: inferDefaultActivityName(route)
+        activityName: inferActivityName(route, metadata.activityName)
     };
 }
 
-function inferDefaultActivityName(route) {
-    if (route?.source === "gpx") {
-        return `GPX 骑行 · ${route.importFileName ?? route.name ?? "路线"}`.slice(0, 48);
+function inferActivityName(route, fallbackName = DEFAULT_ACTIVITY_NAME) {
+    if (route?.source === "gpx" || route?.source === "strava") {
+        return String(route.importFileName ?? route.name ?? "GPX 路线").trim().slice(0, 48);
+    }
+    if (route?.source === "agent-planned" && route.name) {
+        return String(route.name).trim().slice(0, 48);
     }
     if (route?.source === "osm-exploration") {
-        return "OSM 自由探索骑行";
+        return "自由探索骑行";
     }
     if (route?.source === "manual") {
         return "自定义线路骑行";
     }
-    return route?.name ? `路线骑行 · ${route.name}`.slice(0, 48) : DEFAULT_ACTIVITY_NAME;
+    return route?.name ? `路线骑行 · ${route.name}`.slice(0, 48) : fallbackName;
 }
 
 function resolveStartRideSensorSnapshot({ sampling, settings, rideInput, streetViewDebugEnabled }) {
@@ -634,10 +656,8 @@ function resolveStartRideSensorSnapshot({ sampling, settings, rideInput, streetV
         ...sampledSensors,
         power,
         cadence: sampledSensors.cadence ?? STREET_VIEW_DEBUG_CADENCE_RPM,
-        heartRate: sampledSensors.heartRate ?? STREET_VIEW_DEBUG_HEART_RATE_BPM,
         powerSourceType: "street-view-debug",
         powerTimestamp: now,
-        heartRateTimestamp: sampledSensors.heartRateTimestamp ?? now,
         powerSignal: {
             observedIntervalMs: DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS,
             estimatedIntervalMs: DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS,

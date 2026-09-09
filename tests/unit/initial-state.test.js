@@ -25,9 +25,11 @@ export const suite = {
         {
             name: "初始状态不再预置可直接开始的手工路线",
             run() {
-                const state = createInitialState(null);
+                const state = createInitialState();
 
                 assertEqual(Object.hasOwn(state, "routeSegments"), false);
+                assertEqual(Object.hasOwn(state, "hasPersistedSession"), false);
+                assertEqual(state.session, null);
                 assertEqual(state.route.totalDistanceMeters, 0);
             }
         }

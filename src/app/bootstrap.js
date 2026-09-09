@@ -1,6 +1,6 @@
 import { createStore } from "./store/app-store.js";
 import { createInitialState } from "./store/initial-state.js";
-import { loadLastSession, loadPipPreferences } from "../adapters/storage/session-storage.js";
+import { loadPipPreferences } from "../adapters/storage/session-storage.js";
 import { createMainView } from "../ui/renderers/main-view.js";
 import { createPipController } from "../ui/pip/pip-controller.js";
 import { formatDuration, formatNumber } from "../shared/format.js";
@@ -15,15 +15,16 @@ import { createExportService } from "./services/export-service.js";
 import { createGoogleMapsConfigService } from "./services/google-maps-config-service.js";
 import { createUiService } from "./services/ui-service.js";
 import { createWorkoutService } from "./services/workout-service.js";
+import { createAgentFloatingWindow } from "../ui/agent/agent-floating-window.js";
+import { createAgentCapabilityService } from "./services/agent-capability-service.js";
 
 // Leaflet is loaded from CDN with fallbacks. Do not prevent non-map features
 // from starting if every external source is unavailable.
 await ensureLeaflet();
 
 // 1. 初始化状态与 Store
-const persistedSession = loadLastSession();
 const pipPreferences = loadPipPreferences();
-const store = createStore(createInitialState(persistedSession, { pipPreferences }));
+const store = createStore(createInitialState({ pipPreferences }));
 const inferredInitialUiMode = inferInitialUiMode();
 
 if (inferredInitialUiMode !== store.getState().uiMode) {
@@ -34,14 +35,26 @@ if (inferredInitialUiMode !== store.getState().uiMode) {
 }
 
 // 2. 创建业务服务 (Services)
-const userService = createUserService({ store });
 const googleMapsConfig = createGoogleMapsConfigService();
+await googleMapsConfig.loadRuntimeConfig();
+const userService = createUserService({ store });
 const routeService = createRouteService({ store, googleMapsConfig });
 const deviceService = createDeviceService({ store });
 const exportService = createExportService({ store });
 const rideService = createRideService({ store, deviceService, exportService, routeService });
 const uiService = createUiService({ store });
 const workoutService = createWorkoutService({ store, deviceService });
+const agentFloatingWindow = createAgentFloatingWindow();
+const agentCapabilityService = createAgentCapabilityService({ store });
+const stopAgentVisibilitySync = store.subscribe((state, previousState) => {
+    if (previousState === undefined || state.uiMode !== previousState.uiMode) {
+        agentFloatingWindow.setVisible(state.uiMode === "home");
+    }
+    if (previousState === undefined || state.agentCapabilities !== previousState.agentCapabilities) {
+        agentFloatingWindow.setCapabilities(state.agentCapabilities);
+    }
+});
+const stopAgentCapabilityChecks = agentCapabilityService.start();
 
 // 3. 创建控制器与视图
 const pipController = createPipController({
@@ -65,6 +78,23 @@ const mainView = createMainView({
             addSegment: routeService.addSegment,
             resetRoute: routeService.resetRoute,
             importGpx: routeService.importGpx,
+            listStravaRoutes: routeService.listStravaRoutes,
+            refreshStravaRoutes: routeService.refreshStravaRoutes,
+            importStravaRoute: routeService.importStravaRoute,
+            listSavedRoutes: routeService.listSavedRoutes,
+            loadSavedRoute: routeService.loadSavedRoute,
+            continueSavedRoute: routeService.continueSavedRoute,
+            saveCurrentRoute: routeService.saveCurrentRoute,
+            exportCurrentRouteGpx: routeService.exportCurrentRouteGpx,
+            deleteSavedRoute: routeService.deleteSavedRoute,
+            createMapDrawRoute: routeService.createMapDrawRoute,
+            planAgentRoutes: routeService.planAgentRoutes,
+            previewAgentRoute: routeService.previewAgentRoute,
+            confirmAgentRoute: routeService.confirmAgentRoute,
+            exploreAgentRouteSegments: routeService.exploreAgentRouteSegments,
+            composeAgentRouteSegments: routeService.composeAgentRouteSegments,
+            reverseAgentRoute: routeService.reverseAgentRoute,
+            undoAgentRoute: routeService.undoAgentRoute,
             invalidatePendingMapRoute: routeService.invalidatePendingMapRoute,
             planMapRoute: routeService.planMapRoute,
             queueExplorationTurn: routeService.queueExplorationTurn,
@@ -119,6 +149,9 @@ const mainView = createMainView({
 // 4. 注册页面关闭时的清理逻辑（同步收尾 + 尝试 sendBeacon 发送 FIT）
 window.addEventListener("beforeunload", () => {
     mainView.destroy();
+    stopAgentVisibilitySync();
+    stopAgentCapabilityChecks();
+    agentFloatingWindow.destroy();
     if (store.getState().liveRide.isActive) {
         rideService.finalizeRideSync({ sendBeacon: true });
     }

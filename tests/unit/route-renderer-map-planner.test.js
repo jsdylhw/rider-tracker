@@ -14,10 +14,10 @@ export const suite = {
                 const plannerModes = [];
                 const plannerSelections = [];
                 const elements = {
-                    routeModeGpxBtn: createFakeElement(),
+                    routeModeLibraryBtn: createFakeElement(),
                     routeModeManualBtn: createFakeElement(),
                     routeModeMapBtn: createFakeElement(),
-                    gpxRoutePanel: createFakeElement(),
+                    routeLibraryPanel: createFakeElement(),
                     manualRoutePanel: createFakeElement(),
                     mapRoutePanel: createFakeElement(),
                     routeMapShell: createFakeElement({ hidden: true }),
@@ -99,7 +99,7 @@ export const suite = {
                 });
                 const latestSelection = plannerSelections.at(-1);
                 assertEqual(latestSelection, null);
-                assertEqual(elements.setupElevationChartShell.hidden, false);
+                assertEqual(elements.setupElevationChartShell.hidden, true);
                 assertEqual(elements.mapRouteSelectionStatus.textContent, "起步路线已生成，可开始骑行或重新选点");
                 assertEqual(elements.planMapRouteBtn.hidden, true);
                 assertEqual(elements.clearMapRouteSelectionBtn.textContent, "重选路线");
@@ -114,10 +114,10 @@ export const suite = {
             name: "keeps the shared map preview visible after importing a coordinate GPX route",
             run() {
                 const elements = {
-                    routeModeGpxBtn: createFakeElement(),
+                    routeModeLibraryBtn: createFakeElement(),
                     routeModeManualBtn: createFakeElement(),
                     routeModeMapBtn: createFakeElement(),
-                    gpxRoutePanel: createFakeElement(),
+                    routeLibraryPanel: createFakeElement(),
                     manualRoutePanel: createFakeElement(),
                     mapRoutePanel: createFakeElement(),
                     routeMapShell: createFakeElement({ hidden: true }),
@@ -156,28 +156,108 @@ export const suite = {
                     segments: []
                 };
 
-                elements.routeModeGpxBtn.dispatch("click");
+                elements.routeModeLibraryBtn.dispatch("click");
                 renderer.render({
                     route: { source: "manual", points: [], segments: [] },
                 });
                 assertEqual(elements.setupElevationChartShell.hidden, true);
                 renderer.render({ route });
 
-                assertEqual(elements.gpxRoutePanel.hidden, false);
+                assertEqual(elements.routeLibraryPanel.hidden, false);
                 assertEqual(elements.mapRoutePanel.hidden, true);
                 assertEqual(elements.routeMapShell.hidden, false);
-                assertEqual(elements.setupElevationChartShell.hidden, false);
+                assertEqual(elements.setupElevationChartShell.hidden, true);
                 assertEqual(syncedRoute, route);
+
+                elements.routeModeManualBtn.dispatch("click");
+                renderer.render({ route });
+                assertEqual(elements.manualRoutePanel.hidden, false);
+                assertEqual(elements.routeMapShell.hidden, false);
+                assertEqual(elements.routeSourceLabel.textContent, "GPX：海岸线");
+                assert(elements.routeSummary.innerHTML.includes("GPX 导入"));
+            }
+        },
+        {
+            name: "collects multiple map points for a fixed route without entering OSM exploration planning",
+            async run() {
+                let plannerClickHandler = null;
+                let createdWaypoints = null;
+                const plannerSelections = [];
+                const elements = {
+                    routeModeLibraryBtn: createFakeElement(),
+                    routeModeManualBtn: createFakeElement(),
+                    routeModeDrawBtn: createFakeElement(),
+                    routeModeMapBtn: createFakeElement(),
+                    routeLibraryPanel: createFakeElement(),
+                    manualRoutePanel: createFakeElement(),
+                    mapDrawRoutePanel: createFakeElement(),
+                    mapRoutePanel: createFakeElement(),
+                    routeMapShell: createFakeElement({ hidden: true }),
+                    setupElevationChartShell: createFakeElement({ hidden: true }),
+                    routeCurrentSourceRow: createFakeElement({ hidden: true }),
+                    routeTableShell: createFakeElement(),
+                    undoMapDrawWaypointBtn: createFakeElement(),
+                    clearMapDrawRouteBtn: createFakeElement(),
+                    createMapDrawRouteBtn: createFakeElement(),
+                    requestMapDrawElevationBtn: createFakeElement({ hidden: true }),
+                    mapDrawRouteStatus: createFakeElement(),
+                    mapDrawWaypointSummary: createFakeElement(),
+                    mapDrawRoutePlanStatus: createFakeElement({ hidden: true }),
+                    clearMapRouteSelectionBtn: createFakeElement(),
+                    planMapRouteBtn: createFakeElement(),
+                    mapRouteSelectionStatus: createFakeElement(),
+                    mapRouteStartText: createFakeElement(),
+                    mapRouteDestinationText: createFakeElement(),
+                    routeSummary: createFakeElement(),
+                    routeSourceLabel: createFakeElement(),
+                    addSegmentBtn: createFakeElement()
+                };
+                const renderer = createRouteRenderer({
+                    elements,
+                    mapController: {
+                        syncRoute() {},
+                        syncPlannerSelection(selection) { plannerSelections.push(selection); },
+                        setPlannerMode() {},
+                        setPlannerClickHandler(handler) { plannerClickHandler = handler; }
+                    },
+                    onAddSegment() {},
+                    onResetRoute() {},
+                    onImportGpx() {},
+                    onCreateMapDrawRoute(waypoints) {
+                        createdWaypoints = waypoints;
+                        return { source: "map-drawn" };
+                    },
+                    onInvalidateMapRoute() {},
+                    onPlanMapRoute() {},
+                    onRequestRouteElevation() {},
+                    requestGoogleMapsApiKey: async () => "test-key",
+                    onUpdateRouteSegment() {},
+                    onRemoveRouteSegment() {}
+                });
+
+                renderer.render({ route: { source: "manual", points: [], segments: [] }, liveRide: { isActive: false } });
+                elements.routeModeDrawBtn.dispatch("click");
+                plannerClickHandler({ mode: "select", point: { lat: 31.2, lng: 121.4 } });
+                plannerClickHandler({ mode: "select", point: { lat: 31.2, lng: 121.41 } });
+                plannerClickHandler({ mode: "select", point: { lat: 31.21, lng: 121.41 } });
+
+                assertEqual(elements.mapDrawRoutePanel.hidden, false);
+                assertEqual(elements.mapDrawWaypointSummary.textContent.includes("共 3 个点"), true);
+                assertEqual(plannerSelections.at(-1).waypoints.length, 3);
+                elements.createMapDrawRouteBtn.dispatch("click");
+                await Promise.resolve();
+
+                assertEqual(createdWaypoints.length, 3);
             }
         },
         {
             name: "does not redraw map geometry when only exploration turn intent changes",
             run() {
                 const elements = {
-                    routeModeGpxBtn: createFakeElement(),
+                    routeModeLibraryBtn: createFakeElement(),
                     routeModeManualBtn: createFakeElement(),
                     routeModeMapBtn: createFakeElement(),
-                    gpxRoutePanel: createFakeElement(),
+                    routeLibraryPanel: createFakeElement(),
                     manualRoutePanel: createFakeElement(),
                     mapRoutePanel: createFakeElement(),
                     routeMapShell: createFakeElement({ hidden: true }),

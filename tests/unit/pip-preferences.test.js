@@ -8,7 +8,7 @@ export const suite = {
         {
             name: "初始状态会恢复 PiP 偏好",
             run() {
-                const state = createInitialState(null, {
+                const state = createInitialState({
                     pipPreferences: {
                         pipConfig: {
                             currentPower: false,
@@ -45,7 +45,7 @@ export const suite = {
                 };
 
                 try {
-                    const store = createFakeStore(createInitialState(null));
+                    const store = createFakeStore(createInitialState());
                     const uiService = createUiService({ store });
 
                     uiService.updatePipChartConfig("powerHeartRate", true);

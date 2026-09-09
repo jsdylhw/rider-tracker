@@ -1,10 +1,3 @@
-.layout-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-    gap: 24px;
-    align-items: start;
-}
-
 .column {
     display: grid;
     gap: 24px;

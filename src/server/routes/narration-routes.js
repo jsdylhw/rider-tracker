@@ -1,0 +1,135 @@
+import express from "express";
+import { sendAgentUnavailable } from "../agent-unavailable.js";
+
+export function createNarrationRoutes({ agentClient }) {
+    const router = express.Router();
+
+    router.get("/api/route-narrations/photo", async (req, res) => {
+        try {
+            const name = String(req.query.name || "").trim();
+            const maxWidth = Math.max(160, Math.min(1200, Number(req.query.max_width) || 720));
+            if (!/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/.test(name)) {
+                throw new RequestValidationError("照片引用格式无效。");
+            }
+            const photo = await agentClient.routeNarrationPhoto({ name, maxWidth });
+            res.set({
+                "Content-Type": photo.contentType,
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff"
+            });
+            return res.send(photo.body);
+        } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "route_narration" })) return;
+            const status = error instanceof RequestValidationError ? 400 : (error.statusCode || 502);
+            return res.status(status).json({ ok: false, error: error.message });
+        }
+    });
+
+    router.post("/api/route-narrations/prepare", async (req, res) => {
+        try {
+            const request = normalizeNarrationRequest(req.body);
+            const result = await agentClient.prepareRouteNarration(request);
+            return res.status(202).json({ ok: true, result });
+        } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "route_narration" })) return;
+            const status = error instanceof RequestValidationError ? 400 : (error.statusCode || 502);
+            return res.status(status).json({ ok: false, error: error.message });
+        }
+    });
+
+    router.get("/api/route-narrations/jobs/:jobId", async (req, res) => {
+        try {
+            const result = await agentClient.routeNarrationJob(req.params.jobId);
+            return res.json({ ok: true, result });
+        } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "route_narration" })) return;
+            return res.status(error.statusCode || 502).json({ ok: false, error: error.message });
+        }
+    });
+
+    return router;
+}
+
+function normalizeNarrationRequest(body = {}) {
+    const fingerprint = String(body.route_fingerprint || "").trim();
+    const routeName = String(body.route_name || "").trim().slice(0, 200);
+    const totalDistance = finiteInRange(body.total_distance_m, 1, 1_000_000, "total_distance_m");
+    const duration = finiteInRange(body.estimated_duration_min, 1, 10_000, "estimated_duration_min");
+    const durationEstimation = normalizeDurationEstimation(body.duration_estimation);
+    if (!/^route_[a-f0-9]{8}$/.test(fingerprint)) {
+        throw new RequestValidationError("route_fingerprint 格式无效。");
+    }
+    if (!routeName) throw new RequestValidationError("route_name 不能为空。");
+    if (!Array.isArray(body.samples) || body.samples.length < 2 || body.samples.length > 64) {
+        throw new RequestValidationError("samples 必须包含 2-64 个路线采样点。");
+    }
+    return {
+        route_fingerprint: fingerprint,
+        route_name: routeName,
+        total_distance_m: totalDistance,
+        estimated_duration_min: duration,
+        duration_estimation: durationEstimation,
+        locale: body.locale === "en" ? "en" : "zh-CN",
+        request_id: normalizeRequestId(body.request_id),
+        force: body.force === true,
+        samples: body.samples.map((sample, index) => ({
+            sample_id: `sample_${index + 1}`,
+            route_distance_m: normalizeRouteDistance(sample?.route_distance_m, totalDistance),
+            estimated_elapsed_s: optionalFinite(sample?.estimated_elapsed_s),
+            latitude: finiteInRange(sample?.latitude, -90, 90, "latitude"),
+            longitude: finiteInRange(sample?.longitude, -180, 180, "longitude"),
+            elevation_m: optionalFinite(sample?.elevation_m),
+            grade_percent: optionalFinite(sample?.grade_percent)
+        }))
+    };
+}
+
+function normalizeRequestId(value) {
+    const requestId = String(value || "").trim();
+    if (!requestId) return undefined;
+    if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) {
+        throw new RequestValidationError("request_id 格式无效。");
+    }
+    return requestId;
+}
+
+function normalizeDurationEstimation(value) {
+    if (!value || typeof value !== "object") return null;
+    const supportedMethods = new Set([
+        "route_profile_at_60pct_ftp",
+        "route_duration",
+        "distance_at_24_kph"
+    ]);
+    const method = String(value.method || "");
+    return {
+        method: supportedMethods.has(method) ? method : "distance_at_24_kph",
+        target_power_w: optionalFinite(value.target_power_w),
+        ftp_ratio: optionalFinite(value.ftp_ratio)
+    };
+}
+
+function normalizeRouteDistance(value, totalDistance) {
+    const number = Number(value);
+    // Browser route geometry commonly carries sub-metre floating-point totals.
+    // Accept a rounding-only overshoot, then clamp it to the authoritative total.
+    if (!Number.isFinite(number) || number < 0 || number > totalDistance + 1) {
+        throw new RequestValidationError("route_distance_m 格式无效。");
+    }
+    return Math.min(number, totalDistance);
+}
+
+function finiteInRange(value, minimum, maximum, field) {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < minimum || number > maximum) {
+        throw new RequestValidationError(`${field} 格式无效。`);
+    }
+    return number;
+}
+
+function optionalFinite(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+class RequestValidationError extends Error {}

@@ -53,6 +53,9 @@ export function createDeviceService({ store }) {
                             ...state.ble.heartRate,
                             isConnecting: status.type === "connecting",
                             isConnected: status.type === "connected",
+                            connectionState: status.type === "error" ? "error" : status.type,
+                            lastError: status.type === "error" ? deviceError("heart-rate-connect", status.message)
+                                : status.type === "connected" ? null : state.ble.heartRate.lastError,
                             statusLabel: mapStatusLabel(status.type),
                             deviceName: status.deviceName ?? (status.type === "disconnected" ? "等待连接" : status.message),
                             value: status.type === "disconnected" ? null : state.ble.heartRate.value
@@ -77,6 +80,17 @@ export function createDeviceService({ store }) {
                         isConnected: status.type === "connected",
                         controlActivating: status.phase === "control-activating",
                         controlReady: status.controlReady === true,
+                        connectionState: status.type === "error" ? "error" : status.type,
+                        controlState: status.phase === "control-ready" ? "ready"
+                            : status.phase === "control-activating" ? "activating"
+                                : status.type === "error" ? "error" : "idle",
+                        dataStreamReady: status.dataStreamReady === true,
+                        controlPointNotificationsReady: status.controlPointNotificationsReady === true,
+                        capabilitiesState: status.capabilitiesState ?? state.ble.trainer.capabilitiesState,
+                        capabilities: normalizeTrainerCapabilities(status.capabilities ?? state.ble.trainer.capabilities),
+                        lastError: status.type === "error"
+                            ? deviceError("trainer-status", status.message)
+                            : status.type === "connected" ? null : state.ble.trainer.lastError,
                         statusLabel: mapTrainerStatusLabel(status),
                         deviceName: status.deviceName ?? (status.type === "disconnected" ? "等待连接" : status.message),
                         lastUpdated: Date.now()
@@ -84,9 +98,6 @@ export function createDeviceService({ store }) {
                 },
                 liveRide: {
                     ...state.liveRide,
-                    canStart: computeCanStart(state, {
-                        trainerConnected: status.type === "connected"
-                    }),
                     statusMeta: status.message
                 },
                 statusText: status.message
@@ -123,13 +134,7 @@ export function createDeviceService({ store }) {
                         },
                         sampling: nextSampling
                     },
-                    liveRide: {
-                        ...state.liveRide,
-                        canStart: computeCanStart(state, {
-                            trainerConnected: powerState.trainerConnected,
-                            activePowerSource: powerState.activeSource
-                        })
-                    }
+                    liveRide: { ...state.liveRide }
                 };
             });
         },
@@ -153,13 +158,7 @@ export function createDeviceService({ store }) {
                         },
                         sampling: nextSampling
                     },
-                    liveRide: {
-                        ...state.liveRide,
-                        canStart: computeCanStart(state, {
-                            trainerConnected: state.ble.trainer.isConnected,
-                            activePowerSource: data.sourceType
-                        })
-                    }
+                    liveRide: { ...state.liveRide }
                 };
             });
         }
@@ -177,6 +176,8 @@ export function createDeviceService({ store }) {
                     heartRate: {
                         ...state.ble.heartRate,
                         isConnecting: false,
+                        connectionState: "error",
+                        lastError: deviceError("heart-rate-connect", error.message),
                         statusLabel: "连接失败",
                         deviceName: error.message
                     }
@@ -195,9 +196,11 @@ export function createDeviceService({ store }) {
                 ...state,
                 ble: {
                     ...state.ble,
-                    powerMeter: {
-                        ...state.ble.powerMeter,
-                        externalConnecting: false
+                        powerMeter: {
+                            ...state.ble.powerMeter,
+                            externalConnecting: false,
+                            connectionState: "error",
+                            lastError: deviceError("power-meter-connect", error.message)
                     }
                 },
                 statusText: `功率计连接失败：${error.message}`
@@ -208,6 +211,9 @@ export function createDeviceService({ store }) {
     async function toggleTrainer() {
         try {
             await controllableTrainer.toggle();
+            if (controllableTrainer.isConnected) {
+                await prepareTrainerControlForWorkoutMode(store.getState().workout.mode);
+            }
         } catch (error) {
             console.error("骑行台连接失败", error);
             store.setState((state) => ({
@@ -217,6 +223,9 @@ export function createDeviceService({ store }) {
                     trainer: {
                         ...state.ble.trainer,
                         isConnecting: false,
+                        connectionState: "error",
+                        controlState: "error",
+                        lastError: deviceError("trainer-connect", error.message),
                         statusLabel: "连接失败",
                         deviceName: error.message
                     }
@@ -414,11 +423,19 @@ function resolveErgDispatchStatus(powerWatts, result) {
     return `ERG 目标功率已写入骑行台：${power} W。`;
 }
 
-function computeCanStart(state, overrides = {}) {
-    const trainerConnected = overrides.trainerConnected ?? state.ble.trainer.isConnected;
-    const activePowerSource = overrides.activePowerSource ?? state.ble.powerMeter.sourceType;
+function normalizeTrainerCapabilities(capabilities = {}) {
+    return {
+        ...capabilities,
+        gradeControlSupported: capabilities.simulationSupported === true
+            || capabilities.inclinationSupported === true
+                ? true
+                : capabilities.simulationSupported === false && capabilities.inclinationSupported === false
+                    ? false : null
+    };
+}
 
-    return Boolean(state.liveRide.isActive || trainerConnected || activePowerSource !== "none");
+function deviceError(stage, message) {
+    return { stage, message: String(message || "未知设备错误"), occurredAt: Date.now() };
 }
 
 function mapPowerSourceStatusLabel(sourceType) {

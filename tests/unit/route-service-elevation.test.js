@@ -65,6 +65,69 @@ export const suite = {
             }
         },
         {
+            name: "creates a map-selected bicycle route without requesting an OSM road network and preserves its geometry after elevation enrichment",
+            async run() {
+                const store = createStore({
+                    route: null,
+                    liveRide: { isActive: false, session: null }
+                });
+                let roadNetworkRequests = 0;
+                let routeRequests = 0;
+                const service = createRouteService({
+                    store,
+                    googleMapsConfig: {
+                        getApiKey: () => "test-key",
+                        lockApiKey() {}
+                    },
+                    fetchRoadNetwork: async () => {
+                        roadNetworkRequests += 1;
+                        return { elements: [] };
+                    },
+                    fetchGoogleRoute: async ({ apiKey, waypoints }) => {
+                        routeRequests += 1;
+                        assertEqual(apiKey, "test-key");
+                        return {
+                            path: [
+                                waypoints[0],
+                                { lat: 31.2005, lng: 121.405 },
+                                waypoints.at(-1)
+                            ],
+                            distanceMeters: 2400,
+                            estimatedDuration: "620s"
+                        };
+                    },
+                    loadGoogleMaps: async () => {},
+                    enrichElevation: async (points) => ({
+                        points: points.map((point, index) => ({
+                            ...point,
+                            elevationMeters: index * 2,
+                            elevationLoaded: true
+                        })),
+                        hasElevationData: true,
+                        summary: { requests: 1, requestedPoints: points.length, cacheHits: 0, skippedByQuota: false }
+                    })
+                });
+
+                const created = await service.createMapDrawRoute([
+                    { lat: 31.2, lng: 121.4 },
+                    { lat: 31.2, lng: 121.41 },
+                    { lat: 31.21, lng: 121.41 }
+                ]);
+                assertEqual(roadNetworkRequests, 0);
+                assertEqual(routeRequests, 1);
+                assertEqual(created.source, "map-drawn");
+                assertEqual(created.hasElevationData, false);
+                assertEqual(created.routeProvider, "google-routes");
+
+                await service.requestCurrentRouteElevation();
+                const enriched = store.getState().route;
+                assertEqual(enriched.source, "map-drawn");
+                assertEqual(enriched.hasElevationData, true);
+                assertEqual(enriched.waypoints.length, 3);
+                assertEqual(enriched.mapGeometry.length, 3);
+            }
+        },
+        {
             name: "falls back to the synthetic grid when Overpass returns an unroutable response",
             async run() {
                 const store = createStore({
