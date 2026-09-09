@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +15,14 @@ from evaluation.schema import load_cases
 
 app = typer.Typer(help="Run quantitative Personal FIT Agent evaluations.")
 DEFAULT_CASES = Path(__file__).parent / "cases" / "skills.jsonl"
+
+
+def _configure_utf8_stdio() -> None:
+    """Keep Chinese evaluation inputs printable on redirected Windows consoles."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
 
 
 @app.command("run")
@@ -56,4 +65,5 @@ def list_cases_command(
 
 
 if __name__ == "__main__":
+    _configure_utf8_stdio()
     app()

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 from evaluation.graders import grade_case
 from evaluation.report import summarize_results, write_report
@@ -210,3 +213,24 @@ def test_skill_cases_are_versioned_evaluation_inputs():
         None, "analyze-activity", "run-activity-workflow", "sync-garmin-activities",
         "plan-routes",
     }
+
+
+def test_list_cases_cli_emits_utf8_when_parent_encoding_is_cp1252(tmp_path):
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text(json.dumps({
+        "case_id": "chinese-input",
+        "input": "规划一条骑行路线",
+        "mode": "skill",
+        "expected": {"skill_id": "plan-routes"},
+    }, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "evaluation.cli", "list-cases", "--cases", str(cases)],
+        cwd=Path(__file__).resolve().parents[1],
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace")
+    assert "规划一条骑行路线" in completed.stdout.decode("utf-8")
