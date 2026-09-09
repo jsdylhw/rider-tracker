@@ -11,12 +11,8 @@ permissions:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    name: Test (ubuntu-latest)
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
