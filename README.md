@@ -1,273 +1,141 @@
 # Rider Tracker
 
-Rider Tracker 是一个本地运行的智能虚拟骑行平台。它可以导入 GPX 路线、连接蓝牙骑行设备、按路线进行实时骑行或离线模拟，也可以通过内置 Training Agent 进行活动分析、训练建议和路线规划。
+[![CI](https://github.com/jsdylhw/rider-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/jsdylhw/rider-tracker/actions/workflows/ci.yml)
 
-## 怎么用
+Rider Tracker 是一个本地运行的智能虚拟骑行应用，将路线规划、骑行台控制、沉浸式街景、FIT 活动管理和 AI 训练分析放在同一个界面中。
 
-Windows 用户可以直接双击：
+它既可以连接真实的蓝牙骑行设备进行室内骑行，也可以使用模拟功率体验路线、调试界面和回放流程。大模型、Garmin、Strava 和地图服务均为可选能力；未配置 AI 时，路线导入、骑行控制、活动记录等基础功能仍可使用。
+
+## 主要功能
+
+### 路线规划与路线库
+
+- 导入本地 GPX 文件，并读取距离、海拔和坡度数据。
+- 从 Strava 路线列表导入已有路线。
+- 在地图上选择途经点生成路线。
+- 使用自然语言生成和修改 AI 路线候选。
+- 保存常用路线，从起点重新骑行或继续未完成进度。
+- 将当前路线导出为 GPX。
+
+### 实时与模拟骑行
+
+- 通过 Web Bluetooth 连接 FTMS 智能骑行台、功率计和心率带。
+- 支持 ERG 固定功率、固定阻力和路线坡度模拟。
+- 支持无设备的模拟功率调试模式。
+- 实时展示功率、速度、踏频、心率、坡度、距离和海拔。
+- 骑行结束后生成并保存 FIT 活动文件。
+
+### 地图与沉浸街景
+
+- 在地图上同步展示路线和当前位置。
+- 支持 Google Street View 沉浸骑行界面。
+- 根据路线准备地理、历史、人文和景观讲解卡片。
+- 提供海拔曲线、当前坡度和小地图等骑行信息。
+
+### 活动与训练分析
+
+- 导入、查看和管理本地 FIT 活动。
+- 查看活动过程曲线、功率、心率、速度、爬升和训练负荷。
+- 使用 Training Agent 分析单次活动或一段时间的训练趋势。
+- 同步 Garmin 活动，并按需生成报告或上传到 Strava。
+- 通过对话获得训练总结、恢复建议和课表建议。
+
+### Strava 集成
+
+- OAuth 连接个人 Strava 账号。
+- 上传 Rider Tracker 生成或同步的 FIT 活动。
+- 导入 Strava 中保存的路线。
+- 查询路线附近的 Strava 路段，辅助路线规划。
+
+## 快速开始
+
+### 环境要求
+
+- Node.js 24 或更高版本
+- Python 3.12 或更高版本
+- Chrome 或 Edge
+
+实时设备连接依赖 Web Bluetooth，因此推荐使用 Chromium 系浏览器。
+
+### Windows
+
+直接双击：
 
 ```text
 start-windows.bat
 ```
 
-它会检查 Node.js 版本、安装依赖、启动本地服务，并自动打开浏览器。
+脚本会安装所需依赖、启动本地服务，并打开 Rider Tracker 页面。
 
-首次安装 Node 和 Training Agent 依赖：
+### 命令行启动
+
+首次使用：
 
 ```bash
 npm install
 npm run setup:agent
 ```
 
-将根目录的 `config.yaml.example` 复制为 `config.yaml`，只填写需要使用的 Rider、模型、Garmin、Strava、高德或 Google 配置。Node 和 Python 共用这一份配置；真实配置和本地 Token 均被 Git 忽略。
-
-通常不需要手工初始化数据库：`npm start` 会先做只读结构检查，首次启动时自动创建数据库，schema
-版本变化时先备份再迁移。需要单独维护或排查时仍可运行：
+复制配置模板：
 
 ```bash
-npm run db:init
+cp config.yaml.example config.yaml
 ```
 
-从旧版 Rider 数据库手工升级：
-
-```bash
-npm run db:migrate
-```
-
-`npm start` 不会重复迁移已是当前版本的数据库。Python 暂时不可用时，只要数据库结构已经正确，Rider
-基础功能仍可启动；只有首次建库或确实需要升级时才要求 Python 数据库工具可用。
-
-旧版本可能把 Token、FIT、Workflow 和日志分散在根目录或
-`services/training-agent/` 下。迁移前先执行只读审计：
-
-```bash
-npm run data:audit
-```
-
-确认没有 `conflict` 后，再显式执行一次复制迁移：
-
-```bash
-npm run data:migrate
-```
-
-迁移采用 copy-first：校验目标内容后保留旧文件，并写入一次性迁移清单；多个旧 SQLite
-数据库不会自动合并，必须根据审计结果人工确认。`npm start` 不会隐式移动用户数据。
-
-统一启动 Rider 和 Training Agent：
+启动应用：
 
 ```bash
 npm start
 ```
 
-打开浏览器：
+浏览器会自动打开：
 
 ```text
-http://127.0.0.1:8787
+http://localhost:8787
 ```
 
-停止服务：
+按 `Ctrl + C` 停止服务。
 
-```text
-Ctrl + C
-```
+## 配置可选服务
 
-运行测试：
+所有本地配置统一填写在根目录的 `config.yaml` 中。只需要配置准备使用的功能：
 
-```bash
-npm test
-```
+- `agent`：AI 活动分析、训练建议、AI 路线和路线讲解。
+- `google`：Google 路线、地点信息和 Street View。
+- `amap`：国内高德路线服务。
+- `garmin_username` / `garmin_password`：Garmin Connect 活动同步。
+- `strava`：Strava 授权、活动上传、路线和路段访问。
+- `athlete`：FTP、体重以及最大/静息心率。
 
-`npm start` 会启动 Rider 与内置 Python Training Backend，并在 Rider 就绪后自动打开
-`http://localhost:8787`。Python 仅作为本地内部服务，产品入口始终是 Rider 页面；即使 AI 未配置或
-Training Backend 暂时不可用，Rider 基础页面仍可启动。无桌面环境时会输出访问地址而不尝试打开浏览器，
-也可设置 `RIDER_OPEN_BROWSER=false` 或将 `rider.open_browser` 配为 `false`。注意不要直接双击
-`index.html`；Web Bluetooth、本地活动历史、FIT 文件保存、Agent 和 Strava 上传都依赖本地服务。
+真实配置、OAuth Token、FIT 文件和活动数据库不会提交到 Git。
 
-需要单独排查服务时可以使用：
+## 基本使用流程
 
-```bash
-npm run start:rider
-npm run start:agent
-npm run start:worker
-```
-
-`npm start` 同时启动 Rider Node、Python API 和独立任务 Worker；`start:agent` 启动 Python API 与
-Worker，`start:worker` 只启动 Worker。Worker 退出不会停止基础页面或 Python API，可用
-`npm run start:worker` 单独恢复。启动器先检查数据库，Worker 本身不执行 schema 初始化或迁移。
-
-目前已完成批量报告迁移（6B-2）：`activity_report_rebuild.v1` 由独立 Worker 执行，提交立即返回任务 ID。
-任务和逐项进度保存在 SQLite，重启后跳过已保存报告，支持取消和指定失败活动重新提交。
-Agent 对话和路线规划仍使用原有执行方式。
-`GET /api/jobs/capabilities` 返回 Worker 存活状态和支持的任务类型；这不代表模型配置可用。
-Worker 未启动时任务保持排队，异常退出后存活状态最多延迟 15 秒更新。
-`GET /api/jobs/{job_id}/report-rebuild` 查询报告逐项状态，`POST /api/jobs/{job_id}/cancel` 请求取消。
-CLI 使用 `npm run agent:cli -- debug rebuild-v2-reports` 提交，使用
-`npm run agent:cli -- debug report-job <job_id>` 查询，追加 `--cancel` 取消。
-
-`config.yaml` 中的 `google.api_key` 同时供 Python 路线服务和浏览器 Google Maps/Street View 使用。
-街景会优先直接使用该 Key；仅在未配置或实际加载失败时才显示备用 Key 输入框，调试模式也不会重复询问。
-
-## 主要功能
-
-### FIT 活动导入与分析
-
-- 首页可以导入本地 `.fit` 文件。
-- 导入后会进入活动详情页。
-- 原始 FIT 文件会保存到 `data/files/fit/`。
-- Training Agent 使用同一条确定性入口解析 FIT，并保存活动摘要、事实和有版本的详情序列缓存。
-- 打开详情时优先读取 `activity_artifacts`；只有 FIT 内容或契约版本变化时才重新解析原始文件。
-
-### 活动历史
-
-- 首页显示最近活动。
-- 支持打开详情、改名、删除。
-- 删除活动时会同步删除对应的本地 FIT 文件。
-- 活动摘要保存在 SQLite：
-
-```text
-data/rider-tracker.db
-```
-
-### GPX 路线
-
-- 支持手工分段路线。
-- 支持导入 GPX。
-- 会基于路线生成距离、海拔、坡度数据。
-- 实时骑行时可以按路线推进位置。
-
-### 我的路线
-
-- AI 路线最终确认、GPX 导入会自动保存到 SQLite 路线库；地图生成路线可点击“保存当前路线”。
-- 已保存路线可以从起点加载，也可以从上次中断里程继续；骑完整条路线后会自动清除继续进度。
-- 路线几何与可变进度分别保存在 `saved_routes`、`route_progress`，完成活动会记录所用路线及起止里程。
-- 相同几何重复保存会复用已有路线资产，不依赖原 AI 对话或原 GPX 文件重新打开。
-
-### AI 虚拟路线
-
-- “实时骑行设置 → AI 路线”可以通过对话请求 Personal FIT Agent 生成 2-3 条路线候选。
-- 候选使用同一张 Rider 地图预览；预览草稿不能直接开骑，点击“最终确认”后才会成为可骑行路线。
-- 后续对话会基于当前计划增量修改，不会默认重新进行宽泛路线发现；也可以直接反转或撤销当前路线。
-- 国内路线可以查询附近的 Strava 路段，在页面中按骑行顺序选择 1-3 个路段，再由 Agent 拼接起点、路段和终点之间的连接路线。
-- AI 路线候选只保留在当前页面会话中，刷新后不会自动恢复或覆盖当前地图路线；最终确认后会保存到 SQLite 路线库。
-- AI 虚拟路线不请求海拔，坡度按 `0%` 处理，适合与 ERG 课表组合使用。
-- 页面中的预计时间按虚拟骑行 `25 km/h` 估算，不沿用地图服务偏保守的城市骑行耗时。
-- 需要真实坡度模拟时，请继续导入带海拔的 GPX/Strava 路线；Agent 不伪造坡度数据。
-
-Training Agent 已位于 `services/training-agent/`，不再要求并排启动另一个源码仓。Rider 默认通过内部代理连接 `http://127.0.0.1:8000`。监听地址、端口、数据库、模型和外部平台配置都在根目录 `config.yaml` 中维护。
-
-环境变量仍可作为临时覆盖，例如连接另一个 Agent 实例：
-
-```text
-PERSONAL_FIT_AGENT_URL=http://127.0.0.1:8000
-PERSONAL_FIT_AGENT_TOKEN=对应的 web_api_token
-```
-
-Token 仅由 Rider Node 服务读取，不会发送给浏览器。
-
-## 项目结构与测试
-
-浏览器只访问 Rider Node；实时骑行和设备控制在浏览器中执行，Node 负责页面、同源安全与 Python 请求代理。
-`services/training-agent/` 中的 Python API 负责活动、路线、对话与工作流。独立 Python Worker 已接入
-统一启动，目前负责批量报告重建，其余耗时业务将分批迁入。
-
-```text
-浏览器 -> Rider Node :8787 -> Training Agent Python :8000
-                                   |
-                              SQLite 任务表 <- Python Worker
-```
-
-运行测试：
-
-```bash
-npm test                  # Rider 单元与本地集成测试
-npm run test:agent        # Training Agent pytest
-npm run test:integration  # 启动两个真实进程，验证 Rider -> Agent 代理链路
-npm run test:all          # 依次运行以上测试
-```
-
-这些默认测试不执行真实 Garmin 下载或 Strava 上传。真实账号、地图服务和上传链路应作为显式在线验收单独运行。
-
-配置 Garmin 后，可通过统一入口同步并索引最近活动：
-
-```bash
-npm run agent:cli -- sync-garmin --count 10
-```
-
-### 离线模拟
-
-- 输入骑手参数和恒定功率。
-- 按整条路线模拟速度、时间、距离、爬升。
-- 生成 session records 和 summary。
-- 支持导出 JSON / FIT。
-
-### 实时虚拟骑行
-
-- 支持连接心率带。
-- 支持连接功率计。
-- 支持连接 FTMS 骑行台。
-- 支持固定阻力、ERG 固定功率、路线坡度模拟。
-- 支持自定义 ERG 分段训练目标。
-
-### Dashboard / PiP / 街景
-
-- 实时 Dashboard 展示功率、速度、心率、踏频、坡度等数据。
-- 支持 PiP 悬浮窗。
-- 支持 Google Street View 沉浸模式。
-
-### FIT 导出与 Strava 上传
-
-- 模拟或实时骑行结束后可以导出 FIT。
-- 可以连接 Strava 后上传 FIT。
-- Strava 凭据从统一 `config.yaml` 读取，OAuth Token 由 Training Agent 单独管理。
+1. 在首页导入已有 FIT 活动，或进入实时骑行设置。
+2. 选择 GPX、Strava、AI、地图选点等路线来源。
+3. 连接骑行设备，或在调试模式中选择模拟功率。
+4. 选择控制模式并开始骑行。
+5. 骑行结束后保存 FIT，并按需上传到 Strava。
 
 ## 本地数据
 
-运行数据默认在：
+Rider Tracker 默认把个人数据保存在项目的 `data/` 目录，包括：
 
-```text
-data/
+- SQLite 活动和路线数据库
+- 导入或生成的 FIT 文件
+- Garmin 和 Strava 本地凭据
+- Agent 会话与任务记录
+
+这些数据默认只在本机使用。备份或迁移项目前，请同时备份 `data/` 和 `config.yaml`。
+
+## 常用命令
+
+```bash
+npm start                 # 启动 Rider Tracker
+npm test                  # 运行前端与 Node 测试
+npm run test:agent        # 运行 Training Agent 测试
+npm run test:integration  # 运行本地服务集成测试
+npm run test:all          # 运行完整测试
 ```
 
-常见文件：
-
-```text
-user-profile.json           仅兼容保存本地 Google Key，不再保存运动员参数
-data/rider-tracker.db       SQLite 活动、路线和运动员档案数据库
-data/files/fit/             本地保存的 FIT 文件
-data/credentials/           Garmin、Strava 等本地凭据
-data/credentials/strava-tokens.json  Strava OAuth token
-data/workflows/             工作流运行状态与 journal
-data/logs/                  Agent 本地日志
-```
-
-`user-profile.json` 和 `data/` 不提交到仓库。
-
-## Strava 配置
-
-不配置 Strava 也可以使用 GPX、FIT 导入、模拟、实时骑行、本地历史和 FIT 导出。
-
-如需上传 Strava，启动服务后打开：
-
-```text
-http://127.0.0.1:8787/strava/login
-```
-
-或在页面里点击连接 Strava。
-
-`client_id`、`client_secret` 只配置在根目录 `config.yaml`；浏览器授权、Token
-刷新、活动上传和 Agent 工作流共用同一份 `data/credentials/strava-tokens.json`。
-
-Strava callback URL：
-
-```text
-http://localhost:8787/api/strava/auth/callback
-```
-
-## 浏览器兼容
-
-推荐：
-
-- Chrome
-- Edge
-
-原因是实时设备连接依赖 Web Bluetooth，PiP 也依赖 Chromium 系浏览器能力。
+Rider Tracker 仍在持续开发中，功能和界面可能随版本更新而调整。
