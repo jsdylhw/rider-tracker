@@ -32,13 +32,34 @@ def run_route_narration_agent(
     if len(samples) < 2:
         raise ValueError("At least two route samples are required.")
 
+    research = research_route_narration(request, places_client=places_client)
+    return compose_route_narration(request, research, client=client)
+
+
+def research_route_narration(
+    request: dict[str, Any], *, places_client: GooglePlacesClient | None = None,
+) -> dict[str, Any]:
+    """Perform the bounded provider phase independently from model composition."""
     config = load_config()
     google = config.get("google") if isinstance(config.get("google"), dict) else {}
     places_client = places_client or GooglePlacesClient(str(google.get("api_key") or ""))
+    policy = narration_research_policy(request.get("estimated_duration_min"))
+    return _research_route_places(request, places_client, policy=policy)
+
+
+def compose_route_narration(
+    request: dict[str, Any],
+    research: dict[str, Any],
+    *,
+    client: AnthropicMessagesClient | None = None,
+) -> dict[str, Any]:
+    """Compose and validate one complete plan from already collected research."""
     client = client or AnthropicMessagesClient()
+    samples = request.get("samples") if isinstance(request.get("samples"), list) else []
+    if len(samples) < 2:
+        raise ValueError("At least two route samples are required.")
     density = narration_density(request.get("estimated_duration_min"))
     generation_policy = narration_research_policy(request.get("estimated_duration_min"))
-    research = _research_route_places(request, places_client, policy=generation_policy)
 
     response = client.create_messages(
         system=ROUTE_NARRATION_SYSTEM_PROMPT,

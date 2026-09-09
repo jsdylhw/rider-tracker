@@ -4,6 +4,10 @@
 
 路线讲解首先验证“文字内容是否可信、骑行到哪里显示哪一条”，再接入本地 TTS。讲解主要展示在沉浸街景右侧，但不属于街景移动逻辑，也不能阻塞骑行、FTMS 控制或路线渲染。
 
+讲解生成由持久化 `route_narration.v1` Worker 任务执行。浏览器提交后轮询专用结果接口；Google Places
+检索和模型调用不占用 Web API 长请求。完整计划保存在 `route_narration_results`，通用任务表只保存受控
+引用。相同完整输入默认复用，显式重试才创建新任务，加载结果前必须再次核对路线 fingerprint。
+
 ```text
 进入街景：用户确认 -> 代表点并发地点检索 -> 单次模型编排 -> route_narration_plan.v1
 骑行中：distanceMeters -> NarrationTimeline -> 文字卡片 -> （后续）TTS 播放

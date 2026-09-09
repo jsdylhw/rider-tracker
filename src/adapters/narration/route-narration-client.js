@@ -7,16 +7,51 @@ const NARRATION_POWER_FTP_RATIO = 0.6;
 const MIN_ESTIMATED_SPEED_KPH = 4;
 const MAX_ESTIMATED_SPEED_KPH = 60;
 
-export function createRouteNarrationClient({ baseUrl = "", fetchImpl = fetch } = {}) {
-    async function prepare(route, { routeFingerprint, rideSettings } = {}) {
+export function createRouteNarrationClient({
+    baseUrl = "",
+    fetchImpl = fetch,
+    pollIntervalMs = 2_000,
+    maxWaitMs = 20 * 60_000,
+    sleepImpl = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+} = {}) {
+    async function prepare(route, { routeFingerprint, rideSettings, force = false } = {}) {
+        const request = { ...buildRequest(route, routeFingerprint, rideSettings), force };
         const response = await fetchImpl(`${baseUrl}/api/route-narrations/prepare`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(buildRequest(route, routeFingerprint, rideSettings))
+            body: JSON.stringify(request)
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload?.ok !== true) {
             throw new Error(payload?.error || `路线讲解准备失败（HTTP ${response.status}）`);
+        }
+        let job = payload.result;
+        const jobId = String(job?.job_id || "");
+        if (!jobId) throw new Error("路线讲解任务响应缺少 job_id。");
+        const startedAt = Date.now();
+        while (job?.status === "queued" || job?.status === "running") {
+            if (Date.now() - startedAt >= maxWaitMs) {
+                throw new Error("路线讲解仍在后台处理中，请稍后重试加载。");
+            }
+            await sleepImpl(pollIntervalMs);
+            job = await getJob(jobId);
+        }
+        if (job?.status !== "succeeded" || !job.plan) {
+            throw new Error(job?.error?.message || (
+                job?.status === "cancelled" ? "路线讲解任务已取消。" : "路线讲解生成失败，请稍后重试。"
+            ));
+        }
+        if (job.route_fingerprint !== routeFingerprint || job.plan.route_fingerprint !== routeFingerprint) {
+            throw new Error("路线已经变化，已忽略过期的讲解结果。");
+        }
+        return job.plan;
+    }
+
+    async function getJob(jobId) {
+        const response = await fetchImpl(`${baseUrl}/api/route-narrations/jobs/${encodeURIComponent(jobId)}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok !== true) {
+            throw new Error(payload?.error || `路线讲解状态读取失败（HTTP ${response.status}）`);
         }
         return payload.result;
     }

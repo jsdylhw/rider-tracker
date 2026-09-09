@@ -29,11 +29,21 @@ export function createNarrationRoutes({ agentClient }) {
         try {
             const request = normalizeNarrationRequest(req.body);
             const result = await agentClient.prepareRouteNarration(request);
+            return res.status(202).json({ ok: true, result });
+        } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "route_narration" })) return;
+            const status = error instanceof RequestValidationError ? 400 : (error.statusCode || 502);
+            return res.status(status).json({ ok: false, error: error.message });
+        }
+    });
+
+    router.get("/api/route-narrations/jobs/:jobId", async (req, res) => {
+        try {
+            const result = await agentClient.routeNarrationJob(req.params.jobId);
             return res.json({ ok: true, result });
         } catch (error) {
             if (sendAgentUnavailable(res, error, { capability: "route_narration" })) return;
-            const status = error instanceof RequestValidationError ? 400 : 502;
-            return res.status(status).json({ ok: false, error: error.message });
+            return res.status(error.statusCode || 502).json({ ok: false, error: error.message });
         }
     });
 
@@ -60,6 +70,8 @@ function normalizeNarrationRequest(body = {}) {
         estimated_duration_min: duration,
         duration_estimation: durationEstimation,
         locale: body.locale === "en" ? "en" : "zh-CN",
+        request_id: normalizeRequestId(body.request_id),
+        force: body.force === true,
         samples: body.samples.map((sample, index) => ({
             sample_id: `sample_${index + 1}`,
             route_distance_m: normalizeRouteDistance(sample?.route_distance_m, totalDistance),
@@ -70,6 +82,15 @@ function normalizeNarrationRequest(body = {}) {
             grade_percent: optionalFinite(sample?.grade_percent)
         }))
     };
+}
+
+function normalizeRequestId(value) {
+    const requestId = String(value || "").trim();
+    if (!requestId) return undefined;
+    if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) {
+        throw new RequestValidationError("request_id 格式无效。");
+    }
+    return requestId;
 }
 
 function normalizeDurationEstimation(value) {

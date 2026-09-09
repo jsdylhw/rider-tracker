@@ -14,8 +14,9 @@ Browser -> Rider Node -> Training Agent Python
 重建接入 `activity_report_rebuild.v1`：Agent 工具和调试 CLI 只提交、查询或取消，分析在 Worker 中执行。
 报告保存与逐项检查点在同一个事务中提交，API 或 Worker 重启后保留进度；已保存项不重复分析。
 取消是协作式的：正在进行的模型请求可能仍会结束，但取消后结果不会写入。部分失败可通过指定
-失败活动 ID、新 request_id 重新提交。Agent 对话、路线规划与其他工作流尚未迁入 Worker。
-具体执行边界与恢复约束见 ADR 的阶段 6B-1、6B-2 实施记录。
+失败活动 ID、新 request_id 重新提交。阶段 6B-4 又将路线讲解迁入 `route_narration.v1`，完整计划保存于
+专用结果表，浏览器通过短请求轮询。Agent 对话、AI 路线规划与 Garmin/Strava 工作流尚未迁入 Worker。
+具体执行边界与恢复约束见 ADR 的阶段 6B-1 至 6B-4 实施记录。
 
 Rider 是唯一浏览器入口。Python Backend 的 `/` 只返回服务元信息，`/health` 用于启动检查；
 它不再提供独立 HTML、CSS 或浏览器 JavaScript。
@@ -53,9 +54,9 @@ SQLite 与可恢复状态暂时保留现有格式，包括 `activity_metrics.v2`
 整理成短播报稿，最后由本地 TTS 合成。地点查询、文案生成和 TTS 都不得进入实时 FTMS 控制循环。
 
 路线讲解的前端契约和本地时间线已按 [`route_narration_plan.v1`](./route-narration.md)
-建立。进入街景后由用户决定是否准备讲解；Python 服务在 4-8 个代表点并发查询 Google Places，
-再通过单次模型调用生成有来源的结构化卡片，不运行开放式搜索工具循环。浏览器只缓存本次骑行，同一路线返回街景不会
-重复请求。当前尚未接入通用网页搜索、持久化讲解计划和本地 TTS。
+建立。进入街景后由用户决定是否准备讲解；Python Worker 在 4-8 个代表点并发查询 Google Places，
+再通过单次模型调用生成有来源的结构化卡片，不运行开放式搜索工具循环。浏览器缓存本次骑行，SQLite
+按完整输入哈希复用持久化任务和计划，同一路线返回街景不会重复请求。当前尚未接入通用网页搜索和本地 TTS。
 
 国外环线地点检索采用首个已解析地点作为局部锚点，后续 Google Places 查询带位置偏置，并按
 直线距离选择同一国家内最近的结果。存在目标距离时，途经点不得超过

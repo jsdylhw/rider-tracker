@@ -109,10 +109,12 @@ export const suite = {
             name: "explicit retry reruns a failed provider",
             async run() {
                 let calls = 0;
+                const forceValues = [];
                 const route = createRoute("retry");
                 const service = createRouteNarrationService({
-                    preparePlan: async (value) => {
+                    preparePlan: async (value, options) => {
                         calls += 1;
+                        forceValues.push(options.force);
                         if (calls === 1) throw new Error("temporary failure");
                         return createNarrationPlanFixture(value);
                     }
@@ -123,6 +125,9 @@ export const suite = {
                 await service.retry(route);
                 assertEqual(service.getState().status, "ready");
                 assertEqual(calls, 2);
+                assertEqual(forceValues.length, 2);
+                assertEqual(forceValues[0], false);
+                assertEqual(forceValues[1], true);
             }
         }
     ]

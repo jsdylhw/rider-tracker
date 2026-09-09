@@ -16,7 +16,7 @@ from project_paths import DEFAULT_PROJECT_ROOT, runtime_paths
 # Compatibility export only. Actual connections call runtime_paths() so
 # environment/config overrides are never frozen at module import time.
 DEFAULT_DATABASE_PATH = DEFAULT_PROJECT_ROOT / "data" / "rider-tracker.db"
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 def database_path(path: str | Path | None = None) -> Path:
@@ -86,6 +86,19 @@ def initialize_database(connection: sqlite3.Connection) -> None:
             PRIMARY KEY(job_id, activity_id),
             FOREIGN KEY(job_id) REFERENCES jobs(job_id) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS route_narration_results (
+            job_id TEXT PRIMARY KEY,
+            route_fingerprint TEXT NOT NULL,
+            input_hash TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','ready','failed')),
+            plan_json TEXT,
+            error_code TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(job_id) REFERENCES jobs(job_id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_route_narration_input
+            ON route_narration_results(route_fingerprint, input_hash);
         CREATE TABLE IF NOT EXISTS job_workers (
             worker_id TEXT PRIMARY KEY,
             job_types_json TEXT NOT NULL,

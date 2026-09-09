@@ -147,7 +147,10 @@ def test_production_has_no_test_submission_types(monkeypatch):
     from app import api
     monkeypatch.setattr(api, "load_config", lambda: {})
     client = TestClient(api.app)
-    assert client.get("/api/jobs/capabilities").json()["supported_job_types"] == ["activity_report_rebuild.v1"]
+    assert client.get("/api/jobs/capabilities").json()["supported_job_types"] == [
+        "activity_report_rebuild.v1",
+        "route_narration.v1",
+    ]
     assert client.post("/api/jobs", json={"job_type": "test", "request_id": "r"}).status_code == 422
 
 

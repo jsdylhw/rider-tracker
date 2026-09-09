@@ -16,7 +16,6 @@ from app.job_api import create_job_router
 from pydantic import BaseModel, Field
 
 from agent.main_agent.loop import run_tool_loop
-from agent.narration import run_route_narration_agent
 from agent.runtime.models import public_turn_dict
 from agent.runtime.models import ToolExecution
 from agent.runtime.presentation_projector import project_presentations
@@ -49,6 +48,9 @@ from services.athlete.profile import (
     get_athlete_profile,
     update_athlete_profile,
 )
+from domain.contracts.narration_jobs import RouteNarrationPrepareRequest
+from services.narration.jobs import get_route_narration_job, submit_route_narration
+from storage.repositories.job import JobConflict
 
 
 app = FastAPI(title="Personal FIT Agent API")
@@ -134,26 +136,6 @@ class RoutePlanCommandRequest(BaseModel):
     corridor_km: float = Field(default=5.0, ge=0.1, le=20)
     max_segments: int = Field(default=12, ge=1, le=20)
     saved_route: dict[str, Any] | None = None
-
-
-class RouteNarrationSample(BaseModel):
-    sample_id: str = Field(min_length=1, max_length=64)
-    route_distance_m: float = Field(ge=0)
-    estimated_elapsed_s: float | None = Field(default=None, ge=0)
-    latitude: float = Field(ge=-90, le=90)
-    longitude: float = Field(ge=-180, le=180)
-    elevation_m: float | None = None
-    grade_percent: float | None = None
-
-
-class RouteNarrationRequest(BaseModel):
-    route_fingerprint: str = Field(pattern=r"^route_[a-f0-9]{8}$")
-    route_name: str = Field(min_length=1, max_length=200)
-    total_distance_m: float = Field(gt=0, le=1_000_000)
-    estimated_duration_min: float = Field(gt=0, le=10_000)
-    duration_estimation: dict[str, Any] | None = None
-    locale: str = Field(default="zh-CN", max_length=16)
-    samples: list[RouteNarrationSample] = Field(min_length=2, max_length=64)
 
 
 class SavedRouteRequest(BaseModel):
@@ -569,15 +551,45 @@ def _normalized_route_options(value: dict[str, Any] | None) -> dict[str, Any]:
     return result
 
 
-@app.post("/api/route-narrations/prepare")
+@app.post("/api/route-narrations/prepare", status_code=202)
 def prepare_route_narration_endpoint(
-    request: RouteNarrationRequest,
+    request: RouteNarrationPrepareRequest,
     http_request: Request,
 ) -> dict[str, Any]:
-    """Prepare one narration plan with bounded place research and one model call."""
+    """Submit durable narration work; provider/model calls run only in Worker."""
     _require_api_access(http_request)
-    _require_llm_capability("route_narration")
-    return run_route_narration_agent(request.model_dump())
+    try:
+        return submit_route_narration(
+            request.job_input(),
+            request_id=request.request_id,
+            force=request.force,
+        )
+    except JobConflict as exc:
+        raise HTTPException(status_code=409, detail={
+            "code": "request_conflict",
+            "message": "Request ID belongs to different route narration input.",
+            "retryable": False,
+        }) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={
+            "code": "validation_error",
+            "message": "Invalid route narration request.",
+            "retryable": False,
+        }) from exc
+
+
+@app.get("/api/route-narrations/jobs/{job_id}")
+def get_route_narration_endpoint(job_id: str, http_request: Request) -> dict[str, Any]:
+    """Read a durable narration result without invoking providers or the model."""
+    _require_api_access(http_request)
+    try:
+        return get_route_narration_job(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={
+            "code": "not_found",
+            "message": "Route narration task does not exist.",
+            "retryable": False,
+        }) from exc
 
 
 @app.get("/api/route-narrations/photo")

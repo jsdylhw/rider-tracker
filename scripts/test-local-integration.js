@@ -85,6 +85,7 @@ try {
     if (!proxyHealth.ok || proxyHealth.result?.status !== "ok") {
         throw new Error(`Unexpected Agent proxy health payload: ${JSON.stringify(proxyHealth)}`);
     }
+    await assertNarrationJobSubmission();
     console.log("[integration] Unified Rider page, Python activity/route stores, atomic FIT/session/route persistence, Agent proxy, and removed legacy UI checks passed.");
 } finally {
     await Promise.all(children.map(async (child) => {
@@ -94,6 +95,31 @@ try {
         await closed;
     }));
     await rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}
+
+async function assertNarrationJobSubmission() {
+    const submitted = await requestJson(`${riderUrl}/api/route-narrations/prepare`, {
+        method: "POST",
+        body: {
+            route_fingerprint: "route_1234abcd",
+            route_name: "Integration route",
+            total_distance_m: 1000,
+            estimated_duration_min: 10,
+            locale: "zh-CN",
+            samples: [
+                { route_distance_m: 0, latitude: 30, longitude: 120 },
+                { route_distance_m: 1000, latitude: 30.01, longitude: 120.01 }
+            ]
+        }
+    });
+    const job = submitted.result;
+    if (!submitted.ok || !job?.job_id || job.status !== "queued") {
+        throw new Error(`Narration submission was not queued: ${JSON.stringify(submitted)}`);
+    }
+    const detail = await readJson(`${riderUrl}/api/route-narrations/jobs/${encodeURIComponent(job.job_id)}`);
+    if (!detail.ok || detail.result?.job_id !== job.job_id || detail.result?.plan) {
+        throw new Error(`Unexpected narration job detail: ${JSON.stringify(detail)}`);
+    }
 }
 
 async function assertActivityLibraryRoundTrip() {

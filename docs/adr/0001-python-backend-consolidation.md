@@ -548,3 +548,25 @@ JavaScript 394/394，以及正常、降级集成测试；WSL 的 2 条第三方�
 自动恢复次数耗尽时，failed/partial 任务允许重新提交 pending 与失败项，仍排除已经成功的活动。
 实测 Windows 全量 Python 666/666、前端 402/402 和正常集成通过；WSL 报告展示、任务与独立进程相关
 Python 35/35、前端 402/402 通过（Python 有 2 条第三方弃用提示）。
+
+### 2026-09-09：阶段 6B-4 路线讲解迁入持久化 Worker
+
+路线讲解不再由 `POST /api/route-narrations/prepare` 同步执行 Google Places 检索和模型生成。该接口现在只
+校验输入、提交 `route_narration.v1` 任务并返回 HTTP 202；浏览器通过
+`GET /api/route-narrations/jobs/{job_id}` 读取状态和最终讲解计划。Node 继续只做代理，提交和查询均使用
+2 秒短超时，因此讲解耗时不会再占用 240 秒 Agent HTTP 请求。街景、骑行和设备控制不等待该任务。
+
+SQLite schema 从 11 升至 12，新增 `route_narration_results`。完整 `route_narration_plan.v1` 只保存在专用
+结果表，通用 `jobs.result_ref` 仅保存 job ID、plan ID 和路线 fingerprint。提交时同时固定 route
+fingerprint 和完整规范化输入哈希；同一输入默认复用原任务，显式重试建立新任务。Worker 分别记录
+`researching_places`、`composing_cards` 和 `saving_plan` 三个阶段，继续保持有限 Google Places 检索和
+一次模型组合调用。
+
+结果保存与当前领取凭证、租约、取消标记和完整输入哈希在同一事务内校验。Worker 若在专用结果提交后、
+通用任务完成前退出，恢复执行直接复用已经保存的计划，不重复检索或调用模型。取消发生在结果提交前会
+丢弃结果；已经完成原子提交的计划是专用查询接口的权威结果。前端同时校验任务与计划的 route fingerprint，
+当前路线已经切换时拒绝加载迟到结果。
+
+模型未配置时 Worker 返回脱敏的 `ai_unavailable`；其他生成异常统一为 `narration_failed`，不公开 provider
+响应、模型原文、输入采样点或凭据。任务支持通用取消、最多三次租约恢复和显式强制重试。本切片没有迁移
+AI 路线规划、Garmin/Strava 工作流或主 Agent 对话，也没有加入 TTS。

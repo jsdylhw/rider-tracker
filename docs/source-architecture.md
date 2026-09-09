@@ -108,7 +108,7 @@ narration-plan / narration-timeline
     校验结构化计划并按距离和时间决定当前讲解项
               ↑
 route-narration-client
-    采样路线并请求后端准备讲解内容
+    采样路线、提交 Worker 任务并轮询持久化讲解结果
 ```
 
 - Domain 决定“计划是否合法”和“现在该触发哪条讲解”。

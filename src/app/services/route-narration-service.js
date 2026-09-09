@@ -66,7 +66,7 @@ export function createRouteNarrationService({ preparePlan } = {}) {
         viewStatus = "loading";
 
         entry.promise = Promise.resolve()
-            .then(() => preparePlan(route, { routeFingerprint: fingerprint }))
+            .then(() => preparePlan(route, { routeFingerprint: fingerprint, force }))
             .then((preparedPlan) => {
                 if (cache.get(fingerprint) !== entry) return getState();
                 const plan = normalizeRouteNarrationPlan(preparedPlan, {

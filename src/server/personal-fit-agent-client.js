@@ -204,7 +204,11 @@ export function createPersonalFitAgentClient({
         ),
         selectRouteCandidate: (request) => post("/api/route-plans/select", request),
         routePlanCommand: (request) => post("/api/route-plans/command", request),
-        prepareRouteNarration: (request) => post("/api/route-narrations/prepare", request),
+        prepareRouteNarration: (request) => post("/api/route-narrations/prepare", request, 2_000),
+        routeNarrationJob: (jobId) => get(
+            `/api/route-narrations/jobs/${encodeURIComponent(jobId)}`,
+            2_000
+        ),
         routeNarrationPhoto: ({ name, maxWidth = 720 }) => getBinary(
             `/api/route-narrations/photo?name=${encodeURIComponent(name)}&max_width=${encodeURIComponent(maxWidth)}`,
             30_000

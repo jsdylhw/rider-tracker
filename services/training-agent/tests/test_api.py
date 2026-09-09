@@ -99,8 +99,9 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/activities/{activity_id}/detail",
         "/api/athlete-profile",
         "/api/chat",
-        "/api/route-narrations/photo",
-        "/api/route-narrations/prepare",
+            "/api/route-narrations/photo",
+            "/api/route-narrations/prepare",
+            "/api/route-narrations/jobs/{job_id}",
         "/api/route-plans/command",
         "/api/route-plans/select",
         "/api/routes",
@@ -273,14 +274,8 @@ def test_saved_route_api_preserves_browser_contract(tmp_path, monkeypatch):
     assert invalid.json()["detail"] == "A route with at least two coordinate points is required."
 
 
-def test_route_narration_endpoint_runs_independent_agent(tmp_path, monkeypatch):
-    api, client, _ = _prepare_api(tmp_path, monkeypatch)
-    calls = []
-    monkeypatch.setattr(
-        api,
-        "run_route_narration_agent",
-        lambda request: calls.append(request) or {"schema_version": "route_narration_plan.v1"},
-    )
+def test_route_narration_endpoint_only_submits_durable_job(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch)
     response = client.post("/api/route-narrations/prepare", json={
         "route_fingerprint": "route_1234abcd",
         "route_name": "测试路线",
@@ -297,10 +292,14 @@ def test_route_narration_endpoint_runs_independent_agent(tmp_path, monkeypatch):
         ],
     })
 
-    assert response.status_code == 200
-    assert response.json()["schema_version"] == "route_narration_plan.v1"
-    assert calls[0]["route_fingerprint"] == "route_1234abcd"
-    assert calls[0]["duration_estimation"]["target_power_w"] == 156
+    assert response.status_code == 202
+    submitted = response.json()
+    assert submitted["kind"] == "route_narration_job"
+    assert submitted["status"] == "queued"
+    assert submitted["route_fingerprint"] == "route_1234abcd"
+    detail = client.get(f"/api/route-narrations/jobs/{submitted['job_id']}")
+    assert detail.status_code == 200
+    assert detail.json()["job_id"] == submitted["job_id"]
 
 
 def test_route_narration_photo_endpoint_keeps_google_key_server_side(tmp_path, monkeypatch):

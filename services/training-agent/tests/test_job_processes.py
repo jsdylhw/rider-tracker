@@ -46,7 +46,10 @@ def test_production_worker_entry_requires_prepared_schema(tmp_path):
     try:
         wait_for(lambda: JobStore().availability(), lambda value: value["worker"] == "available")
         assert child.poll() is None
-        assert JobStore().availability()["job_types"] == ["activity_report_rebuild.v1"]
+        assert JobStore().availability()["job_types"] == [
+            "activity_report_rebuild.v1",
+            "route_narration.v1",
+        ]
     finally:
         child.kill()
         child.wait(timeout=5)
@@ -76,7 +79,10 @@ def test_unified_launcher_starts_api_and_worker_without_ai(tmp_path):
         with httpx.Client(base_url=f"http://127.0.0.1:{node_port}", timeout=3, trust_env=False) as client:
             ready = wait_for(lambda: client.get("/api/jobs/capabilities").json(),
                              lambda data: data.get("worker") == "available", timeout=25)
-            assert ready["supported_job_types"] == ["activity_report_rebuild.v1"]
+            assert ready["supported_job_types"] == [
+                "activity_report_rebuild.v1",
+                "route_narration.v1",
+            ]
             assert client.get("/api/activities").status_code == 200
             assert client.get("/healthz").status_code == 200
     finally:

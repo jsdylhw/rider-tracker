@@ -7,12 +7,17 @@ from services.jobs import JOB_TYPES
 from worker.runtime import Worker
 from worker.handlers.report_rebuild import rebuild_reports
 from domain.contracts.report_jobs import REPORT_REBUILD_JOB
+from domain.contracts.narration_jobs import ROUTE_NARRATION_JOB
+from worker.handlers.route_narration import generate_route_narration
 
 
 def main():
     os.environ["TRAINING_AGENT_MANAGED_DATABASE"] = "1"
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    handlers = {REPORT_REBUILD_JOB: rebuild_reports}
+    handlers = {
+        REPORT_REBUILD_JOB: rebuild_reports,
+        ROUTE_NARRATION_JOB: generate_route_narration,
+    }
     if handlers.keys() != JOB_TYPES.keys():
         raise RuntimeError("Job submission and execution registries disagree.")
     worker = Worker(handlers)
