@@ -16,6 +16,7 @@ from integrations.google_places import GooglePlacesClient
 from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint
 from integrations.route_providers.coordinates import gcj02_to_wgs84
 from integrations.route_providers.google_routes import GoogleRoutesClient, WgsPoint
+from services.route.quality import apply_route_constraints, normalize_route_constraints
 from settings import load_config
 
 
@@ -41,6 +42,7 @@ def create_single_day_plan(
     candidates: Sequence[dict[str, Any]],
     include_elevation: bool = True,
     plan_id: str | None = None,
+    route_constraints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Resolve and route one or more explicit waypoint candidates."""
     normalized_country = str(country_code or "").strip().upper()
@@ -51,6 +53,7 @@ def create_single_day_plan(
     if len(candidates) > 3:
         raise ValueError("at most three route candidates are supported")
     config = load_config()
+    normalized_constraints = normalize_route_constraints(route_constraints)
     routed: list[dict[str, Any]] = []
     rejected: list[dict[str, str]] = []
     for index, candidate in enumerate(candidates, start=1):
@@ -61,6 +64,7 @@ def create_single_day_plan(
                 country_code=normalized_country,
                 include_elevation=include_elevation,
                 config=config,
+                route_constraints=normalized_constraints,
             ))
         except (RouteCandidateRejected, RuntimeError) as exc:
             rejected.append({
@@ -81,6 +85,7 @@ def create_single_day_plan(
         "active_candidate_id": routed[0]["candidate_id"],
         "candidates": routed,
         "rejected_candidates": rejected,
+        "route_constraints": normalized_constraints,
     }
 
 
@@ -92,6 +97,7 @@ def replace_candidate(
     waypoint_queries: Sequence[str],
     target_distance_km: float | None,
     include_elevation: bool,
+    route_constraints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     candidates = [item for item in plan.get("candidates") or [] if isinstance(item, dict)]
     selected_id = str(candidate_id or plan.get("active_candidate_id") or "")
@@ -118,6 +124,7 @@ def replace_candidate(
         country_code=str(plan.get("country_code") or ""),
         include_elevation=include_elevation,
         config=load_config(),
+        route_constraints=route_constraints or plan.get("route_constraints"),
     )
     previous = candidates[selected_index]
     updated.update({
@@ -134,6 +141,7 @@ def replace_candidate(
             "status": "awaiting_selection",
             "confirmed_candidate_id": None,
         },
+        "route_constraints": normalize_route_constraints(route_constraints or plan.get("route_constraints")),
     }
 
 
@@ -145,6 +153,7 @@ def edit_candidate_waypoints(
     waypoint_index: int | None = None,
     new_waypoint: str | None = None,
     include_elevation: bool = True,
+    route_constraints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Deterministically reverse or edit one saved single-day candidate."""
     candidates = [item for item in plan.get("candidates") or [] if isinstance(item, dict)]
@@ -177,6 +186,7 @@ def edit_candidate_waypoints(
         waypoint_queries=queries,
         target_distance_km=_optional_float(selected.get("target_distance_km")),
         include_elevation=include_elevation,
+        route_constraints=route_constraints,
     )
 
 
@@ -262,6 +272,7 @@ def compact_route_plan(plan: dict[str, Any]) -> dict[str, Any]:
         "handoff_tolerance_km": plan.get("handoff_tolerance_km"),
         "segment_strategy": plan.get("segment_strategy") or "ignore",
         "segment_preferences": plan.get("segment_preferences") or [],
+        "route_constraints": normalize_route_constraints(plan.get("route_constraints")),
         "segment_aware_summary": plan.get("segment_aware_summary") or {},
         "planning": plan.get("planning") or {},
         "segment_pool": {
@@ -304,6 +315,7 @@ def _compact_route_segment(item: dict[str, Any], *, id_key: str) -> dict[str, An
         "candidate_kind": item.get("candidate_kind") or "baseline",
         "parent_candidate_id": item.get("parent_candidate_id"),
         "rationale": item.get("rationale"),
+        "route_quality": item.get("route_quality") or {},
     }
     if id_key == "stage_id":
         result.update({
@@ -321,6 +333,7 @@ def route_candidate(
     country_code: str,
     include_elevation: bool,
     config: dict[str, Any],
+    route_constraints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     waypoint_queries, is_closed = normalize_waypoint_queries(candidate.get("waypoints") or [])
     queries = waypoint_queries[:-1] if is_closed else waypoint_queries
@@ -355,7 +368,7 @@ def route_candidate(
             elevation = _elevation_profile(geometry["coordinates"], float(route.get("distance_m") or 0), config)
         except (RuntimeError, ValueError) as exc:
             warnings.append(f"海拔请求失败：{exc}")
-    return {
+    resolved = {
         "candidate_id": str(candidate.get("candidate_id") or f"candidate_{index}"),
         "name": str(candidate.get("name") or f"候选路线 {index}"),
         # Compatibility field for existing persistence/UI readers. Closure is
@@ -376,6 +389,11 @@ def route_candidate(
         "elevation": elevation,
         "warnings": warnings,
     }
+    return apply_route_constraints(
+        resolved,
+        route_constraints,
+        rejection_type=RouteCandidateRejected,
+    )
 
 
 def _route_amap(

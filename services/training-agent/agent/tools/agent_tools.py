@@ -13,6 +13,26 @@ from agent.tools.spec import (
     ToolDef,
 )
 
+
+ROUTE_CONSTRAINTS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "avoid_repeated_roads": {
+            "type": "boolean",
+            "default": False,
+            "description": "用户明确要求不走重复道路、不要原路返回或去回程分开时必须为 true。",
+        },
+        "maximum_self_overlap_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.1,
+            "description": "允许的路线自身重复道路长度比例；仅在 avoid_repeated_roads=true 时强制执行。",
+        },
+    },
+}
+
 MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
     ToolDef(
         name="activate_skill",
@@ -350,6 +370,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                 "title": {"type": "string"},
                 "country_code": {"type": "string", "description": "ISO 两字母国家代码，如 CN、FR、JP"},
                 "include_elevation": {"type": "boolean", "default": True},
+                "route_constraints": ROUTE_CONSTRAINTS_SCHEMA,
                 "segment_strategy": {
                     "type": "string", "enum": ["auto", "ignore", "require", "complete_loop"], "default": "auto",
                     "description": "auto 尝试 Strava 增强并在失败时保留地图基线；complete_loop 需要 origin 和 area。",
@@ -490,6 +511,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                 },
                 "target_distance_km": {"type": "number"},
                 "include_elevation": {"type": "boolean", "default": True},
+                "route_constraints": ROUTE_CONSTRAINTS_SCHEMA,
                 "segment_strategy": {
                     "type": "string", "enum": ["auto", "ignore", "require"],
                     "description": "缺省时沿用当前路线计划的策略。",

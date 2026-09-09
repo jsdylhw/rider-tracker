@@ -570,3 +570,15 @@ fingerprint 和完整规范化输入哈希；同一输入默认复用原任务�
 模型未配置时 Worker 返回脱敏的 `ai_unavailable`；其他生成异常统一为 `narration_failed`，不公开 provider
 响应、模型原文、输入采样点或凭据。任务支持通用取消、最多三次租约恢复和显式强制重试。本切片没有迁移
 AI 路线规划、Garmin/Strava 工作流或主 Agent 对话，也没有加入 TTS。
+
+### 2026-09-09：单日路线自身重复约束
+
+`create_route_plan` 与 `update_route_plan` 使用同一个 `route_constraints` 结构表达“不要原路返回”：
+`avoid_repeated_roads` 控制是否强制执行，`maximum_self_overlap_ratio` 缺省为 10%。约束只在用户明确提出
+时启用，未提出时不会改变已有路线的接受规则。
+
+Python 路线服务对 Google、高德或 Strava 组合后的最终 LineString 做确定性检查。轨迹被重采样为短线段，
+仅把空间接近、方向平行且在骑行进度上不相邻的后一次经过计为重复距离；垂直道路交叉不计入。环线起终点
+附近最多 300 米、且不超过全程 3% 的共同接驳段被允许。超过阈值的候选以
+`RouteCandidateRejected` 淘汰，并把实测重复率返回给 Agent，要求更换途经点重新算路。候选及 Agent 使用的
+精简投影同时保存 `route_quality`，使“已理解用户要求”和“地图结果确实满足要求”成为两个可审查步骤。

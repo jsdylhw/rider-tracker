@@ -105,6 +105,45 @@ def test_provider_failure_rejects_only_that_candidate():
     }]
 
 
+def test_self_overlap_constraint_rejects_only_repeated_candidate():
+    def point(x_meters, y_meters):
+        return [x_meters / 111_320.0, y_meters / 110_540.0]
+
+    def route_google(queries, country_code, is_closed, config, **kwargs):
+        coordinates = (
+            [point(0, 0), point(1_000, 0), point(0, 0)]
+            if queries[0] == "Repeated"
+            else [point(0, 0), point(1_000, 0), point(1_000, 1_000)]
+        )
+        return _places(queries), {
+            **_route_result(distance_m=2_000),
+            "geometry": {"type": "LineString", "coordinates": coordinates},
+        }
+
+    with patch("services.route.single_day.load_config", return_value={}), patch(
+        "services.route.single_day._route_google", side_effect=route_google,
+    ):
+        plan = create_single_day_plan(
+            workspace_id="workspace",
+            title="避免重复路线",
+            country_code="FR",
+            candidates=[
+                {"name": "原路往返", "waypoints": ["Repeated", "End"]},
+                {"name": "独立道路", "waypoints": ["Loop", "End"]},
+            ],
+            include_elevation=False,
+            route_constraints={
+                "avoid_repeated_roads": True,
+                "maximum_self_overlap_ratio": 0.1,
+            },
+        )
+
+    assert [item["name"] for item in plan["candidates"]] == ["独立道路"]
+    assert plan["candidates"][0]["route_quality"]["self_overlap_ratio"] == 0.0
+    assert "路线自身重复率" in plan["rejected_candidates"][0]["reason"]
+    assert plan["route_constraints"]["avoid_repeated_roads"] is True
+
+
 def test_create_loop_ignores_explicit_duplicate_start_at_end():
     captured = []
 
@@ -667,6 +706,46 @@ def test_create_route_plan_tool_persists_but_returns_compact_result(monkeypatch)
     assert "geometry" not in output["result"]["candidates"][0]
 
 
+def test_create_route_plan_tool_passes_structured_route_constraints(monkeypatch):
+    captured = {}
+    plan = {
+        "schema_version": "route_plan.v1", "plan_id": "route_constraints",
+        "workspace_id": "workspace", "revision": 0, "title": "不重复环线",
+        "country_code": "FR", "active_candidate_id": "candidate_1",
+        "candidates": [{
+            "candidate_id": "candidate_1", "name": "候选",
+            "distance_km": 30, "duration_min": 90,
+            "geometry": _route_result()["geometry"],
+        }],
+    }
+
+    def create(**kwargs):
+        captured.update(kwargs)
+        return {**plan, "route_constraints": kwargs["route_constraints"]}
+
+    monkeypatch.setattr("agent.tools.handlers.route.create_single_day_plan", create)
+    monkeypatch.setattr("agent.tools.handlers.route._apply_segment_strategy", lambda value, **kwargs: value)
+    monkeypatch.setattr(RoutePlanStore, "save", lambda self, value: {**value, "revision": 1})
+
+    output = create_route_plan_tool(
+        AgentContext(session_id="session", workspace_id="workspace"),
+        args={
+            "title": "不重复环线", "country_code": "FR",
+            "route_constraints": {
+                "avoid_repeated_roads": True,
+                "maximum_self_overlap_ratio": 0.08,
+            },
+            "candidates": [{"name": "候选", "waypoints": ["A", "B", "A"]}],
+        },
+    )
+
+    assert captured["route_constraints"] == {
+        "avoid_repeated_roads": True,
+        "maximum_self_overlap_ratio": 0.08,
+    }
+    assert output["result"]["route_constraints"] == captured["route_constraints"]
+
+
 def test_create_route_plan_inherits_target_and_trusted_virtual_route_options(monkeypatch):
     captured = {}
     plan = {
@@ -783,6 +862,55 @@ def test_select_candidate_updates_latest_persisted_plan_without_rerouting(monkey
 
     assert output["result"]["active_candidate_id"] == "candidate_2"
     assert output["result"]["revision"] == 2
+
+
+def test_update_route_plan_merges_and_persists_route_constraints(monkeypatch):
+    captured = {}
+    plan = {
+        "schema_version": "route_plan.v1", "plan_id": "route_test",
+        "workspace_id": "workspace", "revision": 1, "title": "旧路线",
+        "country_code": "FR", "active_candidate_id": "candidate_1",
+        "route_constraints": {
+            "avoid_repeated_roads": False,
+            "maximum_self_overlap_ratio": 0.1,
+        },
+        "candidates": [{
+            "candidate_id": "candidate_1", "name": "旧路线",
+            "distance_km": 20, "duration_min": 60,
+            "geometry": _route_result()["geometry"],
+        }],
+    }
+
+    def replace(value, **kwargs):
+        captured.update(kwargs)
+        return {
+            **value,
+            "candidates": [{
+                **value["candidates"][0],
+                "name": "新路线",
+                "geometry": _route_result()["geometry"],
+            }],
+        }
+
+    monkeypatch.setattr(RoutePlanStore, "get_latest", lambda self, workspace_id: plan)
+    monkeypatch.setattr(RoutePlanStore, "save", lambda self, value, **kwargs: {**value, "revision": 2})
+    monkeypatch.setattr("agent.tools.handlers.route.replace_candidate", replace)
+
+    output = update_route_plan_tool(
+        AgentContext(session_id="session", workspace_id="workspace"),
+        args={
+            "operation": "replace_waypoints",
+            "waypoints": ["A", "D", "C"],
+            "route_constraints": {"avoid_repeated_roads": True},
+        },
+    )
+
+    assert captured["route_constraints"] == {
+        "avoid_repeated_roads": True,
+        "maximum_self_overlap_ratio": 0.1,
+    }
+    assert output["result"]["route_constraints"] == captured["route_constraints"]
+    assert output["result"]["candidates"][0]["route_quality"]["self_overlap_ratio"] == 0.0
 
 
 def test_confirm_candidate_marks_final_selection_and_enriches_only_selected(monkeypatch):

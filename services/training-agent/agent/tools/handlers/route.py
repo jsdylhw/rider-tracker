@@ -23,7 +23,13 @@ from services.route.segment_aware import (
 )
 from services.route.segments import enrich_route_plan_with_segments
 from services.route.popular_loop import create_popular_loop_plan, reverse_popular_loop_plan
+from services.route.quality import (
+    apply_plan_route_constraints,
+    filter_plan_route_constraints,
+    normalize_route_constraints,
+)
 from services.route.single_day import (
+    RouteCandidateRejected,
     _elevation_profile,
     compact_route_plan,
     create_single_day_plan,
@@ -92,6 +98,7 @@ def create_route_plan_tool(
     )
     segment_strategy = str(args.get("segment_strategy") or "auto").lower()
     country_code = str(args.get("country_code") or "")
+    route_constraints = normalize_route_constraints(args.get("route_constraints"))
     if segment_strategy == "complete_loop":
         plan = create_popular_loop_plan(
             workspace_id=_workspace_id(context),
@@ -104,6 +111,11 @@ def create_route_plan_tool(
             search_radius_km=float(args.get("search_radius_km", 8.0)),
             include_elevation=include_elevation,
             fallback_to_provider=bool(args.get("fallback_to_provider", True)),
+        )
+        plan = filter_plan_route_constraints(
+            plan,
+            route_constraints,
+            rejection_type=RouteCandidateRejected,
         )
         stored = RoutePlanStore().save(plan)
         compact = compact_route_plan(stored)
@@ -140,6 +152,7 @@ def create_route_plan_tool(
         country_code=country_code,
         candidates=candidates,
         include_elevation=include_elevation and not segment_active,
+        route_constraints=route_constraints,
     )
     if segment_active:
         plan = _apply_segment_strategy(
@@ -148,6 +161,11 @@ def create_route_plan_tool(
             strategy=segment_strategy,
             preferences=args.get("segment_preferences") or [],
             include_elevation=include_elevation,
+        )
+        plan = filter_plan_route_constraints(
+            plan,
+            route_constraints,
+            rejection_type=RouteCandidateRejected,
         )
     plan = _mark_route_proposed(plan, include_elevation=include_elevation)
     stored = RoutePlanStore().save(plan)
@@ -233,6 +251,10 @@ def update_route_plan_tool(
         "reverse_candidate", "select_candidate", "confirm_candidate",
     }:
         raise ValueError("热门环线更换起点、区域或名称时请重新调用 create_route_plan，并使用 complete_loop 策略")
+    existing_constraints = plan.get("route_constraints") if isinstance(plan.get("route_constraints"), dict) else {}
+    requested_constraints = args.get("route_constraints") if isinstance(args.get("route_constraints"), dict) else {}
+    route_constraints = normalize_route_constraints({**existing_constraints, **requested_constraints})
+    plan = {**plan, "route_constraints": route_constraints}
     segment_strategy = str(args.get("segment_strategy") or plan.get("segment_strategy") or "ignore").lower()
     staged_plan = plan.get("schedule_type") in {"multi_day", "day_parts"}
     segment_active = (
@@ -295,6 +317,7 @@ def update_route_plan_tool(
             waypoint_queries=[str(value) for value in waypoints],
             target_distance_km=args.get("target_distance_km"),
             include_elevation=route_include_elevation,
+            route_constraints=route_constraints,
         )
     elif operation == "replace_stage":
         if plan.get("schedule_type") not in {"multi_day", "day_parts"}:
@@ -359,7 +382,11 @@ def update_route_plan_tool(
                 **common,
             )
         else:
-            plan = edit_candidate_waypoints(plan, **common)
+            plan = edit_candidate_waypoints(
+                plan,
+                route_constraints=route_constraints,
+                **common,
+            )
     else:
         raise ValueError(
             "operation must be replace_waypoints, replace_stage, replace_waypoint, "
@@ -376,6 +403,14 @@ def update_route_plan_tool(
         )
         if plan.get("schedule_type") in {"multi_day", "day_parts"}:
             plan = refresh_itinerary_plan(plan)
+    if plan.get("schedule_type") not in {"multi_day", "day_parts"}:
+        selected_id = str(args.get("candidate_id") or plan.get("active_candidate_id") or "") or None
+        plan = apply_plan_route_constraints(
+            plan,
+            route_constraints,
+            candidate_id=selected_id,
+            rejection_type=RouteCandidateRejected,
+        )
     stored = _save_route_plan(
         store,
         plan,

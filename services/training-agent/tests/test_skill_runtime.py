@@ -81,6 +81,10 @@ def test_route_discovery_creates_real_candidates_without_generic_advice_tool():
 def test_route_tools_derive_closure_from_waypoint_order():
     create_route = next(tool for tool in MAIN_AGENT_TOOLS if tool.name == "create_route_plan")
     update_route = next(tool for tool in MAIN_AGENT_TOOLS if tool.name == "update_route_plan")
+    for tool in (create_route, update_route):
+        constraints = tool.input_schema["properties"]["route_constraints"]
+        assert constraints["properties"]["avoid_repeated_roads"]["type"] == "boolean"
+        assert constraints["properties"]["maximum_self_overlap_ratio"]["default"] == 0.1
     candidate = create_route.input_schema["properties"]["candidates"]["items"]
 
     assert "route_type" not in candidate["required"]
