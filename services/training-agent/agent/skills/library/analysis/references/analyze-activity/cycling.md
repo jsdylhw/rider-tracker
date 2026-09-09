@@ -1,3 +1,3 @@
-# Cycling evidence
+# 骑行证据
 
-Interpret power against the threshold effective for the activity when available. Separate normalized power, intensity factor, power stress, Garmin training load, and Training Effect. For sprint or interval claims, require an actual time or distance segment and distinguish a momentary peak from sustained work.
+存在该活动当时有效的阈值时，必须相对该阈值解释功率。区分标准化功率、强度因子、功率压力、Garmin 训练负荷和 Training Effect。判断冲刺或间歇时，必须有实际时间或距离区段，并区分瞬时峰值与持续输出。

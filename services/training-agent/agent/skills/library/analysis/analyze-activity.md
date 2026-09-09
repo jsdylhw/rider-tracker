@@ -1,23 +1,23 @@
 ---
 name: analyze-activity
-description: Read or generate one activity report and answer focused FIT questions about intervals, sprints, power, heart rate, pace, or running dynamics. Use only for a single cycling, running, or walking activity.
+description: 读取或生成单次活动报告，并回答间歇、冲刺、功率、心率、配速或跑步动态等 FIT 精确问题。
 ---
 
-# Analyze Activity
+# 分析单次活动
 
-Resolve exactly one activity with a typed `resolve_activities` request before analysis and let successful resolution freeze the navigation focus.
+分析前必须通过带明确类型的 `resolve_activities` 请求解析且只解析一条活动；解析成功后由系统冻结导航焦点。
 
-- Use `kind=recent, limit=1` for the latest activity and `kind=date, limit=1` for a single activity on a specified day.
-- Use `kind=all, order=longest, limit=1` when the user asks for the longest-duration activity. If the user says show, view, or inspect that activity, continue with `analyze_activity` after resolving it instead of only describing the lookup result.
-- If a frozen collection already exists and the user says “the second one”, use `navigate_selection`; do not resolve it by date or description again.
+- 最新一条活动使用 `kind=recent, limit=1`；指定日期的一条活动使用 `kind=date, limit=1`。
+- 用户要求时长最长的活动时，使用 `kind=all, order=longest, limit=1`。如果用户还要求展示、查看或检查该活动，解析后继续调用 `analyze_activity`，不能只描述查找结果。
+- 如果已经存在冻结集合，用户说“第二条”时使用 `navigate_selection`，不要再按日期或描述重新解析。
 
-- For a general request, call `inspect_selection`; it reuses the lightweight FIT overview and does not create a report.
-- For general sprint, interval, climb, or ordinal segment language, call `find_segments` first, then `analyze_selection` with a bounded objective. These are import-time candidates, not exact raw-data proof.
-- If the user gives an explicit time or distance window (for example `100–200 秒`, `最后 20 分钟`, or `3–5 km`), first resolve exactly one activity and then call `query_activity_detail` with the original question. Its lightweight query service obtains matching raw FIT evidence before synthesis when the numeric bounds can be parsed; do not answer from candidates alone.
-- For a typed objective use `analyze_selection`; use `answer_question` plus the original question only for a long-tail question.
-- For a complete report explicitly requested by the user, call `analyze_activity`; reuse the stored V2 report unless rebuild was requested.
-- Use `navigate_selection` for follow-ups such as "the second one", back, or root. Do not resolve a frozen recent set again.
-- Do not call analysis once per item in a range.
-- Base conclusions on returned evidence and identify missing sensors instead of inventing values.
+- 一般查看请求调用 `inspect_selection`；它复用轻量 FIT 概览，不创建报告。
+- 对一般性的冲刺、间歇、爬坡或第几个区段描述，先调用 `find_segments`，再使用有限目标调用 `analyze_selection`。这些只是导入阶段生成的候选，不是精确的原始数据证据。
+- 如果用户给出明确的时间或距离窗口，例如 `100–200 秒`、`最后 20 分钟` 或 `3–5 km`，先精确解析一条活动，再把原始问题传给 `query_activity_detail`。数值边界可解析时，它会先取得匹配的原始 FIT 证据再综合回答；不能只依据候选区段作答。
+- 对有明确类型的分析目标使用 `analyze_selection`；只有长尾问题才使用 `answer_question` 并传入原始问题。
+- 用户明确要求完整报告时调用 `analyze_activity`；除非要求重建，否则复用已保存的 V2 报告。
+- 对“第二条”、返回或回到根集合等后续引用使用 `navigate_selection`，不要再次解析已冻结的近期集合。
+- 不要对范围内每条活动分别调用一次分析。
+- 结论必须基于工具返回的证据；传感器缺失时明确说明，不得编造数值。
 
-The runtime appends the cycling, running, or walking reference only after a selected database activity identifies the sport.
+只有选中的数据库活动确定运动类型后，运行时才会追加骑行、跑步或步行参考规则。

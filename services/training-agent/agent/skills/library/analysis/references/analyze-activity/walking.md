@@ -1,3 +1,3 @@
-# Walking evidence
+# 步行证据
 
-Prioritize duration, moving time, distance, pace, elevation, and heart rate. Avoid cycling or running performance claims when the activity is walking or hiking, and report sensor gaps explicitly.
+优先分析时长、移动时间、距离、配速、海拔和心率。活动为步行或徒步时，不得套用骑行或跑步表现结论，并明确报告传感器数据缺口。

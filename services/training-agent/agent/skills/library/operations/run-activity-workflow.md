@@ -1,20 +1,20 @@
 ---
 name: run-activity-workflow
-description: Start, inspect, retry, or rebuild a recoverable multi-step activity job. Use for combined goals such as sync then analyze or upload, local batch report generation, workflow status, and workflow recovery.
+description: 启动、查看、重试或重建可恢复的多步骤活动任务。
 ---
 
-# Run Activity Workflow
+# 运行活动工作流
 
-Choose one coarse workflow tool and pass the user's terminal goals. Do not improvise a sequence of atomic operations in the main-agent loop.
+选择一个粗粒度工作流工具，并传入用户要求的全部最终目标。不要在主 Agent 循环中临时拼接一串原子操作。
 
-- Use `sync_and_run_activity_workflow` only when Garmin sync is explicitly combined with report generation, aggregation, or Strava upload.
-- Preserve the user's explicit cardinality in the structured `count` argument. “最新一个”, “最后一个”, “最新一条”, and “今天最新一个” all require `count=1`; never widen the count merely to find the newest activity. Explicit numbers such as “三个” require that exact count.
-- Always provide both `count` and the complete terminal `goals` array in the same `sync_and_run_activity_workflow` call. Analysis/report generation requires `ensure_summary`; Strava publishing requires `upload_strava` as well.
-- Set `force_download=true` only for an explicit refresh of an already downloaded Garmin activity. “The phone has synced a new activity” is a normal sync, not a forced refresh.
-- Use `run_activity_workflow` for local activities already present in SQLite.
-- Use the report rebuild job for an explicit bulk rebuild.
-- Report jobs run in a separate Worker. A queued job with worker=unavailable stays queued until the Worker starts; do not claim it is running.
-- Fetch the report job for current progress; a prior tool result is only a snapshot. Use `cancel_activity_report_job` only when the user asks to stop it. Cancellation is cooperative and may wait for the current model call to return.
-- Use get or retry tools with the persisted identifier for status and recovery.
+- 只有 Garmin 同步明确与报告生成、汇总或 Strava 上传组合时，才使用 `sync_and_run_activity_workflow`。
+- 必须在结构化 `count` 参数中严格保留用户数量。“最新一个”“最后一个”“最新一条”和“今天最新一个”都要求 `count=1`；不得为了查找最新活动而扩大数量。“三个”等明确数字必须使用对应的准确数量。
+- 同一次 `sync_and_run_activity_workflow` 调用必须同时提供 `count` 和完整的最终 `goals` 数组。分析或报告生成需要 `ensure_summary`；发布到 Strava 还需要 `upload_strava`。
+- 只有用户明确要求刷新已经下载的 Garmin 活动时，才设置 `force_download=true`。“手机已经同步了一个新活动”属于普通同步，不是强制刷新。
+- 对 SQLite 中已经存在的本地活动使用 `run_activity_workflow`。
+- 用户明确要求批量重建时，使用报告重建任务。
+- 报告任务在独立 Worker 中运行。`worker=unavailable` 的排队任务会保持 queued，直到 Worker 启动；不得宣称它正在运行。
+- 查询报告任务以取得当前进度；以前的工具结果只是快照。只有用户要求停止时才使用 `cancel_activity_report_job`。取消是协作式的，可能需要等待当前模型请求返回。
+- 查询状态或恢复执行时，使用已持久化标识调用 get 或 retry 工具。
 
-Report the persisted workflow or job status. Do not claim completion from a submitted or partial state.
+必须报告已持久化的工作流或任务状态。不能把 submitted 或 partial 状态表述为已完成。

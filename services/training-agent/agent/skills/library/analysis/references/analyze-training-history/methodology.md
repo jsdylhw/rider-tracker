@@ -1,21 +1,21 @@
-# Endurance history methodology
+# 耐力训练历史方法论
 
-Keep external load, internal response, and performance outcomes separate. Duration, distance, elevation, power, speed and pace describe work performed; heart rate and subjective recovery describe response; matched-route time, sustained output and interval completion describe comparable performance.
+必须区分外部负荷、内部响应和表现结果。时长、距离、爬升、功率、速度和配速描述完成的训练；心率和主观恢复描述身体响应；匹配路线用时、持续输出和间歇完成度描述可比表现。
 
-Operational reporting rules:
+报告规则：
 
-- Require at least two non-overlapping periods for a trend.
-- Fewer than three comparable sessions per period means low-confidence performance evidence.
-- Require two aligned evidence lanes before describing improved fitness or possible recovery pressure.
-- Prefer rolling multi-week evidence over an incomplete adjacent calendar period.
-- Report activity coverage, missing sensors and threshold/load-method changes before interpreting percentages.
+- 判断趋势至少需要两个互不重叠的周期。
+- 每个周期少于三次可比训练时，表现证据只能标记为低置信度。
+- 描述体能提升或可能存在恢复压力前，至少需要两条方向一致的证据链。
+- 相比不完整的相邻日历周期，优先采用滚动多周证据。
+- 解释百分比前，先报告活动覆盖、传感器缺失以及阈值或负荷方法变化。
 
-Analyze applicable dimensions independently:
+分别分析适用维度：
 
-- Volume and consistency: activity count, active days, duration, distance, elevation, median session duration and longest gap.
-- Intensity and load: zone time only with known zone definitions; TSS/IF only with a consistent threshold and method.
-- Performance: prefer matched routes or standardized workouts, then comparable duration/distance efforts. One peak value is not a longitudinal conclusion.
-- Efficiency: compare power-to-heart-rate or pace-to-heart-rate only during comparable steady work; exclude warm-up, stops, sprinting and materially different terrain.
-- Recovery: use `可能存在恢复压力` only when repeated comparable sessions show at least two aligned signals. Activity files alone cannot diagnose illness, injury risk or overtraining.
+- 训练量和一致性：活动数、活跃天数、时长、距离、爬升、单次训练时长中位数和最长间隔。
+- 强度和负荷：只有分区定义已知时才分析区间时间；只有阈值和计算方法一致时才比较 TSS/IF。
+- 表现：优先使用匹配路线或标准化课表，其次使用时长或距离可比的训练。单个峰值不能构成纵向结论。
+- 效率：只在可比的稳定训练中比较功率心率比或配速心率比；排除热身、停顿、冲刺和明显不同的地形。
+- 恢复：只有反复出现的可比训练呈现至少两项方向一致的信号时，才使用“可能存在恢复压力”。仅凭活动文件不能诊断疾病、受伤风险或过度训练。
 
-Confidence is high only with adequate coverage, repeated comparable sessions, stable thresholds and multiple aligned evidence lanes. Sparse, heterogeneous or sensor-inconsistent evidence is low confidence.
+只有数据覆盖充分、存在重复的可比训练、阈值稳定且多条证据链方向一致时，置信度才可以是高。数据稀疏、训练异质或传感器不一致时，置信度必须是低。

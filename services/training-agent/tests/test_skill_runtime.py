@@ -30,20 +30,20 @@ def test_skill_body_loads_only_after_selection_and_sport_reference_is_structured
     body = load_skill_instructions(skill)
     references = load_sport_references(skill, sport_types=["running"])
 
-    assert "# Analyze Activity" in body
-    assert "# Cycling evidence" not in body
+    assert "# 分析单次活动" in body
+    assert "# 骑行证据" not in body
     assert len(references) == 1
-    assert references[0].startswith("# Running evidence")
+    assert references[0].startswith("# 跑步证据")
 
 
 def test_history_skill_loads_professional_methodology_and_output_contract():
     body = load_skill_instructions(get_skill("analyze-training-history"))
 
-    assert "# Analyze Training History" in body
-    assert "# Endurance history methodology" in body
-    assert "# Training history output contract" in body
-    assert "two aligned evidence lanes" in body
-    assert '"最近 30 天" or "最近一个月" must be `kind=range, days=30`' in body
+    assert "# 分析训练历史" in body
+    assert "# 耐力训练历史方法论" in body
+    assert "# 训练历史输出契约" in body
+    assert "至少需要两条方向一致的证据链" in body
+    assert '“最近 30 天”或“最近一个月”必须传 `kind=range, days=30`' in body
     assert "training_history_analysis.v1" not in body
 
 

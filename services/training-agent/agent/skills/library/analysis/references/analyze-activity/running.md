@@ -1,3 +1,3 @@
-# Running evidence
+# 跑步证据
 
-Prioritize pace, heart rate, cadence, elevation, and recorded running dynamics. Separate moving pace from elapsed pace and account for terrain and stops. Do not convert cycling power rules into running conclusions or invent dynamics absent from the FIT file.
+优先分析配速、心率、步频、海拔和已记录的跑步动态。区分移动配速和总耗时配速，并考虑地形与停顿。不得把骑行功率规则套用为跑步结论，也不得编造 FIT 文件中不存在的动态指标。

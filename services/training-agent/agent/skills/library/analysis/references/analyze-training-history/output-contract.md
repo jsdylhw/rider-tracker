@@ -1,11 +1,11 @@
-# Training history output contract
+# 训练历史输出契约
 
-Use the internal `kind=training_history_analysis` result as the evidence source. The presentation layer owns conversion to the versioned Rider presentation schema. Present:
+使用内部 `kind=training_history_analysis` 结果作为证据来源。由展示层负责转换为带版本的 Rider 展示 Schema。输出应包括：
 
-1. A direct conclusion naming the current and baseline periods and its confidence.
-2. A compact evidence table by dimension, with current value, baseline value, change and interpretation.
-3. The evidence lanes supporting the interpretation.
-4. Missing data and confounders, including unmatched routes, unavailable sensors or threshold changes.
-5. One next measurement or standardized comparison that would most reduce uncertainty.
+1. 直接结论，明确当前周期、基准周期和置信度。
+2. 按维度组织的紧凑证据表，包含当前值、基准值、变化和解释。
+3. 支持该解释的证据链。
+4. 缺失数据和混杂因素，包括路线不匹配、传感器不可用或阈值变化。
+5. 一项最能降低不确定性的后续测量或标准化比较。
 
-Do not hide contradictory evidence. If the structure reports `insufficient_data` or a dimension is `unavailable`, say so rather than replacing it with generic coaching advice.
+不得隐藏相互矛盾的证据。如果结构返回 `insufficient_data`，或某个维度为 `unavailable`，必须明确说明，不能用通用训练建议替代。

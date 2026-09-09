@@ -1,18 +1,18 @@
 ---
 name: analyze-training-history
-description: Summarize, compare, or calculate trends across multiple activities using structured metrics. Use for recent ranges, weekly or monthly load, progress, consistency, fatigue signals, and matched-session comparisons.
+description: 使用结构化指标总结、比较或计算多条活动的训练趋势。
 ---
 
-# Analyze Training History
+# 分析训练历史
 
-Resolve the requested range once with a typed `resolve_activities` call; successful resolution freezes its activity order. Use `kind=recent` only for a count such as "最近 3 条" and express that count with `limit=3`. Use `kind=range` for every time period: "最近 30 天" or "最近一个月" must be `kind=range, days=30`, while calendar phrases may use `relative_range`. Never send `days`, `relative_range`, `start_date`, or `end_date` with `kind=recent`. Use `kind=all` only for explicit all-history requests. A requested range limit belongs in that same call and is applied after filtering.
+通过一次带明确类型的 `resolve_activities` 调用解析用户要求的范围；解析成功后冻结活动顺序。`kind=recent` 只用于“最近 3 条”等数量请求，并使用 `limit=3` 表达数量。任何时间段都使用 `kind=range`：“最近 30 天”或“最近一个月”必须传 `kind=range, days=30`，日历表达可以使用 `relative_range`。不得把 `days`、`relative_range`、`start_date` 或 `end_date` 与 `kind=recent` 混用。只有用户明确要求全部历史时才使用 `kind=all`。用户要求的范围数量限制必须放在同一次调用中，并在过滤后应用。
 
-Translate the request into one or more evidence claims: volume, intensity, performance, efficiency, consistency, or possible recovery strain. For a longitudinal conclusion call `analyze_training_history`; it returns an internal `kind=training_history_analysis` result which the presentation projector converts into the versioned Rider presentation contract. Use `calculate_history_metrics` only when the user asks for raw weekly/monthly series, `summarize_recent_training_load` for load-only facts, and `compare_activities` for an explicit finite activity comparison. Use `inspect_selection` for a report-free collection overview. Use `summarize_activities` only when stored report narratives are explicitly useful.
+把请求转换为一个或多个证据命题：训练量、强度、表现、效率、一致性或可能的恢复压力。需要纵向结论时调用 `analyze_training_history`；它返回内部 `kind=training_history_analysis` 结果，再由展示投影器转换为带版本的 Rider 展示协议。只有用户要求原始周/月序列时才使用 `calculate_history_metrics`；仅查询负荷事实时使用 `summarize_recent_training_load`；明确比较有限条活动时使用 `compare_activities`。无需报告的集合概览使用 `inspect_selection`。只有已保存报告的叙述明确有用时才使用 `summarize_activities`。
 
-Use `navigate_selection` for "the second one" and similar follow-ups. Never call a single-activity report tool once per item in the range, and never generate missing reports merely to inspect a collection.
+对“第二条”等后续引用使用 `navigate_selection`。不得对范围内每条活动逐一调用单次活动报告工具，也不得仅为查看集合而生成缺失报告。
 
-Read structured activity metrics rather than extracting numbers from generated prose. Separate sports unless the user explicitly asks for combined volume; never compare cycling watts with running pace. Distinguish observed changes from interpretation and state coverage, missing sensors, threshold/load-method changes, and confounders before claiming fitness or fatigue.
+读取结构化活动指标，不要从生成文本中提取数字。除非用户明确要求合并训练量，否则按运动类型分开；绝不能把骑行功率与跑步配速比较。区分观察到的变化和解释；在声称体能或疲劳变化前，说明数据覆盖、传感器缺失、阈值或负荷方法变化以及混杂因素。
 
-`scope.current_period` is the latest period containing selected data, not automatically the present calendar period. Respect its `status` and `as_of` fields: never call a `closed` period "still in progress". If its activity coverage is sparse, say how many activities/active days were observed or that no later activity is recorded; do not change the calendar status.
+`scope.current_period` 是包含选中数据的最新周期，并不自动等于当前日历周期。必须遵守其 `status` 和 `as_of` 字段：不能把 `closed` 周期描述为“仍在进行”。活动覆盖稀疏时，应说明观察到的活动数、活跃天数，或没有更晚的活动记录；不得篡改日历状态。
 
-Follow the loaded methodology and output contract. A load increase alone is not fitness improvement, and one poor session is not accumulated fatigue. When matched sessions, steady efficiency evidence, subjective recovery, weather, or route context are unavailable, mark those dimensions unavailable. Do not invent them. Every major conclusion needs a confidence level and the main limitation.
+遵循加载的方法论和输出契约。负荷增加本身不等于体能提升，一次表现不佳也不等于累积疲劳。缺少匹配训练、稳定效率证据、主观恢复、天气或路线背景时，把相应维度标记为不可用，不得编造。每项主要结论都必须给出置信度和最主要限制。

@@ -1,10 +1,10 @@
 ---
 name: coach-training
-description: Give evidence-based training or recovery guidance from selected activities and structured training metrics. Use for next-session suggestions, weekly plans, recovery choices, and training-load interpretation.
+description: 根据选中活动和结构化训练指标提供训练或恢复建议。
 ---
 
-# Coach Training
+# 训练指导
 
-Resolve the relevant history once with a typed `resolve_activities` request and obtain deterministic load, trend, comparison, and report evidence. Prefer `inspect_selection`, `calculate_history_metrics`, and `summarize_recent_training_load`; use `summarize_activities` or `compare_activities` when their established output matches the question. Call `generate_training_advice` only when the user explicitly asks for a concrete next-session or weekly recommendation. Use `navigate_selection` for follow-up references without re-resolving the activity range.
+通过带明确类型的 `resolve_activities` 请求一次性解析相关历史，并取得确定性的负荷、趋势、比较和报告证据。优先使用 `inspect_selection`、`calculate_history_metrics` 和 `summarize_recent_training_load`；当 `summarize_activities` 或 `compare_activities` 的既定输出与问题匹配时再使用。只有用户明确要求具体的下一次训练或周计划时，才调用 `generate_training_advice`。后续引用使用 `navigate_selection`，不要重新解析活动范围。
 
-State the training objective, supporting evidence, proposed session, intensity control, and a stop or recovery condition. Treat activity-only fatigue signals as uncertain and avoid medical diagnosis. The main Agent remains responsible for the final explanation; tool output supplies evidence rather than an independent conversational answer.
+回答应说明训练目标、支持证据、建议课表、强度控制，以及停止训练或转入恢复的条件。仅从活动数据观察到的疲劳信号必须视为不确定信息，不作医学诊断。最终解释仍由主 Agent 负责；工具输出提供证据，不作为独立的对话答案。
