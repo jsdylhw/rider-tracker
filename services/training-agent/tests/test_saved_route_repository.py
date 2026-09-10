@@ -94,7 +94,7 @@ def test_strava_route_is_a_supported_saved_route_source(tmp_path):
     assert loaded["metadata"]["stravaRouteId"] == "123"
 
 
-def test_saved_route_progress_is_separate_and_cleared_near_completion(tmp_path):
+def test_saved_route_progress_preserves_paused_and_completed_lifecycle(tmp_path):
     store = _store(tmp_path)
     saved = store.save_route({"route": _route("gpx"), "source": "gpx"})
 
@@ -107,8 +107,20 @@ def test_saved_route_progress_is_separate_and_cleared_near_completion(tmp_path):
     assert paused["progressStatus"] == "paused"
 
     completed = store.save_progress(saved["id"], resume_distance_meters=995)
-    assert completed["resumeDistanceMeters"] == 0
-    assert completed["progressStatus"] is None
+    assert completed["resumeDistanceMeters"] == 1000
+    assert completed["progressStatus"] == "completed"
+
+    restarted = store.save_progress(
+        saved["id"], resume_distance_meters=120, status="paused"
+    )
+    assert restarted["resumeDistanceMeters"] == 120
+    assert restarted["progressStatus"] == "paused"
+
+    explicitly_completed = store.save_progress(
+        saved["id"], resume_distance_meters=700, status="completed"
+    )
+    assert explicitly_completed["resumeDistanceMeters"] == 700
+    assert explicitly_completed["progressStatus"] == "paused"
 
 
 def test_geometry_update_clears_progress_beyond_corrected_route_end(tmp_path):
@@ -122,6 +134,26 @@ def test_geometry_update_clears_progress_beyond_corrected_route_end(tmp_path):
     assert replaced["id"] == saved["id"]
     assert replaced["resumeDistanceMeters"] == 0
     assert replaced["progressStatus"] is None
+
+
+def test_geometry_update_preserves_completed_marker_and_clamps_distance(tmp_path):
+    store = _store(tmp_path)
+    saved = store.save_route({"route": _route("gpx"), "source": "gpx"})
+    store.save_progress(saved["id"], resume_distance_meters=1000, status="completed")
+
+    corrected = {**_route("gpx"), "totalDistanceMeters": 700}
+    replaced = store.save_route({"route": corrected, "source": "gpx"})
+
+    assert replaced["resumeDistanceMeters"] == 700
+    assert replaced["progressStatus"] == "completed"
+
+
+def test_saved_route_rejects_unknown_progress_status(tmp_path):
+    store = _store(tmp_path)
+    saved = store.save_route({"route": _route("gpx"), "source": "gpx"})
+
+    with pytest.raises(ValueError, match="paused or completed"):
+        store.save_progress(saved["id"], resume_distance_meters=100, status="unknown")
 
 
 def test_saved_route_rename_delete_and_source_filter(tmp_path):

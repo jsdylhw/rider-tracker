@@ -265,6 +265,17 @@ def test_saved_route_api_preserves_browser_contract(tmp_path, monkeypatch):
         json={"resumeDistanceMeters": 400},
     )
     assert paused.json()["route"]["resumeDistanceMeters"] == 400
+    completed = client.put(
+        f"/api/routes/{route_id}/progress",
+        json={"resumeDistanceMeters": 1000, "status": "completed"},
+    )
+    assert completed.json()["route"]["progressStatus"] == "completed"
+    assert completed.json()["route"]["resumeDistanceMeters"] == 1000
+    invalid_progress = client.put(
+        f"/api/routes/{route_id}/progress",
+        json={"resumeDistanceMeters": 100, "status": "invalid"},
+    )
+    assert invalid_progress.status_code == 400
     assert client.delete(f"/api/routes/{route_id}/progress").status_code == 200
     assert client.delete(f"/api/routes/{route_id}").status_code == 200
     assert client.get(f"/api/routes/{route_id}").status_code == 404

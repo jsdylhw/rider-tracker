@@ -158,6 +158,7 @@ class SavedRouteProgressRequest(BaseModel):
     resumeDistanceMeters: Any = 0
     lastActivityId: Any = None
     startedAt: Any = None
+    status: Any = "paused"
 
 
 @app.get("/")
@@ -364,6 +365,7 @@ def save_route_progress_endpoint(
             resume_distance_meters=request.resumeDistanceMeters,
             last_activity_id=request.lastActivityId,
             started_at=request.startedAt,
+            status=request.status,
         )
     }
 
