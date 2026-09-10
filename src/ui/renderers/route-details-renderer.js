@@ -1,4 +1,9 @@
 import { formatNumber } from "../../shared/format.js";
+import {
+    resolveElevationSource,
+    ROUTE_ELEVATION_SOURCES,
+    supportsGradeSimulation
+} from "../../domain/route/route-elevation.js";
 
 export function createRouteDetailsRenderer({
     elements,
@@ -147,7 +152,7 @@ export function createRouteDetailsRenderer({
         if (!elements.routeSummary) return;
 
         if (isRouteLoading) {
-            elements.routeSummary.innerHTML = "<strong>路线处理中</strong><br>正在完成路线导入、路网规划或海拔请求；完成前不能开始骑行。";
+            elements.routeSummary.innerHTML = "<strong>路线处理中</strong><br>正在完成路线导入、路网规划或参考海拔请求；完成前不能开始骑行。";
             return;
         }
         if (isPendingMapExploration) {
@@ -159,7 +164,7 @@ export function createRouteDetailsRenderer({
             return;
         }
         if (isPendingMapDrawing) {
-            elements.routeSummary.innerHTML = "<strong>地图选择路线</strong><br>在 OSM 地图上依次点击起点、途经点和终点。系统会调用 Google Routes API 生成实际可骑行道路路线，再自动请求 Google 海拔。";
+            elements.routeSummary.innerHTML = "<strong>地图选择路线</strong><br>在 OSM 地图上依次点击起点、途经点和终点。系统会调用 Google Routes API 生成道路路线，再请求仅用于图表的 Google 参考海拔。";
             return;
         }
         if (isPendingLibraryRoute) {
@@ -167,15 +172,23 @@ export function createRouteDetailsRenderer({
             return;
         }
         if (!hasUsableRoute) {
-            elements.routeSummary.innerHTML = "<strong>尚未设置路线</strong><br>可新增自定义路段、导入 GPX，或在地图上生成探索路线；设置完成后才能开始骑行。";
+            elements.routeSummary.innerHTML = "<strong>尚未设置路线</strong><br>可导入 GPX/Strava 路线，或在可用时使用在线地图；固定阻力和 ERG 也可以直接开始无路线的自定义训练。";
             return;
         }
 
         const usedDrivingFallback = isMapDrawn && route.travelMode === "DRIVE";
         const sourceText = isAgentPlanned ? "Personal FIT Agent 虚拟路线" : isExploration ? "OSM 地图探索" : isMapDrawn ? usedDrivingFallback ? "Google 道路路线（驾车回退）" : "Google 骑行路线" : isStrava ? "Strava 路线" : isGpx ? "GPX 导入" : "手工输入";
         const segmentsText = isGpx || isStrava ? "" : `，共 ${route.segments.length} 段`;
-        const elevationWarning = route.hasElevationData === false && !isAgentPlanned
-            ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : isMapDrawn ? "骑行路线" : "GPX"}尚无海拔数据，坡度按 0 处理。${isExploration ? "可在骑行界面主动请求海拔。" : isMapDrawn ? "可在地图选择路线中请求海拔。" : ""}</span>`
+        const elevationSource = resolveElevationSource(route);
+        const hasGoogleReferenceElevation = elevationSource === ROUTE_ELEVATION_SOURCES.GOOGLE_ESTIMATED;
+        const gradeSimulationReady = supportsGradeSimulation(route);
+        const elevationWarning = hasGoogleReferenceElevation
+            ? "<br><span class=\"muted\">Google 海拔为估算参考，仅用于路线图表和爬升概览，不能用于骑行台坡度模拟。</span>"
+            : route.hasElevationData === false && !isAgentPlanned
+                ? `<br><span style="color: var(--danger);">提示：当前${isExploration ? "探索路线" : isMapDrawn ? "骑行路线" : "GPX"}尚无海拔数据，坡度按 0 处理。${isExploration ? "可请求 Google 参考海拔用于路线概览。" : ""}</span>`
+                : "";
+        const gradeSimulationHint = gradeSimulationReady
+            ? "<br><span class=\"muted\">该路线的海拔来源支持坡度模拟。</span>"
             : "";
         const bicycleRouteWarning = usedDrivingFallback
             ? "<br><span style=\"color: var(--danger);\">提示：当前区域没有可用的 Google 骑行路线，已按避开高速的普通道路生成；请确认自行车实际通行条件。</span>"
@@ -191,7 +204,7 @@ export function createRouteDetailsRenderer({
             <strong>路线概览</strong><br>
             来源：${sourceText}${segmentsText}，累计距离 ${formatNumber(route.totalDistanceMeters / 1000, 2)} km，
             累计爬升 ${Math.round(route.totalElevationGainMeters)} m，
-            累计下降 ${Math.round(route.totalDescentMeters)} m。${elevationWarning}${bicycleRouteWarning}${prototypeWarning}
+            累计下降 ${Math.round(route.totalDescentMeters)} m。${elevationWarning}${gradeSimulationHint}${bicycleRouteWarning}${prototypeWarning}
         `;
     }
 

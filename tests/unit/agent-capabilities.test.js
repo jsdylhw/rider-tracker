@@ -13,17 +13,42 @@ export const suite = {
             name: "keeps deterministic backend capabilities when llm is not configured",
             run() {
                 const state = normalizeAgentCapabilities({ result: {
-                    schema_version: "training_backend_capabilities.v1",
+                    schema_version: "training_backend_capabilities.v2",
                     backend: "available",
                     llm: "not_configured",
-                    capabilities: { fit_ingestion: true, strava: true }
+                    providers: {
+                        google: { status: "missing", reason: "Configure google.api_key." }
+                    },
+                    capabilities: { fit_ingestion: true, strava: false }
                 } });
 
                 assertEqual(state.backend, "available");
                 assertEqual(state.capabilities.fit_ingestion, true);
-                assertEqual(state.capabilities.strava, true);
+                assertEqual(state.capabilities.strava, false);
                 assertEqual(state.capabilities.ai_route_planning, false);
                 assertEqual(capabilityMessage(state, "activity_analysis").includes("尚未配置"), true);
+                assertEqual(capabilityMessage(state, "map_exploration").includes("Google API"), true);
+            }
+        },
+        {
+            name: "reports the missing provider for domestic route planning",
+            run() {
+                const state = normalizeAgentCapabilities({
+                    backend: "available",
+                    llm: "ready",
+                    providers: {
+                        google: { status: "ready" },
+                        amap: { status: "missing" }
+                    },
+                    capabilities: {
+                        ai_route_planning: true,
+                        domestic_ai_routes: false,
+                        international_ai_routes: true
+                    }
+                });
+
+                assertEqual(state.capabilities.international_ai_routes, true);
+                assertEqual(capabilityMessage(state, "domestic_ai_routes").includes("AMap"), true);
             }
         },
         {

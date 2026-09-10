@@ -8,7 +8,9 @@ function createState(overrides = {}) {
         uiMode: "live",
         route: {
             totalDistanceMeters: 1000,
-            source: "manual",
+            source: "gpx",
+            hasElevationData: true,
+            elevationSource: "gpx_embedded",
             name: "虚拟骑行测试路线",
             points: [
                 { latitude: 31.1, longitude: 121.1, distanceMeters: 0, gradePercent: 3, elevationMeters: 10 },
@@ -155,7 +157,7 @@ export const suite = {
             }
         },
         {
-            name: "debug 模拟功率可启动无海拔的地图探索路线",
+            name: "debug 模拟功率不能让无海拔探索路线进入坡度模拟",
             run() {
                 const windowHarness = installWindow({ debugEnabled: true });
                 try {
@@ -186,16 +188,16 @@ export const suite = {
 
                     service.startRide();
 
-                    assertEqual(store.getState().liveRide.isActive, true);
-                    assertEqual(store.getState().liveRide.session.route.source, "osm-exploration");
-                    assertEqual(store.getState().liveRide.session.sampledSensors.power, 240);
+                    assertEqual(store.getState().liveRide.isActive, false);
+                    assertEqual(windowHarness.timerCallbacks.length, 0);
+                    assertEqual(store.getState().liveRide.statusMeta.includes("GPX 或 Strava"), true);
                 } finally {
                     windowHarness.restore();
                 }
             }
         },
         {
-            name: "debug 模拟功率可启动所有已完成路线来源",
+            name: "debug 模拟功率可在 ERG 中展示各类已完成路线",
             run() {
                 const sources = ["manual", "gpx", "map-drawn", "osm-exploration", "agent-planned"];
                 for (const source of sources) {
@@ -219,7 +221,8 @@ export const suite = {
                                 powerSource: "virtual",
                                 virtualPowerWatts: 230,
                                 virtualCadenceRpm: 86
-                            }
+                            },
+                            workout: { mode: WORKOUT_MODES.FIXED_POWER }
                         }));
                         const service = createRideService({
                             store,
@@ -307,7 +310,8 @@ export const suite = {
                         route: {
                             ...createState().route,
                             source: "osm-exploration"
-                        }
+                        },
+                        workout: { mode: WORKOUT_MODES.FIXED_POWER }
                     }));
                     const service = createRideService({
                         store,

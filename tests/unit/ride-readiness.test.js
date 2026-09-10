@@ -15,10 +15,10 @@ export const suite = {
             }
         },
         {
-            name: "debug virtual power only bypasses physical devices, not the route",
+            name: "ERG training can start without a geographic route",
             run() {
                 const ready = deriveRideReadiness({
-                    route: route({ hasElevationData: false }),
+                    route: { totalDistanceMeters: 0 },
                     workout: { mode: "fixed-power" },
                     rideInput: { powerSource: "virtual" },
                     ble: disconnectedBle(),
@@ -26,16 +26,21 @@ export const suite = {
                 });
                 assertEqual(ready.canStart, true);
                 assertEqual(ready.requirements.powerSource, "debug-virtual");
-
+                assertEqual(ready.requirements.route, "not-required");
+            }
+        },
+        {
+            name: "debug power never bypasses trusted elevation for grade simulation",
+            run() {
                 const missingRoute = deriveRideReadiness({
-                    route: { totalDistanceMeters: 0 },
-                    workout: { mode: "fixed-power" },
+                    route: route({ hasElevationData: true, elevationSource: "google_estimated" }),
+                    workout: { mode: "grade-sim" },
                     rideInput: { powerSource: "virtual" },
                     ble: disconnectedBle(),
                     debugEnabled: true
                 });
                 assertEqual(missingRoute.canStart, false);
-                assert(missingRoute.blockers.some((item) => item.code === "route_not_ready"));
+                assert(missingRoute.blockers.some((item) => item.code === "route_elevation_required"));
             }
         },
         {
@@ -50,7 +55,7 @@ export const suite = {
                 assert(noElevation.blockers.some((item) => item.code === "route_elevation_required"));
 
                 const unsupported = deriveRideReadiness({
-                    route: route(),
+                    route: route({ source: "gpx", elevationSource: "gpx_embedded" }),
                     workout: { mode: "grade-sim" },
                     rideInput: { powerSource: "device" },
                     ble: connectedBle({ gradeControlSupported: false })
@@ -94,7 +99,13 @@ export const suite = {
 };
 
 function route(overrides = {}) {
-    return { totalDistanceMeters: 20_000, hasElevationData: true, ...overrides };
+    return {
+        source: "gpx",
+        totalDistanceMeters: 20_000,
+        hasElevationData: true,
+        elevationSource: "gpx_embedded",
+        ...overrides
+    };
 }
 
 function disconnectedBle() {

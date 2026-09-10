@@ -49,6 +49,7 @@ export const suite = {
                 const route = parseGpx(BASIC_GPX);
 
                 assertEqual(route.source, "gpx");
+                assertEqual(route.elevationSource, "gpx_embedded");
                 assertEqual(route.name, "Basic Route");
                 assertEqual(route.segments.length, 1);
                 assertGreaterThan(route.totalDistanceMeters, 200);
@@ -73,6 +74,7 @@ export const suite = {
                 const route = parseGpx(NO_ELEVATION_GPX);
 
                 assertEqual(route.hasElevationData, false);
+                assertEqual(route.elevationSource, "none");
                 assertEqual(route.totalElevationGainMeters, 0);
                 assertEqual(route.totalDescentMeters, 0);
                 assertEqual(route.segments[0].gradePercent, 0);

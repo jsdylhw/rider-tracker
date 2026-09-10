@@ -1,7 +1,8 @@
 import {
     hasRouteGeometryChanged,
     shouldRenderDashboard,
-    shouldRenderDeviceReadiness
+    shouldRenderDeviceReadiness,
+    shouldRenderRouteWorkspace
 } from "../../src/ui/renderers/main-view.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
@@ -61,6 +62,46 @@ export const suite = {
                 };
 
                 assertEqual(shouldRenderDashboard(state, previousState), true);
+            }
+        },
+        {
+            name: "能力检查完成后刷新路线入口和 dashboard 在线操作",
+            run() {
+                const checking = {
+                    ...createState({ ftp: 250 }),
+                    agentCapabilities: {
+                        backend: "checking",
+                        capabilities: { map_waypoint_routes: false, street_view: false }
+                    }
+                };
+                const available = {
+                    ...checking,
+                    agentCapabilities: {
+                        backend: "available",
+                        capabilities: { map_waypoint_routes: true, street_view: true }
+                    }
+                };
+
+                assertEqual(shouldRenderRouteWorkspace(available, checking), true);
+                assertEqual(shouldRenderDashboard(available, checking), true);
+                assertEqual(shouldRenderRouteWorkspace(available, available), false);
+                assertEqual(shouldRenderDashboard(available, available), false);
+            }
+        },
+        {
+            name: "能力检查失败后刷新路线入口和 dashboard 禁用原因",
+            run() {
+                const checking = {
+                    ...createState({ ftp: 250 }),
+                    agentCapabilities: { backend: "checking", capabilities: {} }
+                };
+                const unavailable = {
+                    ...checking,
+                    agentCapabilities: { backend: "unavailable", capabilities: {} }
+                };
+
+                assertEqual(shouldRenderRouteWorkspace(unavailable, checking), true);
+                assertEqual(shouldRenderDashboard(unavailable, checking), true);
             }
         },
         {

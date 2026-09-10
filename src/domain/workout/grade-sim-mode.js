@@ -4,6 +4,7 @@ import {
     TRAINER_COMMAND_TYPES,
     TRAINER_CONTROL_MODES
 } from "./trainer-command.js";
+import { supportsGradeSimulation } from "../route/route-elevation.js";
 
 const DEFAULT_LOOKAHEAD_STEP_METERS = 20;
 
@@ -20,8 +21,8 @@ export function buildGradeSimulationState({
         return createUnavailableState("未选择路线，无法计算坡度模拟。");
     }
 
-    if (route.hasElevationData === false) {
-        return createUnavailableState("当前路线缺少海拔数据，坡度模拟不可用。");
+    if (!supportsGradeSimulation(route)) {
+        return createUnavailableState("坡度模拟只支持带内嵌海拔的 GPX 或 Strava 同步路线。");
     }
 
     const currentSample = getRouteSampleAtDistance(route, distanceMeters);

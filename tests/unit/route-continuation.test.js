@@ -12,6 +12,7 @@ export const suite = {
                 const continued = buildRouteContinuation(route, 400);
 
                 assertEqual(continued.source, "agent");
+                assertEqual(continued.elevationSource, "none");
                 assertEqual(continued.savedRouteId, "route-1");
                 assertEqual(continued.points[0].distanceMeters, 0);
                 assertApprox(continued.totalDistanceMeters, 600, 0.001);

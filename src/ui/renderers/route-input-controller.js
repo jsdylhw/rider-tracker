@@ -1,4 +1,5 @@
 import { buildRouteGeometryKey, collectRouteMapLatLngs } from "../map/map-controller.js";
+import { capabilityMessage } from "../../domain/agent/agent-capabilities.js";
 
 export function createRouteInputController({
     elements,
@@ -19,7 +20,6 @@ export function createRouteInputController({
     let isEditingMapDrawRoute = false;
     let isCreatingMapDrawRoute = false;
     let isRequestingMapDrawElevation = false;
-    let forceMapDrawKeyPrompt = false;
     let mapDrawFeedback = "";
     const mapRouteSelection = { mode: null, start: null, destination: null };
     const mapDrawSelection = { waypoints: [] };
@@ -35,7 +35,7 @@ export function createRouteInputController({
         elements.undoMapDrawWaypointBtn?.addEventListener("click", undoMapDrawWaypoint);
         elements.clearMapDrawRouteBtn?.addEventListener("click", clearMapDrawRoute);
         elements.createMapDrawRouteBtn?.addEventListener("click", createMapDrawRoute);
-        elements.requestMapDrawElevationBtn?.addEventListener("click", () => requestMapDrawElevation({ forcePrompt: true }));
+        elements.requestMapDrawElevationBtn?.addEventListener("click", () => requestMapDrawElevation());
         visuals.setPlannerClickHandler(({ mode, point }) => handlePlannerClick(mode, point));
         if (routeInputMode === "map") visuals.setPlannerMode("select");
     }
@@ -45,6 +45,7 @@ export function createRouteInputController({
             resetMapRouteSelection();
         }
         lastRenderedState = state;
+        enforceAvailableInputMode();
         renderRouteMap(state);
         renderRouteModePanels();
         renderMapRoutePlanner();
@@ -68,7 +69,10 @@ export function createRouteInputController({
     }
 
     function bindRouteModeButton(button, mode) {
-        button?.addEventListener("click", () => setRouteInputMode(mode));
+        button?.addEventListener("click", () => {
+            if (!isInputModeAvailable(mode)) return;
+            setRouteInputMode(mode);
+        });
     }
 
     function setRouteInputMode(mode) {
@@ -109,6 +113,7 @@ export function createRouteInputController({
         setModeButtonActive(elements.routeModeManualBtn, routeInputMode === "manual");
         setModeButtonActive(elements.routeModeDrawBtn, routeInputMode === "draw");
         setModeButtonActive(elements.routeModeMapBtn, routeInputMode === "map");
+        renderRouteModeAvailability();
 
         if (shouldShowRouteMap) {
             scheduleMapPreviewRefresh(() => {
@@ -116,6 +121,40 @@ export function createRouteInputController({
                 if (lastRenderedState?.route) visuals.syncRoute(lastRenderedState.route);
                 visuals.syncPlannerSelection(getVisiblePlannerSelection());
             });
+        }
+    }
+
+    function enforceAvailableInputMode() {
+        const availability = lastRenderedState?.agentCapabilities;
+        if (!availability || availability.backend === "checking") return;
+        if (!isInputModeAvailable(routeInputMode)) routeInputMode = "library";
+    }
+
+    function isInputModeAvailable(mode) {
+        if (mode === "library" || mode === "manual") return true;
+        const availability = lastRenderedState?.agentCapabilities;
+        if (!availability) return true;
+        if (availability?.backend !== "available") return mode === "library";
+        const capability = routeModeCapability(mode);
+        return capability ? availability.capabilities?.[capability] === true : false;
+    }
+
+    function renderRouteModeAvailability() {
+        const availability = lastRenderedState?.agentCapabilities;
+        for (const [button, mode, capability] of [
+            [elements.routeModeAiBtn, "ai", "ai_route_planning"],
+            [elements.routeModeManualBtn, "manual", null],
+            [elements.routeModeDrawBtn, "draw", "map_waypoint_routes"],
+            [elements.routeModeMapBtn, "map", "map_exploration"]
+        ]) {
+            if (!button) continue;
+            const available = isInputModeAvailable(mode);
+            button.disabled = !available;
+            button.title = available ? "" : capabilityMessage(availability, capability);
+        }
+        if (elements.routeModeLibraryBtn) {
+            elements.routeModeLibraryBtn.disabled = false;
+            elements.routeModeLibraryBtn.title = "GPX、Strava 与本地保存路线始终可以使用。";
         }
     }
 
@@ -203,34 +242,29 @@ export function createRouteInputController({
         mapDrawFeedback = "正在准备 Google 骑行路线请求...";
         renderMapDrawRoutePlanner();
         try {
-            const apiKey = await requestGoogleMapsApiKey({
-                featureLabel: "生成骑行路线",
-                force: forceMapDrawKeyPrompt
-            });
+            const apiKey = await requestGoogleMapsApiKey({ featureLabel: "生成骑行路线" });
             if (!apiKey) {
-                mapDrawFeedback = "已取消 Google Routes 请求；选点仍已保留。";
+                mapDrawFeedback = "Google API 未配置；请在 config.yaml 中配置后重启服务。";
                 return;
             }
-            forceMapDrawKeyPrompt = false;
             mapDrawFeedback = "正在调用 Google Routes API 生成骑行路线...";
             renderMapDrawRoutePlanner();
             const route = await onCreateMapDrawRoute?.(mapDrawSelection.waypoints);
             if (!route) return;
             isEditingMapDrawRoute = false;
-            mapDrawFeedback = "骑行路线已生成，正在请求路线海拔...";
+            mapDrawFeedback = "骑行路线已生成，正在请求 Google 参考海拔...";
             renderMapDrawRoutePlanner();
             await requestMapDrawElevation();
         } catch (error) {
             console.warn("地图路线生成失败", error);
-            forceMapDrawKeyPrompt = true;
-            mapDrawFeedback = `地图骑行路线生成失败：${error?.message ?? "请检查 Google Key、Routes API 和网络后重试。"}`;
+            mapDrawFeedback = `地图骑行路线生成失败：${error?.message ?? "请检查 config.yaml、Google Routes API 和网络后重试。"}`;
         } finally {
             isCreatingMapDrawRoute = false;
             renderMapDrawRoutePlanner();
         }
     }
 
-    async function requestMapDrawElevation({ forcePrompt = false } = {}) {
+    async function requestMapDrawElevation() {
         const route = lastRenderedState?.route;
         if (route?.source !== "map-drawn"
             || route.hasElevationData
@@ -238,21 +272,18 @@ export function createRouteInputController({
             || isRouteEditingLocked()
             || isRequestingMapDrawElevation) return;
 
-        const apiKey = await requestGoogleMapsApiKey({
-            featureLabel: "补全地图路线海拔",
-            force: forcePrompt
-        });
+        const apiKey = await requestGoogleMapsApiKey({ featureLabel: "补全地图路线参考海拔" });
         if (!apiKey) return;
 
         isRequestingMapDrawElevation = true;
-        mapDrawFeedback = "正在请求 Google 路线海拔...";
+        mapDrawFeedback = "正在请求 Google 路线参考海拔...";
         renderMapDrawRoutePlanner();
         try {
             await onRequestRouteElevation?.();
             mapDrawFeedback = "";
         } catch (error) {
             console.warn("地图路线海拔请求失败", error);
-            mapDrawFeedback = `路线海拔请求失败：${error?.message ?? "请检查 Google Key、Elevation API 和网络后重试。"}`;
+            mapDrawFeedback = `路线参考海拔请求失败：${error?.message ?? "请检查 config.yaml、Google Elevation API 和网络后重试。"}`;
         } finally {
             isRequestingMapDrawElevation = false;
             renderMapDrawRoutePlanner();
@@ -307,9 +338,9 @@ export function createRouteInputController({
             elements.mapDrawRouteStatus.textContent = routeEditingLocked
                 ? "骑行中路线已锁定，结束骑行后可重新选择"
                 : routeLoading
-                    ? "正在生成骑行路线或请求海拔，完成前不能开始骑行"
+                    ? "正在生成骑行路线或请求参考海拔，完成前不能开始骑行"
                     : hasGeneratedRoute
-                        ? route.hasElevationData ? "骑行路线和海拔已生成，可开始骑行或重选" : "骑行路线已生成，可请求海拔或重选"
+                        ? route.hasElevationData ? "骑行路线和参考海拔已生成，可开始骑行或重选" : "骑行路线已生成，可请求参考海拔或重选"
                         : waypointCount >= 2
                             ? `已选择 ${waypointCount} 个点，可继续添加途经点或生成路线`
                             : "点击地图依次添加起点、途经点和终点";
@@ -338,7 +369,7 @@ export function createRouteInputController({
         if (elements.requestMapDrawElevationBtn) {
             elements.requestMapDrawElevationBtn.hidden = !hasGeneratedRoute || route?.hasElevationData === true;
             elements.requestMapDrawElevationBtn.disabled = routeEditingLocked || routeLoading || isRequestingMapDrawElevation;
-            elements.requestMapDrawElevationBtn.textContent = isRequestingMapDrawElevation ? "正在请求海拔" : "请求海拔";
+            elements.requestMapDrawElevationBtn.textContent = isRequestingMapDrawElevation ? "正在请求参考海拔" : "请求参考海拔";
         }
         if (elements.mapDrawRoutePlanStatus) {
             const statusText = mapDrawFeedback || (hasGeneratedRoute ? (lastRenderedState?.statusText ?? "") : "");
@@ -381,6 +412,13 @@ export function createRouteInputController({
     }
 
     return { bindEvents, render, getInputMode, setInputMode: setRouteInputMode };
+}
+
+function routeModeCapability(mode) {
+    if (mode === "ai") return "ai_route_planning";
+    if (mode === "draw") return "map_waypoint_routes";
+    if (mode === "map") return "map_exploration";
+    return null;
 }
 
 function buildMapRouteSignature(route) {

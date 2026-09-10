@@ -1,5 +1,6 @@
 import { isRouteReadyForRide } from "../route/route-builder.js";
 import { WORKOUT_MODES } from "../workout/workout-mode.js";
+import { supportsGradeSimulation } from "../route/route-elevation.js";
 
 export function deriveRideReadiness({
     route,
@@ -17,7 +18,7 @@ export function deriveRideReadiness({
     };
 
     const virtualPower = debugEnabled && rideInput?.powerSource === "virtual";
-    validateRoute(route, workout?.mode, blockers, requirements, { allowMissingElevation: virtualPower });
+    validateRoute(route, workout?.mode, blockers, requirements);
     if (virtualPower) {
         requirements.powerSource = "debug-virtual";
         requirements.trainerControl = "not-required";
@@ -46,7 +47,7 @@ export function formatReadinessMessages(issues) {
     return messages.length > 0 ? `${messages.join("；")}。` : "";
 }
 
-function validateRoute(route, workoutMode, blockers, requirements, { allowMissingElevation = false } = {}) {
+function validateRoute(route, workoutMode, blockers, requirements) {
     if (route?.isLoading === true) {
         requirements.route = "loading";
         blockers.push(issue("route_loading", "路线仍在处理中，请等待完成。"));
@@ -57,16 +58,22 @@ function validateRoute(route, workoutMode, blockers, requirements, { allowMissin
         blockers.push(issue("route_not_confirmed", "路线仍是草稿，请先最终确认。"));
         return;
     }
-    if (!isRouteReadyForRide(route)) {
+    const routeReady = isRouteReadyForRide(route);
+    const routeRequired = workoutMode === WORKOUT_MODES.GRADE_SIM;
+    if (!routeReady && !routeRequired) {
+        requirements.route = "not-required";
+        return;
+    }
+    if (!routeReady) {
         requirements.route = "missing";
         blockers.push(issue("route_not_ready", "请先设置一条有效路线。"));
         return;
     }
-    if (!allowMissingElevation && workoutMode === WORKOUT_MODES.GRADE_SIM && route?.hasElevationData === false) {
+    if (workoutMode === WORKOUT_MODES.GRADE_SIM && !supportsGradeSimulation(route)) {
         requirements.route = "missing-elevation";
         blockers.push(issue(
             "route_elevation_required",
-            "当前路线没有海拔数据，不能使用坡度模拟；请切换 ERG/固定阻力或加载带海拔路线。"
+            "坡度模拟只支持带内嵌海拔的 GPX 或 Strava 同步路线；请切换 ERG/固定阻力或加载受支持的路线。"
         ));
     }
 }

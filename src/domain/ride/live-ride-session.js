@@ -2,6 +2,7 @@ import { getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-b
 import { simulateStep } from "../physics/cycling-model.js";
 import { buildRideMetrics, createEmptyRideMetrics } from "../metrics/ride-metrics.js";
 import { createIncrementalPowerState, advanceIncrementalPowerState, readIncrementalPowerMetrics } from "../metrics/power-metrics.js";
+import { resolveRideGradePercent } from "../route/route-elevation.js";
 
 export function createLiveRideSession({ route, settings, startedAt }) {
     return {
@@ -33,7 +34,7 @@ export function advanceLiveRideSession({
 }) {
     const elapsedSeconds = (summary.metrics?.ride?.elapsedSeconds ?? 0) + dt;
     const routeSample = getRouteSampleAtDistance(session.route, session.physicsState.distanceMeters);
-    const gradePercent = routeSample.gradePercent ?? 0;
+    const gradePercent = resolveRideGradePercent(session.route, routeSample);
     const nextState = simulateStep({
         ...session.physicsState,
         power,

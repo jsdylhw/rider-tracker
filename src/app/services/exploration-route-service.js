@@ -205,13 +205,13 @@ export function createExplorationRouteService({
             exploration.requestElevation = true;
             applyExplorationRoute(
                 result.route,
-                `探索路线坡度已增量更新：Google 请求 ${result.summary.requests} 次，缓存命中 ${result.summary.cacheHits}。`
+                `探索路线参考海拔已增量更新：Google 请求 ${result.summary.requests} 次，缓存命中 ${result.summary.cacheHits}；该数据不用于坡度模拟。`
             );
         } catch (error) {
             if (activeExploration !== exploration || store.getState().route !== route) return;
             store.setState((state) => ({
                 ...state,
-                statusText: `Google 海拔请求失败：${extractErrorMessage(error)}；当前路线仍可继续骑行。`
+                statusText: `Google 参考海拔请求失败：${extractErrorMessage(error)}；当前路线仍可继续骑行。`
             }));
         }
     }
@@ -356,7 +356,7 @@ function buildMapRouteStatus(route, { networkSource, networkFailure, reusedNetwo
         : reusedNetwork
             ? `已复用已加载的 OSM 路网，生成街景探索起步路线：${distanceText} km。`
             : `已生成 OSM 街景探索起步路线：${distanceText} km。`;
-    return `${routePrefix}当前没有海拔，可在骑行界面点“请求路线海拔”。`;
+    return `${routePrefix}当前没有海拔，可在骑行界面请求 Google 参考海拔；参考值不用于坡度模拟。`;
 }
 
 function summarizeOverpassFailure(error) {

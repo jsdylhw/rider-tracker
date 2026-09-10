@@ -39,7 +39,10 @@ function createState() {
         },
         route: {
             totalDistanceMeters: 1000,
-            isLoading: false
+            isLoading: false,
+            source: "gpx",
+            hasElevationData: true,
+            elevationSource: "gpx_embedded"
         },
         rideInput: {
             powerSource: "virtual",

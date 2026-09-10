@@ -35,7 +35,8 @@ export function buildRouteContinuation(route, resumeDistanceMeters) {
             hasElevationData,
             namePrefix: "剩余路线"
         }),
-        hasElevationData
+        hasElevationData,
+        elevationSource: route.elevationSource
     });
     return {
         ...route,

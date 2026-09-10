@@ -1,5 +1,6 @@
 import { formatDuration, formatNumber } from "../../shared/format.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
+import { capabilityMessage } from "../../domain/agent/agent-capabilities.js";
 
 export function createStravaRouteImportRenderer({
     elements,
@@ -49,7 +50,7 @@ export function createStravaRouteImportRenderer({
     }
 
     async function refreshLatest() {
-        if (loading || isEditingLocked()) return;
+        if (loading || isEditingLocked() || !isStravaAvailable()) return;
         setLoading(true, "正在从 Strava 刷新最新路线…");
         try {
             const catalog = await onRefreshStravaRoutes?.() ?? {};
@@ -66,7 +67,7 @@ export function createStravaRouteImportRenderer({
 
     async function importSelected() {
         const route = selectedRoute();
-        if (!route || loading || isEditingLocked()) return;
+        if (!route || loading || isEditingLocked() || !isStravaAvailable()) return;
         setLoading(true, `正在导入“${route.name}”…`);
         try {
             const imported = await onImportStravaRoute?.({ routeId: route.id, name: route.name });
@@ -91,9 +92,17 @@ export function createStravaRouteImportRenderer({
 
     function renderControls() {
         const locked = loading || isEditingLocked();
-        if (elements.refreshStravaRoutesBtn) elements.refreshStravaRoutesBtn.disabled = locked;
+        const available = isStravaAvailable();
+        const unavailableReason = available ? "" : capabilityMessage(lastState?.agentCapabilities, "strava");
+        if (elements.refreshStravaRoutesBtn) {
+            elements.refreshStravaRoutesBtn.disabled = locked || !available;
+            elements.refreshStravaRoutesBtn.title = unavailableReason;
+        }
         if (elements.stravaRouteSelect) elements.stravaRouteSelect.disabled = locked || routes.length === 0;
-        if (elements.importStravaRouteBtn) elements.importStravaRouteBtn.disabled = locked || !selectedRoute();
+        if (elements.importStravaRouteBtn) {
+            elements.importStravaRouteBtn.disabled = locked || !available || !selectedRoute();
+            elements.importStravaRouteBtn.title = unavailableReason;
+        }
     }
 
     function selectedRoute() {
@@ -102,6 +111,11 @@ export function createStravaRouteImportRenderer({
 
     function isEditingLocked() {
         return lastState?.liveRide?.isActive === true || lastState?.route?.isLoading === true;
+    }
+
+    function isStravaAvailable() {
+        return lastState?.agentCapabilities === undefined
+            || lastState.agentCapabilities?.capabilities?.strava === true;
     }
 
     function setLoading(value, status = "") {

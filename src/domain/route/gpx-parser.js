@@ -1,4 +1,5 @@
 import { buildRouteFromTrackPoints } from "./route-builder.js";
+import { ROUTE_ELEVATION_SOURCES } from "./route-elevation.js";
 
 const SEGMENT_BUCKET_METERS = 500;
 const MIN_GRADE_WINDOW_METERS = 30;
@@ -47,7 +48,10 @@ export function parseGpx(xmlText) {
         name,
         points: smoothedPoints,
         segments,
-        hasElevationData
+        hasElevationData,
+        elevationSource: hasElevationData
+            ? ROUTE_ELEVATION_SOURCES.GPX_EMBEDDED
+            : ROUTE_ELEVATION_SOURCES.NONE
     });
 }
 

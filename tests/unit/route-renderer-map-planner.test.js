@@ -251,6 +251,70 @@ export const suite = {
             }
         },
         {
+            name: "keeps local manual routes available and disables online route modes without Google",
+            run() {
+                const elements = {
+                    routeModeAiBtn: createFakeElement(),
+                    routeModeLibraryBtn: createFakeElement(),
+                    routeModeManualBtn: createFakeElement(),
+                    routeModeDrawBtn: createFakeElement(),
+                    routeModeMapBtn: createFakeElement(),
+                    aiRoutePanel: createFakeElement(),
+                    routeLibraryPanel: createFakeElement(),
+                    manualRoutePanel: createFakeElement(),
+                    mapDrawRoutePanel: createFakeElement(),
+                    mapRoutePanel: createFakeElement(),
+                    routeMapShell: createFakeElement(),
+                    setupElevationChartShell: createFakeElement(),
+                    routeCurrentSourceRow: createFakeElement(),
+                    routeTableShell: createFakeElement(),
+                    routeSummary: createFakeElement(),
+                    routeSourceLabel: createFakeElement(),
+                    addSegmentBtn: createFakeElement()
+                };
+                const renderer = createRouteRenderer({
+                    elements,
+                    mapController: {
+                        syncRoute() {},
+                        syncPlannerSelection() {},
+                        setPlannerMode() {},
+                        setPlannerClickHandler() {}
+                    },
+                    onAddSegment() {},
+                    onResetRoute() {},
+                    onImportGpx() {},
+                    onUpdateRouteSegment() {},
+                    onRemoveRouteSegment() {}
+                });
+
+                renderer.render({
+                    route: { source: "manual", points: [], segments: [], totalDistanceMeters: 0 },
+                    liveRide: { isActive: false },
+                    agentCapabilities: {
+                        backend: "available",
+                        providers: { google: { status: "missing" } },
+                        capabilities: {
+                            ai_route_planning: false,
+                            map_waypoint_routes: false,
+                            map_exploration: false
+                        }
+                    }
+                });
+
+                assertEqual(elements.routeLibraryPanel.hidden, false);
+                assertEqual(elements.routeModeLibraryBtn.disabled, false);
+                assertEqual(elements.routeModeAiBtn.disabled, true);
+                assertEqual(elements.routeModeManualBtn.disabled, false);
+                assertEqual(elements.routeModeDrawBtn.disabled, true);
+                assertEqual(elements.routeModeMapBtn.disabled, true);
+                assert(elements.routeModeMapBtn.title.includes("Google API"));
+
+                elements.routeModeManualBtn.dispatch("click");
+                assertEqual(elements.manualRoutePanel.hidden, false);
+                assertEqual(elements.routeLibraryPanel.hidden, true);
+            }
+        },
+        {
             name: "does not redraw map geometry when only exploration turn intent changes",
             run() {
                 const elements = {

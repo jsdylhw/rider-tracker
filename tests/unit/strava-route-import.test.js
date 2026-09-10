@@ -47,6 +47,7 @@ export const suite = {
                 assertEqual(route.source, "strava");
                 assertEqual(route.name, "三都经典线");
                 assertEqual(route.hasElevationData, true);
+                assertEqual(route.elevationSource, "strava_route");
                 assertEqual(route.savedRouteId, "saved-1");
                 assertEqual(savedInput.source, "strava");
                 assertEqual(savedInput.metadata.stravaRouteId, "123");
@@ -89,6 +90,46 @@ export const suite = {
                 await renderer.importSelected();
                 assertEqual(imported.name, "三都经典线");
                 assertEqual(elements.stravaRouteImportStatus.textContent.includes("已导入"), true);
+            }
+        },
+        {
+            name: "keeps cached catalog visible but disables network actions without Strava config",
+            async run() {
+                const elements = {
+                    refreshStravaRoutesBtn: createFakeElement(),
+                    stravaRouteSelect: createFakeElement(),
+                    importStravaRouteBtn: createFakeElement(),
+                    stravaRouteImportStatus: createFakeElement()
+                };
+                let refreshCalls = 0;
+                const renderer = createStravaRouteImportRenderer({
+                    elements,
+                    onListStravaRoutes: async () => ({
+                        hasCache: true,
+                        routes: [{ id: "123", name: "cached", distanceMeters: 1000 }]
+                    }),
+                    onRefreshStravaRoutes: async () => { refreshCalls += 1; },
+                    onImportStravaRoute: async () => ({ source: "strava" })
+                });
+                renderer.bindEvents();
+                renderer.render({
+                    route: {},
+                    liveRide: { isActive: false },
+                    agentCapabilities: {
+                        backend: "available",
+                        providers: { strava: { status: "missing" } },
+                        capabilities: { strava: false }
+                    }
+                });
+                await renderer.ensureLoaded();
+
+                assertEqual(elements.stravaRouteSelect.disabled, false);
+                assertEqual(elements.refreshStravaRoutesBtn.disabled, true);
+                assertEqual(elements.importStravaRouteBtn.disabled, true);
+                assertEqual(elements.refreshStravaRoutesBtn.title.includes("Strava"), true);
+                elements.refreshStravaRoutesBtn.dispatch("click");
+                await Promise.resolve();
+                assertEqual(refreshCalls, 0);
             }
         },
         {

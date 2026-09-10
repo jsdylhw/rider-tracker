@@ -10,7 +10,6 @@ import { createSessionSummaryRenderer } from "./session-summary-renderer.js";
 import { createSessionChartRenderer } from "./session-chart-renderer.js";
 import { createHomeView } from "../views/home-view.js";
 import { createLiveView } from "../views/live-view.js";
-import { createGoogleMapsServiceModal } from "../views/google-maps-service-modal.js";
 import { createExportView } from "../views/export-view.js";
 import { createActivityDetailView } from "../views/activity-detail-view.js";
 import { buildActivityDetailPageHtml } from "./activity-detail-renderer.js";
@@ -56,7 +55,7 @@ export function createMainView({ store, pipController, actions }) {
 
     const layoutCoordinator = createLayoutCoordinator({ elements });
     const rideVisuals = createRideVisualsController({ elements, googleMapsConfig: googleMaps });
-    const googleMapsServiceModal = createGoogleMapsServiceModal({ elements, googleMapsConfig: googleMaps });
+    const requireConfiguredGoogleKey = async () => googleMaps.getApiKey();
     const routeRenderer = createRouteRenderer({
         elements,
         rideVisuals,
@@ -83,7 +82,7 @@ export function createMainView({ store, pipController, actions }) {
         onInvalidateMapRoute: route.invalidatePendingMapRoute,
         onPlanMapRoute: route.planMapRoute,
         onRequestRouteElevation: route.requestCurrentRouteElevation,
-        requestGoogleMapsApiKey: googleMapsServiceModal.requestApiKey,
+        requestGoogleMapsApiKey: requireConfiguredGoogleKey,
         onUpdateRouteSegment: route.updateSegment,
         onRemoveRouteSegment: route.removeSegment
     });
@@ -92,7 +91,7 @@ export function createMainView({ store, pipController, actions }) {
         rideVisuals,
         onQueueExplorationTurn: route.queueExplorationTurn,
         onRequestRouteElevation: route.requestCurrentRouteElevation,
-        requestGoogleMapsApiKey: googleMapsServiceModal.requestApiKey
+        requestGoogleMapsApiKey: requireConfiguredGoogleKey
     });
     dashboardRenderer.bindEvents(store);
     bindPipMetricControls();
@@ -147,10 +146,13 @@ export function createMainView({ store, pipController, actions }) {
             layoutCoordinator.render(state);
         }
         if (initialRender || state.settings !== previousState.settings) renderSettings(state);
-        if (initialRender || state.route !== previousState.route || state.uiMode !== previousState.uiMode) {
+        if (shouldRenderRouteWorkspace(state, previousState)) {
             routeRenderer.render(state);
         }
-        if (initialRender || state.workout !== previousState.workout || state.ble !== previousState.ble) {
+        if (initialRender
+            || state.workout !== previousState.workout
+            || state.ble !== previousState.ble
+            || state.route !== previousState.route) {
             workoutRenderer.render(state);
             customWorkoutTargetRenderer.render(state);
         }
@@ -235,7 +237,6 @@ export function createMainView({ store, pipController, actions }) {
     return {
         destroy: () => {
             routeRenderer.destroy?.();
-            googleMapsServiceModal.destroy();
             rideVisuals.destroy();
             activityDetailView.destroy();
         }
@@ -250,6 +251,14 @@ export function shouldRenderDashboard(state, previousState) {
         || state.rideInput !== previousState.rideInput
         || state.workout !== previousState.workout
         || state.settings !== previousState.settings
+        || state.agentCapabilities !== previousState.agentCapabilities
+        || state.uiMode !== previousState.uiMode;
+}
+
+export function shouldRenderRouteWorkspace(state, previousState) {
+    return previousState === undefined
+        || state.route !== previousState.route
+        || state.agentCapabilities !== previousState.agentCapabilities
         || state.uiMode !== previousState.uiMode;
 }
 

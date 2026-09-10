@@ -89,7 +89,7 @@ export const suite = {
     name: "ride-regression",
     tests: [
         {
-            name: "startRide 会拒绝空路线，即使街景调试已开启",
+            name: "固定阻力训练不需要地理路线",
             run() {
                 const state = createState();
                 state.route = {
@@ -105,7 +105,7 @@ export const suite = {
                     ...(originalWindow ?? {}),
                     location: { search: "?debugStreetView=1" },
                     localStorage: { getItem() { return null; } },
-                    setInterval() { throw new Error("空路线不应启动定时器"); },
+                    setInterval() { return 1; },
                     clearInterval() {}
                 };
 
@@ -117,8 +117,9 @@ export const suite = {
                     });
                     service.startRide();
 
-                    assertEqual(store.getState().liveRide.isActive, false);
-                    assert(store.getState().statusText.includes("请先设置一条有效路线"));
+                    assertEqual(store.getState().liveRide.isActive, true);
+                    assertEqual(store.getState().liveRide.session.route.totalDistanceMeters, 0);
+                    assertEqual(store.getState().liveRide.session.exportMetadata.activityName, "自定义训练");
                 } finally {
                     if (originalWindow === undefined) delete globalThis.window;
                     else globalThis.window = originalWindow;
@@ -218,6 +219,12 @@ export const suite = {
                 const timestamp = Date.now();
                 const store = createStore({
                     ...createState(),
+                    route: {
+                        ...createState().route,
+                        source: "gpx",
+                        hasElevationData: true,
+                        elevationSource: "gpx_embedded"
+                    },
                     ble: {
                         ...createState().ble,
                         sampling: {
@@ -852,6 +859,12 @@ export const suite = {
             run() {
                 const store = createStore({
                     ...createState(),
+                    route: {
+                        ...createState().route,
+                        source: "gpx",
+                        hasElevationData: true,
+                        elevationSource: "gpx_embedded"
+                    },
                     workout: {
                         ...createState().workout,
                         mode: WORKOUT_MODES.GRADE_SIM,

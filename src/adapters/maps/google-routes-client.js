@@ -7,7 +7,7 @@ export async function fetchGoogleBicycleRoute({
     fetchImpl = globalThis.fetch
 }) {
     if (!apiKey) {
-        throw new Error("请先填写 Google Maps API Key。");
+        throw new Error("请在 config.yaml 中配置 google.api_key 后重启服务。");
     }
     if (typeof fetchImpl !== "function") {
         throw new Error("当前浏览器不支持 Google Routes 请求。");

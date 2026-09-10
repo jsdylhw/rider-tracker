@@ -1,6 +1,7 @@
 import { runSuites, renderResults } from "./helpers/test-harness.js";
 import { installDomParserPolyfill } from "./helpers/dom-parser-polyfill.js";
 import { suite as routeSuite } from "./unit/route-builder.test.js";
+import { suite as routeElevationSuite } from "./unit/route-elevation.test.js";
 import { suite as mapDrawRouteSuite } from "./unit/map-draw-route.test.js";
 import { suite as osmRoadNetworkSuite } from "./unit/osm-road-network.test.js";
 import { suite as mapControllerSuite } from "./unit/map-controller.test.js";
@@ -9,7 +10,6 @@ import { suite as streetViewTargetSuite } from "./unit/street-view-target.test.j
 import { suite as googleElevationClientSuite } from "./unit/google-elevation-client.test.js";
 import { suite as googleRoutesClientSuite } from "./unit/google-routes-client.test.js";
 import { suite as googleMapsConfigServiceSuite } from "./unit/google-maps-config-service.test.js";
-import { suite as googleMapsServiceModalSuite } from "./unit/google-maps-service-modal.test.js";
 import { suite as homeViewModalSuite } from "./unit/home-view-modal.test.js";
 import { suite as routeServiceElevationSuite } from "./unit/route-service-elevation.test.js";
 import { suite as routeCurrentGpxExportSuite } from "./unit/route-current-gpx-export.test.js";
@@ -86,6 +86,7 @@ const app = typeof document !== 'undefined' ? document.getElementById("app") : n
 installDomParserPolyfill();
 const suites = [
     routeSuite,
+    routeElevationSuite,
     mapDrawRouteSuite,
     osmRoadNetworkSuite,
     mapControllerSuite,
@@ -94,7 +95,6 @@ const suites = [
     googleElevationClientSuite,
     googleRoutesClientSuite,
     googleMapsConfigServiceSuite,
-    googleMapsServiceModalSuite,
     homeViewModalSuite,
     routeServiceElevationSuite,
     routeCurrentGpxExportSuite,

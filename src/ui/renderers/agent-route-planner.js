@@ -1,3 +1,5 @@
+import { capabilityMessage } from "../../domain/agent/agent-capabilities.js";
+
 export function createAgentRoutePlanner({
     elements,
     onPlanAgentRoutes,
@@ -349,10 +351,8 @@ export function createAgentRoutePlanner({
 
     function unavailableMessage() {
         const availability = lastState?.agentCapabilities;
-        if (availability?.backend === "checking") return "正在检查 Training Agent，请稍候。";
-        if (availability?.backend !== "available") return "Training Agent 当前未运行；GPX、地图选点和手工路线仍可使用。";
-        if (availability?.llm === "disabled") return "AI 路线已关闭；GPX、地图选点和手工路线仍可使用。";
-        return "尚未配置大模型 API；GPX、地图选点和手工路线仍可使用。";
+        const reason = capabilityMessage(availability, "ai_route_planning");
+        return `${reason} GPX、本地保存路线和已导入的 Strava 路线仍可使用。`;
     }
 
     function setBusy(busy) {
@@ -365,9 +365,21 @@ export function createAgentRoutePlanner({
             elements.aiRouteSendBtn.textContent = busy ? "处理中..." : currentDraft ? "修改路线" : "生成候选";
         }
         elements.aiRoutePromptButtons?.forEach((button) => { button.disabled = locked; });
-        for (const button of [elements.aiRouteExploreSegmentsBtn, elements.aiRouteReverseBtn, elements.aiRouteUndoBtn]) {
+        for (const button of [elements.aiRouteReverseBtn, elements.aiRouteUndoBtn]) {
             if (button) button.disabled = locked || !currentDraft;
         }
+        if (elements.aiRouteExploreSegmentsBtn) {
+            const stravaAvailable = isStravaAvailable();
+            elements.aiRouteExploreSegmentsBtn.disabled = locked || !currentDraft || !stravaAvailable;
+            elements.aiRouteExploreSegmentsBtn.title = stravaAvailable
+                ? ""
+                : capabilityMessage(lastState?.agentCapabilities, "strava");
+        }
+    }
+
+    function isStravaAvailable() {
+        return lastState?.agentCapabilities === undefined
+            || lastState.agentCapabilities?.capabilities?.strava === true;
     }
 
     function updateDisabledState() {
