@@ -6,6 +6,10 @@ import { ROUTE_ELEVATION_SOURCES } from "../../domain/route/route-elevation.js";
 import { downloadRouteAsGpx } from "../../adapters/export/route-gpx-download.js";
 import { formatNumber } from "../../shared/format.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
+import {
+    shouldAutoSaveRouteOnRideStart,
+    shouldTrackSavedRouteProgress
+} from "../../domain/route/route-persistence-policy.js";
 
 export function createRouteEditorService({
     store,
@@ -182,18 +186,33 @@ export function createRouteEditorService({
     async function saveCurrentRoute({ name = "" } = {}) {
         const route = store.getState().route;
         if (!route?.points?.length) throw new Error("当前没有可以保存的路线。");
-        const saved = await routeLibrary?.saveRoute?.({
-            route,
-            source: route.source,
-            name: name || route.name,
-            agentPlanId: route.agentPlanId,
-            agentCandidateId: route.agentCandidateId,
-            metadata: route.agentMetadata ?? {}
-        });
+        const saved = await persistRoute(route, { name });
         if (!saved) throw new Error("路线库没有返回保存结果。");
         const committed = attachSavedRoute(route, saved);
         operations.commitRoute(committed, `路线已保存：${saved.name}。`);
         return saved;
+    }
+
+    async function ensureRouteSavedForRide(route) {
+        if (!shouldAutoSaveRouteOnRideStart(route) || route?.savedRouteId) {
+            return { route, saved: false, warning: "" };
+        }
+        try {
+            const savedRoute = await persistRoute(route);
+            if (!savedRoute) throw new Error("路线库没有返回保存结果。");
+            return {
+                route: attachSavedRoute(route, savedRoute),
+                saved: true,
+                warning: ""
+            };
+        } catch (error) {
+            console.warn("骑行开始前保存路线失败", error);
+            return {
+                route,
+                saved: false,
+                warning: `路线未保存到本地路线库：${extractErrorMessage(error)}；本次仍可继续骑行。`
+            };
+        }
     }
 
     function exportCurrentRouteGpx() {
@@ -215,19 +234,31 @@ export function createRouteEditorService({
         lastActivityId = null,
         startedAt = null
     }) {
-        if (!route?.savedRouteId) return null;
+        if (!shouldTrackSavedRouteProgress(route)) return null;
         const completedDistanceMeters = getSavedRouteCompletionDistance(route, sessionDistanceMeters);
         const totalDistanceMeters = Number(route?.continuation?.originalTotalDistanceMeters)
             || Number(route.totalDistanceMeters) || 0;
         if (totalDistanceMeters <= 0) return null;
-        if (completedDistanceMeters >= totalDistanceMeters - 10) {
-            return routeLibrary?.clearRouteProgress?.(route.savedRouteId) ?? null;
-        }
+        const status = completedDistanceMeters >= totalDistanceMeters - 10
+            ? "completed"
+            : "paused";
         return routeLibrary?.saveRouteProgress?.(route.savedRouteId, {
             resumeDistanceMeters: completedDistanceMeters,
             lastActivityId,
-            startedAt
+            startedAt,
+            status
         }) ?? null;
+    }
+
+    function persistRoute(route, { name = "" } = {}) {
+        return routeLibrary?.saveRoute?.({
+            route,
+            source: route.source,
+            name: name || route.name,
+            agentPlanId: route.agentPlanId,
+            agentCandidateId: route.agentCandidateId,
+            metadata: route.agentMetadata ?? {}
+        });
     }
 
     async function saveRouteAsset(input) {
@@ -254,6 +285,7 @@ export function createRouteEditorService({
         renameSavedRoute: (routeId, name) => routeLibrary?.renameSavedRoute?.(routeId, name),
         deleteSavedRoute: (routeId) => routeLibrary?.deleteSavedRoute?.(routeId),
         saveCurrentRoute,
+        ensureRouteSavedForRide,
         exportCurrentRouteGpx,
         updateSavedRouteProgress
     };
@@ -263,7 +295,8 @@ function attachSavedRoute(route, saved) {
     return {
         ...route,
         savedRouteId: saved.id,
-        savedRouteResumeDistanceMeters: saved.resumeDistanceMeters ?? 0
+        savedRouteResumeDistanceMeters: saved.resumeDistanceMeters ?? 0,
+        savedRouteProgressStatus: saved.progressStatus ?? null
     };
 }
 

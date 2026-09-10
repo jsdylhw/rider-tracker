@@ -39,11 +39,11 @@
 4. 后续通过版本化契约把热量归入 `metrics.energy`，例如 `calories_kcal`、`mechanical_work_kj` 和来源；
 5. 完成 artifact 重建/兼容策略和真实 FIT 回归后，再发布新的 activity detail schema。
 
-## 本地路线库缺少完整的骑行生命周期
+## 本地路线库骑行生命周期
 
-- 状态：待处理
+- 状态：第一版已处理（2026-09-10）
 - 发现阶段：Python 后端收敛阶段 5D 后续
-- 当前兼容处理：沿用已有路线保存和未完成进度逻辑，不在本项落地前扩大路线状态语义
+- 当前实现：正常开始/结束流程已支持自动保存、暂停续骑和完成标记；异常退出与骑行尝试历史仍待后续版本
 
 ### 已确认的产品边界
 
@@ -57,12 +57,13 @@
 | GPX 导入 | `gpx` | 是 | 是 |
 | AI 路线 | `agent-planned`（存储层为 `agent`） | 是 | 是 |
 | 地图选点 | `map-drawn`（存储层为 `map-draw`） | 是 | 是 |
+| Strava 导入 | `strava` | 否（导入时已保存） | 是 |
 | 地图探索 | `osm-exploration`（存储层为 `exploration`） | 否 | 否 |
 | 手工路段 | `manual` | 否 | 否 |
 
 路线来源判断应集中在一个领域函数中，避免开始骑行、路线编辑器和路线库 UI 各自维护不同的字符串判断。
 
-### 现状
+### 修复前现状
 
 - GPX 通常在导入时保存，AI 路线在最终确认时保存；地图选点路线开始骑行前不保证已经入库；
 - 只有带 `savedRouteId` 的路线才能在结束骑行时更新 `route_progress`；
@@ -90,7 +91,7 @@
 - `completed`：已完成，禁用“继续骑行”，仍允许“从起点使用”；
 - 完成判断暂时沿用距离终点不足 10 米的容差。
 
-### 预计修改范围
+### 已完成修改
 
 - `src/app/services/ride-service.js`：开始前确保允许持久化的路线已保存，结束时提交路线状态；
 - `src/app/services/route-editor-service.js`：提炼统一的路线保存和来源判断，计算绝对累计进度；
@@ -98,3 +99,10 @@
 - `services/training-agent/storage/repositories/saved_route.py`：让 progress 明确支持 `paused/completed`；
 - `services/training-agent/app/api.py` 及 Node BFF：扩展进度协议并保持结构化错误；
 - 对应的 Python 仓储/API、JavaScript 服务/UI 和正常双进程回归测试。
+
+### 尚未覆盖
+
+- 浏览器崩溃、强制关闭和断电恢复；
+- 骑行中的周期 checkpoint；
+- 一条路线多次骑行的 `route_attempts` 历史；
+- 跨设备同步进度。

@@ -148,7 +148,11 @@ export function createRouteLibraryRenderer({
         const selected = getSelectedRoute();
         if (elements.loadSavedRouteBtn) elements.loadSavedRouteBtn.disabled = loading || editingLocked || !selected;
         if (elements.continueSavedRouteBtn) {
-            elements.continueSavedRouteBtn.disabled = loading || editingLocked || !selected || !(selected.resumeDistanceMeters > 0);
+            elements.continueSavedRouteBtn.disabled = loading
+                || editingLocked
+                || !selected
+                || selected.progressStatus === "completed"
+                || !(selected.resumeDistanceMeters > 0);
         }
         if (elements.deleteSavedRouteBtn) elements.deleteSavedRouteBtn.disabled = loading || editingLocked || !selected;
     }
@@ -190,9 +194,11 @@ function hasCoordinate(point) {
 
 function formatRouteOption(route) {
     const distance = `${formatNumber(Number(route.totalDistanceMeters) / 1000, 1)} km`;
-    const progress = route.resumeDistanceMeters > 0
-        ? ` · 已骑 ${formatNumber(route.resumeDistanceMeters / 1000, 1)} km`
-        : "";
+    const progress = route.progressStatus === "completed"
+        ? " · 已完成"
+        : route.progressStatus === "paused" || route.resumeDistanceMeters > 0
+            ? ` · 未完成，已骑 ${formatNumber(route.resumeDistanceMeters / 1000, 1)} km`
+            : " · 尚未骑行";
     return `${route.name} · ${distance}${progress}`;
 }
 

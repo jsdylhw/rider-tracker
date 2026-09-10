@@ -1,6 +1,7 @@
 import { createStore } from "../../src/app/store/app-store.js";
 import { createRideService } from "../../src/app/services/ride-service.js";
 import { WORKOUT_MODES } from "../../src/domain/workout/workout-mode.js";
+import { shouldAutoSaveRouteOnRideStart } from "../../src/domain/route/route-persistence-policy.js";
 import { assert, assertEqual, assertGreaterThan } from "../helpers/test-harness.js";
 
 function createState() {
@@ -156,6 +157,88 @@ export const suite = {
                     assertEqual(state.liveRide.session.exportMetadata.activityName, "自定义线路骑行");
                     assertGreaterThan(timerCallbacks.length, 0);
                     assertEqual(timerIntervals[0], 250);
+                } finally {
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
+            name: "开始地图选点骑行前会等待路线保存并冻结保存后的路线身份",
+            async run() {
+                const initialState = createState();
+                const originalRoute = { ...initialState.route, source: "map-drawn" };
+                const store = createStore({ ...initialState, route: originalRoute });
+                assertEqual(shouldAutoSaveRouteOnRideStart(store.getState().route), true);
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval() { return 1; },
+                    clearInterval() {}
+                };
+
+                try {
+                    const service = createRideService({
+                        store,
+                        routeService: {
+                            async ensureRouteSavedForRide(route) {
+                                assertEqual(route.source, "map-drawn");
+                                await Promise.resolve();
+                                return {
+                                    route: { ...route, savedRouteId: "saved-map-route" },
+                                    saved: true,
+                                    warning: ""
+                                };
+                            }
+                        },
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: { downloadFit() {} }
+                    });
+
+                    const startPromise = service.startRide();
+                    assertEqual(store.getState().liveRide.isActive, false);
+                    await startPromise;
+
+                    assertEqual(store.getState().liveRide.isActive, true);
+                    assertEqual(store.getState().route.savedRouteId, "saved-map-route");
+                    assertEqual(store.getState().liveRide.session.route.savedRouteId, "saved-map-route");
+                } finally {
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
+            name: "路线保存失败不会阻断骑行但会显示明确警告",
+            async run() {
+                const initialState = createState();
+                const store = createStore({
+                    ...initialState,
+                    route: { ...initialState.route, source: "map-drawn" }
+                });
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval() { return 1; },
+                    clearInterval() {}
+                };
+
+                try {
+                    const service = createRideService({
+                        store,
+                        routeService: {
+                            async ensureRouteSavedForRide(route) {
+                                return { route, saved: false, warning: "路线未保存到本地路线库：磁盘只读；本次仍可继续骑行。" };
+                            }
+                        },
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: { downloadFit() {} }
+                    });
+
+                    await service.startRide();
+
+                    assertEqual(store.getState().liveRide.isActive, true);
+                    assertEqual(store.getState().liveRide.statusMeta.includes("磁盘只读"), true);
                 } finally {
                     if (originalWindow === undefined) delete globalThis.window;
                     else globalThis.window = originalWindow;
@@ -602,6 +685,59 @@ export const suite = {
                 } finally {
                     if (originalLocalStorage === undefined) delete globalThis.localStorage;
                     else globalThis.localStorage = originalLocalStorage;
+                    if (originalWindow === undefined) delete globalThis.window;
+                    else globalThis.window = originalWindow;
+                }
+            }
+        },
+        {
+            name: "正常结束会用冻结的保存路线更新骑行进度",
+            async run() {
+                const initialState = createState();
+                initialState.route = {
+                    ...initialState.route,
+                    source: "gpx",
+                    savedRouteId: "saved-gpx-route"
+                };
+                const store = createStore(initialState);
+                const timerCallbacks = [];
+                const originalWindow = globalThis.window;
+                globalThis.window = {
+                    ...(originalWindow ?? {}),
+                    setInterval(callback) {
+                        timerCallbacks.push(callback);
+                        return timerCallbacks.length;
+                    },
+                    clearInterval() {}
+                };
+                let progressInput = null;
+
+                try {
+                    const service = createRideService({
+                        store,
+                        routeService: {
+                            updateSavedRouteProgress(input) {
+                                progressInput = input;
+                                return Promise.resolve();
+                            }
+                        },
+                        deviceService: { async setTrainerGrade() {}, async setTrainerPower() {}, async setTrainerResistance() {} },
+                        exportService: {
+                            archiveSessionAsFitActivity() {
+                                return Promise.resolve({ id: "saved-activity" });
+                            }
+                        }
+                    });
+
+                    service.startRide();
+                    timerCallbacks[0]();
+                    service.stopRide();
+                    await flushPromises(6);
+
+                    assertEqual(progressInput.route.savedRouteId, "saved-gpx-route");
+                    assertEqual(progressInput.lastActivityId, "saved-activity");
+                    assertGreaterThan(progressInput.sessionDistanceMeters, 0);
+                } finally {
                     if (originalWindow === undefined) delete globalThis.window;
                     else globalThis.window = originalWindow;
                 }

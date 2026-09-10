@@ -87,6 +87,26 @@ export const suite = {
             }
         },
         {
+            name: "labels completed routes and disables only the continue action",
+            async run() {
+                const elements = buildElements();
+                const renderer = createRouteLibraryRenderer({
+                    elements,
+                    onListSavedRoutes: async () => [{
+                        ...savedRoute(),
+                        progressStatus: "completed",
+                        resumeDistanceMeters: 30000
+                    }]
+                });
+
+                await renderer.refresh();
+
+                assertEqual(elements.savedRouteSelect.innerHTML.includes("已完成"), true);
+                assertEqual(elements.loadSavedRouteBtn.disabled, false);
+                assertEqual(elements.continueSavedRouteBtn.disabled, true);
+            }
+        },
+        {
             name: "keeps the user's next selection after loading a route from the start",
             async run() {
                 const elements = buildElements();

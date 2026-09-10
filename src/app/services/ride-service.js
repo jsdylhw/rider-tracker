@@ -24,6 +24,7 @@ import { sendFitBeacon } from "../../adapters/upload/fit-beacon-client.js";
 import { loadFitSdk } from "../../adapters/fit/fit-sdk-loader.js";
 import { buildRoute, isRouteReadyForRide } from "../../domain/route/route-builder.js";
 import { deriveRideReadiness, formatReadinessMessages } from "../../domain/ride/ride-readiness.js";
+import { shouldAutoSaveRouteOnRideStart } from "../../domain/route/route-persistence-policy.js";
 
 const DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS = 250;
 const ADAPTIVE_PHYSICS_TICK_BUCKETS_MS = [200, 250, 500, 1000];
@@ -35,9 +36,11 @@ const DEFAULT_ACTIVITY_NAME = "Rider Tracker Virtual Ride";
 export function createRideService({ store, deviceService, exportService, routeService = null }) {
     let liveRideTimerId = null;
     let liveRideTickIntervalMs = DEFAULT_LIVE_RIDE_PHYSICS_TICK_MS;
+    let isStartingRide = false;
 
     function startRide() {
-        let state = store.getState();
+        const state = store.getState();
+        if (state.liveRide.isActive || isStartingRide) return;
         const readiness = deriveRideReadiness({
             route: state.route,
             workout: state.workout,
@@ -53,14 +56,65 @@ export function createRideService({ store, deviceService, exportService, routeSe
             }));
             return;
         }
-        if (isRouteReadyForRide(state.route)) {
+
+        const routeAtRequest = state.route;
+        if (shouldAutoSaveRouteOnRideStart(routeAtRequest)
+            && !routeAtRequest?.savedRouteId
+            && typeof routeService?.ensureRouteSavedForRide === "function") {
+            isStartingRide = true;
+            store.setState((currentState) => ({
+                ...currentState,
+                statusText: "正在保存路线并准备骑行…"
+            }));
+            return Promise.resolve(routeService.ensureRouteSavedForRide(routeAtRequest))
+                .then((result) => {
+                    if (store.getState().route !== routeAtRequest) {
+                        store.setState((currentState) => ({
+                            ...currentState,
+                            statusText: "准备骑行期间路线已改变，请重新点击开始骑行。"
+                        }));
+                        return;
+                    }
+                    beginRide(result?.route ?? routeAtRequest, result?.warning ?? "");
+                })
+                .catch((error) => {
+                    if (store.getState().route !== routeAtRequest) return;
+                    beginRide(routeAtRequest, `路线未保存到本地路线库：${error?.message || "未知错误"}；本次仍可继续骑行。`);
+                })
+                .finally(() => {
+                    isStartingRide = false;
+                });
+        }
+        return beginRide(routeAtRequest);
+    }
+
+    function beginRide(route, routeSaveWarning = "") {
+        let state = store.getState();
+        if (state.liveRide.isActive) return;
+        let effectiveRoute = route;
+        if (isRouteReadyForRide(effectiveRoute)) {
             routeService?.ensureExplorationRouteAhead?.({ distanceMeters: 0 });
+            if (effectiveRoute?.source === "osm-exploration") {
+                effectiveRoute = store.getState().route;
+            }
         }
         state = store.getState();
-        const streetViewDebugEnabled = isStreetViewDebugEnabled();
-        if (state.liveRide.isActive) {
+        const readiness = deriveRideReadiness({
+            route: effectiveRoute,
+            workout: state.workout,
+            rideInput: state.rideInput,
+            ble: state.ble,
+            debugEnabled: isStreetViewDebugEnabled()
+        });
+        if (!readiness.canStart) {
+            store.setState((currentState) => ({
+                ...currentState,
+                statusText: readiness.blockers[0]?.message || "当前状态不能开始骑行。",
+                liveRide: { ...currentState.liveRide, statusMeta: formatReadinessMessages(readiness.blockers) }
+            }));
             return;
         }
+        const streetViewDebugEnabled = isStreetViewDebugEnabled();
 
         const startedAt = new Date().toISOString();
         const trainerControlMode = resolveTrainerControlModeForWorkoutMode(state.workout.mode);
@@ -71,21 +125,24 @@ export function createRideService({ store, deviceService, exportService, routeSe
             streetViewDebugEnabled
         });
         const baseSession = createLiveRideSession({
-            route: state.route,
+            route: effectiveRoute,
             settings: state.settings,
             startedAt
         });
 
-        baseSession.exportMetadata = buildRideExportMetadata(state.exportMetadata, state.route);
+        baseSession.exportMetadata = buildRideExportMetadata(state.exportMetadata, effectiveRoute);
 
-        const hasRoute = isRouteReadyForRide(state.route);
-        const initialStatusMeta = streetViewDebugEnabled && sampledSensors.powerSourceType === "street-view-debug"
+        const hasRoute = isRouteReadyForRide(effectiveRoute);
+        const rideStatusMeta = streetViewDebugEnabled && sampledSensors.powerSourceType === "street-view-debug"
             ? hasRoute
                 ? `街景调试骑行：使用 ${sampledSensors.power} W 模拟功率预览路线与 UI，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`
                 : `调试训练：使用 ${sampledSensors.power} W 模拟功率，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`
             : hasRoute
                 ? `正在根据实时功率和路线信息更新骑行状态，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`
                 : `训练已开始，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`;
+        const initialStatusMeta = routeSaveWarning
+            ? `${rideStatusMeta} ${routeSaveWarning}`
+            : rideStatusMeta;
         const initialRideState = buildInitialRideSessionState({
             session: baseSession,
             sampledSensors,
@@ -97,6 +154,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
 
         store.setState((currentState) => ({
             ...currentState,
+            route: effectiveRoute,
             uiMode: "live",
             session: null,
             selectedActivity: null,
@@ -111,8 +169,8 @@ export function createRideService({ store, deviceService, exportService, routeSe
                 statusMeta: initialStatusMeta
             },
             statusText: streetViewDebugEnabled && sampledSensors.powerSourceType === "street-view-debug"
-                ? `已开始街景调试骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。`
-                : `已开始骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。`
+                ? `已开始街景调试骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。${routeSaveWarning ? ` ${routeSaveWarning}` : ""}`
+                : `已开始骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。${routeSaveWarning ? ` ${routeSaveWarning}` : ""}`
         }));
 
         restartLiveRideLoop(resolveAdaptivePhysicsTickMs(sampledSensors));
@@ -553,7 +611,7 @@ async function persistCompletedRouteProgress({
             startedAt: completedSession.startedAt
         });
     } catch (error) {
-        console.warn("[RideService] 保存未完成路线进度失败:", error);
+        console.warn("[RideService] 保存路线骑行状态失败:", error);
     }
 }
 

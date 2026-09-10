@@ -124,12 +124,21 @@ class SavedRouteStore:
                 now,
             ),
         )
-        # A geometry duplicate may carry corrected distance metadata. Do not
-        # leave continuation state beyond the replacement route end.
+        # A geometry duplicate may carry corrected distance metadata. Keep a
+        # durable completion marker, but clamp its distance to the corrected
+        # route end and discard an invalid paused continuation.
+        connection.execute(
+            """
+            UPDATE route_progress
+            SET resume_distance_meters = ?, updated_at = ?
+            WHERE route_id = ? AND status = 'completed'
+            """,
+            (normalized["total_distance_meters"], now, route_id),
+        )
         connection.execute(
             """
             DELETE FROM route_progress
-            WHERE route_id = ? AND resume_distance_meters >= ?
+            WHERE route_id = ? AND status != 'completed' AND resume_distance_meters >= ?
             """,
             (route_id, max(0.0, normalized["total_distance_meters"] - 10)),
         )
@@ -191,8 +200,10 @@ class SavedRouteStore:
         resume_distance_meters: Any,
         last_activity_id: Any = None,
         started_at: Any = None,
+        status: Any = "paused",
     ) -> dict[str, Any]:
         normalized_id = _normalize_id(route_id)
+        _normalize_progress_status(status)
         with connect_database(self.path) as connection:
             connection.execute("BEGIN IMMEDIATE")
             route = self._read_route(connection, normalized_id)
@@ -200,30 +211,34 @@ class SavedRouteStore:
                 raise SavedRouteNotFound("Saved route not found.")
             total = _finite_or_zero(route["totalDistanceMeters"])
             distance = min(max(0.0, _finite_or_zero(resume_distance_meters)), total)
-            if distance <= 0 or distance >= total - 10:
-                connection.execute("DELETE FROM route_progress WHERE route_id = ?", (normalized_id,))
-            else:
-                connection.execute(
-                    """
-                    INSERT INTO route_progress (
-                        route_id, resume_distance_meters, last_activity_id,
-                        status, started_at, updated_at
-                    ) VALUES (?, ?, ?, 'paused', ?, ?)
-                    ON CONFLICT(route_id) DO UPDATE SET
-                        resume_distance_meters = excluded.resume_distance_meters,
-                        last_activity_id = excluded.last_activity_id,
-                        status = excluded.status,
-                        started_at = COALESCE(excluded.started_at, route_progress.started_at),
-                        updated_at = excluded.updated_at
-                    """,
-                    (
-                        normalized_id,
-                        distance,
-                        _optional_text(last_activity_id),
-                        _optional_text(started_at),
-                        _now(),
-                    ),
-                )
+            # The caller communicates intent, but completion remains a
+            # server-owned distance invariant so a malformed client cannot
+            # mark a partially ridden route as complete.
+            effective_status = "completed" if distance >= total - 10 else "paused"
+            if effective_status == "completed":
+                distance = total
+            connection.execute(
+                """
+                INSERT INTO route_progress (
+                    route_id, resume_distance_meters, last_activity_id,
+                    status, started_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(route_id) DO UPDATE SET
+                    resume_distance_meters = excluded.resume_distance_meters,
+                    last_activity_id = excluded.last_activity_id,
+                    status = excluded.status,
+                    started_at = COALESCE(excluded.started_at, route_progress.started_at),
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    normalized_id,
+                    distance,
+                    _optional_text(last_activity_id),
+                    effective_status,
+                    _optional_text(started_at),
+                    _now(),
+                ),
+            )
             updated = self._read_route(connection, normalized_id)
         return updated or _raise_not_found()
 
@@ -361,6 +376,13 @@ def _normalize_source(value: Any) -> str:
     if normalized not in ROUTE_SOURCES:
         raise ValueError(f"Unsupported route source: {value}")
     return normalized
+
+
+def _normalize_progress_status(value: Any) -> str:
+    status = str(value or "paused").strip().lower()
+    if status not in {"paused", "completed"}:
+        raise ValueError("Route progress status must be paused or completed.")
+    return status
 
 
 def _restore_domain_source(value: Any, stored_source: Any) -> str:
