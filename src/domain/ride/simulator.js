@@ -1,6 +1,7 @@
 import { getForwardRouteSpeedLimitAhead, getRouteSampleAtDistance, getSegmentAtDistance } from "../route/route-builder.js";
 import { simulateStep } from "../physics/cycling-model.js";
 import { buildRideMetrics, createEmptyRideMetrics } from "../metrics/ride-metrics.js";
+import { resolveRideGradePercent, supportsGradeSimulation } from "../route/route-elevation.js";
 
 export function simulateRide({ route, settings }) {
     const records = [];
@@ -28,15 +29,18 @@ export function simulateRide({ route, settings }) {
     };
     for (let elapsedSeconds = 1; elapsedSeconds <= maxSimulationSeconds; elapsedSeconds += 1) {
         const routeSample = getRouteSampleAtDistance(route, state.distanceMeters);
-        const gradePercent = routeSample.gradePercent ?? 0;
+        const gradePercent = resolveRideGradePercent(route, routeSample);
         const routeSpeedLimit = getForwardRouteSpeedLimitAhead(route, state.distanceMeters, resolveSpeedLookaheadMeters(state.speed));
+        const speedLimitKph = supportsGradeSimulation(route)
+            ? routeSpeedLimit.speedLimitKph
+            : routeSpeedLimit.curveSpeedLimitKph;
 
         const previousState = state;
         state = simulateStep({
             ...state,
             power: settings.power,
             gradePercent,
-            speedLimitMps: Number.isFinite(routeSpeedLimit.speedLimitKph) ? routeSpeedLimit.speedLimitKph / 3.6 : null,
+            speedLimitMps: Number.isFinite(speedLimitKph) ? speedLimitKph / 3.6 : null,
             brakingDecelerationMps2: gradePercent < -2 ? 2.6 : 2.2,
             elapsedSeconds,
             settings,
@@ -64,9 +68,9 @@ export function simulateRide({ route, settings }) {
             // physiological value from power; downstream metrics treat null as unavailable.
             heartRate: null,
             gradePercent,
-            speedLimitKph: routeSpeedLimit.speedLimitKph,
+            speedLimitKph,
             curveSpeedLimitKph: routeSpeedLimit.curveSpeedLimitKph,
-            gradeSpeedLimitKph: routeSpeedLimit.gradeSpeedLimitKph,
+            gradeSpeedLimitKph: supportsGradeSimulation(route) ? routeSpeedLimit.gradeSpeedLimitKph : null,
             elevationMeters,
             ascentMeters: state.ascentMeters,
             segmentName: getSegmentAtDistance(route, state.distanceMeters)?.name ?? "终点后",

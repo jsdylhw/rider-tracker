@@ -16,7 +16,7 @@ export function createMapDrawRouteService({
         invalidateExploration?.();
         const apiKey = googleMapsConfig?.getApiKey?.() ?? "";
         if (!apiKey) {
-            throw new Error("请先填写 Google Maps API Key。");
+            throw new Error("请在 config.yaml 中配置 google.api_key 后重启服务。");
         }
 
         const { requestId, route: loadingRoute } = operations.beginRouteRequest("正在调用 Google Routes API 生成骑行路线...");
@@ -34,7 +34,7 @@ export function createMapDrawRouteService({
             });
             operations.commitRoute(
                 route,
-                `${route.travelMode === "DRIVE" ? "Google 骑行路线不可用，已生成避开高速的道路路线" : "已生成 Google 骑行路线"}：${formatNumber(route.totalDistanceMeters / 1000, 2)} km。正在准备请求路线海拔。`
+                `${route.travelMode === "DRIVE" ? "Google 骑行路线不可用，已生成避开高速的道路路线" : "已生成 Google 骑行路线"}：${formatNumber(route.totalDistanceMeters / 1000, 2)} km。正在准备 Google 参考海拔。`
             );
             return route;
         } catch (error) {

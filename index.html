@@ -226,8 +226,8 @@
                                 <div id="manualRoutePanel" class="route-mode-panel">
                                     <div class="route-panel-head">
                                         <div>
-                                            <strong>自定义坡度线路</strong>
-                                            <span>手动编辑距离和坡度，用于快速构造训练路线。</span>
+                                            <strong>自定义距离线路</strong>
+                                            <span>手动编辑距离和参考坡度；坡度模拟请使用 GPX 或 Strava 路线。</span>
                                         </div>
                                         <div class="inline-actions">
                                             <button id="addSegmentBtn" class="btn secondary" type="button">新增路段</button>
@@ -236,7 +236,7 @@
                                     </div>
                                     <div id="routeTableShell" class="table-shell">
                                         <table class="route-table">
-                                            <thead><tr><th>名称</th><th>距离 km</th><th>坡度 %</th><th>操作</th></tr></thead>
+                                            <thead><tr><th>名称</th><th>距离 km</th><th>参考坡度 %</th><th>操作</th></tr></thead>
                                             <tbody id="routeTableBody"></tbody>
                                         </table>
                                     </div>
@@ -252,7 +252,7 @@
                                             <button id="undoMapDrawWaypointBtn" class="btn ghost" type="button">撤销上一个点</button>
                                             <button id="clearMapDrawRouteBtn" class="btn ghost" type="button">清空</button>
                                             <button id="createMapDrawRouteBtn" class="btn primary" type="button">生成路线</button>
-                                            <button id="requestMapDrawElevationBtn" class="btn secondary" type="button" hidden>请求海拔</button>
+                                            <button id="requestMapDrawElevationBtn" class="btn secondary" type="button" hidden>请求参考海拔</button>
                                         </div>
                                     </div>
                                     <div class="map-route-selection-card start">
@@ -544,25 +544,6 @@
         </div>
     </template>
 
-    <div class="modal-overlay" id="googleMapsServiceOverlay" aria-hidden="true">
-        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="googleMapsServiceTitle">
-            <div class="modal-title-row">
-                <h3 id="googleMapsServiceTitle">使用 Google Maps 服务</h3>
-                <button id="closeGoogleMapsServiceBtn" class="modal-close-btn" type="button" aria-label="关闭">&times;</button>
-            </div>
-            <p id="googleMapsServiceDescription" class="muted">Key 仅保存在当前浏览器本地，用于街景和路线海拔请求。</p>
-            <label class="field">
-                <span>Google Maps API Key</span>
-                <input id="googleMapsServiceApiKeyInput" type="password" autocomplete="off" placeholder="AIza...">
-            </label>
-            <div id="googleMapsServiceStatus" class="route-summary" aria-live="polite"></div>
-            <div class="modal-actions">
-                <button id="confirmGoogleMapsServiceBtn" class="btn power-btn" type="button">继续</button>
-                <button id="cancelGoogleMapsServiceBtn" class="btn secondary" type="button">取消</button>
-            </div>
-        </div>
-    </div>
-
     <div class="modal-overlay profile-settings-overlay" id="profileSettingsOverlay" aria-hidden="true">
         <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="profileSettingsTitle">
             <h3 id="profileSettingsTitle">骑行设置</h3>
@@ -589,7 +570,7 @@
                     <h2 id="rideDashboardTitle">实时骑行界面</h2>
                 </div>
                 <div class="inline-actions">
-                    <button id="requestRouteElevationBtn" class="btn secondary" hidden>请求路线海拔</button>
+                    <button id="requestRouteElevationBtn" class="btn secondary" hidden>请求参考海拔</button>
                     <button id="loadStreetViewBtn" class="btn secondary" hidden>加载街景</button>
                     <button id="customizeMetricsBtn" class="btn secondary">自定义面板</button>
                     <button id="immersiveMovingStreetViewBtn" class="btn secondary" hidden>移动沉浸</button>

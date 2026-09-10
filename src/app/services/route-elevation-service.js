@@ -1,6 +1,7 @@
 import { buildRouteFromTrackPoints } from "../../domain/route/route-builder.js";
 import { buildSummarySegmentsFromTrackPoints } from "../../domain/route/track-route.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
+import { ROUTE_ELEVATION_SOURCES } from "../../domain/route/route-elevation.js";
 
 export function createRouteElevationService({
     store,
@@ -13,7 +14,7 @@ export function createRouteElevationService({
     async function enrichRoute(route) {
         const apiKey = googleMapsConfig?.getApiKey?.() ?? "";
         if (!apiKey) {
-            throw new Error("请先填写 Google Maps API Key。");
+            throw new Error("请在 config.yaml 中配置 google.api_key 后重启服务。");
         }
         await loadGoogleMaps(apiKey);
         googleMapsConfig?.lockApiKey?.(apiKey);
@@ -30,20 +31,20 @@ export function createRouteElevationService({
             throw new Error("骑行开始后不能替换路线海拔，请先结束当前骑行。");
         }
         if (initialRoute?.isLoading) {
-            throw new Error("当前路线仍在处理中，请等待完成后再请求海拔。");
+            throw new Error("当前路线仍在处理中，请等待完成后再请求参考海拔。");
         }
         if (!hasCoordinateRoute(initialRoute)) {
-            throw new Error("当前路线没有坐标，无法请求 Google 海拔。");
+            throw new Error("当前路线没有坐标，无法请求 Google 参考海拔。");
         }
         if (initialRoute.hasElevationData) {
             return { updated: false, reason: "already-loaded" };
         }
         if (!(googleMapsConfig?.getApiKey?.() ?? "")) {
-            throw new Error("请先填写 Google Maps API Key。");
+            throw new Error("请在 config.yaml 中配置 google.api_key 后重启服务。");
         }
 
         const { requestId, route } = operations.beginRouteRequest(
-            `正在请求 Google 海拔：${initialRoute.points.length} 个采样点...`
+            `正在请求 Google 参考海拔：${initialRoute.points.length} 个采样点...`
         );
         try {
             const result = await enrichRoute(route);
@@ -59,7 +60,7 @@ export function createRouteElevationService({
             return { updated: true, summary: result.summary };
         } catch (error) {
             if (operations.isCurrent(requestId) && store.getState().route === route) {
-                operations.clearRouteLoading(`Google 海拔请求失败：${extractErrorMessage(error)}`);
+                operations.clearRouteLoading(`Google 参考海拔请求失败：${extractErrorMessage(error)}`);
             }
             throw error;
         }
@@ -77,7 +78,10 @@ function rebuildRouteWithElevation(route, points, hasElevationData) {
             hasElevationData,
             namePrefix: route.source === "osm-exploration" ? "OSM 探索" : "路线"
         }),
-        hasElevationData
+        hasElevationData,
+        elevationSource: hasElevationData
+            ? ROUTE_ELEVATION_SOURCES.GOOGLE_ESTIMATED
+            : ROUTE_ELEVATION_SOURCES.NONE
     });
     return { ...route, ...rebuilt, isLoading: false };
 }
@@ -89,5 +93,5 @@ function hasCoordinateRoute(route) {
 
 function buildElevationUpdateStatus(summary) {
     const quotaText = summary?.skippedByQuota ? "，部分采样点因 quota cap 未请求" : "";
-    return `路线海拔已更新：Google 请求 ${summary?.requests ?? 0} 次 / ${summary?.requestedPoints ?? 0} 点，缓存命中 ${summary?.cacheHits ?? 0}${quotaText}。`;
+    return `路线参考海拔已更新：Google 请求 ${summary?.requests ?? 0} 次 / ${summary?.requestedPoints ?? 0} 点，缓存命中 ${summary?.cacheHits ?? 0}${quotaText}；该数据不用于坡度模拟。`;
 }

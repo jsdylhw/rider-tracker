@@ -53,11 +53,10 @@ export function createRideService({ store, deviceService, exportService, routeSe
             }));
             return;
         }
-        routeService?.ensureExplorationRouteAhead?.({ distanceMeters: 0 });
-        state = store.getState();
-        if (!isRouteReadyForRide(state.route)) {
-            return;
+        if (isRouteReadyForRide(state.route)) {
+            routeService?.ensureExplorationRouteAhead?.({ distanceMeters: 0 });
         }
+        state = store.getState();
         const streetViewDebugEnabled = isStreetViewDebugEnabled();
         if (state.liveRide.isActive) {
             return;
@@ -79,9 +78,14 @@ export function createRideService({ store, deviceService, exportService, routeSe
 
         baseSession.exportMetadata = buildRideExportMetadata(state.exportMetadata, state.route);
 
+        const hasRoute = isRouteReadyForRide(state.route);
         const initialStatusMeta = streetViewDebugEnabled && sampledSensors.powerSourceType === "street-view-debug"
-            ? `街景调试骑行：使用 ${sampledSensors.power} W 模拟功率预览路线与 UI，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`
-            : `正在根据实时功率和路线坡度更新速度，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`;
+            ? hasRoute
+                ? `街景调试骑行：使用 ${sampledSensors.power} W 模拟功率预览路线与 UI，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`
+                : `调试训练：使用 ${sampledSensors.power} W 模拟功率，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`
+            : hasRoute
+                ? `正在根据实时功率和路线信息更新骑行状态，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`
+                : `训练已开始，当前模式：${getWorkoutModeLabel(state.workout.mode)}。`;
         const initialRideState = buildInitialRideSessionState({
             session: baseSession,
             sampledSensors,
@@ -626,6 +630,9 @@ function buildRideExportMetadata(exportMetadata, route) {
 }
 
 function inferActivityName(route, fallbackName = DEFAULT_ACTIVITY_NAME) {
+    if (!isRouteReadyForRide(route)) {
+        return "自定义训练";
+    }
     if (route?.source === "gpx" || route?.source === "strava") {
         return String(route.importFileName ?? route.name ?? "GPX 路线").trim().slice(0, 48);
     }

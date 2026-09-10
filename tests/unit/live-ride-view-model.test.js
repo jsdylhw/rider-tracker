@@ -113,6 +113,9 @@ export const suite = {
                         state: {
                             route: {
                                 totalDistanceMeters: 1000,
+                                source: "gpx",
+                                hasElevationData: true,
+                                elevationSource: "gpx_embedded",
                                 points: [],
                                 segments: []
                             },

@@ -97,7 +97,7 @@ export const suite = {
     name: "streetview-ui",
     tests: [
         {
-            name: "未配置 Google Key 时街景仅等待用户点击",
+            name: "未配置 Google Key 时街景入口保持禁用且不自动请求",
             async run() {
                 const elements = createElements();
                 const store = createStore(createBaseState());
@@ -120,7 +120,8 @@ export const suite = {
 
                 assertEqual(loadCount, 0);
                 assertEqual(elements.immersiveStreetViewBtn.hidden, true);
-                assertEqual(elements.loadStreetViewBtn.hidden, true);
+                assertEqual(elements.loadStreetViewBtn.hidden, false);
+                assertEqual(elements.loadStreetViewBtn.disabled, true);
             }
         },
         {
@@ -417,7 +418,7 @@ export const suite = {
             }
         },
         {
-            name: "config Key 加载失败后才弹出备用 Key 并重试街景",
+            name: "config Key 加载失败后不再弹出备用 Key 或重复请求",
             async run() {
                 const elements = createElements();
                 const store = createStore(createBaseState());
@@ -450,9 +451,9 @@ export const suite = {
                 elements.loadStreetViewBtn.dispatch("click");
                 await waitForUiAction();
 
-                assertEqual(attemptCount, 2);
-                assertEqual(keyPromptCount, 1);
-                assertEqual(elements.streetViewContainer.classList.contains("streetview-debug-empty"), false);
+                assertEqual(attemptCount, 1);
+                assertEqual(keyPromptCount, 0);
+                assertEqual(elements.streetViewContainer.classList.contains("streetview-debug-empty"), true);
                 assertEqual(elements.immersiveStreetViewBtn.hidden, false);
             }
         },
@@ -483,7 +484,7 @@ export const suite = {
                 assertEqual(elements.loadStreetViewBtn.hidden, false);
                 assertEqual(elements.requestRouteElevationBtn.hidden, false);
                 assertEqual(elements.requestRouteElevationBtn.disabled, true);
-                assertEqual(elements.requestRouteElevationBtn.textContent, "骑行中不可请求海拔");
+                assertEqual(elements.requestRouteElevationBtn.textContent, "骑行中不可请求参考海拔");
 
                 state.liveRide.isActive = false;
                 store.setState(() => state);
@@ -492,7 +493,7 @@ export const suite = {
                 await waitForUiAction();
 
                 assertEqual(elevationRequests, 1);
-                assertEqual(requestedKeyFor, "请求路线海拔");
+                assertEqual(requestedKeyFor, "请求路线参考海拔");
             }
         },
         {
@@ -515,7 +516,7 @@ export const suite = {
 
                 assertEqual(elements.requestRouteElevationBtn.hidden, false);
                 assertEqual(elements.requestRouteElevationBtn.disabled, true);
-                assertEqual(elements.requestRouteElevationBtn.textContent, "探索路线海拔已加载");
+                assertEqual(elements.requestRouteElevationBtn.textContent, "参考海拔已加载");
             }
         },
         {

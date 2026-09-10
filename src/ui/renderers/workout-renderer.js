@@ -1,5 +1,6 @@
 import { getWorkoutModeLabel, WORKOUT_MODES } from "../../domain/workout/workout-mode.js";
 import { TRAINER_CONTROL_MODES } from "../../domain/workout/trainer-command.js";
+import { supportsGradeSimulation } from "../../domain/route/route-elevation.js";
 import { formatNumber } from "../../shared/format.js";
 
 export function createWorkoutRenderer({
@@ -47,7 +48,10 @@ export function createWorkoutRenderer({
     function render(state) {
         const signature = JSON.stringify({
             workout: state.workout,
-            uiMode: state.uiMode
+            uiMode: state.uiMode,
+            routeSource: state.route?.source,
+            elevationSource: state.route?.elevationSource,
+            routeHasElevation: state.route?.hasElevationData
         });
 
         if (signature === lastSignature) {
@@ -63,6 +67,7 @@ export function createWorkoutRenderer({
         if (elements.workoutModeSelect && document.activeElement !== elements.workoutModeSelect) {
             elements.workoutModeSelect.value = workout.mode;
         }
+        syncGradeSimulationOption(elements.workoutModeSelect, state.route);
 
         syncNumberField(elements.gradeDifficultyInput, gradeSimulation.difficultyPercent);
         syncNumberField(elements.gradeLookaheadInput, gradeSimulation.lookaheadMeters);
@@ -128,6 +133,16 @@ export function createWorkoutRenderer({
     return {
         render
     };
+}
+
+function syncGradeSimulationOption(select, route) {
+    const option = [...(select?.options ?? [])].find((item) => item.value === WORKOUT_MODES.GRADE_SIM);
+    if (!option) return;
+    const available = supportsGradeSimulation(route);
+    option.disabled = !available;
+    option.title = available
+        ? ""
+        : "坡度模拟只支持带内嵌海拔的 GPX 或 Strava 同步路线。";
 }
 
 function syncNumberField(field, value) {

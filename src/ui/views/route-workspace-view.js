@@ -19,10 +19,7 @@ const ROUTE_ELEMENT_IDS = [
     "clearMapDrawRouteBtn", "createMapDrawRouteBtn", "requestMapDrawElevationBtn",
     "mapDrawRouteStatus", "mapDrawWaypointSummary", "mapDrawRoutePlanStatus",
     "clearMapRouteSelectionBtn", "planMapRouteBtn", "mapRouteSelectionStatus",
-    "mapRouteStartText", "mapRouteDestinationText", "mapRoutePlanStatus",
-    "googleMapsServiceOverlay", "googleMapsServiceTitle", "googleMapsServiceDescription",
-    "googleMapsServiceApiKeyInput", "googleMapsServiceStatus", "confirmGoogleMapsServiceBtn",
-    "cancelGoogleMapsServiceBtn", "closeGoogleMapsServiceBtn"
+    "mapRouteStartText", "mapRouteDestinationText", "mapRoutePlanStatus"
 ];
 
 export function createRouteWorkspaceView() {

@@ -234,7 +234,7 @@ export function createDashboardRenderer({
         ].forEach(([button, mode]) => {
             button?.addEventListener("click", () => {
                 if (!hasStreetViewPresentation()) {
-                    alert("请先点击“加载街景”并完成 Google Maps API Key 配置。");
+                    alert("请先点击“加载街景”；如功能不可用，请检查 config.yaml 中的 Google API 配置。");
                     return;
                 }
                 const liveRide = store?.getState?.().liveRide ?? {};
@@ -340,7 +340,7 @@ export function createDashboardRenderer({
             return;
         }
 
-        googleMapsRideActions.syncButtons({ route, ride });
+        googleMapsRideActions.syncButtons({ route, ride, agentCapabilities: state.agentCapabilities });
 
         if (!session) {
             alertStates.halfway = false;

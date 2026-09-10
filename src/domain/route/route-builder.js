@@ -1,3 +1,5 @@
+import { resolveElevationSource } from "./route-elevation.js";
+
 const MIN_SEGMENT_DISTANCE_KM = 0.1;
 const EARTH_RADIUS_METERS = 6371000;
 const MIN_CURVE_RADIUS_METERS = 8;
@@ -92,7 +94,8 @@ export function buildRoute(segments) {
         totalDistanceMeters,
         totalElevationGainMeters,
         totalDescentMeters,
-        points
+        points,
+        hasElevationData: routeSegments.length > 0
     });
 }
 
@@ -110,7 +113,14 @@ export function getSegmentAtDistance(route, distanceMeters) {
     return current ?? route.segments.at(-1) ?? null;
 }
 
-export function buildRouteFromTrackPoints({ name, points, segments, hasElevationData = true, source = "gpx" }) {
+export function buildRouteFromTrackPoints({
+    name,
+    points,
+    segments,
+    hasElevationData = true,
+    elevationSource = null,
+    source = "gpx"
+}) {
     const basePoints = points.map((point, index) => ({
         latitude: point.latitude,
         longitude: point.longitude,
@@ -145,7 +155,8 @@ export function buildRouteFromTrackPoints({ name, points, segments, hasElevation
         totalElevationGainMeters,
         totalDescentMeters,
         points: safePoints,
-        hasElevationData
+        hasElevationData,
+        elevationSource
     });
 }
 
@@ -277,7 +288,17 @@ function getForwardGradeSpeedLimitAhead(route, distanceMeters) {
     );
 }
 
-function createRouteObject({ source, name, segments, totalDistanceMeters, totalElevationGainMeters, totalDescentMeters, points, hasElevationData = true }) {
+function createRouteObject({
+    source,
+    name,
+    segments,
+    totalDistanceMeters,
+    totalElevationGainMeters,
+    totalDescentMeters,
+    points,
+    hasElevationData = true,
+    elevationSource = null
+}) {
     return {
         source,
         name,
@@ -286,7 +307,8 @@ function createRouteObject({ source, name, segments, totalDistanceMeters, totalE
         totalDistanceMeters,
         totalElevationGainMeters,
         totalDescentMeters,
-        hasElevationData
+        hasElevationData,
+        elevationSource: resolveElevationSource({ source, hasElevationData, elevationSource })
     };
 }
 

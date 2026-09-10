@@ -2,6 +2,7 @@ import { parseGpx } from "../../domain/route/gpx-parser.js";
 import { buildRoute, sanitizeSegments } from "../../domain/route/route-builder.js";
 import { buildRouteContinuation, getSavedRouteCompletionDistance } from "../../domain/route/route-continuation.js";
 import { canExportRouteAsGpx } from "../../domain/route/gpx-exporter.js";
+import { ROUTE_ELEVATION_SOURCES } from "../../domain/route/route-elevation.js";
 import { downloadRouteAsGpx } from "../../adapters/export/route-gpx-download.js";
 import { formatNumber } from "../../shared/format.js";
 import { extractErrorMessage } from "../../shared/utils/common.js";
@@ -118,6 +119,9 @@ export function createRouteEditorService({
             const route = {
                 ...parsedRoute,
                 source: "strava",
+                elevationSource: parsedRoute.hasElevationData
+                    ? ROUTE_ELEVATION_SOURCES.STRAVA_ROUTE
+                    : ROUTE_ELEVATION_SOURCES.NONE,
                 name: String(name || parsedRoute.name || "Strava 路线").trim(),
                 stravaRouteId: String(routeId)
             };

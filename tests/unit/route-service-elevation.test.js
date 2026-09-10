@@ -60,6 +60,7 @@ export const suite = {
                 assertEqual(lockedKey, "test-key");
                 assertEqual(updatedRoute.name, "无海拔 GPX");
                 assertEqual(updatedRoute.hasElevationData, true);
+                assertEqual(updatedRoute.elevationSource, "google_estimated");
                 assertEqual(updatedRoute.points[2].elevationMeters, 36);
                 assertEqual(updatedRoute.segments[0].gradePercent, 1.6);
             }
@@ -123,6 +124,7 @@ export const suite = {
                 const enriched = store.getState().route;
                 assertEqual(enriched.source, "map-drawn");
                 assertEqual(enriched.hasElevationData, true);
+                assertEqual(enriched.elevationSource, "google_estimated");
                 assertEqual(enriched.waypoints.length, 3);
                 assertEqual(enriched.mapGeometry.length, 3);
             }
@@ -197,7 +199,7 @@ export const suite = {
                 assertEqual(loadedKey, "test-key");
                 assertEqual(route.hasElevationData, true);
                 assertGreaterThan(elevationRequestPoints.length, 2);
-                assert(store.getState().statusText.includes("路线海拔已更新"));
+                assert(store.getState().statusText.includes("路线参考海拔已更新"));
             }
         },
         {

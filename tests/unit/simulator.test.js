@@ -19,9 +19,13 @@ const settings = {
 };
 
 function simulateFixedGradeRide({ gradePercent, power }) {
-    const route = buildRoute([
-        { name: `Grade ${gradePercent}%`, distanceKm: 5, gradePercent }
-    ]);
+    const route = {
+        ...buildRoute([
+            { name: `Grade ${gradePercent}%`, distanceKm: 5, gradePercent }
+        ]),
+        source: "gpx",
+        elevationSource: "gpx_embedded"
+    };
 
     return simulateRide({
         route,
@@ -99,6 +103,21 @@ export const suite = {
                 assertEqual(session.records.every((record) => record.power === 0), true);
                 assertEqual(metrics.power.averageWatts, 0);
                 assertEqual(metrics.power.maxWatts, 0);
+            }
+        },
+        {
+            name: "simulateRide treats Google reference elevation as flat physics",
+            run() {
+                const route = {
+                    ...buildRoute([{ name: "Reference climb", distanceKm: 0.2, gradePercent: 8 }]),
+                    source: "map-drawn",
+                    elevationSource: "google_estimated"
+                };
+                const session = simulateRide({ route, settings });
+
+                assertEqual(session.records.every((record) => record.gradePercent === 0), true);
+                assertEqual(session.records.every((record) => record.gradeSpeedLimitKph === null), true);
+                assertGreaterThan(session.records.at(-1).elevationMeters, 0);
             }
         },
         {

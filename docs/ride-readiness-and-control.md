@@ -4,21 +4,30 @@
 
 `src/domain/ride/ride-readiness.js` 的 `deriveRideReadiness` 是开始骑行的唯一业务判断。它同时检查已确认路线、当前模式、功率源、骑行台连接与 FTMS capability，并返回 `canStart`、结构化 `blockers`、`warnings` 和各项 requirement。UI 可以展示结果，但不能另外计算一套规则；`startRide` 必须再次调用同一函数。
 
-debug 街景模式不是无条件旁路。选择模拟功率时可以不连接真实功率源和骑行台，但仍必须存在有效、已确认路线。debug 中选择真实设备时继续执行正式校验。
+debug 街景模式不是无条件旁路。选择模拟功率时可以不连接真实功率源和骑行台，但不会绕过路线草稿、
+加载状态或坡度海拔来源校验；debug 中选择真实设备时继续执行正式校验。固定阻力、ERG 和自定义 ERG
+课表不要求地理路线，只有坡度模拟必须先加载受支持的路线。
 
 ## 模式要求
 
 | 模式 | 路线 | 功率源 | 骑行台能力 |
 | --- | --- | --- | --- |
-| 固定阻力 | 已确认 | 骑行台或外置功率计 | resistance |
-| ERG | 已确认；可无海拔 | 骑行台或外置功率计 | target power |
-| 坡度模拟 | 已确认且有海拔 | 骑行台或外置功率计 | simulation 或 inclination |
+| 固定阻力 | 可选 | 骑行台或外置功率计 | resistance |
+| ERG | 可选 | 骑行台或外置功率计 | target power |
+| 坡度模拟 | 已确认，且为内嵌海拔 GPX 或 Strava 路线 | 骑行台或外置功率计 | simulation 或 inclination |
+
+`hasElevationData` 只用于描述是否存在可视化海拔。坡度模拟还必须通过 `elevationSource` 校验：
+`gpx_embedded` 和 `strava_route` 可用；`google_estimated`、手工坡度和无来源的旧数据不可用。
+Google 估算值可展示路线剖面与累计爬升，但不会生成骑行台 SIM 指令。
 
 明确返回不支持时阻止启动；设备无法可靠报告 capability 时给出 warning，并在激活控制时做最佳努力验证。
 
 ## 生命周期与锁定
 
 开始骑行后，session 保存路线、运动员参数和课表结构快照。路线和课表阶段/顺序/时长不可修改；控制模式、手动 ERG 功率、阻力和坡度模拟参数可以调整。
+
+无路线训练仍创建正常 session 和 FIT 活动，默认命名为“自定义训练”；有路线时继续使用 GPX 文件名、
+AI 路线名或对应路线名称。
 
 骑行中的控制模式切换先激活目标 FTMS 模式，成功后原子更新 `workout.mode` 与 `liveRide.session.trainerControlMode`，并清理上一模式的命令节流/去重状态。激活失败时保留原模式并记录错误。
 

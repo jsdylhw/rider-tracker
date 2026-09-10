@@ -39,9 +39,9 @@
 
 Google Maps 配置只有一个权威来源：根目录 `config.yaml` 的 `google.api_key`。启动器将它注入 Node，
 Rider 通过同源 `/api/runtime-config/maps` 只读取浏览器需要的 Maps 配置；运动员档案不再保存 Google
-Key。街景和海拔首次使用时才真正加载 Google Maps JavaScript，并以实际加载结果判断是否可用。配置
-存在且加载成功时直接进入；未配置或加载失败时才打开浏览器本地备用 Key 输入框。调试模式不得强制
-重复询问 Key。
+Key。街景和参考海拔首次使用时才真正加载 Google Maps JavaScript，并以实际加载结果判断是否可用。
+配置存在且加载成功时直接进入；未配置时对应入口保持禁用，加载失败时提示检查根配置和 API 状态，
+不再打开浏览器本地备用 Key 输入框。调试模式同样不会绕过统一配置来源。
 它只在用户点击“加载讲解”后请求独立 RouteNarrationAgent，并复用实时骑行的 `distanceKm`；它不写入 `street-view-controller.js`，也不进入 FTMS 控制循环。
 详细契约与后续地点检索/TTS 边界见 [`route-narration.md`](./route-narration.md)。
 

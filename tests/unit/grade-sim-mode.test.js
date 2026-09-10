@@ -1,7 +1,7 @@
 import { buildRouteFromTrackPoints } from "../../src/domain/route/route-builder.js";
 import { buildGradeSimulationState } from "../../src/domain/workout/grade-sim-mode.js";
 import { TRAINER_CONTROL_MODES, TRAINER_COMMAND_TYPES } from "../../src/domain/workout/trainer-command.js";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../helpers/test-harness.js";
+import { assert, assertEqual, assertGreaterThan, assertLessThan } from "../helpers/test-harness.js";
 
 const config = {
     difficultyPercent: 75,
@@ -54,6 +54,27 @@ export const suite = {
 
                 assertEqual(result.available, false);
                 assertEqual(result.targetTrainerGradePercent, 0);
+            }
+        },
+        {
+            name: "Google reference elevation never drives trainer grade",
+            run() {
+                const route = {
+                    ...createGradeRoute(),
+                    source: "map-drawn",
+                    elevationSource: "google_estimated"
+                };
+                const result = buildGradeSimulationState({
+                    route,
+                    distanceMeters: 80,
+                    previousTargetGradePercent: 0,
+                    config,
+                    active: true
+                });
+
+                assertEqual(result.available, false);
+                assertEqual(result.pendingTrainerCommand, null);
+                assert(result.controlStatus.includes("GPX 或 Strava"));
             }
         },
         {

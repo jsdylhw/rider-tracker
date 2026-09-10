@@ -1,3 +1,5 @@
+import { capabilityMessage } from "../../domain/agent/agent-capabilities.js";
+
 export function createGoogleMapsRideActions({
     elements,
     visuals,
@@ -8,7 +10,7 @@ export function createGoogleMapsRideActions({
     onEnterDebugFallback,
     onStreetViewFailure
 }) {
-    let actionState = { streetViewLoading: false, elevationLoading: false, forceKeyPrompt: false };
+    let actionState = { streetViewLoading: false, elevationLoading: false };
     let debugStreetViewFallback = false;
     let streetViewRequestGeneration = 0;
 
@@ -25,12 +27,19 @@ export function createGoogleMapsRideActions({
         return debugStreetViewFallback;
     }
 
-    function syncButtons({ route, ride }) {
+    function syncButtons({ route, ride, agentCapabilities }) {
         const hasCoordinates = hasCoordinateRoute(route);
-        const canLoadStreetView = hasCoordinates && !visuals.hasStreetView() && (ride.isActive || streetViewDebugEnabled);
+        const streetViewAvailable = isCapabilityAvailable(agentCapabilities, "street_view");
+        const canLoadStreetView = streetViewAvailable
+            && hasCoordinates
+            && !visuals.hasStreetView()
+            && (ride.isActive || streetViewDebugEnabled);
         if (elements.loadStreetViewBtn) {
-            elements.loadStreetViewBtn.hidden = !canLoadStreetView;
-            elements.loadStreetViewBtn.disabled = actionState.streetViewLoading;
+            elements.loadStreetViewBtn.hidden = !hasCoordinates || visuals.hasStreetView();
+            elements.loadStreetViewBtn.disabled = !canLoadStreetView || actionState.streetViewLoading;
+            elements.loadStreetViewBtn.title = streetViewAvailable
+                ? ""
+                : capabilityMessage(agentCapabilities, "street_view");
             elements.loadStreetViewBtn.textContent = actionState.streetViewLoading
                 ? "正在加载街景..."
                 : debugStreetViewFallback ? "重新加载街景" : "加载街景";
@@ -39,19 +48,27 @@ export function createGoogleMapsRideActions({
         const isExplorationRoute = route?.source === "osm-exploration";
         const hasElevationData = route?.hasElevationData === true;
         const routeLoading = route?.isLoading === true;
-        const canRequestElevation = isExplorationRoute && hasCoordinates && !hasElevationData && !routeLoading;
+        const elevationAvailable = isCapabilityAvailable(agentCapabilities, "google_elevation_reference");
+        const canRequestElevation = elevationAvailable
+            && isExplorationRoute
+            && hasCoordinates
+            && !hasElevationData
+            && !routeLoading;
         if (elements.requestRouteElevationBtn) {
             elements.requestRouteElevationBtn.hidden = !isExplorationRoute || !hasCoordinates;
             elements.requestRouteElevationBtn.disabled = !canRequestElevation || actionState.elevationLoading || ride.isActive;
+            elements.requestRouteElevationBtn.title = elevationAvailable
+                ? "Google 估算海拔仅用于路线参考，不能启用坡度模拟。"
+                : capabilityMessage(agentCapabilities, "google_elevation_reference");
             elements.requestRouteElevationBtn.textContent = hasElevationData
-                ? "探索路线海拔已加载"
+                ? "参考海拔已加载"
                 : actionState.elevationLoading
-                    ? "正在请求海拔..."
+                    ? "正在请求参考海拔..."
                     : routeLoading
                         ? "路线处理中"
                         : ride.isActive
-                            ? "骑行中不可请求海拔"
-                            : "请求探索路线海拔";
+                            ? "骑行中不可请求参考海拔"
+                            : "请求参考海拔";
         }
     }
 
@@ -65,25 +82,13 @@ export function createGoogleMapsRideActions({
         if (actionState.streetViewLoading) return;
 
         const requestGeneration = ++streetViewRequestGeneration;
-        const hadConfiguredKey = Boolean(visuals.getGoogleMapsConfig?.()?.apiKey);
         const apiKey = await resolveGoogleMapsApiKey("加载街景");
         if (!apiKey || requestGeneration !== streetViewRequestGeneration) return;
         actionState = { ...actionState, streetViewLoading: true };
         onRefresh();
         try {
             elements.svPano1.style.display = "";
-            let result;
-            try {
-                result = await enableStreetView();
-            } catch (initialError) {
-                if (!hadConfiguredKey || requestGeneration !== streetViewRequestGeneration) {
-                    throw initialError;
-                }
-                actionState = { ...actionState, forceKeyPrompt: true };
-                const replacementKey = await resolveGoogleMapsApiKey("加载街景");
-                if (!replacementKey) throw initialError;
-                result = await enableStreetView();
-            }
+            const result = await enableStreetView();
             if (requestGeneration !== streetViewRequestGeneration) return;
 
             debugStreetViewFallback = false;
@@ -93,7 +98,6 @@ export function createGoogleMapsRideActions({
         } catch (error) {
             if (requestGeneration !== streetViewRequestGeneration) return;
             console.warn("街景加载失败，继续使用地图骑行模式。", error);
-            actionState = { ...actionState, forceKeyPrompt: true };
             if (streetViewDebugEnabled) {
                 debugStreetViewFallback = true;
                 elements.svPano1.style.display = "none";
@@ -103,7 +107,7 @@ export function createGoogleMapsRideActions({
                 onEnterDebugFallback(store);
                 return;
             }
-            setStatus(store, `街景加载失败：${error?.message ?? "请检查 Google Maps API Key 与网络。"}`);
+            setStatus(store, `街景加载失败：${error?.message ?? "请检查 config.yaml 中的 Google API 与网络。"}`);
             onStreetViewFailure();
         } finally {
             if (requestGeneration === streetViewRequestGeneration) {
@@ -124,7 +128,7 @@ export function createGoogleMapsRideActions({
 
     function resetStreetViewPresentation() {
         streetViewRequestGeneration += 1;
-        actionState = { ...actionState, streetViewLoading: false, forceKeyPrompt: false };
+        actionState = { ...actionState, streetViewLoading: false };
         debugStreetViewFallback = false;
         elements.streetViewContainer?.classList.remove("streetview-debug-empty");
         if (elements.streetViewContainer) elements.streetViewContainer.style.display = "none";
@@ -140,7 +144,7 @@ export function createGoogleMapsRideActions({
             || state.liveRide.isActive
             || actionState.elevationLoading) return;
 
-        const apiKey = await resolveGoogleMapsApiKey("请求路线海拔");
+        const apiKey = await resolveGoogleMapsApiKey("请求路线参考海拔");
         if (!apiKey) return;
         actionState = { ...actionState, elevationLoading: true };
         onRefresh();
@@ -148,7 +152,6 @@ export function createGoogleMapsRideActions({
             await onRequestRouteElevation();
         } catch (error) {
             console.warn("路线海拔请求失败", error);
-            actionState = { ...actionState, forceKeyPrompt: true };
         } finally {
             actionState = { ...actionState, elevationLoading: false };
             onRefresh();
@@ -157,15 +160,16 @@ export function createGoogleMapsRideActions({
 
     async function resolveGoogleMapsApiKey(featureLabel) {
         const apiKey = visuals.getGoogleMapsConfig?.()?.apiKey ?? "";
-        const shouldPrompt = actionState.forceKeyPrompt;
-        if (apiKey && !shouldPrompt) return apiKey;
-
-        const confirmedKey = await requestGoogleMapsApiKey({ featureLabel, force: shouldPrompt });
-        if (confirmedKey) actionState = { ...actionState, forceKeyPrompt: false };
-        return confirmedKey;
+        if (apiKey) return apiKey;
+        return requestGoogleMapsApiKey({ featureLabel });
     }
 
     return { bindEvents, hasStreetViewPresentation, isDebugFallback, resetStreetViewPresentation, syncButtons };
+}
+
+function isCapabilityAvailable(agentCapabilities, capability) {
+    return agentCapabilities === undefined
+        || agentCapabilities?.capabilities?.[capability] === true;
 }
 
 function hasCoordinateRoute(route) {

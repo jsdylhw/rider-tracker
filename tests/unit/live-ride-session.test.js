@@ -109,6 +109,32 @@ export const suite = {
             }
         },
         {
+            name: "keeps Google reference grade out of live ride physics records",
+            run() {
+                let session = createLiveRideSession({
+                    route: {
+                        ...createGeoRoute(),
+                        source: "map-drawn",
+                        elevationSource: "google_estimated"
+                    },
+                    settings,
+                    startedAt: "2026-01-01T00:00:00.000Z"
+                });
+                session.physicsState.distanceMeters = 700;
+
+                session = advanceLiveRideSession({
+                    session,
+                    power: 230,
+                    heartRate: 118,
+                    cadence: 88,
+                    dt: 1
+                });
+
+                assertEqual(session.records.at(-1).gradePercent, 0);
+                assertGreaterThan(session.records.at(-1).elevationMeters, 20);
+            }
+        },
+        {
             name: "advanceLiveRideSession leaves heart rate unavailable without a sensor sample",
             run() {
                 let session = createLiveRideSession({

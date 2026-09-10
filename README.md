@@ -12,15 +12,15 @@ Rider Tracker 是一个本地运行的智能虚拟骑行应用，将路线规划
 
 - 导入本地 GPX 文件，并读取距离、海拔和坡度数据。
 - 从 Strava 路线列表导入已有路线。
-- 在地图上选择途经点生成路线。
-- 使用自然语言生成和修改 AI 路线候选。
+- 配置 Google 后，在地图上选择途经点生成路线。
+- 配置大模型与地图 Provider 后，使用自然语言生成和修改 AI 路线候选。
 - 保存常用路线，从起点重新骑行或继续未完成进度。
 - 将当前路线导出为 GPX。
 
 ### 实时与模拟骑行
 
 - 通过 Web Bluetooth 连接 FTMS 智能骑行台、功率计和心率带。
-- 支持 ERG 固定功率、固定阻力和路线坡度模拟。
+- 支持 ERG 固定功率、固定阻力，以及基于 GPX/Strava 海拔的路线坡度模拟。
 - 支持无设备的模拟功率调试模式。
 - 实时展示功率、速度、踏频、心率、坡度、距离和海拔。
 - 骑行结束后生成并保存 FIT 活动文件。
@@ -101,18 +101,19 @@ http://localhost:8787
 所有本地配置统一填写在根目录的 `config.yaml` 中。只需要配置准备使用的功能：
 
 - `agent`：AI 活动分析、训练建议、AI 路线和路线讲解。
-- `google`：Google 路线、地点信息和 Street View。
-- `amap`：国内高德路线服务。
+- `google`：Google 路线、地点信息、Street View 和参考海拔；参考海拔不用于坡度模拟。
+- `amap`：国内 AI 路线使用的高德 Web Service。
 - `garmin_username` / `garmin_password`：Garmin Connect 活动同步。
 - `strava`：Strava 授权、活动上传、路线和路段访问。
 - `athlete`：FTP、体重以及最大/静息心率。
 
 真实配置、OAuth Token、FIT 文件和活动数据库不会提交到 Git。
+详细依赖关系见 [本地配置与功能能力矩阵](docs/feature-capability-matrix.md)。
 
 ## 基本使用流程
 
 1. 在首页导入已有 FIT 活动，或进入实时骑行设置。
-2. 选择 GPX、Strava、AI、地图选点等路线来源。
+2. 按本机配置选择 GPX、Strava、AI 或地图选点路线；固定阻力和 ERG 训练也可以不选路线。
 3. 连接骑行设备，或在调试模式中选择模拟功率。
 4. 选择控制模式并开始骑行。
 5. 骑行结束后保存 FIT，并按需上传到 Strava。
