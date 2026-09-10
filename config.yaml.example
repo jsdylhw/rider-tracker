@@ -68,12 +68,16 @@ athlete:
   resting_heart_rate: 50
 
 google:
-  # Shared by backend route/Places calls and browser Maps JavaScript/Street View.
-  # The browser key is necessarily visible in local Maps JavaScript requests.
+  # Enables online route maps, Street View and reference elevation. Google
+  # elevation is for visualization only; grade simulation trusts GPX/Strava.
+  # Shared by backend route/Places calls and browser Maps JavaScript/Street View;
+  # the browser key is necessarily visible in local Maps JavaScript requests.
   api_key: "replace-with-google-maps-api-key"
 
 amap:
+  # Rider production uses this server-side key for domestic AI routes.
   web_service_key: "replace-with-amap-web-service-key"
+  # The following two values are only used by the isolated AMap Web demo.
   js_key: "replace-with-amap-js-key"
   security_js_code: "replace-with-amap-security-js-code"
 

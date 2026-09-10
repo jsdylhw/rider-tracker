@@ -582,3 +582,19 @@ Python 路线服务对 Google、高德或 Strava 组合后的最终 LineString �
 附近最多 300 米、且不超过全程 3% 的共同接驳段被允许。超过阈值的候选以
 `RouteCandidateRejected` 淘汰，并把实测重复率返回给 Agent，要求更换途经点重新算路。候选及 Agent 使用的
 精简投影同时保存 `route_quality`，使“已理解用户要求”和“地图结果确实满足要求”成为两个可审查步骤。
+
+### 2026-09-10：可选 Provider 与骑行能力解耦
+
+Training Backend health contract 升级为 `training_backend_capabilities.v2`，分别投影 LLM、Google、AMap、
+Strava、Garmin 和运动员档案状态。基础 FIT、活动详情、导入路线及自定义训练不依赖 LLM；国内 AI 路线
+要求 LLM、Google 和 AMap，国外 AI 路线要求 LLM 和 Google。静态 Strava 配置与用户 OAuth 授权仍是
+两个状态，不能用 client credentials 推断 Token 可用。
+
+浏览器只从根 `config.yaml` 的统一运行时配置读取 Google Key，删除浏览器弹窗和 localStorage Key。
+在线地图入口根据 capability 显示禁用原因；配置或请求失败时不再要求输入第二份 Key。完整功能关系见
+[本地配置与功能能力矩阵](../feature-capability-matrix.md)。
+
+路线增加 `elevationSource` 业务字段，将“有海拔可展示”与“海拔可信到可以控制骑行台”分离。
+坡度模拟只接受 `gpx_embedded` 和 `strava_route`；Google 估算海拔标记为 `google_estimated`，仅用于
+图表和路线概览。debug 不绕过来源校验。固定阻力、ERG 和自定义 ERG 课表允许无地理路线启动，
+从而使未配置 Google 或 LLM 的本地安装仍能完成核心室内训练与 FIT 归档。

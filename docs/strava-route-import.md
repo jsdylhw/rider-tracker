@@ -23,6 +23,7 @@ Rider 可以直接读取当前授权账号中已有的 Strava 路线，不再要
 - Python 将手动刷新的路线摘要目录持久化到 `data/cache/strava-routes.json`；GET 只读缓存，POST refresh 才访问 Strava。
 - Node 只做同源 HTTP 代理，不读取或保存 Strava Token。
 - 浏览器复用现有 GPX 解析和运行时路线构建，路线来源标记为 `strava`。
+- Strava GPX 中的海拔标记为 `strava_route`，可用于骑行台坡度模拟；这与仅供参考的 Google 估算海拔区分。
 - 本地路线库保存 Strava Route ID、原始 GPX 和运行时路线，后续骑行不依赖 Strava 在线可用。
 
 ## 当前限制
