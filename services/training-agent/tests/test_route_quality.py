@@ -4,8 +4,11 @@ import pytest
 
 from services.route.quality import (
     apply_route_constraints,
+    evaluate_navigation,
     evaluate_self_overlap,
     normalize_route_constraints,
+    normalize_route_preferences,
+    preference_score,
 )
 from services.route.single_day import RouteCandidateRejected
 
@@ -72,3 +75,74 @@ def test_disabled_constraint_still_exposes_quality_evidence():
     )
 
     assert candidate["route_quality"]["self_overlap_ratio"] > 0.40
+
+
+def test_amap_navigation_evidence_counts_turns_and_special_passages():
+    quality = evaluate_navigation([
+        {"action": "左转", "road_name": "新塘路", "walk_type": "0"},
+        {"action": "向右前方行驶", "road_name": "", "walk_type": "23"},
+        {"action": "掉头", "road_name": "环站东路", "walk_type": "30"},
+    ], distance_m=6_000)
+
+    assert quality["navigation_data_source"] == "amap_navigation"
+    assert quality["left_turn_count"] == 1
+    assert quality["right_turn_count"] == 1
+    assert quality["u_turn_count"] == 1
+    assert quality["steps_per_km"] == 0.5
+    assert quality["passage_counts"]["tunnel"] == 1
+    assert quality["passage_counts"]["ferry"] == 1
+
+
+@pytest.mark.parametrize(
+    ("constraints", "message"),
+    [
+        ({"avoid_u_turns": True}, "掉头"),
+        ({"avoid_ferry": True}, "轮渡"),
+        ({"maximum_detour_ratio": 0.1}, "多绕行"),
+    ],
+)
+def test_navigation_and_detour_hard_constraints_reject_provider_alternative(constraints, message):
+    with pytest.raises(RouteCandidateRejected, match=message):
+        apply_route_constraints(
+            {
+                "distance_m": 12_000,
+                "baseline_distance_m": 10_000,
+                "geometry": {"type": "LineString", "coordinates": [_point(0, 0), _point(12_000, 0)]},
+                "navigation_steps": [{"action": "掉头", "walk_type": "30"}],
+            },
+            constraints,
+            rejection_type=RouteCandidateRejected,
+        )
+
+
+def test_route_preference_score_uses_turn_bias_without_making_it_a_constraint():
+    preferences = normalize_route_preferences({"turn_bias": "fewer_left"})
+    fewer_left = apply_route_constraints({
+        "distance_m": 10_000,
+        "duration_s": 2_000,
+        "baseline_distance_m": 10_000,
+        "baseline_duration_s": 2_000,
+        "geometry": {"type": "LineString", "coordinates": [_point(0, 0), _point(10_000, 0)]},
+        "navigation_steps": [{"action": "右转", "road_name": "A"}],
+    }, None)
+    more_left = apply_route_constraints({
+        **fewer_left,
+        "navigation_steps": [
+            {"action": "左转", "road_name": "A"},
+            {"action": "左转", "road_name": "B"},
+        ],
+    }, None)
+
+    assert preference_score(fewer_left, preferences) < preference_score(more_left, preferences)
+
+
+def test_provider_specific_hard_constraint_requires_provider_evidence():
+    with pytest.raises(RouteCandidateRejected, match="没有高德导航步骤"):
+        apply_route_constraints(
+            {
+                "distance_m": 10_000,
+                "geometry": {"type": "LineString", "coordinates": [_point(0, 0), _point(10_000, 0)]},
+            },
+            {"avoid_ferry": True},
+            rejection_type=RouteCandidateRejected,
+        )

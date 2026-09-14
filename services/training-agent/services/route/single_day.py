@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 import time
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import urlencode
@@ -13,10 +13,15 @@ from urllib.request import ProxyHandler, build_opener
 from uuid import uuid4
 
 from integrations.google_places import GooglePlacesClient
-from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint
+from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint, compose_amap_legs
 from integrations.route_providers.coordinates import gcj02_to_wgs84
 from integrations.route_providers.google_routes import GoogleRoutesClient, WgsPoint
-from services.route.quality import apply_route_constraints, normalize_route_constraints
+from services.route.quality import (
+    apply_route_constraints,
+    normalize_route_constraints,
+    normalize_route_preferences,
+    preference_score,
+)
 from settings import load_config
 
 
@@ -43,6 +48,7 @@ def create_single_day_plan(
     include_elevation: bool = True,
     plan_id: str | None = None,
     route_constraints: dict[str, Any] | None = None,
+    route_preferences: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Resolve and route one or more explicit waypoint candidates."""
     normalized_country = str(country_code or "").strip().upper()
@@ -54,6 +60,7 @@ def create_single_day_plan(
         raise ValueError("at most three route candidates are supported")
     config = load_config()
     normalized_constraints = normalize_route_constraints(route_constraints)
+    normalized_preferences = normalize_route_preferences(route_preferences)
     routed: list[dict[str, Any]] = []
     rejected: list[dict[str, str]] = []
     for index, candidate in enumerate(candidates, start=1):
@@ -65,6 +72,7 @@ def create_single_day_plan(
                 include_elevation=include_elevation,
                 config=config,
                 route_constraints=normalized_constraints,
+                route_preferences=normalized_preferences,
             ))
         except (RouteCandidateRejected, RuntimeError) as exc:
             rejected.append({
@@ -74,6 +82,10 @@ def create_single_day_plan(
     if not routed:
         reasons = "；".join(f"{item['name']}：{item['reason']}" for item in rejected)
         raise RouteCandidateRejected(f"所有路线候选均不可用。{reasons}")
+    active = (
+        _select_domestic_candidate(routed, normalized_preferences)
+        if normalized_country == "CN" else routed[0]
+    )
     return {
         "schema_version": "route_plan.v1",
         "plan_id": plan_id or f"route_{uuid4().hex}",
@@ -82,11 +94,59 @@ def create_single_day_plan(
         "title": str(title or "单日骑行路线"),
         "day_count": 1,
         "country_code": normalized_country,
-        "active_candidate_id": routed[0]["candidate_id"],
+        "active_candidate_id": active["candidate_id"],
         "candidates": routed,
         "rejected_candidates": rejected,
         "route_constraints": normalized_constraints,
+        "route_preferences": normalized_preferences,
     }
+
+
+def _select_domestic_candidate(
+    candidates: Sequence[dict[str, Any]],
+    route_preferences: dict[str, Any],
+) -> dict[str, Any]:
+    """Compare distinct waypoint skeletons against shared distance/time baselines."""
+    distance_baseline = _minimum_positive(
+        float(candidate.get("distance_m") or 0) for candidate in candidates
+    )
+    duration_baseline = _minimum_positive(
+        float(candidate.get("duration_s") or 0) for candidate in candidates
+    )
+    return min(candidates, key=lambda candidate: _candidate_selection_key(
+        candidate,
+        route_preferences,
+        baseline_distance_m=distance_baseline,
+        baseline_duration_s=duration_baseline,
+    ))
+
+
+def _candidate_selection_key(
+    candidate: dict[str, Any],
+    route_preferences: dict[str, Any],
+    *,
+    baseline_distance_m: float,
+    baseline_duration_s: float,
+) -> tuple[float, float, float]:
+    """Prefer target-distance fit, then compare preferences on common baselines."""
+    target = _optional_float(candidate.get("target_distance_km"))
+    distance = float(candidate.get("distance_km") or 0)
+    target_deviation = abs(distance - target) / target if target and target > 0 else 0.0
+    return (
+        target_deviation,
+        preference_score(
+            candidate,
+            route_preferences,
+            baseline_distance_m=baseline_distance_m,
+            baseline_duration_s=baseline_duration_s,
+        ),
+        distance,
+    )
+
+
+def _minimum_positive(values: Iterable[float]) -> float:
+    positive = [float(value) for value in values if float(value) > 0]
+    return min(positive, default=1.0)
 
 
 def replace_candidate(
@@ -98,6 +158,7 @@ def replace_candidate(
     target_distance_km: float | None,
     include_elevation: bool,
     route_constraints: dict[str, Any] | None = None,
+    route_preferences: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     candidates = [item for item in plan.get("candidates") or [] if isinstance(item, dict)]
     selected_id = str(candidate_id or plan.get("active_candidate_id") or "")
@@ -125,6 +186,7 @@ def replace_candidate(
         include_elevation=include_elevation,
         config=load_config(),
         route_constraints=route_constraints or plan.get("route_constraints"),
+        route_preferences=route_preferences or plan.get("route_preferences"),
     )
     previous = candidates[selected_index]
     updated.update({
@@ -142,6 +204,7 @@ def replace_candidate(
             "confirmed_candidate_id": None,
         },
         "route_constraints": normalize_route_constraints(route_constraints or plan.get("route_constraints")),
+        "route_preferences": normalize_route_preferences(route_preferences or plan.get("route_preferences")),
     }
 
 
@@ -154,6 +217,7 @@ def edit_candidate_waypoints(
     new_waypoint: str | None = None,
     include_elevation: bool = True,
     route_constraints: dict[str, Any] | None = None,
+    route_preferences: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Deterministically reverse or edit one saved single-day candidate."""
     candidates = [item for item in plan.get("candidates") or [] if isinstance(item, dict)]
@@ -187,6 +251,7 @@ def edit_candidate_waypoints(
         target_distance_km=_optional_float(selected.get("target_distance_km")),
         include_elevation=include_elevation,
         route_constraints=route_constraints,
+        route_preferences=route_preferences,
     )
 
 
@@ -273,6 +338,7 @@ def compact_route_plan(plan: dict[str, Any]) -> dict[str, Any]:
         "segment_strategy": plan.get("segment_strategy") or "ignore",
         "segment_preferences": plan.get("segment_preferences") or [],
         "route_constraints": normalize_route_constraints(plan.get("route_constraints")),
+        "route_preferences": normalize_route_preferences(plan.get("route_preferences")),
         "segment_aware_summary": plan.get("segment_aware_summary") or {},
         "planning": plan.get("planning") or {},
         "segment_pool": {
@@ -303,6 +369,7 @@ def _compact_route_segment(item: dict[str, Any], *, id_key: str) -> dict[str, An
         "duration_min": item.get("duration_min"),
         "provider": item.get("provider"),
         "travel_mode": item.get("travel_mode"),
+        "provider_alternative_count": item.get("provider_alternative_count"),
         "target_distance_km": item.get("target_distance_km"),
         "distance_delta_km": item.get("distance_delta_km"),
         "elevation_summary": elevation.get("summary") or {},
@@ -334,6 +401,7 @@ def route_candidate(
     include_elevation: bool,
     config: dict[str, Any],
     route_constraints: dict[str, Any] | None = None,
+    route_preferences: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     waypoint_queries, is_closed = normalize_waypoint_queries(candidate.get("waypoints") or [])
     queries = waypoint_queries[:-1] if is_closed else waypoint_queries
@@ -341,7 +409,14 @@ def route_candidate(
         raise ValueError("each candidate requires at least two distinct waypoint queries")
     target = _optional_float(candidate.get("target_distance_km"))
     if country_code == "CN":
-        places, route = _route_amap(queries, is_closed, config)
+        places, route = _route_amap(
+            queries,
+            is_closed,
+            config,
+            target_distance_km=target,
+            route_constraints=route_constraints,
+            route_preferences=route_preferences,
+        )
     else:
         places, route = _route_google(
             queries, country_code, is_closed, config,
@@ -386,6 +461,11 @@ def route_candidate(
         "target_distance_km": target,
         "distance_delta_km": round(distance_km - target, 1) if target is not None else None,
         "geometry": geometry,
+        "navigation_steps": list(route.get("instructions") or []),
+        "provider_alternative_count": int(route.get("provider_alternative_count") or 1),
+        "baseline_distance_m": route.get("baseline_distance_m"),
+        "baseline_duration_s": route.get("baseline_duration_s"),
+        "route_quality": route.get("route_quality") or {},
         "elevation": elevation,
         "warnings": warnings,
     }
@@ -400,6 +480,10 @@ def _route_amap(
     queries: list[str],
     is_closed: bool,
     config: dict[str, Any],
+    *,
+    target_distance_km: float | None = None,
+    route_constraints: dict[str, Any] | None = None,
+    route_preferences: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     amap = config.get("amap") if isinstance(config.get("amap"), dict) else {}
     key = str(amap.get("web_service_key") or "")
@@ -408,18 +492,178 @@ def _route_amap(
     places: list[dict[str, Any]] = []
     for query in queries:
         anchor = places[-1] if places else None
-        region = str((places[0] if places else {}).get("adcode") or "")
+        # Keep later anchors in the same city, not the same district. A route
+        # may legitimately cross district boundaries inside one city.
+        region = str((places[0] if places else {}).get("citycode") or "")
         places.append(_search_amap_place(query, key, anchor=anchor, region=region))
     points = [AmapPoint(place["latitude"], place["longitude"]) for place in places]
     if is_closed:
         points.append(points[0])
-    route = AmapCyclingRouter(key).route_points(points)
-    display_coordinates = [list(gcj02_to_wgs84(lon, lat)) for lon, lat in route["geometry"]]
-    return places, {
-        **route,
-        "travel_mode": "BICYCLE",
-        "geometry": {"type": "LineString", "coordinates": display_coordinates},
-    }
+    leg_options = AmapCyclingRouter(key).route_point_leg_alternatives(
+        points,
+        alternative_route=3,
+    )
+    combinations = _amap_route_combinations(
+        leg_options,
+        route_preferences,
+        route_constraints=route_constraints,
+        target_distance_km=target_distance_km,
+    )
+    baseline_distance = sum(
+        min(float(option.get("distance_m") or 0) for option in options)
+        for options in leg_options
+    )
+    baseline_duration = sum(
+        min(float(option.get("duration_s") or 0) for option in options)
+        for options in leg_options
+    )
+    accepted: list[dict[str, Any]] = []
+    rejected: list[str] = []
+    for route in combinations:
+        display_coordinates = [
+            list(gcj02_to_wgs84(lon, lat)) for lon, lat in route["geometry"]
+        ]
+        candidate = {
+            **route,
+            "travel_mode": "BICYCLE",
+            "geometry": {"type": "LineString", "coordinates": display_coordinates},
+            "navigation_steps": list(route.get("instructions") or []),
+            "baseline_distance_m": baseline_distance,
+            "baseline_duration_s": baseline_duration,
+            "provider_alternative_count": len(combinations),
+        }
+        distance_km = float(candidate.get("distance_m") or 0) / 1000.0
+        if target_distance_km is not None:
+            minimum_km = target_distance_km * MIN_TARGET_DISTANCE_RATIO
+            maximum_km = target_distance_km * MAX_TARGET_DISTANCE_RATIO
+            if not minimum_km <= distance_km <= maximum_km:
+                rejected.append(
+                    f"实际 {distance_km:.1f} km 不在 {minimum_km:.1f}-{maximum_km:.1f} km"
+                )
+                continue
+        try:
+            candidate = apply_route_constraints(
+                candidate,
+                route_constraints,
+                rejection_type=RouteCandidateRejected,
+            )
+        except RouteCandidateRejected as exc:
+            rejected.append(str(exc))
+            continue
+        score = preference_score(candidate, route_preferences)
+        candidate["route_quality"] = {
+            **candidate["route_quality"],
+            "preference_score": score,
+        }
+        accepted.append(candidate)
+    if not accepted:
+        details = "；".join(rejected[:3]) or "高德没有返回可用备选"
+        raise RouteCandidateRejected(f"高德骑行备选均未满足路线要求：{details}")
+    accepted.sort(key=lambda item: (
+        (
+            abs(float(item.get("distance_m") or 0) / 1000.0 - target_distance_km)
+            / target_distance_km
+            if target_distance_km is not None and target_distance_km > 0
+            else 0.0
+        ),
+        float((item.get("route_quality") or {}).get("preference_score") or 0),
+        float(item.get("distance_m") or 0),
+        float(item.get("duration_s") or 0),
+    ))
+    return places, accepted[0]
+
+
+def _amap_route_combinations(
+    leg_options: Sequence[Sequence[dict[str, Any]]],
+    route_preferences: dict[str, Any] | None,
+    *,
+    route_constraints: dict[str, Any] | None = None,
+    target_distance_km: float | None = None,
+    beam_width: int = 24,
+) -> list[dict[str, Any]]:
+    """Compose bounded multi-leg alternatives without a combinatorial explosion."""
+    partials: list[list[dict[str, Any]]] = [[]]
+    for leg_index, options in enumerate(leg_options):
+        if not options:
+            raise RuntimeError("AMap returned no usable alternative for one route leg")
+        expanded = [
+            [*partial, option]
+            for partial in partials
+            for option in options
+        ]
+        remaining_options = leg_options[leg_index + 1:]
+        remaining_minimum_m = sum(
+            min(float(option.get("distance_m") or 0) for option in choices)
+            for choices in remaining_options
+        )
+        remaining_maximum_m = sum(
+            max(float(option.get("distance_m") or 0) for option in choices)
+            for choices in remaining_options
+        )
+        ranked: list[tuple[float, float, float, float, list[dict[str, Any]]]] = []
+        for legs in expanded:
+            route = compose_amap_legs(legs)
+            partial_constraints = normalize_route_constraints(route_constraints)
+            partial_constraints.update({
+                "avoid_repeated_roads": False,
+                "maximum_detour_ratio": None,
+            })
+            try:
+                candidate = apply_route_constraints(
+                    {
+                        **route,
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [list(point) for point in route["geometry"]],
+                        },
+                        "navigation_steps": route.get("instructions") or [],
+                        "baseline_distance_m": sum(
+                            min(float(option.get("distance_m") or 0) for option in choices)
+                            for choices in leg_options[:len(legs)]
+                        ),
+                        "baseline_duration_s": sum(
+                            min(float(option.get("duration_s") or 0) for option in choices)
+                            for choices in leg_options[:len(legs)]
+                        ),
+                    },
+                    partial_constraints,
+                    rejection_type=RouteCandidateRejected,
+                )
+            except RouteCandidateRejected:
+                continue
+            partial_distance_m = float(route.get("distance_m") or 0)
+            ranked.append((
+                _target_reachability_gap(
+                    partial_distance_m + remaining_minimum_m,
+                    partial_distance_m + remaining_maximum_m,
+                    target_distance_km,
+                ),
+                preference_score(candidate, route_preferences),
+                partial_distance_m,
+                float(route.get("duration_s") or 0),
+                legs,
+            ))
+        ranked.sort(key=lambda item: item[:4])
+        if not ranked:
+            raise RouteCandidateRejected("高德所有分段备选都违反掉头或特殊通行约束")
+        partials = [item[4] for item in ranked[:max(1, beam_width)]]
+    return [compose_amap_legs(legs) for legs in partials]
+
+
+def _target_reachability_gap(
+    minimum_distance_m: float,
+    maximum_distance_m: float,
+    target_distance_km: float | None,
+) -> float:
+    """Rank partial combinations by whether remaining legs can reach the target."""
+    if target_distance_km is None or target_distance_km <= 0:
+        return 0.0
+    target_m = target_distance_km * 1000.0
+    if target_m < minimum_distance_m:
+        return minimum_distance_m - target_m
+    if target_m > maximum_distance_m:
+        return target_m - maximum_distance_m
+    return 0.0
 
 
 def _route_google(
@@ -538,27 +782,34 @@ def _search_amap_place(
     anchor: dict[str, Any] | None = None,
     region: str = "",
 ) -> dict[str, Any]:
-    params: dict[str, Any] = {"key": key, "keywords": query, "page_size": 10}
-    endpoint = AMAP_PLACE_TEXT_URL
-    if anchor is not None:
-        endpoint = AMAP_PLACE_AROUND_URL
-        params.update({
-            "location": f"{float(anchor['longitude']):.6f},{float(anchor['latitude']):.6f}",
-            "radius": 50_000,
-            "sortrule": "distance",
-        })
-        if region:
-            params["region"] = region
-    elif region:
+    # Named route anchors need text relevance first. Nearby search sorted by
+    # distance can otherwise turn a landmark into an adjacent hotel or shop.
+    params: dict[str, Any] = {"key": key, "keywords": query, "page_size": 25}
+    if region:
         params["region"] = region
-    payload = _read_json_url(endpoint + "?" + urlencode(params), provider="AMap Places")
+        params["city_limit"] = "true"
+    payload = _read_json_url(
+        AMAP_PLACE_TEXT_URL + "?" + urlencode(params),
+        provider="AMap Places",
+        direct_first=True,
+    )
     pois = payload.get("pois") or []
     if not pois and anchor is not None:
-        fallback = {"key": key, "keywords": query, "page_size": 10}
+        fallback = {
+            "key": key,
+            "keywords": query,
+            "page_size": 25,
+            "location": f"{float(anchor['longitude']):.6f},{float(anchor['latitude']):.6f}",
+            "radius": 50_000,
+            "sortrule": "weight",
+        }
         if region:
             fallback["region"] = region
+            fallback["city_limit"] = "true"
         payload = _read_json_url(
-            AMAP_PLACE_TEXT_URL + "?" + urlencode(fallback), provider="AMap Places",
+            AMAP_PLACE_AROUND_URL + "?" + urlencode(fallback),
+            provider="AMap Places",
+            direct_first=True,
         )
         pois = payload.get("pois") or []
     if not pois:
@@ -588,18 +839,30 @@ def _select_amap_poi(
 ) -> dict[str, Any]:
     normalized_query = _normalize_place_name(query)
 
-    def score(poi: dict[str, Any]) -> tuple[int, float]:
-        name = _normalize_place_name(str(poi.get("name") or ""))
-        if normalized_query and (normalized_query in name or name in normalized_query):
-            match = 3
-        else:
-            query_pairs = _character_pairs(normalized_query)
-            name_pairs = _character_pairs(name)
-            match = 2 if query_pairs & name_pairs else 0
+    def score(poi: dict[str, Any]) -> tuple[float, float]:
+        match = _amap_poi_match_score(normalized_query, poi)
         distance = _amap_poi_distance_km(poi, anchor)
         return match, -distance
 
-    return max((poi for poi in pois if isinstance(poi, dict)), key=score)
+    selected = max((poi for poi in pois if isinstance(poi, dict)), key=score)
+    if _amap_poi_match_score(normalized_query, selected) <= 0:
+        raise RouteCandidateRejected(f"地点检索结果与“{query}”不匹配")
+    return selected
+
+
+def _amap_poi_match_score(normalized_query: str, poi: dict[str, Any]) -> float:
+    name = _normalize_place_name(str(poi.get("name") or ""))
+    address = _normalize_place_name(str(poi.get("address") or ""))
+    searchable = name + address
+    if normalized_query and (normalized_query in name or name in normalized_query):
+        return 4.0
+    if normalized_query and normalized_query in searchable:
+        return 3.5
+    query_pairs = _character_pairs(normalized_query)
+    if not query_pairs:
+        return 0.0
+    overlap = len(query_pairs & _character_pairs(searchable)) / len(query_pairs)
+    return overlap if overlap >= 0.4 else 0.0
 
 
 def _normalize_place_name(value: str) -> str:
@@ -677,10 +940,20 @@ def _elevation_profile(
     }
 
 
-def _read_json_url(url: str, *, provider: str) -> dict[str, Any]:
+def _read_json_url(
+    url: str,
+    *,
+    provider: str,
+    direct_first: bool = False,
+) -> dict[str, Any]:
     last_error: Exception | None = None
+    proxy_handlers = (
+        (ProxyHandler({}), ProxyHandler())
+        if direct_first
+        else (ProxyHandler(), ProxyHandler({}))
+    )
     for attempt in range(3):
-        for proxy_handler in (ProxyHandler(), ProxyHandler({})):
+        for proxy_handler in proxy_handlers:
             try:
                 with build_opener(proxy_handler).open(url, timeout=25) as response:
                     value = json.load(response)

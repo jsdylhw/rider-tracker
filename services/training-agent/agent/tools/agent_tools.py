@@ -30,6 +30,62 @@ ROUTE_CONSTRAINTS_SCHEMA = {
             "default": 0.1,
             "description": "允许的路线自身重复道路长度比例；仅在 avoid_repeated_roads=true 时强制执行。",
         },
+        "avoid_u_turns": {
+            "type": "boolean",
+            "default": False,
+            "description": "用户明确要求不要掉头时为 true；仅对具有导航动作的高德路线强制执行。",
+        },
+        "avoid_ferry": {
+            "type": "boolean",
+            "default": False,
+            "description": "用户明确要求不坐轮渡或全程陆路时为 true。",
+        },
+        "avoid_stairs": {
+            "type": "boolean",
+            "default": False,
+            "description": "用户明确要求不走阶梯或全程可骑行时为 true。",
+        },
+        "maximum_detour_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "相对相同有序途经点最短高德备选允许的额外距离比例；仅在用户明确给出上限时填写。",
+        },
+    },
+}
+
+ROUTE_PREFERENCES_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "routing_priority": {
+            "type": "string",
+            "enum": ["balanced", "shortest", "fastest"],
+            "default": "balanced",
+            "description": "平衡距离和耗时、尽量短或尽量快；这是备选路线排序偏好。",
+        },
+        "turn_bias": {
+            "type": "string",
+            "enum": ["neutral", "fewer_left", "fewer_right", "fewer_turns"],
+            "default": "neutral",
+            "description": "减少左转、右转或全部显著转向；不表示地图服务绝对保证。",
+        },
+        "navigation_complexity": {
+            "type": "string",
+            "enum": ["neutral", "simple"],
+            "default": "neutral",
+            "description": "simple 偏好转向少、导航步骤密度低且连续道路更清晰的路线。",
+        },
+        "prefer_fewer_tunnels": {
+            "type": "boolean",
+            "default": False,
+            "description": "优先选择高德导航步骤中隧道更少的路线。",
+        },
+        "prefer_fewer_bridges": {
+            "type": "boolean",
+            "default": False,
+            "description": "优先选择高德导航步骤中过桥更少的路线。",
+        },
     },
 }
 
@@ -371,6 +427,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                 "country_code": {"type": "string", "description": "ISO 两字母国家代码，如 CN、FR、JP"},
                 "include_elevation": {"type": "boolean", "default": True},
                 "route_constraints": ROUTE_CONSTRAINTS_SCHEMA,
+                "route_preferences": ROUTE_PREFERENCES_SCHEMA,
                 "segment_strategy": {
                     "type": "string", "enum": ["auto", "ignore", "require", "complete_loop"], "default": "auto",
                     "description": "auto 尝试 Strava 增强并在失败时保留地图基线；complete_loop 需要 origin 和 area。",
@@ -512,6 +569,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                 "target_distance_km": {"type": "number"},
                 "include_elevation": {"type": "boolean", "default": True},
                 "route_constraints": ROUTE_CONSTRAINTS_SCHEMA,
+                "route_preferences": ROUTE_PREFERENCES_SCHEMA,
                 "segment_strategy": {
                     "type": "string", "enum": ["auto", "ignore", "require"],
                     "description": "缺省时沿用当前路线计划的策略。",

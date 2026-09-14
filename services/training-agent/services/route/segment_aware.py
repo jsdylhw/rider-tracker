@@ -604,6 +604,13 @@ def _compose_target(
         "duration_min": round(duration_s / 60),
         "distance_delta_km": round(distance_km - float(target_distance), 1) if target_distance is not None else None,
         "geometry": {"type": "LineString", "coordinates": geometry},
+        # Provider navigation steps and alternative baselines describe the
+        # original AMap geometry. They must not survive a Strava composition.
+        "navigation_steps": [],
+        "provider_alternative_count": None,
+        "baseline_distance_m": None,
+        "baseline_duration_s": None,
+        "route_quality": {},
         "elevation": None,
         "strava_segments": persisted_segments,
         "segment_evidence": {

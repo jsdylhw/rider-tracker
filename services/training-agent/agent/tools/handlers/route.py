@@ -27,6 +27,7 @@ from services.route.quality import (
     apply_plan_route_constraints,
     filter_plan_route_constraints,
     normalize_route_constraints,
+    normalize_route_preferences,
 )
 from services.route.single_day import (
     RouteCandidateRejected,
@@ -99,6 +100,7 @@ def create_route_plan_tool(
     segment_strategy = str(args.get("segment_strategy") or "auto").lower()
     country_code = str(args.get("country_code") or "")
     route_constraints = normalize_route_constraints(args.get("route_constraints"))
+    route_preferences = normalize_route_preferences(args.get("route_preferences"))
     if segment_strategy == "complete_loop":
         plan = create_popular_loop_plan(
             workspace_id=_workspace_id(context),
@@ -117,6 +119,7 @@ def create_route_plan_tool(
             route_constraints,
             rejection_type=RouteCandidateRejected,
         )
+        plan = {**plan, "route_preferences": route_preferences}
         stored = RoutePlanStore().save(plan)
         compact = compact_route_plan(stored)
         prefix = "已生成热门环线" if stored.get("route_mode") == "popular_loop" else "已降级生成普通地图路线"
@@ -153,14 +156,25 @@ def create_route_plan_tool(
         candidates=candidates,
         include_elevation=include_elevation and not segment_active,
         route_constraints=route_constraints,
+        route_preferences=route_preferences,
     )
     if segment_active:
+        preserve_amap_evidence = (
+            country_code.strip().upper() == "CN"
+            and (
+                route_preferences != normalize_route_preferences(None)
+                or any(route_constraints.get(key) for key in (
+                    "avoid_u_turns", "avoid_ferry", "avoid_stairs", "maximum_detour_ratio",
+                ))
+            )
+        )
         plan = _apply_segment_strategy(
             plan,
             context=context,
             strategy=segment_strategy,
             preferences=args.get("segment_preferences") or [],
             include_elevation=include_elevation,
+            proposal_mode=preserve_amap_evidence,
         )
         plan = filter_plan_route_constraints(
             plan,
@@ -254,7 +268,14 @@ def update_route_plan_tool(
     existing_constraints = plan.get("route_constraints") if isinstance(plan.get("route_constraints"), dict) else {}
     requested_constraints = args.get("route_constraints") if isinstance(args.get("route_constraints"), dict) else {}
     route_constraints = normalize_route_constraints({**existing_constraints, **requested_constraints})
-    plan = {**plan, "route_constraints": route_constraints}
+    existing_preferences = plan.get("route_preferences") if isinstance(plan.get("route_preferences"), dict) else {}
+    requested_preferences = args.get("route_preferences") if isinstance(args.get("route_preferences"), dict) else {}
+    route_preferences = normalize_route_preferences({**existing_preferences, **requested_preferences})
+    plan = {
+        **plan,
+        "route_constraints": route_constraints,
+        "route_preferences": route_preferences,
+    }
     segment_strategy = str(args.get("segment_strategy") or plan.get("segment_strategy") or "ignore").lower()
     staged_plan = plan.get("schedule_type") in {"multi_day", "day_parts"}
     segment_active = (
@@ -318,6 +339,7 @@ def update_route_plan_tool(
             target_distance_km=args.get("target_distance_km"),
             include_elevation=route_include_elevation,
             route_constraints=route_constraints,
+            route_preferences=route_preferences,
         )
     elif operation == "replace_stage":
         if plan.get("schedule_type") not in {"multi_day", "day_parts"}:
@@ -385,6 +407,7 @@ def update_route_plan_tool(
             plan = edit_candidate_waypoints(
                 plan,
                 route_constraints=route_constraints,
+                route_preferences=route_preferences,
                 **common,
             )
     else:
@@ -536,6 +559,21 @@ def _plan_answer(plan: dict[str, Any], *, prefix: str) -> str:
         f"当前候选 {active.get('name') or '-'}，{active.get('distance_km') or 0} km，"
         f"预计 {active.get('duration_min') or 0} 分钟。"
     )
+    quality = active.get("route_quality") if isinstance(active.get("route_quality"), dict) else {}
+    if quality.get("navigation_data_source") == "amap_navigation":
+        alternatives = int(active.get("provider_alternative_count") or 1)
+        passage_counts = quality.get("passage_counts") if isinstance(quality.get("passage_counts"), dict) else {}
+        answer += (
+            f" 已比较 {alternatives} 个高德组合：左转 {int(quality.get('left_turn_count') or 0)} 次，"
+            f"右转 {int(quality.get('right_turn_count') or 0)} 次，"
+            f"掉头 {int(quality.get('u_turn_count') or 0)} 次，"
+            f"导航步骤 {int(quality.get('navigation_step_count') or 0)} 个，"
+            f"自身重复率 {float(quality.get('self_overlap_ratio') or 0):.1%}，"
+            f"绕行 {float(quality.get('detour_ratio') or 0):.1%}；"
+            f"高德报告轮渡 {int(passage_counts.get('ferry') or 0)}、"
+            f"阶梯 {int(passage_counts.get('stairs') or 0)}、"
+            f"隧道 {int(passage_counts.get('tunnel') or 0)} 段。"
+        )
     planning = plan.get("planning") if isinstance(plan.get("planning"), dict) else {}
     if planning.get("status") == "awaiting_selection":
         answer += f" 当前共有 {len(candidates)} 条候选，尚未最终确认；可以选择候选或继续按语义修改。"

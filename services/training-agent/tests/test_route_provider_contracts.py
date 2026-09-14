@@ -9,6 +9,7 @@ from urllib.error import URLError
 
 import pytest
 
+from integrations.route_providers import amap as amap_provider
 from integrations.google_places import GOOGLE_PLACES_FIELD_MASK, GooglePlacesClient
 from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint, _successful_path, parse_polyline
 from integrations.route_providers.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
@@ -74,6 +75,149 @@ def test_amap_contract_and_coordinate_boundary() -> None:
     restored = gcj02_to_wgs84(*gcj)
     assert abs(gcj[0] - wgs[0]) > 0.001
     assert restored == pytest.approx(wgs, abs=1e-6)
+
+
+def test_amap_requests_and_normalizes_three_navigation_alternatives(monkeypatch) -> None:
+    payload = {
+        "status": "1",
+        "infocode": "10000",
+        "route": {"paths": [
+            {
+                "distance": "1200",
+                "cost": {"duration": "300"},
+                "steps": [{
+                    "instruction": "沿新塘路骑行后左转",
+                    "road_name": "新塘路",
+                    "step_distance": "1200",
+                    "action": "左转",
+                    "walk_type": "0",
+                    "polyline": "120.1,30.2;120.2,30.3",
+                }],
+            },
+            {
+                "distance": "1300",
+                "cost": {"duration": "280"},
+                "steps": [{
+                    "instruction": "沿环站东路骑行",
+                    "road_name": "环站东路",
+                    "step_distance": "1300",
+                    "navi": {
+                        "action": "直行",
+                        "assistant_action": "到达途经地",
+                        "walk_type": "23",
+                    },
+                    "polyline": "120.1,30.2;120.3,30.3",
+                }],
+            },
+        ]},
+    }
+    request_urls = []
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    class Opener:
+        def open(self, url, timeout):
+            request_urls.append(url)
+            return Response(json.dumps(payload).encode())
+
+    monkeypatch.setattr(amap_provider, "build_opener", lambda *args, **kwargs: Opener())
+    routes = AmapCyclingRouter("test-key").route_alternatives(
+        AmapPoint(30.2, 120.1),
+        AmapPoint(30.3, 120.3),
+        alternative_route=3,
+    )
+
+    assert "alternative_route=3" in request_urls[0]
+    assert len(routes) == 2
+    assert routes[0]["duration_s"] == 300
+    assert routes[0]["instructions"][0]["road_name"] == "新塘路"
+    assert routes[1]["instructions"][0]["action"] == "直行"
+    assert routes[1]["instructions"][0]["assistant_action"] == "到达途经地"
+    assert routes[1]["instructions"][0]["walk_type"] == "23"
+
+
+def test_amap_tries_direct_connection_before_environment_proxy(monkeypatch) -> None:
+    payload = {
+        "status": "1",
+        "infocode": "10000",
+        "route": {"paths": [{
+            "distance": "100",
+            "cost": {"duration": "20"},
+            "steps": [{"polyline": "120.1,30.2;120.2,30.3"}],
+        }]},
+    }
+    handler_kinds = []
+    opened_by = []
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    class Opener:
+        def __init__(self, kind):
+            self.kind = kind
+
+        def open(self, url, timeout):
+            opened_by.append(self.kind)
+            return Response(json.dumps(payload).encode())
+
+    def build(handler):
+        kind = "direct" if handler.proxies == {} else "proxy"
+        handler_kinds.append(kind)
+        return Opener(kind)
+
+    monkeypatch.setattr(amap_provider, "build_opener", build)
+    AmapCyclingRouter("test-key").route(
+        AmapPoint(30.2, 120.1), AmapPoint(30.3, 120.2),
+    )
+
+    assert handler_kinds == ["direct", "proxy"]
+    assert opened_by == ["direct"]
+
+
+def test_amap_retries_transient_qps_response(monkeypatch) -> None:
+    responses = [
+        {"status": "0", "info": "CUQPS_HAS_EXCEEDED_THE_LIMIT"},
+        {
+            "status": "1",
+            "infocode": "10000",
+            "route": {"paths": [{
+                "distance": "100",
+                "cost": {"duration": "20"},
+                "steps": [{"polyline": "120.1,30.2;120.2,30.3"}],
+            }]},
+        },
+    ]
+    sleeps = []
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    class Opener:
+        def open(self, url, timeout):
+            return Response(json.dumps(responses.pop(0)).encode())
+
+    monkeypatch.setattr(amap_provider, "build_opener", lambda *args: Opener())
+    monkeypatch.setattr(amap_provider.time, "sleep", sleeps.append)
+
+    route = AmapCyclingRouter("test-key", retries=1).route(
+        AmapPoint(30.2, 120.1), AmapPoint(30.3, 120.2),
+    )
+
+    assert route["distance_m"] == 100
+    assert sleeps == [0.8]
 
 
 def test_google_places_route_search_contract() -> None:

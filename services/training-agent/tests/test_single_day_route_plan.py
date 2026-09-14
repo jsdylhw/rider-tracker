@@ -9,11 +9,13 @@ import pytest
 from agent.runtime.models import ToolExecution
 from agent.runtime.presentation_projector import project_presentations
 from agent.main_agent.context import AgentContext
-from agent.tools.handlers.route import create_route_plan_tool, update_route_plan_tool
+from agent.tools.handlers.route import _plan_answer, create_route_plan_tool, update_route_plan_tool
 from services.route.single_day import (
     RouteCandidateRejected,
+    _amap_route_combinations,
     _route_amap,
     _route_google,
+    _select_amap_poi,
     compact_route_plan,
     create_single_day_plan,
     edit_candidate_waypoints,
@@ -336,9 +338,10 @@ def test_google_foreign_route_rejects_places_outside_requested_country(monkeypat
 def test_amap_route_uses_anchor_search_and_prefers_matching_nearby_place(monkeypatch):
     urls = []
 
-    def read(url, *, provider):
+    def read(url, *, provider, direct_first=False):
+        assert direct_first is True
         urls.append(url)
-        if "place/text" in url:
+        if len(urls) == 1:
             return {"pois": [{
                 "id": "origin", "name": "世博文化公园", "address": "浦东新区",
                 "location": "121.493000,31.188000", "adcode": "310115", "citycode": "021",
@@ -358,11 +361,13 @@ def test_amap_route_uses_anchor_search_and_prefers_matching_nearby_place(monkeyp
         def __init__(self, key):
             assert key == "amap-key"
 
-        def route_points(self, points):
-            return {
+        def route_point_leg_alternatives(self, points, *, alternative_route):
+            assert alternative_route == 3
+            return [[{
                 "provider": "amap", "distance_m": 5_000, "duration_s": 1_200,
                 "geometry": [(point.lon, point.lat) for point in points],
-            }
+                "instructions": [],
+            }]]
 
     monkeypatch.setattr("services.route.single_day._read_json_url", read)
     monkeypatch.setattr("services.route.single_day.AmapCyclingRouter", Router)
@@ -374,10 +379,160 @@ def test_amap_route_uses_anchor_search_and_prefers_matching_nearby_place(monkeyp
 
     assert places[1]["name"] == "后滩滨江"
     assert places[1]["place_id"] == "right"
-    assert "place%2Faround" not in urls[1]
-    assert "/place/around?" in urls[1]
-    assert "location=121.493000%2C31.188000" in urls[1]
-    assert "region=310115" in urls[1]
+    assert "/place/text?" in urls[1]
+    assert "page_size=25" in urls[1]
+    assert "region=021" in urls[1]
+    assert "city_limit=true" in urls[1]
+
+
+def test_amap_route_ranks_real_alternatives_by_turn_preference(monkeypatch):
+    places = iter([
+        {"query": "杭州东站", "name": "杭州东站", "latitude": 30.291, "longitude": 120.212},
+        {"query": "钱江新城", "name": "钱江新城", "latitude": 30.242, "longitude": 120.212},
+    ])
+
+    class Router:
+        def __init__(self, key):
+            assert key == "amap-key"
+
+        def route_point_leg_alternatives(self, points, *, alternative_route):
+            assert alternative_route == 3
+            origin = (points[0].lon, points[0].lat)
+            destination = (points[1].lon, points[1].lat)
+            return [[
+                {
+                    "provider": "amap", "profile": "bicycling",
+                    "distance_m": 5_000, "duration_s": 1_200,
+                    "geometry": [origin, destination],
+                    "instructions": [
+                        {"action": "左转", "road_name": "新塘路", "walk_type": "0"},
+                        {"action": "左转", "road_name": "钱潮路", "walk_type": "0"},
+                    ],
+                },
+                {
+                    "provider": "amap", "profile": "bicycling",
+                    "distance_m": 5_400, "duration_s": 1_260,
+                    "geometry": [origin, destination],
+                    "instructions": [{"action": "右转", "road_name": "环站东路", "walk_type": "0"}],
+                },
+            ]]
+
+    monkeypatch.setattr("services.route.single_day._search_amap_place", lambda *args, **kwargs: next(places))
+    monkeypatch.setattr("services.route.single_day.AmapCyclingRouter", Router)
+
+    _, route = _route_amap(
+        ["杭州东站", "钱江新城"],
+        False,
+        {"amap": {"web_service_key": "amap-key"}},
+        route_preferences={"turn_bias": "fewer_left"},
+    )
+
+    assert route["distance_m"] == 5_400
+    assert route["provider_alternative_count"] == 2
+    assert route["route_quality"]["left_turn_count"] == 0
+    assert route["route_quality"]["right_turn_count"] == 1
+
+
+def test_amap_target_distance_takes_priority_over_soft_turn_preference(monkeypatch):
+    places = iter([
+        {"query": "杭州东站", "name": "杭州东站", "latitude": 30.291, "longitude": 120.212},
+        {"query": "钱江新城", "name": "钱江新城", "latitude": 30.242, "longitude": 120.212},
+    ])
+
+    class Router:
+        def __init__(self, key):
+            pass
+
+        def route_point_leg_alternatives(self, points, *, alternative_route):
+            geometry = [(point.lon, point.lat) for point in points]
+            return [[
+                {
+                    "provider": "amap", "profile": "bicycling",
+                    "distance_m": 22_000, "duration_s": 4_000,
+                    "geometry": geometry,
+                    "instructions": [{"action": "右转", "road_name": "短线", "walk_type": "0"}],
+                },
+                {
+                    "provider": "amap", "profile": "bicycling",
+                    "distance_m": 29_000, "duration_s": 5_000,
+                    "geometry": geometry,
+                    "instructions": [
+                        {"action": "左转", "road_name": f"道路{index}", "walk_type": "0"}
+                        for index in range(5)
+                    ],
+                },
+            ]]
+
+    monkeypatch.setattr("services.route.single_day._search_amap_place", lambda *args, **kwargs: next(places))
+    monkeypatch.setattr("services.route.single_day.AmapCyclingRouter", Router)
+
+    _, route = _route_amap(
+        ["杭州东站", "钱江新城"],
+        False,
+        {"amap": {"web_service_key": "amap-key"}},
+        target_distance_km=30,
+        route_preferences={"turn_bias": "fewer_left"},
+    )
+
+    assert route["distance_m"] == 29_000
+
+
+def test_amap_beam_keeps_partial_combination_that_can_reach_target_distance():
+    leg_options = []
+    for leg_index in range(4):
+        start = (120.0 + leg_index * 0.01, 30.0)
+        end = (120.01 + leg_index * 0.01, 30.0)
+        leg_options.append([
+            {
+                "provider": "amap", "profile": "bicycling",
+                "distance_m": distance_m, "duration_s": distance_m / 4,
+                "geometry": [start, end], "instructions": [],
+            }
+            for distance_m in (1_000, 2_000, 3_000)
+        ])
+
+    combinations = _amap_route_combinations(
+        leg_options,
+        None,
+        target_distance_km=12,
+        beam_width=24,
+    )
+
+    assert any(route["distance_m"] == 12_000 for route in combinations)
+
+
+def test_amap_named_anchor_prefers_text_match_over_nearby_business():
+    selected = _select_amap_poi(
+        "杭州奥体中心",
+        [
+            {
+                "name": "杭州她他迷高空江景酒店",
+                "address": "城星路",
+                "location": "120.210000,30.240000",
+            },
+            {
+                "name": "杭州奥体中心运动乐园",
+                "address": "滨江区飞虹路",
+                "location": "120.250000,30.230000",
+            },
+        ],
+        anchor={"longitude": 120.211, "latitude": 30.241},
+    )
+
+    assert selected["name"] == "杭州奥体中心运动乐园"
+
+
+def test_amap_named_anchor_rejects_unrelated_nearby_results():
+    with pytest.raises(RouteCandidateRejected, match="不匹配"):
+        _select_amap_poi(
+            "杭州奥体中心",
+            [{
+                "name": "江景酒店",
+                "address": "城星路",
+                "location": "120.210000,30.240000",
+            }],
+            anchor={"longitude": 120.211, "latitude": 30.241},
+        )
 
 
 def test_semantic_waypoint_update_regenerates_candidate_name():
@@ -424,6 +579,98 @@ def test_route_plan_drops_only_candidates_outside_target_distance():
     assert plan["rejected_candidates"][0]["name"] == "异常高松环线"
     assert "允许范围 18.0-45.0 km" in plan["rejected_candidates"][0]["reason"]
     assert compact_route_plan(plan)["rejected_candidates"] == plan["rejected_candidates"]
+
+
+def test_domestic_plan_activates_candidate_closest_to_explicit_target():
+    def route_amap(queries, is_closed, config, **kwargs):
+        distance = {"短线": 20_000, "接近": 28_000, "长线": 38_000}[queries[0]]
+        return _places(queries), {
+            **_route_result(distance_m=distance),
+            "provider": "amap",
+            "instructions": [{"action": "直行", "road_name": "测试路", "walk_type": "0"}],
+            "baseline_distance_m": distance,
+            "baseline_duration_s": 7_200,
+            "provider_alternative_count": 3,
+        }
+
+    with patch("services.route.single_day.load_config", return_value={}), patch(
+        "services.route.single_day._route_amap", side_effect=route_amap,
+    ):
+        plan = create_single_day_plan(
+            workspace_id="workspace",
+            title="30公里候选",
+            country_code="CN",
+            candidates=[
+                {"name": "短线", "waypoints": ["短线", "终点"], "target_distance_km": 30},
+                {"name": "接近目标", "waypoints": ["接近", "终点"], "target_distance_km": 30},
+                {"name": "长线", "waypoints": ["长线", "终点"], "target_distance_km": 30},
+            ],
+            include_elevation=False,
+        )
+
+    assert plan["active_candidate_id"] == "candidate_2"
+
+
+def test_domestic_plan_fastest_preference_compares_actual_candidate_duration():
+    def route_amap(queries, is_closed, config, **kwargs):
+        distance_m, duration_s = {
+            "短而慢": (10_000, 3_600),
+            "长而快": (20_000, 1_800),
+        }[queries[0]]
+        return _places(queries), {
+            **_route_result(distance_m=distance_m),
+            "duration_s": duration_s,
+            "provider": "amap",
+            "instructions": [{"action": "直行", "road_name": "测试路", "walk_type": "0"}],
+            "baseline_distance_m": distance_m,
+            "baseline_duration_s": duration_s,
+        }
+
+    with patch("services.route.single_day.load_config", return_value={}), patch(
+        "services.route.single_day._route_amap", side_effect=route_amap,
+    ):
+        plan = create_single_day_plan(
+            workspace_id="workspace",
+            title="最快候选",
+            country_code="CN",
+            candidates=[
+                {"name": "短而慢", "waypoints": ["短而慢", "终点"]},
+                {"name": "长而快", "waypoints": ["长而快", "终点"]},
+            ],
+            include_elevation=False,
+            route_preferences={"routing_priority": "fastest"},
+        )
+
+    assert plan["active_candidate_id"] == "candidate_2"
+
+
+def test_plan_answer_reports_amap_quality_evidence():
+    answer = _plan_answer({
+        "title": "杭州环线",
+        "active_candidate_id": "candidate_1",
+        "candidates": [{
+            "candidate_id": "candidate_1",
+            "name": "钱塘江线",
+            "distance_km": 30,
+            "duration_min": 120,
+            "provider_alternative_count": 6,
+            "route_quality": {
+                "navigation_data_source": "amap_navigation",
+                "left_turn_count": 3,
+                "right_turn_count": 5,
+                "u_turn_count": 0,
+                "navigation_step_count": 12,
+                "self_overlap_ratio": 0.02,
+                "detour_ratio": 0.04,
+                "passage_counts": {"ferry": 0, "stairs": 0, "tunnel": 1},
+            },
+        }],
+    }, prefix="已生成")
+
+    assert "已比较 6 个高德组合" in answer
+    assert "左转 3 次" in answer
+    assert "自身重复率 2.0%" in answer
+    assert "隧道 1 段" in answer
 
 
 def test_route_plan_store_persists_revision_and_latest_workspace(tmp_path):
@@ -721,7 +968,11 @@ def test_create_route_plan_tool_passes_structured_route_constraints(monkeypatch)
 
     def create(**kwargs):
         captured.update(kwargs)
-        return {**plan, "route_constraints": kwargs["route_constraints"]}
+        return {
+            **plan,
+            "route_constraints": kwargs["route_constraints"],
+            "route_preferences": kwargs["route_preferences"],
+        }
 
     monkeypatch.setattr("agent.tools.handlers.route.create_single_day_plan", create)
     monkeypatch.setattr("agent.tools.handlers.route._apply_segment_strategy", lambda value, **kwargs: value)
@@ -735,6 +986,10 @@ def test_create_route_plan_tool_passes_structured_route_constraints(monkeypatch)
                 "avoid_repeated_roads": True,
                 "maximum_self_overlap_ratio": 0.08,
             },
+            "route_preferences": {
+                "routing_priority": "shortest",
+                "turn_bias": "fewer_left",
+            },
             "candidates": [{"name": "候选", "waypoints": ["A", "B", "A"]}],
         },
     )
@@ -742,8 +997,20 @@ def test_create_route_plan_tool_passes_structured_route_constraints(monkeypatch)
     assert captured["route_constraints"] == {
         "avoid_repeated_roads": True,
         "maximum_self_overlap_ratio": 0.08,
+        "avoid_u_turns": False,
+        "avoid_ferry": False,
+        "avoid_stairs": False,
+        "maximum_detour_ratio": None,
+    }
+    assert captured["route_preferences"] == {
+        "routing_priority": "shortest",
+        "turn_bias": "fewer_left",
+        "navigation_complexity": "neutral",
+        "prefer_fewer_tunnels": False,
+        "prefer_fewer_bridges": False,
     }
     assert output["result"]["route_constraints"] == captured["route_constraints"]
+    assert output["result"]["route_preferences"] == captured["route_preferences"]
 
 
 def test_create_route_plan_inherits_target_and_trusted_virtual_route_options(monkeypatch):
@@ -908,6 +1175,10 @@ def test_update_route_plan_merges_and_persists_route_constraints(monkeypatch):
     assert captured["route_constraints"] == {
         "avoid_repeated_roads": True,
         "maximum_self_overlap_ratio": 0.1,
+        "avoid_u_turns": False,
+        "avoid_ferry": False,
+        "avoid_stairs": False,
+        "maximum_detour_ratio": None,
     }
     assert output["result"]["route_constraints"] == captured["route_constraints"]
     assert output["result"]["candidates"][0]["route_quality"]["self_overlap_ratio"] == 0.0
