@@ -229,7 +229,7 @@ def test_route_provider_failure_keeps_structured_error_and_stops(monkeypatch):
         )
 
     assert result["status"] == "provider_error"
-    assert result["answer"] == "路线服务暂时不可用，请稍后重试。"
+    assert result["answer"] == "Google 地点检索暂时不可用：TLS timeout。已保留当前路线，请稍后重试。"
     assert result["executions"][0]["error"] == "route_provider_error"
     assert client.return_value.create_messages.call_count == 1
 

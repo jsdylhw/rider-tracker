@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 
 import requests
 
-from integrations.provider_error import ProviderError, TransientProviderError
+from integrations.provider_error import ProviderError, TransientProviderError, classify_http_error
 
 SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PHOTO_NAME_RE = re.compile(r"^places/[A-Za-z0-9_-]+/photos/[A-Za-z0-9_-]+$")
@@ -273,13 +273,11 @@ def _read_json(request: Request, timeout_s: float) -> dict[str, Any]:
         with urlopen(request, timeout=timeout_s) as response:  # noqa: S310 - fixed HTTPS provider URL
             payload = json.load(response)
     except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:500]
-        error_type = TransientProviderError if exc.code in {408, 429} or exc.code >= 500 else ProviderError
-        raise error_type(
-            f"Google Places HTTP {exc.code}: {detail}",
+        raise classify_http_error(
+            exc,
             provider="google_places",
             stage="place_search",
-            **({} if error_type is TransientProviderError else {"code": "provider_http_error"}),
+            label="Google Places",
         ) from exc
     except json.JSONDecodeError as exc:
         raise ProviderError(

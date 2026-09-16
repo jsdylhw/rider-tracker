@@ -70,7 +70,7 @@ class RouteProviderFailed(RuntimeError):
 
     def __init__(self, failures: Sequence[dict[str, Any]]) -> None:
         self.failures = [dict(item) for item in failures]
-        super().__init__("路线服务暂时不可用，请稍后重试。")
+        super().__init__(_provider_failure_summary(self.failures))
 
     def to_tool_result(self) -> dict[str, Any]:
         first = self.failures[0] if self.failures else {}
@@ -85,6 +85,29 @@ class RouteProviderFailed(RuntimeError):
             "message": str(self),
             "failures": self.failures,
         }
+
+
+def _provider_failure_summary(failures: Sequence[dict[str, Any]]) -> str:
+    labels = {
+        "google": "Google 代理链路",
+        "google_places": "Google 地点检索",
+        "google_routes": "Google 路线计算",
+        "amap": "高德路线服务",
+    }
+    providers = []
+    messages = []
+    for failure in failures:
+        provider = str(failure.get("provider") or "route_provider")
+        label = labels.get(provider, "路线服务")
+        if label not in providers:
+            providers.append(label)
+        message = str(failure.get("message") or "").strip()
+        if message and message not in messages:
+            messages.append(message)
+    provider_text = "、".join(providers) or "路线服务"
+    detail = messages[0] if messages else "上游服务未返回可用结果"
+    extra = f"；另有 {len(messages) - 1} 类失败" if len(messages) > 1 else ""
+    return f"{provider_text}暂时不可用：{detail}{extra}。已保留当前路线，请稍后重试。"
 
 
 def create_single_day_plan(

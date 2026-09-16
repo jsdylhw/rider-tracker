@@ -10,7 +10,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from integrations.provider_error import ProviderError, TransientProviderError
+from integrations.provider_error import ProviderError, TransientProviderError, classify_http_error
 
 
 GOOGLE_ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
@@ -161,13 +161,11 @@ def _read_json(request: Request, timeout_s: float) -> dict[str, Any]:
         with urlopen(request, timeout=timeout_s) as response:  # noqa: S310 - fixed HTTPS provider URL
             payload = json.load(response)
     except HTTPError as exc:
-        detail = _http_error_detail(exc)
-        error_type = TransientProviderError if exc.code in {408, 429} or exc.code >= 500 else ProviderError
-        raise error_type(
-            f"Google Routes returned HTTP {exc.code}: {detail}",
+        raise classify_http_error(
+            exc,
             provider="google_routes",
             stage="route_calculation",
-            **({} if error_type is TransientProviderError else {"code": "provider_http_error"}),
+            label="Google Routes",
         ) from exc
     except json.JSONDecodeError as exc:
         raise ProviderError(
@@ -191,14 +189,3 @@ def _read_json(request: Request, timeout_s: float) -> dict[str, Any]:
             code="provider_invalid_response",
         )
     return payload
-
-
-def _http_error_detail(exc: HTTPError) -> str:
-    try:
-        payload = json.loads(exc.read().decode("utf-8", errors="replace"))
-        error = payload.get("error") if isinstance(payload, dict) else None
-        if isinstance(error, dict) and error.get("message"):
-            return str(error["message"])
-    except (OSError, ValueError):
-        pass
-    return str(exc.reason or "provider error")

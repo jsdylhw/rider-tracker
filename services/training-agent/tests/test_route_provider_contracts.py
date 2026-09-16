@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import json
 from unittest.mock import patch
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -13,7 +13,7 @@ from integrations import google_connectivity
 from integrations.route_providers import amap as amap_provider
 from integrations.google_connectivity import ensure_google_route_connectivity
 from integrations.google_places import GOOGLE_PLACES_FIELD_MASK, GooglePlacesClient
-from integrations.provider_error import ProviderError
+from integrations.provider_error import ProviderError, classify_http_error
 from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint, _successful_path, parse_polyline
 from integrations.route_providers.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
 from integrations.route_providers.google_routes import (
@@ -44,6 +44,50 @@ def _route_payload(distance: int = 17_250, duration: str = "4020s") -> dict:
             },
         }]
     }
+
+
+def test_google_html_http_400_is_retryable_and_does_not_expose_body() -> None:
+    error = HTTPError(
+        "https://places.googleapis.com/v1/places:searchText",
+        400,
+        "Bad Request",
+        {"Content-Type": "text/html"},
+        io.BytesIO(b"<html>proxy diagnostic with internal details</html>"),
+    )
+
+    classified = classify_http_error(
+        error,
+        provider="google_places",
+        stage="place_search",
+        label="Google Places",
+    )
+
+    assert isinstance(classified, TransientProviderError)
+    assert classified.retryable is True
+    assert "非 JSON" in str(classified)
+    assert "internal details" not in str(classified)
+
+
+def test_google_json_http_400_remains_a_non_retryable_request_error() -> None:
+    error = HTTPError(
+        "https://places.googleapis.com/v1/places:searchText",
+        400,
+        "Bad Request",
+        {"Content-Type": "application/json"},
+        io.BytesIO(json.dumps({"error": {"message": "invalid field mask"}}).encode()),
+    )
+
+    classified = classify_http_error(
+        error,
+        provider="google_places",
+        stage="place_search",
+        label="Google Places",
+    )
+
+    assert type(classified) is ProviderError
+    assert classified.retryable is False
+    assert classified.code == "provider_http_error"
+    assert "invalid field mask" in str(classified)
 
 
 def test_amap_contract_and_coordinate_boundary() -> None:
