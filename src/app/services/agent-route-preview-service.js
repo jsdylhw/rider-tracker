@@ -27,7 +27,7 @@ export function createAgentRoutePreviewService({
             const chatOptions = {
                 routeOptions: { include_elevation: false },
                 requestMode: "route_plan",
-                routeAction: currentDraft ? "update" : "create"
+                routeAction: currentDraft ? "refine" : "create"
             };
             const turnResult = await agentClient.chat(request, chatOptions);
             if (!operations.isCurrent(requestId) || store.getState().route !== loadingRoute) return null;
@@ -224,8 +224,8 @@ function buildVirtualRouteRequest(message) {
 function buildRouteRefinementRequest(message, draft) {
     return [
         String(message || "").trim(),
-        `请基于当前路线计划 ${draft.planId} 和当前候选继续增量修改。`,
-        "保留未被用户否定的起点、终点和路线意图；不要重新进行宽泛路线发现，除非用户明确要求换区域或重新规划。",
+        `当前路线计划 ${draft.planId}。如果用户仍在修改同一地理区域或路线概念，调用 update_route_plan；如果用户明确换到其他国家、城市或路线概念，调用 create_route_plan 新建计划。`,
+        "同一区域修改时保留未被用户否定的起点、终点和路线意图；跨区域时不得用旧计划的 country_code 或途经点继续更新。",
         "这是无海拔 ERG 虚拟路线，include_elevation 必须为 false。修改后返回可预览的路线候选。"
     ].filter(Boolean).join("\n\n");
 }

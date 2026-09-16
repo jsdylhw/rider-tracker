@@ -50,8 +50,8 @@ def handle_control_turn(
             tool_name = str(context.last_failed_action.get("tool") or "")
             if (
                 execution_policy is not None
-                and execution_policy.required_tool_name
-                and tool_name != execution_policy.required_tool_name
+                and execution_policy.completion_tool_names
+                and not execution_policy.accepts_tool(tool_name)
             ):
                 return None
             skill = get_skill(context.active_skill_id)

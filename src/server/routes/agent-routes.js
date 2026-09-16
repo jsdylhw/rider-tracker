@@ -65,8 +65,8 @@ export function normalizeChatRequest(body = {}) {
         throw new RequestValidationError("request_mode 格式无效。");
     }
     const routeAction = body.route_action == null ? null : String(body.route_action).trim();
-    if (requestMode === "route_plan" && !new Set(["create", "update"]).has(routeAction)) {
-        throw new RequestValidationError("route_plan 请求必须指定 create 或 update。");
+    if (requestMode === "route_plan" && !new Set(["create", "update", "refine"]).has(routeAction)) {
+        throw new RequestValidationError("route_plan 请求必须指定 create、update 或 refine。");
     }
     if (requestMode === "chat" && routeAction) {
         throw new RequestValidationError("普通聊天不能指定 route_action。");

@@ -309,6 +309,40 @@ def test_route_policy_clears_stale_execution_before_client_initialization_failur
     assert "route_plan" not in result
 
 
+def test_refine_policy_allows_create_or_update_but_not_read_only_route_tools(monkeypatch):
+    context = AgentContext(session_id="refine-cross-region", workspace_id="workspace")
+    monkeypatch.setitem(
+        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+        "create_route_plan",
+        lambda args, ctx: {
+            "status": "completed", "answer": "已创建安纳西路线",
+            "result": {"plan_id": "fr-plan"},
+        },
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.return_value = {
+            "id": "msg-refine-create",
+            "content": [{
+                "type": "tool_use", "name": "create_route_plan", "id": "tu-create",
+                "input": {"title": "安纳西环线", "country_code": "FR", "candidates": []},
+            }],
+            "stop_reason": "tool_use",
+        }
+        result = run_tool_loop(
+            "把当前杭州路线改成法国安纳西路线",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("refine"),
+        )
+
+    assert result["status"] == "completed"
+    call = client.return_value.create_messages.call_args
+    assert call.kwargs["tool_choice"] == {"type": "any"}
+    assert {tool["name"] for tool in call.kwargs["tools"]} == {
+        "create_route_plan", "update_route_plan",
+    }
+    assert [item["tool"] for item in result["executions"]] == ["create_route_plan"]
+
+
 def test_create_policy_is_not_completed_by_reading_an_old_route(monkeypatch):
     context = AgentContext(session_id="create-read-old-route", workspace_id="workspace")
     monkeypatch.setitem(

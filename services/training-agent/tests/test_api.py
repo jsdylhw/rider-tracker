@@ -986,6 +986,25 @@ def test_chat_applies_route_options_only_for_current_request(tmp_path, monkeypat
     assert api.chat_sessions.get_or_create("session-1").context.route_request_options == {}
 
 
+def test_chat_refine_route_policy_accepts_create_or_update(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    seen = []
+
+    def run(message, *, context, execution_policy):
+        seen.append(execution_policy.completion_tool_names)
+        return {"answer": "ok", "status": "completed", "intent": "route_advice"}
+
+    monkeypatch.setattr(api, "run_tool_loop", run)
+    response = client.post("/api/chat", json={
+        "session_id": "session-1", "request_id": "request-refine",
+        "message": "把杭州路线改成安纳西路线",
+        "request_mode": "route_plan", "route_action": "refine",
+    })
+
+    assert response.status_code == 200
+    assert seen == [frozenset({"create_route_plan", "update_route_plan"})]
+
+
 def test_chat_rejects_route_mode_without_an_explicit_action(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
     calls = []

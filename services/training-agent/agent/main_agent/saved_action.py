@@ -74,7 +74,7 @@ def execute_saved_action(
     from agent.main_agent.result_builder import build_completed_result, build_turn_result
 
     steps = [execution.to_step()]
-    if execution_policy is not None and execution_policy.required_tool_name:
+    if execution_policy is not None and execution_policy.completion_tool_names:
         return build_completed_result(
             intent,
             context,

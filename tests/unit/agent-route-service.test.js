@@ -95,9 +95,9 @@ export const suite = {
                 await service.planAgentRoutes("从世博园出发生成滨江路线");
                 await service.planAgentRoutes("路线再靠江边一点");
                 assertEqual(chatOptions[0].routeAction, "create");
-                assertEqual(chatOptions[1].routeAction, "update");
+                assertEqual(chatOptions[1].routeAction, "refine");
                 assert(chatMessages[1].includes("当前路线计划 plan-1"), "后续语义修改应绑定当前页面内计划");
-                assert(chatMessages[1].includes("增量修改"), "后续语义修改不应重新宽泛发现");
+                assert(chatMessages[1].includes("其他国家、城市"), "后续请求应允许跨区域时重建计划");
 
                 await service.exploreAgentRouteSegments("candidate-1");
                 await service.composeAgentRouteSegments([

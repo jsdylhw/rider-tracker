@@ -176,7 +176,13 @@ def _execute_main_agent_turn(
     """执行 agent_loop 并同步 messages 回 context. 返回 step_count."""
     def allowed_tool_names() -> set[str]:
         skill = get_skill(context.active_skill_id)
-        return tools_for_skill(skill, message) if skill else {"activate_skill"}
+        names = tools_for_skill(skill, message) if skill else {"activate_skill"}
+        required = execution_policy.completion_tool_names
+        # Exact create/update policies already force a named first tool. The
+        # refine policy uses tool_choice=any, so expose only its two valid
+        # terminal alternatives and prevent a read-only route tool from
+        # consuming the mandatory call.
+        return names & set(required) if len(required) > 1 else names
 
     def rendered_tools() -> list[dict[str, Any]]:
         names = allowed_tool_names()
@@ -214,13 +220,10 @@ def _execute_main_agent_turn(
         steps_taken,
         allowed_tool_names=initial_names,
         allowed_tool_provider=allowed_tool_names,
-        terminal_tool_names=(
-            {execution_policy.required_tool_name}
-            if execution_policy.required_tool_name else None
-        ),
+        terminal_tool_names=(set(execution_policy.completion_tool_names) or None),
         stop_on_failed_tools=(
-            {execution_policy.required_tool_name}
-            if execution_policy.stop_on_required_tool_failure and execution_policy.required_tool_name else None
+            set(execution_policy.completion_tool_names)
+            if execution_policy.stop_on_required_tool_failure else None
         ),
         verbose=verbose,
     )

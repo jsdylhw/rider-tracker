@@ -30,6 +30,15 @@ export const suite = {
                     error = caught;
                 }
                 assert(error, "route_plan 缺少动作时必须拒绝");
+
+                const refinement = normalizeChatRequest({
+                    session_id: "session-1",
+                    request_id: "request-3",
+                    message: "把路线改到法国安纳西",
+                    request_mode: "route_plan",
+                    route_action: "refine"
+                });
+                assertEqual(refinement.route_action, "refine");
             }
         },
         {
