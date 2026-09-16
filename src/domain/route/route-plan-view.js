@@ -24,6 +24,8 @@ export function parseRoutePlanView(view, { answer = "" } = {}) {
         activeCandidateId: text(view.active_candidate_id) || candidates[0].candidateId,
         confirmedCandidateId: text(view.confirmed_candidate_id) || null,
         candidates,
+        rejectedCandidates: (Array.isArray(view.rejected_candidates) ? view.rejected_candidates : [])
+            .map(parseRejectedCandidate).filter(Boolean),
         segments: (Array.isArray(view.segments) ? view.segments : []).map(parseSegment).filter(Boolean)
     };
 }
@@ -48,10 +50,22 @@ function parseCandidate(candidate, view) {
         stravaSegments: (candidate.segment_sequence ?? []).map((item) => item?.segment_id).filter(Boolean).join(", "),
         confirmed: text(view.confirmed_candidate_id) === candidateId,
         active: text(view.active_candidate_id) === candidateId,
+        warnings: (candidate.warnings ?? []).map(text).filter(Boolean),
         coordinates,
         waypoints: (candidate.waypoints ?? []).map((point) => ({
             lat: finiteNumber(point?.latitude), lng: finiteNumber(point?.longitude)
         })).filter((point) => point.lat !== null && point.lng !== null)
+    };
+}
+
+function parseRejectedCandidate(candidate) {
+    const reason = text(candidate?.reason);
+    if (!reason) return null;
+    return {
+        name: text(candidate.name) || "候选路线",
+        reason,
+        code: text(candidate.code) || "route_candidate_rejected",
+        stage: text(candidate.stage) || "route_validation"
     };
 }
 

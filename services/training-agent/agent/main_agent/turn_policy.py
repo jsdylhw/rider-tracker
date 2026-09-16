@@ -27,7 +27,6 @@ _ROUTE_REFERENCE_RE = re.compile(
     r"(?:当前路线|这条路线|路线|候选|途经|点位|锚点|起点|终点|路段|第[一二两三四五六七八九十\d]+条|→|->)"
 )
 
-
 def requires_raw_window_evidence(message: str) -> bool:
     """Whether the user explicitly requested a bounded raw FIT window."""
     text = str(message or "")

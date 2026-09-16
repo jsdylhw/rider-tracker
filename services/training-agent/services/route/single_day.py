@@ -7,13 +7,19 @@ import math
 import time
 from collections.abc import Iterable, Sequence
 from typing import Any
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import ProxyHandler, build_opener
 from uuid import uuid4
 
 from integrations.google_places import GooglePlacesClient
-from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint, compose_amap_legs
+from integrations.provider_error import ProviderError, TransientProviderError
+from integrations.route_providers.amap import (
+    AmapCyclingRouter,
+    AmapPoint,
+    compose_amap_legs,
+    validate_amap_response,
+)
 from integrations.route_providers.coordinates import gcj02_to_wgs84
 from integrations.route_providers.google_routes import GoogleRoutesClient, WgsPoint
 from services.route.quality import (
@@ -37,6 +43,47 @@ MAX_GOOGLE_PLACE_BIAS_RADIUS_M = 50_000.0
 
 class RouteCandidateRejected(ValueError):
     """A provider-resolved candidate that violates deterministic route bounds."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "route_candidate_rejected",
+        stage: str = "route_validation",
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.stage = stage
+        self.retryable = False
+
+    def to_tool_result(self) -> dict[str, Any]:
+        return {
+            "status": "failed", "error": self.code, "code": self.code,
+            "stage": self.stage, "retryable": self.retryable,
+            "message": str(self),
+        }
+
+
+class RouteProviderFailed(RuntimeError):
+    """All candidates failed because an upstream route provider was unavailable."""
+
+    def __init__(self, failures: Sequence[dict[str, Any]]) -> None:
+        self.failures = [dict(item) for item in failures]
+        super().__init__("路线服务暂时不可用，请稍后重试。")
+
+    def to_tool_result(self) -> dict[str, Any]:
+        first = self.failures[0] if self.failures else {}
+        providers = sorted({str(item.get("provider") or "unknown") for item in self.failures})
+        return {
+            "status": "failed",
+            "error": "route_provider_error",
+            "code": "route_provider_error",
+            "provider": ",".join(providers),
+            "stage": str(first.get("stage") or "route_planning"),
+            "retryable": any(item.get("retryable") is not False for item in self.failures),
+            "message": str(self),
+            "failures": self.failures,
+        }
 
 
 def create_single_day_plan(
@@ -62,7 +109,8 @@ def create_single_day_plan(
     normalized_constraints = normalize_route_constraints(route_constraints)
     normalized_preferences = normalize_route_preferences(route_preferences)
     routed: list[dict[str, Any]] = []
-    rejected: list[dict[str, str]] = []
+    rejected: list[dict[str, Any]] = []
+    provider_failures: list[dict[str, Any]] = []
     for index, candidate in enumerate(candidates, start=1):
         try:
             routed.append(route_candidate(
@@ -74,18 +122,38 @@ def create_single_day_plan(
                 route_constraints=normalized_constraints,
                 route_preferences=normalized_preferences,
             ))
-        except (RouteCandidateRejected, RuntimeError) as exc:
+        except RouteCandidateRejected as exc:
             rejected.append({
                 "name": str(candidate.get("name") or f"候选路线 {index}"),
                 "reason": str(exc),
+                "code": exc.code,
+                "stage": exc.stage,
+                "retryable": False,
             })
+        except ProviderError as exc:
+            failure = exc.to_failure()
+            failure["name"] = str(candidate.get("name") or f"候选路线 {index}")
+            rejected.append({**failure, "reason": str(exc)})
+            provider_failures.append(failure)
+        except RuntimeError as exc:
+            # Compatibility boundary for older adapters and injected test
+            # doubles. Production route providers raise ProviderError.
+            failure = _classify_provider_failure(exc)
+            failure["name"] = str(candidate.get("name") or f"候选路线 {index}")
+            rejected.append({**failure, "reason": str(exc)})
+            provider_failures.append(failure)
     if not routed:
+        if provider_failures:
+            raise RouteProviderFailed(provider_failures)
         reasons = "；".join(f"{item['name']}：{item['reason']}" for item in rejected)
-        raise RouteCandidateRejected(f"所有路线候选均不可用。{reasons}")
-    active = (
-        _select_domestic_candidate(routed, normalized_preferences)
-        if normalized_country == "CN" else routed[0]
-    )
+        rejection_codes = {str(item.get("code") or "") for item in rejected}
+        rejection_stages = {str(item.get("stage") or "") for item in rejected}
+        raise RouteCandidateRejected(
+            f"所有路线候选均不可用。{reasons}",
+            code=(rejection_codes.pop() if len(rejection_codes) == 1 else "route_candidate_rejected"),
+            stage=(rejection_stages.pop() if len(rejection_stages) == 1 else "route_validation"),
+        )
+    active = _select_active_candidate(routed, normalized_preferences)
     return {
         "schema_version": "route_plan.v1",
         "plan_id": plan_id or f"route_{uuid4().hex}",
@@ -102,11 +170,34 @@ def create_single_day_plan(
     }
 
 
-def _select_domestic_candidate(
+def _classify_provider_failure(exc: RuntimeError) -> dict[str, Any]:
+    text = str(exc)
+    lowered = text.lower()
+    if "google places" in lowered:
+        provider, stage = "google_places", "place_search"
+    elif "google routes" in lowered:
+        provider, stage = "google_routes", "route_calculation"
+    elif "高德" in text or "amap" in lowered:
+        provider, stage = "amap", "route_calculation"
+    else:
+        provider, stage = "route_provider", "route_planning"
+    retryable = any(token in lowered for token in (
+        "timeout", "timed out", "connection", "network", "reset", "eof", "temporar",
+    ))
+    return {
+        "code": "provider_unavailable" if retryable else "provider_rejected",
+        "provider": provider,
+        "stage": stage,
+        "retryable": retryable,
+        "message": text,
+    }
+
+
+def _select_active_candidate(
     candidates: Sequence[dict[str, Any]],
     route_preferences: dict[str, Any],
 ) -> dict[str, Any]:
-    """Compare distinct waypoint skeletons against shared distance/time baselines."""
+    """Prefer the route nearest the target, then apply shared preference baselines."""
     distance_baseline = _minimum_positive(
         float(candidate.get("distance_m") or 0) for candidate in candidates
     )
@@ -426,17 +517,12 @@ def route_candidate(
         places = [*places, dict(places[0])]
     geometry = route["geometry"]
     distance_km = round(float(route.get("distance_m") or 0) / 1000, 1)
-    if target is not None:
-        minimum_km = target * MIN_TARGET_DISTANCE_RATIO
-        maximum_km = target * MAX_TARGET_DISTANCE_RATIO
-        if not minimum_km <= distance_km <= maximum_km:
-            raise RouteCandidateRejected(
-                f"实际 {distance_km:.1f} km，目标 {target:.1f} km，"
-                f"允许范围 {minimum_km:.1f}-{maximum_km:.1f} km"
-            )
     warnings = list(route.get("warnings") or [])
     if route.get("warning"):
         warnings.append(str(route["warning"]))
+    distance_warning = _target_distance_warning(distance_km, target)
+    if distance_warning:
+        warnings.append(distance_warning)
     elevation = None
     if include_elevation:
         try:
@@ -532,15 +618,6 @@ def _route_amap(
             "baseline_duration_s": baseline_duration,
             "provider_alternative_count": len(combinations),
         }
-        distance_km = float(candidate.get("distance_m") or 0) / 1000.0
-        if target_distance_km is not None:
-            minimum_km = target_distance_km * MIN_TARGET_DISTANCE_RATIO
-            maximum_km = target_distance_km * MAX_TARGET_DISTANCE_RATIO
-            if not minimum_km <= distance_km <= maximum_km:
-                rejected.append(
-                    f"实际 {distance_km:.1f} km 不在 {minimum_km:.1f}-{maximum_km:.1f} km"
-                )
-                continue
         try:
             candidate = apply_route_constraints(
                 candidate,
@@ -571,6 +648,20 @@ def _route_amap(
         float(item.get("duration_s") or 0),
     ))
     return places, accepted[0]
+
+
+def _target_distance_warning(distance_km: float, target_distance_km: float | None) -> str | None:
+    """Describe a target miss without hiding an otherwise routable candidate."""
+    if target_distance_km is None:
+        return None
+    minimum_km = target_distance_km * MIN_TARGET_DISTANCE_RATIO
+    maximum_km = target_distance_km * MAX_TARGET_DISTANCE_RATIO
+    if minimum_km <= distance_km <= maximum_km:
+        return None
+    return (
+        f"距离偏离目标：实际 {distance_km:.1f} km，目标 {target_distance_km:.1f} km，"
+        f"建议范围 {minimum_km:.1f}-{maximum_km:.1f} km"
+    )
 
 
 def _amap_route_combinations(
@@ -700,7 +791,11 @@ def _route_google(
         )
         results = client.search(query, near=near, radius_m=search_radius_m, limit=5).get("places") or []
         if not results:
-            raise RuntimeError(f"地点检索没有结果：{query}")
+            raise RouteCandidateRejected(
+                f"地点检索没有结果：{query}",
+                code="place_not_found",
+                stage="place_resolution",
+            )
         raw = _select_google_place(results, query=query, country_code=country_code, anchor=anchor)
         location = raw["location"]
         place = {
@@ -793,6 +888,7 @@ def _search_amap_place(
         provider="AMap Places",
         direct_first=True,
     )
+    validate_amap_response(payload, stage="place_search")
     pois = payload.get("pois") or []
     if not pois and anchor is not None:
         fallback = {
@@ -811,14 +907,23 @@ def _search_amap_place(
             provider="AMap Places",
             direct_first=True,
         )
+        validate_amap_response(payload, stage="place_search")
         pois = payload.get("pois") or []
     if not pois:
-        raise RuntimeError(f"地点检索没有结果：{query}")
+        raise RouteCandidateRejected(
+            f"地点检索没有结果：{query}",
+            code="place_not_found",
+            stage="place_resolution",
+        )
     poi = _select_amap_poi(query, pois, anchor=anchor)
     try:
         lon, lat = (float(value) for value in str(poi["location"]).split(",", 1))
     except (KeyError, TypeError, ValueError) as exc:
-        raise RuntimeError(f"地点没有可用坐标：{query}") from exc
+        raise RouteCandidateRejected(
+            f"地点没有可用坐标：{query}",
+            code="place_invalid",
+            stage="place_resolution",
+        ) from exc
     wgs_lon, wgs_lat = gcj02_to_wgs84(lon, lat)
     return {
         "query": query,
@@ -904,10 +1009,19 @@ def _elevation_profile(
     })
     payload = _read_json_url(url, provider="Google Elevation")
     if payload.get("status") != "OK":
-        raise RuntimeError(str(payload.get("error_message") or payload.get("status") or "provider error"))
+        raise ProviderError(
+            str(payload.get("error_message") or payload.get("status") or "provider error"),
+            provider="google_elevation",
+            stage="elevation",
+        )
     results = payload.get("results") or []
     if len(results) < 2:
-        raise RuntimeError("Google Elevation returned too few samples")
+        raise ProviderError(
+            "Google Elevation returned too few samples",
+            provider="google_elevation",
+            stage="elevation",
+            code="provider_invalid_response",
+        )
     elevations = [float(item["elevation"]) for item in results]
     smoothed = [
         sum(elevations[max(0, index - 1):min(len(elevations), index + 2)])
@@ -946,6 +1060,7 @@ def _read_json_url(
     provider: str,
     direct_first: bool = False,
 ) -> dict[str, Any]:
+    normalized_provider, stage = _provider_identity(provider)
     last_error: Exception | None = None
     proxy_handlers = (
         (ProxyHandler({}), ProxyHandler())
@@ -958,12 +1073,47 @@ def _read_json_url(
                 with build_opener(proxy_handler).open(url, timeout=25) as response:
                     value = json.load(response)
                 if not isinstance(value, dict):
-                    raise RuntimeError(f"{provider} returned invalid JSON")
+                    raise ProviderError(
+                        f"{provider} returned invalid JSON",
+                        provider=normalized_provider,
+                        stage=stage,
+                        code="provider_invalid_response",
+                    )
                 return value
+            except HTTPError as exc:
+                if exc.code in {408, 429} or exc.code >= 500:
+                    last_error = exc
+                    continue
+                raise ProviderError(
+                    f"{provider} returned HTTP {exc.code}",
+                    provider=normalized_provider,
+                    stage=stage,
+                    code="provider_http_error",
+                ) from exc
+            except json.JSONDecodeError as exc:
+                raise ProviderError(
+                    f"{provider} returned invalid JSON",
+                    provider=normalized_provider,
+                    stage=stage,
+                    code="provider_invalid_response",
+                ) from exc
             except (OSError, TimeoutError, URLError) as exc:
                 last_error = exc
         time.sleep(0.4 * (attempt + 1))
-    raise RuntimeError(f"{provider} request failed: {last_error.__class__.__name__ if last_error else 'unknown'}")
+    raise TransientProviderError(
+        f"{provider} request failed: {last_error.__class__.__name__ if last_error else 'unknown'}",
+        provider=normalized_provider,
+        stage=stage,
+    )
+
+
+def _provider_identity(provider: str) -> tuple[str, str]:
+    normalized = str(provider or "").strip().lower()
+    if "amap" in normalized:
+        return "amap_places", "place_search"
+    if "elevation" in normalized:
+        return "google_elevation", "elevation"
+    return "route_provider", "provider_request"
 
 
 def _resample_line(coordinates: Sequence[Sequence[float]], count: int) -> list[tuple[float, float]]:

@@ -785,7 +785,7 @@ def test_chat_reuses_context_and_deduplicates_request_id(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
     calls = []
 
-    def fake_run(message, *, context):
+    def fake_run(message, *, context, execution_policy):
         calls.append((message, context))
         context.messages.append({"role": "user", "content": message})
         return {
@@ -821,7 +821,7 @@ def test_chat_reuses_context_and_deduplicates_request_id(tmp_path, monkeypatch):
 def test_chat_rejects_request_id_reuse_with_different_message(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
     calls = []
-    monkeypatch.setattr(api, "run_tool_loop", lambda message, *, context: (
+    monkeypatch.setattr(api, "run_tool_loop", lambda message, *, context, execution_policy: (
         calls.append(message) or {"answer": "ok", "status": "completed", "intent": "chat"}
     ))
 
@@ -841,13 +841,19 @@ def test_chat_applies_route_options_only_for_current_request(tmp_path, monkeypat
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
     seen = []
 
-    def run(message, *, context):
-        seen.append((message, dict(context.route_request_options)))
+    def run(message, *, context, execution_policy):
+        seen.append((
+            message,
+            dict(context.route_request_options),
+            execution_policy.request_mode,
+            execution_policy.required_tool_name,
+        ))
         return {"answer": "ok", "status": "completed", "intent": "route_advice"}
 
     monkeypatch.setattr(api, "run_tool_loop", run)
     first = client.post("/api/chat", json={
         "session_id": "session-1", "request_id": "request-1", "message": "生成虚拟路线",
+        "request_mode": "route_plan", "route_action": "create",
         "route_options": {"include_elevation": False},
     })
     second = client.post("/api/chat", json={
@@ -856,15 +862,54 @@ def test_chat_applies_route_options_only_for_current_request(tmp_path, monkeypat
 
     assert first.status_code == second.status_code == 200
     assert seen == [
-        ("生成虚拟路线", {"include_elevation": False}),
-        ("普通聊天", {}),
+        ("生成虚拟路线", {"include_elevation": False}, "route_plan", "create_route_plan"),
+        ("普通聊天", {}, "chat", None),
     ]
     assert api.chat_sessions.get_or_create("session-1").context.route_request_options == {}
 
 
+def test_chat_rejects_route_mode_without_an_explicit_action(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(
+        api,
+        "run_tool_loop",
+        lambda message, *, context, execution_policy: calls.append(message),
+    )
+
+    response = client.post("/api/chat", json={
+        "session_id": "session-1",
+        "request_id": "request-1",
+        "message": "生成路线",
+        "request_mode": "route_plan",
+    })
+
+    assert response.status_code == 400
+    assert calls == []
+
+
+def test_chat_idempotency_fingerprint_includes_route_action(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    monkeypatch.setattr(api, "run_tool_loop", lambda message, *, context, execution_policy: {
+        "answer": "ok", "status": "completed", "intent": "route_advice",
+    })
+    base = {
+        "session_id": "session-1",
+        "request_id": "request-1",
+        "message": "调整路线",
+        "request_mode": "route_plan",
+    }
+
+    first = client.post("/api/chat", json={**base, "route_action": "create"})
+    conflicting = client.post("/api/chat", json={**base, "route_action": "update"})
+
+    assert first.status_code == 200
+    assert conflicting.status_code == 409
+
+
 def test_chat_returns_only_public_execution_and_presentation_fields(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch)
-    monkeypatch.setattr(api, "run_tool_loop", lambda message, *, context: {
+    monkeypatch.setattr(api, "run_tool_loop", lambda message, *, context, execution_policy: {
         "answer": "完成",
         "status": "completed",
         "context": {"secret": True},
@@ -908,9 +953,53 @@ def test_chat_returns_only_public_execution_and_presentation_fields(tmp_path, mo
     assert "/private/activity.fit" not in str(body)
 
 
+def test_chat_exposes_structured_provider_failure_without_raw_tool_data(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    monkeypatch.setattr(api, "run_tool_loop", lambda message, *, context, execution_policy: {
+        "answer": "路线服务暂时不可用，请稍后重试。",
+        "status": "provider_error",
+        "intent": "route_advice",
+        "skill_id": "plan-routes",
+        "executions": [{
+            "index": 0,
+            "tool": "create_route_plan",
+            "status": "failed",
+            "message": "路线服务暂时不可用，请稍后重试。",
+            "error": "provider_unavailable",
+            "code": "provider_unavailable",
+            "provider": "google_places",
+            "stage": "place_search",
+            "retryable": True,
+            "input": {"api_key": "secret"},
+            "result": {"upstream": "raw"},
+        }],
+    })
+
+    response = client.post("/api/chat", json={
+        "session_id": "session-1",
+        "request_id": "request-1",
+        "message": "生成京都路线",
+        "request_mode": "route_plan",
+        "route_action": "create",
+    })
+
+    assert response.status_code == 200
+    assert response.json()["executions"][0] == {
+        "index": 0,
+        "tool": "create_route_plan",
+        "status": "failed",
+        "message": "路线服务暂时不可用，请稍后重试。",
+        "error": "provider_unavailable",
+        "code": "provider_unavailable",
+        "provider": "google_places",
+        "stage": "place_search",
+        "retryable": True,
+    }
+
+
 def test_chat_uses_existing_api_token_boundary(tmp_path, monkeypatch):
     api, client, _ = _prepare_api(tmp_path, monkeypatch, web_api_token="chat-token")
-    monkeypatch.setattr(api, "run_tool_loop", lambda message, *, context: {
+    monkeypatch.setattr(api, "run_tool_loop", lambda message, *, context, execution_policy: {
         "answer": "ok", "status": "completed", "intent": "chat",
     })
     payload = {"session_id": "session-1", "request_id": "request-1", "message": "hello"}

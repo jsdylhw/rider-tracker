@@ -6,13 +6,12 @@ export const suite = {
     name: "agent-route-service",
     tests: [
         {
-            name: "continues after skill activation then previews and confirms deterministically",
+            name: "previews and confirms one deterministic route response",
             async run() {
                 const state = { route: baseRoute(), liveRide: { isActive: false }, statusText: "" };
                 const chatMessages = [];
                 const chatOptions = [];
                 const commands = [];
-                let chatCount = 0;
                 const service = createAgentRoutePreviewService({
                     store: { getState: () => state },
                     operations: createOperations(state),
@@ -21,10 +20,7 @@ export const suite = {
                         async chat(message, options) {
                             chatMessages.push(message);
                             chatOptions.push(options);
-                            chatCount += 1;
-                            return chatCount === 1
-                                ? { skill_id: "plan-routes", executions: [{ tool: "activate_skill" }], presentations: [] }
-                                : routeResponse("awaiting_selection");
+                            return routeResponse("awaiting_selection");
                         },
                         async routePlanCommand(operation, input) {
                             commands.push({ operation, input });
@@ -46,10 +42,12 @@ export const suite = {
 
                 const draft = await service.planAgentRoutes("从上海出发骑 50km");
                 assertEqual(draft.candidates.length, 1);
-                assertEqual(chatMessages.length, 2);
+                assertEqual(chatMessages.length, 1);
+                assert(chatMessages[0].includes("恰好 3 条"), "开放式首次生成应明确要求三个候选");
                 assert(chatMessages[0].includes("不请求海拔"), "首次生成应明确无海拔约束");
                 assertEqual(chatOptions[0].routeOptions.include_elevation, false);
-                assertEqual(chatOptions[1].routeOptions.include_elevation, false);
+                assertEqual(chatOptions[0].requestMode, "route_plan");
+                assertEqual(chatOptions[0].routeAction, "create");
                 assertEqual(state.route.agentCandidateId, "candidate-1");
                 assertEqual(state.route.isDraft, true);
                 assertEqual(state.route.mapGeometry.length, 3, "生成完成后应立即把首条候选送入地图路线状态");
@@ -75,14 +73,16 @@ export const suite = {
             async run() {
                 const state = { route: baseRoute(), liveRide: { isActive: false }, statusText: "" };
                 const chatMessages = [];
+                const chatOptions = [];
                 const commands = [];
                 const service = createAgentRoutePreviewService({
                     store: { getState: () => state },
                     operations: createOperations(state),
                     invalidateExploration() {},
                     agentClient: {
-                        async chat(message) {
+                        async chat(message, options) {
                             chatMessages.push(message);
+                            chatOptions.push(options);
                             return routeResponse("awaiting_selection");
                         },
                         async routePlanCommand(operation, input) {
@@ -94,6 +94,8 @@ export const suite = {
 
                 await service.planAgentRoutes("从世博园出发生成滨江路线");
                 await service.planAgentRoutes("路线再靠江边一点");
+                assertEqual(chatOptions[0].routeAction, "create");
+                assertEqual(chatOptions[1].routeAction, "update");
                 assert(chatMessages[1].includes("当前路线计划 plan-1"), "后续语义修改应绑定当前页面内计划");
                 assert(chatMessages[1].includes("增量修改"), "后续语义修改不应重新宽泛发现");
 

@@ -112,6 +112,8 @@ class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     request_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     message: str = Field(min_length=1, max_length=20_000)
+    request_mode: str = "chat"
+    route_action: str | None = None
     route_options: dict[str, Any] | None = None
 
 
@@ -524,6 +526,8 @@ def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]
     with session.lock:
         request_fingerprint = json.dumps({
             "message": request.message,
+            "request_mode": request.request_mode,
+            "route_action": request.route_action,
             "route_options": request.route_options or {},
         }, ensure_ascii=False, sort_keys=True)
         try:
@@ -535,7 +539,22 @@ def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]
         session.context.route_request_options = _normalized_route_options(request.route_options)
         session.context.request_id = request.request_id
         try:
-            result = run_tool_loop(request.message, context=session.context)
+            from agent.main_agent.execution_policy import TurnExecutionPolicy
+
+            if request.request_mode == "route_plan":
+                try:
+                    execution_policy = TurnExecutionPolicy.route_plan(str(request.route_action or ""))
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+            elif request.request_mode == "chat" and request.route_action is None:
+                execution_policy = TurnExecutionPolicy.chat()
+            else:
+                raise HTTPException(status_code=400, detail="invalid request_mode or route_action")
+            result = run_tool_loop(
+                request.message,
+                context=session.context,
+                execution_policy=execution_policy,
+            )
             response = public_turn_dict(result)
         finally:
             session.context.route_request_options = {}

@@ -10,6 +10,8 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from integrations.provider_error import ProviderError, TransientProviderError
+
 
 GOOGLE_ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 GOOGLE_ROUTES_FIELD_MASK = "routes.distanceMeters,routes.duration,routes.polyline.geoJsonLinestring"
@@ -71,11 +73,21 @@ class GoogleRoutesClient:
             response = self._compute(points, mode=mode)
             routes = response.get("routes") or []
         if not routes or not isinstance(routes[0], dict):
-            raise RuntimeError("Google Routes returned no usable route")
+            raise ProviderError(
+                "Google Routes returned no usable route",
+                provider="google_routes",
+                stage="route_calculation",
+                code="provider_no_route",
+            )
         route = routes[0]
         geometry = (route.get("polyline") or {}).get("geoJsonLinestring")
         if not isinstance(geometry, dict) or geometry.get("type") != "LineString" or len(geometry.get("coordinates") or []) < 2:
-            raise RuntimeError("Google Routes did not return a usable GeoJSON LineString")
+            raise ProviderError(
+                "Google Routes did not return a usable GeoJSON LineString",
+                provider="google_routes",
+                stage="route_calculation",
+                code="provider_invalid_response",
+            )
         result = {
             "schema_version": "cycling_route.v1",
             "provider": "google_routes",
@@ -134,10 +146,6 @@ class GoogleRoutesClient:
         raise RuntimeError("Google Routes retry loop ended unexpectedly")  # pragma: no cover
 
 
-class TransientProviderError(RuntimeError):
-    """Retryable transport failure after no provider response was received."""
-
-
 def _duration_seconds(value: Any) -> float:
     text = str(value or "0s").strip()
     if not text.endswith("s"):
@@ -154,12 +162,34 @@ def _read_json(request: Request, timeout_s: float) -> dict[str, Any]:
             payload = json.load(response)
     except HTTPError as exc:
         detail = _http_error_detail(exc)
-        raise RuntimeError(f"Google Routes returned HTTP {exc.code}: {detail}") from exc
+        error_type = TransientProviderError if exc.code in {408, 429} or exc.code >= 500 else ProviderError
+        raise error_type(
+            f"Google Routes returned HTTP {exc.code}: {detail}",
+            provider="google_routes",
+            stage="route_calculation",
+            **({} if error_type is TransientProviderError else {"code": "provider_http_error"}),
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise ProviderError(
+            "Google Routes returned invalid JSON",
+            provider="google_routes",
+            stage="route_calculation",
+            code="provider_invalid_response",
+        ) from exc
     except (TimeoutError, URLError, OSError) as exc:
         reason = getattr(exc, "reason", None)
-        raise TransientProviderError(f"Google Routes request failed: {reason or exc.__class__.__name__}") from exc
+        raise TransientProviderError(
+            f"Google Routes request failed: {reason or exc.__class__.__name__}",
+            provider="google_routes",
+            stage="route_calculation",
+        ) from exc
     if not isinstance(payload, dict):
-        raise RuntimeError("Google Routes returned an invalid JSON object")
+        raise ProviderError(
+            "Google Routes returned an invalid JSON object",
+            provider="google_routes",
+            stage="route_calculation",
+            code="provider_invalid_response",
+        )
     return payload
 
 

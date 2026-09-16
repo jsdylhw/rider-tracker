@@ -1,6 +1,5 @@
 import {
     buildRiderRouteFromAgentCandidate,
-    isRouteActivationOnly,
     parseAgentRouteDraft
 } from "../../src/domain/route/agent-route-contract.js";
 import { isRouteReadyForRide } from "../../src/domain/route/route-builder.js";
@@ -17,6 +16,8 @@ export const suite = {
                 assertEqual(draft.candidates.length, 2);
                 assertEqual(draft.countryCode, "JP");
                 assertEqual(draft.candidates[0].name, "鸭川路线");
+                assertEqual(draft.candidates[0].warnings[0], "距离偏离目标");
+                assertEqual(draft.rejectedCandidates[0].name, "无效候选");
                 assertApprox(draft.candidates[0].distanceKm, 30.4, 0.001);
                 assertApprox(draft.candidates[0].durationMinutes, 72.96, 0.001);
                 assertEqual(draft.segments.length, 2);
@@ -76,17 +77,6 @@ export const suite = {
                 assertEqual(draft.candidates[0].candidateId, "candidate-stable");
                 assertEqual(draft.candidates[0].name, "勃朗峰山谷");
                 assertEqual(draft.segments[0].segmentId, 77);
-            }
-        },
-        {
-            name: "detects a route skill activation response without route geometry",
-            run() {
-                assertEqual(isRouteActivationOnly({
-                    skill_id: "plan-routes",
-                    executions: [{ tool: "activate_skill" }],
-                    presentations: []
-                }), true);
-                assertEqual(isRouteActivationOnly(buildTurnResult()), false);
             }
         },
         {
@@ -171,7 +161,8 @@ function buildTurnResult() {
                 travel_mode: "BICYCLE",
                 geometry: { coordinates: [[135.75, 35.0], [135.77, 35.03], [135.75, 35.0]] },
                 waypoints: [],
-                segment_sequence: [{ segment_id: 9876 }]
+                segment_sequence: [{ segment_id: 9876 }],
+                warnings: ["距离偏离目标"]
             }, {
                 candidate_id: "candidate-2",
                 name: "岚山路线",
@@ -182,6 +173,12 @@ function buildTurnResult() {
                 geometry: { coordinates: [[135.75, 35.0], [135.67, 35.01], [135.75, 35.0]] },
                 waypoints: [],
                 segment_sequence: [{ segment_id: 9999 }]
+            }],
+            rejected_candidates: [{
+                name: "无效候选",
+                reason: "地点没有结果",
+                code: "place_not_found",
+                stage: "place_resolution"
             }],
             segments: [{
                 segment_id: 9876,

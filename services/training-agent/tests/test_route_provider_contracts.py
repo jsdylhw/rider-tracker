@@ -11,6 +11,7 @@ import pytest
 
 from integrations.route_providers import amap as amap_provider
 from integrations.google_places import GOOGLE_PLACES_FIELD_MASK, GooglePlacesClient
+from integrations.provider_error import ProviderError
 from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint, _successful_path, parse_polyline
 from integrations.route_providers.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
 from integrations.route_providers.google_routes import (
@@ -218,6 +219,44 @@ def test_amap_retries_transient_qps_response(monkeypatch) -> None:
 
     assert route["distance_m"] == 100
     assert sleeps == [0.8]
+
+
+def test_amap_invalid_geometry_is_a_structured_provider_failure(monkeypatch) -> None:
+    payload = {
+        "status": "1",
+        "infocode": "10000",
+        "route": {"paths": [{
+            "distance": "100",
+            "cost": {"duration": "20"},
+            "steps": [{"polyline": "not-a-coordinate"}],
+        }]},
+    }
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    class Opener:
+        def open(self, url, timeout):
+            return Response(json.dumps(payload).encode())
+
+    monkeypatch.setattr(amap_provider, "build_opener", lambda *args: Opener())
+
+    with pytest.raises(ProviderError) as raised:
+        AmapCyclingRouter("test-key", retries=0).route(
+            AmapPoint(30.2, 120.1), AmapPoint(30.3, 120.2),
+        )
+
+    assert raised.value.to_failure() == {
+        "code": "provider_invalid_response",
+        "provider": "amap",
+        "stage": "route_calculation",
+        "retryable": False,
+        "message": "AMap response contained invalid bicycling geometry",
+    }
 
 
 def test_google_places_route_search_contract() -> None:

@@ -19,6 +19,7 @@ def execute_tool_loop(
     max_tokens: int = 4096,
     max_steps: int = 10,
     client: AnthropicMessagesClient | None = None,
+    tool_choice: dict[str, Any] | Callable[[], dict[str, Any] | None] | None = None,
 ) -> int:
     """Execute model/tool rounds and mutate ``messages`` in place."""
     client = client or AnthropicMessagesClient()
@@ -35,11 +36,23 @@ def execute_tool_loop(
 
         final_response_only = runtime.final_response_only
         current_tools = tools() if callable(tools) else tools
+        current_tool_choice = tool_choice() if callable(tool_choice) else tool_choice
         response = client.create_messages(
             system=system,
             messages=messages,
             max_tokens=max_tokens,
             tools=[] if final_response_only else current_tools,
+            tool_choice=None if final_response_only else current_tool_choice,
+            # DeepSeek and Anthropic do not allow a forced named tool while
+            # extended thinking is enabled. Disable thinking only for that
+            # constrained argument-generation round; ordinary Agent turns
+            # retain the configured reasoning mode.
+            thinking=(
+                "disabled"
+                if isinstance(current_tool_choice, dict)
+                and current_tool_choice.get("type") in {"tool", "any"}
+                else None
+            ),
         )
         messages.append({"role": "assistant", "content": response.get("content") or []})
 
@@ -58,23 +71,30 @@ def execute_tool_loop(
         results: list[dict[str, Any]] = []
         terminal_completed_in_batch = False
         skill_activated_in_batch = False
+        batch_stopped = False
         for block in response.get("content") or []:
             if not isinstance(block, dict) or block.get("type") != "tool_use":
                 continue
 
-            if terminal_completed_in_batch or skill_activated_in_batch:
+            if terminal_completed_in_batch or skill_activated_in_batch or batch_stopped:
                 terminal = terminal_completed_in_batch
                 results.append(build_tool_result_block(
                     block["id"],
                     json.dumps({
                         "error": (
                             "terminal_result_already_produced"
-                            if terminal else "skill_activation_requires_new_round"
+                            if terminal else (
+                                "required_action_failed"
+                                if batch_stopped else "skill_activation_requires_new_round"
+                            )
                         ),
                         "message": (
                             "A terminal tool already completed in this response; this later call was not executed."
-                            if terminal else
-                            "The Skill was activated, but newly disclosed tools may only run in the next model round."
+                            if terminal else (
+                                "A required action failed; later calls in this response were not executed."
+                                if batch_stopped else
+                                "The Skill was activated, but newly disclosed tools may only run in the next model round."
+                            )
                         ),
                     }, ensure_ascii=False),
                 ))
@@ -82,6 +102,10 @@ def execute_tool_loop(
 
             blocked = runtime.pre_tool_use(block, step_count=step_count)
             if blocked:
+                on_blocked = getattr(runtime, "on_blocked", None)
+                if callable(on_blocked):
+                    on_blocked(block, blocked, step_count=step_count)
+                batch_stopped = bool(getattr(runtime, "stop_after_tool_round", False))
                 results.append(build_tool_result_block(
                     block["id"], json.dumps(blocked, ensure_ascii=False),
                 ))
@@ -109,6 +133,7 @@ def execute_tool_loop(
                 success=not is_failed_tool_output(output),
             )
             runtime.post_tool_use(block, output, step_count=step_count)
+            batch_stopped = bool(getattr(runtime, "stop_after_tool_round", False))
             terminal_completed_in_batch = runtime.final_response_only
             skill_activated_in_batch = (
                 block.get("name") == "activate_skill"
@@ -120,6 +145,10 @@ def execute_tool_loop(
             ))
 
         messages.append({"role": "user", "content": results})
+
+        if getattr(runtime, "stop_after_tool_round", False):
+            runtime.on_loop_end(messages=messages, response=response, steps=step_count)
+            return step_count
 
         # Some terminal tools already return the complete user-facing answer
         # (for example a persisted activity report). Passing that answer back

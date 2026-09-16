@@ -1,4 +1,5 @@
 from agent.main_agent.context import AgentContext
+from agent.main_agent.execution_policy import TurnExecutionPolicy
 from agent.main_agent.result_builder import build_completed_result, build_turn_result, with_execution_header
 
 
@@ -126,3 +127,63 @@ def test_route_turn_uses_the_last_route_execution_when_multiple_plans_exist(monk
 
     assert result["route_plan"]["plan_id"] == "route-new"
     assert result["route_plan"]["revision"] == 3
+
+
+def test_route_turn_fails_closed_when_route_tool_did_not_succeed():
+    context = AgentContext(
+        session_id="failed-route-turn",
+        workspace_id="workspace",
+        active_skill_id="plan-routes",
+        route_request_options={"include_elevation": False},
+        messages=[{
+            "role": "assistant",
+            "content": [{"type": "text", "text": "本轮三条候选全部被拒。"}],
+        }],
+    )
+    context.execution_trace.append({
+        "tool": "create_route_plan",
+        "status": "failed",
+        "error": "Google route request timed out",
+        "result": {
+            "status": "failed",
+            "error": "Google route request timed out",
+            "result": {"plan_id": "stale-route"},
+        },
+    })
+
+    result = build_completed_result(
+        "route_advice",
+        context,
+        "规划一条京都 30 km 环线",
+        step_count=1,
+        max_tool_steps=8,
+        steps=[{"tool": "create_route_plan", "input": {}}],
+        execution_policy=TurnExecutionPolicy.route_plan("create"),
+    )
+
+    assert result["status"] == "action_not_executed"
+    assert "本轮三条候选全部被拒" not in result["answer"]
+    assert "没有实际执行路线更新" in result["answer"]
+    assert result["executions"][0]["status"] == "failed"
+    assert "route_plan" not in result
+
+
+def test_route_turn_without_success_prefers_action_not_executed_over_max_steps():
+    context = AgentContext(
+        session_id="route-max-steps",
+        active_skill_id="plan-routes",
+        route_request_options={"include_elevation": False},
+    )
+
+    result = build_completed_result(
+        "route_advice",
+        context,
+        "规划一条京都 30 km 环线",
+        step_count=11,
+        max_tool_steps=10,
+        steps=[],
+        execution_policy=TurnExecutionPolicy.route_plan("create"),
+    )
+
+    assert result["status"] == "action_not_executed"
+    assert "达到最大步数" not in result["answer"]

@@ -31,6 +31,16 @@ def build_route_plan_view(plan: dict[str, Any]) -> dict[str, Any]:
         "active_candidate_id": str(plan.get("active_candidate_id") or "") or None,
         "confirmed_candidate_id": str(planning.get("confirmed_candidate_id") or "") or None,
         "candidates": candidates,
+        "rejected_candidates": [
+            {
+                "name": str(item.get("name") or "候选路线"),
+                "reason": str(item.get("reason") or item.get("message") or "路线不可用"),
+                "code": str(item.get("code") or "route_candidate_rejected"),
+                "stage": str(item.get("stage") or "route_validation"),
+            }
+            for item in plan.get("rejected_candidates") or []
+            if isinstance(item, dict)
+        ],
         "segments": _segment_catalog(plan),
     }
 

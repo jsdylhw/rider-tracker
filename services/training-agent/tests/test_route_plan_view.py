@@ -20,6 +20,11 @@ def test_route_plan_view_projects_candidates_segments_and_stable_ids():
             "geometry": {"type": "LineString", "coordinates": [[121.0, 31.0], [121.1, 31.1]]},
             "waypoints": [{"name": "起点", "longitude": 121.0, "latitude": 31.0}],
             "strava_segments": [{"segment_id": 42, "direction": "forward"}],
+            "warnings": ["距离偏离目标"],
+        }],
+        "rejected_candidates": [{
+            "name": "无效候选", "reason": "地点没有结果", "code": "place_not_found",
+            "stage": "place_resolution",
         }],
         "segment_pool": {"candidate-1": [{
             "segment_id": 42,
@@ -39,10 +44,15 @@ def test_route_plan_view_projects_candidates_segments_and_stable_ids():
     assert candidate["distance_m"] == 31_500
     assert candidate["provider_duration_s"] == 5_400
     assert candidate["is_closed"] is True
+    assert candidate["warnings"] == ["距离偏离目标"]
     assert candidate["segment_sequence"] == [{
         "segment_id": 42, "order": 1, "direction": "forward", "role": "included",
     }]
     assert view["segments"][0]["candidate_ids"] == ["candidate-1"]
+    assert view["rejected_candidates"] == [{
+        "name": "无效候选", "reason": "地点没有结果", "code": "place_not_found",
+        "stage": "place_resolution",
+    }]
     assert view["segments"][0]["geometry"]["coordinates"][-1] == [121.05, 31.03]
 
 

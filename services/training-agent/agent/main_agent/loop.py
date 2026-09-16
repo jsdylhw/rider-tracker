@@ -11,6 +11,7 @@ from typing import Any
 
 from agent.runtime.chat_logger import new_session_id
 from agent.main_agent.context import AgentContext
+from agent.main_agent.execution_policy import TurnExecutionPolicy
 from fit.paths import resolve_fit_path as _resolve_fit_path
 from integrations.llm import AnthropicMessagesClient, LLMRequestError
 from agent.runtime.loop_engine import execute_tool_loop
@@ -53,12 +54,33 @@ def run_tool_loop(
     max_tokens: int = 4096,
     verbose: bool = False,
     context: AgentContext | None = None,
+    execution_policy: TurnExecutionPolicy | None = None,
 ) -> dict[str, Any]:
     """组装 intent/context/handlers → agent_loop()."""
+    execution_policy = execution_policy or TurnExecutionPolicy.chat()
     context = _prepare_context(message, fit_path=fit_path, use_history=use_history, context=context)
+    # Execution evidence belongs exclusively to this turn. Clear it before
+    # control commands and client construction can return early.
+    context.execution_trace = []
 
-    control_result = handle_control_turn(message, context, verbose=verbose)
+    if execution_policy.forced_skill_id:
+        context.active_skill_id = execution_policy.forced_skill_id
+    control_result = handle_control_turn(
+        message,
+        context,
+        verbose=verbose,
+        execution_policy=execution_policy,
+    )
     if control_result is not None:
+        if not execution_policy.is_satisfied(context.execution_trace):
+            from agent.main_agent.result_builder import build_policy_unsatisfied_result
+
+            steps = [
+                {"tool": item.get("tool"), "input": item.get("input") or {}}
+                for item in context.execution_trace
+                if isinstance(item, dict)
+            ]
+            return build_policy_unsatisfied_result(context, steps, execution_policy)
         return control_result
 
     continue_route_skill = should_continue_route_skill(message, context)
@@ -67,17 +89,21 @@ def run_tool_loop(
     context.active_skill_confidence = 0.0
     context.active_skill_reason = None
     context.pending_skill_reference = None
-    if continue_route_skill:
-        context.active_skill_id = "plan-routes"
+    if execution_policy.forced_skill_id or continue_route_skill:
+        context.active_skill_id = execution_policy.forced_skill_id or "plan-routes"
         context.active_skill_confidence = 1.0
-        context.active_skill_reason = "continued_from_recent_skill"
-        context.last_used_skills = ["plan-routes"]
-        context.conversation_used_skills.append("plan-routes")
+        context.active_skill_reason = (
+            "request_policy" if execution_policy.forced_skill_id else "continued_from_recent_skill"
+        )
+        context.last_used_skills = [context.active_skill_id]
+        context.conversation_used_skills.append(context.active_skill_id)
 
     try:
         client = AnthropicMessagesClient()
     except (RuntimeError, ValueError) as exc:
-        return build_activation_unavailable_result(context, error=exc)
+        return build_activation_unavailable_result(
+            context, error=exc, execution_policy=execution_policy,
+        )
 
     try:
         step_count, steps_taken = _execute_main_agent_turn(
@@ -86,12 +112,14 @@ def run_tool_loop(
             verbose,
             max_tokens,
             client=client,
+            execution_policy=execution_policy,
         )
     except LLMRequestError as exc:
         skill = get_skill(context.active_skill_id)
         intent = skill.public_intent if skill else "chat"
         return build_llm_unavailable_result(
             intent, context, steps=getattr(exc, "steps_taken", []), error=exc,
+            execution_policy=execution_policy,
         )
 
     skill = get_skill(context.active_skill_id)
@@ -103,6 +131,7 @@ def run_tool_loop(
         step_count=step_count,
         max_tool_steps=MAX_TOOL_STEPS,
         steps=steps_taken,
+        execution_policy=execution_policy,
     )
 
 
@@ -142,6 +171,7 @@ def _execute_main_agent_turn(
     max_tokens,
     *,
     client=None,
+    execution_policy: TurnExecutionPolicy | None = None,
 ):
     """执行 agent_loop 并同步 messages 回 context. 返回 step_count."""
     def allowed_tool_names() -> set[str]:
@@ -151,6 +181,11 @@ def _execute_main_agent_turn(
     def rendered_tools() -> list[dict[str, Any]]:
         names = allowed_tool_names()
         return [render_anthropic_tools([tool])[0] for tool in MAIN_AGENT_TOOLS if tool.name in names]
+
+    execution_policy = execution_policy or TurnExecutionPolicy.chat()
+
+    def required_tool_choice() -> dict[str, str] | None:
+        return execution_policy.tool_choice(context.execution_trace)
 
     initial_names = allowed_tool_names()
     tool_categories = {tool.category for tool in MAIN_AGENT_TOOLS if tool.name in initial_names}
@@ -166,7 +201,6 @@ def _execute_main_agent_turn(
     # until the model redundantly resolved one activity again.
     has_resolved = {"value": bool(context.selected_activities)}
     steps_taken: list[dict] = []
-    context.execution_trace = []
 
     messages = list(context.messages)
     preamble = build_state_preamble(context)
@@ -180,6 +214,14 @@ def _execute_main_agent_turn(
         steps_taken,
         allowed_tool_names=initial_names,
         allowed_tool_provider=allowed_tool_names,
+        terminal_tool_names=(
+            {execution_policy.required_tool_name}
+            if execution_policy.required_tool_name else None
+        ),
+        stop_on_failed_tools=(
+            {execution_policy.required_tool_name}
+            if execution_policy.stop_on_required_tool_failure and execution_policy.required_tool_name else None
+        ),
         verbose=verbose,
     )
     if verbose:
@@ -191,7 +233,7 @@ def _execute_main_agent_turn(
         step_count = execute_tool_loop(
             messages, tools=rendered_tools, handlers=handlers, runtime=hooks,
             system=system, max_tokens=max_tokens, max_steps=MAX_TOOL_STEPS + 1,
-            client=client,
+            client=client, tool_choice=required_tool_choice,
         )
     except LLMRequestError as exc:
         exc.steps_taken = list(steps_taken)

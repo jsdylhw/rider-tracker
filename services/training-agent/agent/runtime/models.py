@@ -19,6 +19,10 @@ class ToolExecution:
     status: str = "completed"
     message: str | None = None
     error: str | None = None
+    code: str | None = None
+    provider: str | None = None
+    stage: str | None = None
+    retryable: bool | None = None
     result: Any = None
     navigation_before: dict[str, Any] | None = None
     navigation_after: dict[str, Any] | None = None
@@ -88,6 +92,10 @@ def executions_from_trace(
             status=str(item.get("status") or "completed"),
             message=str(item["message"]) if item.get("message") is not None else None,
             error=str(item["error"]) if item.get("error") is not None else None,
+            code=str(item["code"]) if item.get("code") is not None else None,
+            provider=str(item["provider"]) if item.get("provider") is not None else None,
+            stage=str(item["stage"]) if item.get("stage") is not None else None,
+            retryable=item.get("retryable") if isinstance(item.get("retryable"), bool) else None,
             result=item.get("result"),
             navigation_before=item.get("navigation_before") if isinstance(item.get("navigation_before"), dict) else None,
             navigation_after=item.get("navigation_after") if isinstance(item.get("navigation_after"), dict) else None,
@@ -110,13 +118,21 @@ def public_turn_dict(value: dict[str, Any]) -> dict[str, Any]:
     for item in value.get("executions") or []:
         if not isinstance(item, dict):
             continue
-        executions.append({
+        public_execution = {
             "index": item.get("index"),
             "tool": item.get("tool"),
             "status": item.get("status"),
             "message": item.get("message"),
             "error": item.get("error"),
-        })
+        }
+        # Keep the existing public shape stable for ordinary executions while
+        # exposing structured diagnostics when a provider actually supplied
+        # them.  Serializing absent optional fields as null would create a
+        # protocol-wide change unrelated to the failed execution.
+        for key in ("code", "provider", "stage", "retryable"):
+            if item.get(key) is not None:
+                public_execution[key] = item[key]
+        executions.append(public_execution)
     presentations = [
         item for item in value.get("presentations") or []
         if isinstance(item, dict)

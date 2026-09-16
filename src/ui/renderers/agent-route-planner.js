@@ -165,9 +165,12 @@ export function createAgentRoutePlanner({
         const metrics = documentRef.createElement("span");
         metrics.textContent = candidateMetrics(candidate);
         const description = documentRef.createElement("p");
-        description.textContent = candidate.stravaSegments
+        const source = candidate.stravaSegments
             ? `已包含 Strava 路段：${candidate.stravaSegments}`
             : `算路来源：${candidate.provider || "Personal FIT Agent"}`;
+        description.textContent = candidate.warnings?.length
+            ? `${source}；提示：${candidate.warnings.join("；")}`
+            : source;
         copy.append(title, metrics, description);
 
         const actions = documentRef.createElement("div");
@@ -413,13 +416,18 @@ function segmentMetrics(segment) {
 
 function formatRouteDraftAnswer(draft) {
     const candidates = draft?.candidates ?? [];
+    const rejected = draft?.rejectedCandidates ?? [];
     const active = candidates.find((item) => item.active) ?? candidates[0];
     if (!active) return "暂时没有生成可用路线，请调整地点或距离后重试。";
     const metrics = [];
     if (active.distanceKm) metrics.push(`${active.distanceKm.toFixed(1)} km`);
     if (active.durationMinutes) metrics.push(`约 ${Math.round(active.durationMinutes)} 分钟`);
+    const rejectedSummary = rejected.length
+        ? `另有 ${rejected.length} 条未能生成：${rejected.map((item) => `${item.name}（${item.reason}）`).join("；")}`
+        : "";
     return [
         `已生成 ${candidates.length} 条路线候选。`,
+        rejectedSummary,
         "",
         `当前预览：${active.name}`,
         metrics.length ? `距离与用时：${metrics.join(" · ")}` : "",

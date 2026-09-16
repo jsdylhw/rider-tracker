@@ -45,11 +45,13 @@ export function createAgentApiClient({
             job_type: "activity_report_rebuild.v1", request_id: requestId,
             payload: { scope: "all", activity_keys: activityKeys }
         }),
-        chat(message, { routeOptions = null } = {}) {
+        chat(message, { routeOptions = null, requestMode = "chat", routeAction = null } = {}) {
             return post("/api/agent/chat", {
                 session_id: sessionId,
                 request_id: `request-${crypto.randomUUID()}`,
                 message,
+                request_mode: requestMode,
+                ...(routeAction ? { route_action: routeAction } : {}),
                 ...(routeOptions ? { route_options: routeOptions } : {})
             });
         },

@@ -7,6 +7,7 @@ from typing import Any
 
 from agent.main_agent.context import AgentContext
 from agent.main_agent.saved_action import execute_saved_action
+from agent.main_agent.execution_policy import TurnExecutionPolicy
 from agent.tools.registry import TOOL_HANDLERS
 from agent.skills import get_skill, skill_allows_tool
 from agent.runtime.models import ToolExecution, TurnResult
@@ -31,7 +32,13 @@ _NAVIGATION_ONLY_SUFFIXES = {
 }
 
 
-def handle_control_turn(message: str, context: AgentContext, *, verbose: bool = False) -> dict[str, Any] | None:
+def handle_control_turn(
+    message: str,
+    context: AgentContext,
+    *,
+    verbose: bool = False,
+    execution_policy: TurnExecutionPolicy | None = None,
+) -> dict[str, Any] | None:
     """Handle short control replies before routing the message through the LLM."""
     navigation = _navigation_command(message, context)
     if navigation is not None:
@@ -41,6 +48,12 @@ def handle_control_turn(message: str, context: AgentContext, *, verbose: bool = 
     if is_retry(message):
         if context.last_failed_action:
             tool_name = str(context.last_failed_action.get("tool") or "")
+            if (
+                execution_policy is not None
+                and execution_policy.required_tool_name
+                and tool_name != execution_policy.required_tool_name
+            ):
+                return None
             skill = get_skill(context.active_skill_id)
             if not skill_allows_tool(skill, tool_name):
                 answer = "上次失败操作不属于当前有效 Skill，已拒绝直接重放。请重新说明要重试的活动任务。"
@@ -51,7 +64,14 @@ def handle_control_turn(message: str, context: AgentContext, *, verbose: bool = 
                     selected_activities=context.selected_activities,
                     current_fit_file=str(context.current_fit_file) if context.current_fit_file else None,
                 ).to_dict()
-            return execute_saved_action(context.last_failed_action, context, verbose=verbose, intent="retry", label="重试执行")
+            return execute_saved_action(
+                context.last_failed_action,
+                context,
+                verbose=verbose,
+                intent="retry",
+                label="重试执行",
+                execution_policy=execution_policy,
+            )
         if context.last_llm_error:
             # 不复放可能有副作用的工具，只重新进入 LLM 规划循环；已完成的
             # 工具状态仍由 context 和状态 preamble 提供。

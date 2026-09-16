@@ -1,7 +1,6 @@
 import { createAgentApiClient } from "../../adapters/agent/personal-fit-agent-client.js";
 import {
     buildRiderRouteFromAgentCandidate,
-    isRouteActivationOnly,
     parseAgentRouteDraft
 } from "../../domain/route/agent-route-contract.js";
 import { formatNumber } from "../../shared/format.js";
@@ -25,14 +24,12 @@ export function createAgentRoutePreviewService({
             const request = currentDraft
                 ? buildRouteRefinementRequest(message, currentDraft)
                 : buildVirtualRouteRequest(message);
-            const chatOptions = { routeOptions: { include_elevation: false } };
-            let turnResult = await agentClient.chat(request, chatOptions);
-            if (isRouteActivationOnly(turnResult)) {
-                turnResult = await agentClient.chat(
-                    "请继续执行刚才的路线规划请求，并返回可选择的路线候选。",
-                    chatOptions
-                );
-            }
+            const chatOptions = {
+                routeOptions: { include_elevation: false },
+                requestMode: "route_plan",
+                routeAction: currentDraft ? "update" : "create"
+            };
+            const turnResult = await agentClient.chat(request, chatOptions);
             if (!operations.isCurrent(requestId) || store.getState().route !== loadingRoute) return null;
             if (operations.discardAfterRideStart("骑行已开始，已忽略未完成的 AI 路线。")) return null;
             const draft = saveDraft(parseAgentRouteDraft(turnResult));
@@ -220,7 +217,7 @@ function activeCandidateId(draft) {
 function buildVirtualRouteRequest(message) {
     return [
         String(message || "").trim(),
-        "这是 Rider Tracker 的虚拟观景路线：请在一次 create_route_plan 调用的 candidates 数组中生成 2-3 条有实质区别的候选，不要为每条候选分别调用工具；不请求海拔，坡度按 0 处理；路线将配合 ERG 骑行。"
+        "这是 Rider Tracker 的虚拟观景路线：如果用户只给区域、距离或偏好等开放需求，必须在一次 create_route_plan 调用的 candidates 数组中生成恰好 3 条有实质区别的候选；如果用户已经明确给出完整起终点或途经点顺序，则保持原顺序并可只生成 1 条。不要为每条候选分别调用工具；不请求海拔，坡度按 0 处理；路线将配合 ERG 骑行。"
     ].filter(Boolean).join("\n\n");
 }
 

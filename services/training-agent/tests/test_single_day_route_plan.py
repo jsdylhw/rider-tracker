@@ -9,12 +9,15 @@ import pytest
 from agent.runtime.models import ToolExecution
 from agent.runtime.presentation_projector import project_presentations
 from agent.main_agent.context import AgentContext
+from integrations.provider_error import ProviderError
 from agent.tools.handlers.route import _plan_answer, create_route_plan_tool, update_route_plan_tool
 from services.route.single_day import (
     RouteCandidateRejected,
+    RouteProviderFailed,
     _amap_route_combinations,
     _route_amap,
     _route_google,
+    _search_amap_place,
     _select_amap_poi,
     compact_route_plan,
     create_single_day_plan,
@@ -47,6 +50,20 @@ def _places(queries):
         }
         for index, query in enumerate(queries)
     ]
+
+
+def test_amap_place_api_error_is_not_reported_as_place_not_found():
+    with patch("services.route.single_day._read_json_url", return_value={
+        "status": "0", "infocode": "10001", "info": "INVALID_USER_KEY",
+    }):
+        with pytest.raises(ProviderError) as raised:
+            _search_amap_place("杭州东站", "invalid-key")
+
+    assert raised.value.provider == "amap"
+    assert raised.value.stage == "place_search"
+    assert raised.value.code == "provider_rejected"
+    assert raised.value.retryable is False
+    assert "INVALID_USER_KEY" in str(raised.value)
 
 
 def test_create_loop_reuses_first_waypoint_and_compacts_geometry():
@@ -104,7 +121,33 @@ def test_provider_failure_rejects_only_that_candidate():
     assert plan["rejected_candidates"] == [{
         "name": "失败候选",
         "reason": "Google Places returned HTTP 400: Bad Request",
+        "message": "Google Places returned HTTP 400: Bad Request",
+        "code": "provider_rejected",
+        "provider": "google_places",
+        "stage": "place_search",
+        "retryable": False,
     }]
+
+
+def test_all_provider_failures_preserve_structured_error_kind():
+    with patch("services.route.single_day.load_config", return_value={}), patch(
+        "services.route.single_day._route_google",
+        side_effect=RuntimeError("Google Places request failed: TLS timeout"),
+    ):
+        with pytest.raises(RouteProviderFailed) as raised:
+            create_single_day_plan(
+                workspace_id="workspace",
+                title="京都路线",
+                country_code="JP",
+                candidates=[{"name": "鸭川", "waypoints": ["京都站", "鸭川"]}],
+                include_elevation=False,
+            )
+
+    result = raised.value.to_tool_result()
+    assert result["code"] == "route_provider_error"
+    assert result["provider"] == "google_places"
+    assert result["stage"] == "place_search"
+    assert result["retryable"] is True
 
 
 def test_self_overlap_constraint_rejects_only_repeated_candidate():
@@ -557,7 +600,7 @@ def test_semantic_waypoint_update_regenerates_candidate_name():
     assert updated["title"] == "A → D → C"
 
 
-def test_route_plan_drops_only_candidates_outside_target_distance():
+def test_route_plan_keeps_routable_candidates_outside_target_distance_with_warning():
     def route_google(queries, country_code, is_closed, config, **kwargs):
         distance = 1_474_800 if queries[0] == "高松駅" else 22_000
         return _places(queries), _route_result(distance_m=distance)
@@ -574,11 +617,11 @@ def test_route_plan_drops_only_candidates_outside_target_distance():
             include_elevation=False,
         )
 
-    assert [item["name"] for item in plan["candidates"]] == ["松山环线"]
+    assert [item["name"] for item in plan["candidates"]] == ["异常高松环线", "松山环线"]
     assert plan["active_candidate_id"] == "candidate_2"
-    assert plan["rejected_candidates"][0]["name"] == "异常高松环线"
-    assert "允许范围 18.0-45.0 km" in plan["rejected_candidates"][0]["reason"]
-    assert compact_route_plan(plan)["rejected_candidates"] == plan["rejected_candidates"]
+    assert plan["rejected_candidates"] == []
+    assert "建议范围 18.0-45.0 km" in plan["candidates"][0]["warnings"][0]
+    assert plan["candidates"][1]["warnings"] == []
 
 
 def test_domestic_plan_activates_candidate_closest_to_explicit_target():

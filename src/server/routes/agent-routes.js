@@ -52,7 +52,7 @@ export function createAgentRoutes({ agentClient }) {
     return router;
 }
 
-function normalizeChatRequest(body = {}) {
+export function normalizeChatRequest(body = {}) {
     const sessionId = normalizeId(body.session_id, "session_id");
     const requestId = normalizeId(body.request_id, "request_id");
     const message = String(body.message || "").trim();
@@ -60,10 +60,23 @@ function normalizeChatRequest(body = {}) {
         throw new RequestValidationError("message 必须是 1-20000 字符的文本。");
     }
     const routeOptions = normalizeRouteOptions(body.route_options);
+    const requestMode = String(body.request_mode || "chat").trim();
+    if (!new Set(["chat", "route_plan"]).has(requestMode)) {
+        throw new RequestValidationError("request_mode 格式无效。");
+    }
+    const routeAction = body.route_action == null ? null : String(body.route_action).trim();
+    if (requestMode === "route_plan" && !new Set(["create", "update"]).has(routeAction)) {
+        throw new RequestValidationError("route_plan 请求必须指定 create 或 update。");
+    }
+    if (requestMode === "chat" && routeAction) {
+        throw new RequestValidationError("普通聊天不能指定 route_action。");
+    }
     return {
         session_id: sessionId,
         request_id: requestId,
         message,
+        request_mode: requestMode,
+        ...(routeAction ? { route_action: routeAction } : {}),
         ...(routeOptions ? { route_options: routeOptions } : {})
     };
 }

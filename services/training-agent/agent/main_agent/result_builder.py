@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from agent.main_agent.context import AgentContext
+from agent.main_agent.execution_policy import ROUTE_RESULT_TOOLS, TurnExecutionPolicy
 from agent.runtime.chat_logger import write_main_agent_markdown_log
 from agent.runtime.models import TurnResult, executions_from_trace
 from agent.runtime.presentation_projector import project_presentations
@@ -20,9 +21,14 @@ def build_completed_result(
     step_count: int,
     max_tool_steps: int,
     steps: list[dict[str, Any]],
+    execution_policy: TurnExecutionPolicy | None = None,
 ) -> dict[str, Any]:
     """Build a completed or max-steps result from the current turn only."""
+    execution_policy = execution_policy or TurnExecutionPolicy.chat()
     context.last_llm_error = None
+    if not execution_policy.is_satisfied(context.execution_trace):
+        return build_policy_unsatisfied_result(context, steps, execution_policy)
+
     if step_count > max_tool_steps:
         return build_turn_result(
             "max_steps_exceeded",
@@ -31,18 +37,6 @@ def build_completed_result(
             steps,
             f"达到最大步数 ({max_tool_steps}), 已执行 {len(steps)} 步, 但未完成。",
         )
-
-    if not context.execution_trace:
-        from agent.main_agent.turn_policy import should_continue_route_skill
-
-        if should_continue_route_skill(message, context):
-            return build_turn_result(
-                "action_not_executed",
-                "route_advice",
-                context,
-                steps,
-                "本轮没有实际执行路线更新，当前已保存路线保持不变。请重试这次修改。",
-            )
 
     final_answer = _current_terminal_answer(context)
     if not final_answer:
@@ -88,9 +82,13 @@ def build_llm_unavailable_result(
     *,
     steps: list[dict[str, Any]],
     error: Exception,
+    execution_policy: TurnExecutionPolicy | None = None,
 ) -> dict[str, Any]:
     """Preserve completed tool state when final language generation fails."""
+    execution_policy = execution_policy or TurnExecutionPolicy.chat()
     context.last_llm_error = {"type": type(error).__name__, "message": str(error)}
+    if not execution_policy.is_satisfied(context.execution_trace):
+        return build_policy_unsatisfied_result(context, steps, execution_policy)
     workflow_answer = completed_workflow_fallback(context, steps=steps)
     if workflow_answer:
         return build_turn_result("llm_unavailable", intent, context, steps, workflow_answer)
@@ -102,12 +100,54 @@ def build_llm_unavailable_result(
     return build_turn_result("llm_unavailable", intent, context, steps, answer)
 
 
-def build_activation_unavailable_result(context: AgentContext, *, error: Exception) -> dict[str, Any]:
+def build_activation_unavailable_result(
+    context: AgentContext,
+    *,
+    error: Exception,
+    execution_policy: TurnExecutionPolicy | None = None,
+) -> dict[str, Any]:
     """Fail closed when the model client cannot be created."""
+    execution_policy = execution_policy or TurnExecutionPolicy.chat()
     context.last_llm_error = {"type": type(error).__name__, "message": str(error)}
+    if not execution_policy.is_satisfied(context.execution_trace):
+        return build_policy_unsatisfied_result(context, [], execution_policy)
     context.active_skill_id = None
     answer = "LLM 服务连接暂时不可用，尚未选择领域 Skill，因此本轮没有暴露或执行任何活动工具。请稍后重试。"
     return build_turn_result("llm_unavailable", "skill_activation", context, [], answer)
+
+
+def build_policy_unsatisfied_result(
+    context: AgentContext,
+    steps: list[dict[str, Any]],
+    execution_policy: TurnExecutionPolicy,
+) -> dict[str, Any]:
+    """Return the required tool's structured failure or a missing-action error."""
+    failure = next((
+        item.get("result") for item in reversed(context.execution_trace)
+        if isinstance(item, dict)
+        and item.get("tool") == execution_policy.required_tool_name
+        and isinstance(item.get("result"), dict)
+    ), None)
+    if isinstance(failure, dict) and failure.get("code"):
+        code = str(failure["code"])
+        status = "provider_error" if code.startswith("provider_") or code == "route_provider_error" else "route_rejected"
+        return build_turn_result(
+            status,
+            "route_advice",
+            context,
+            steps,
+            str(failure.get("message") or "路线处理失败。"),
+            project_route_plan=False,
+        )
+    return build_turn_result(
+        "action_not_executed",
+        "route_advice",
+        context,
+        steps,
+        "本轮没有实际执行路线更新，也没有成功生成新路线；"
+        "当前已保存路线保持不变。请查看工具失败原因后重试。",
+        project_route_plan=False,
+    )
 
 
 def build_turn_result(
@@ -117,6 +157,7 @@ def build_turn_result(
     steps: list[dict[str, Any]],
     answer: str,
     log_path: str = "",
+    project_route_plan: bool = True,
 ) -> dict[str, Any]:
     """Create the typed result while preserving the legacy dictionary API."""
     executions = executions_from_trace(context.execution_trace, steps=steps)
@@ -132,7 +173,7 @@ def build_turn_result(
         current_fit_file=str(context.current_fit_file) if context.current_fit_file else None,
         log_path=log_path,
     ).to_dict()
-    route_plan = _route_plan_from_executions(executions)
+    route_plan = _route_plan_from_executions(executions) if project_route_plan else None
     if route_plan:
         result["route_plan"] = route_plan
     return result
@@ -140,6 +181,8 @@ def build_turn_result(
 
 def _route_plan_from_executions(executions: list[Any]) -> dict[str, Any] | None:
     for execution in reversed(executions):
+        if not _is_successful_route_execution(execution):
+            continue
         payload = execution.result if isinstance(execution.result, dict) else {}
         if isinstance(payload.get("result"), dict):
             payload = payload["result"]
@@ -150,6 +193,18 @@ def _route_plan_from_executions(executions: list[Any]) -> dict[str, Any] | None:
         if plan:
             return build_route_plan_view(plan)
     return None
+
+
+def _is_successful_route_execution(execution: Any) -> bool:
+    """Only successful route executions may project a route plan to the UI."""
+    from agent.main_agent.tool_result import is_failed_tool_output
+    name = str(getattr(execution, "tool", "") or "")
+    result = getattr(execution, "result", None)
+    return (
+        name in ROUTE_RESULT_TOOLS
+        and getattr(execution, "status", None) == "completed"
+        and not is_failed_tool_output(result)
+    )
 
 
 def intent_kind(intent: Any) -> str:

@@ -41,8 +41,10 @@ export const suite = {
                 await planner.sendMessage("从世博园出发沿江骑 50km");
                 const answer = elements.aiRouteMessages.children.at(-1).messageBody.textContent;
                 assert(answer.includes("已生成 1 条路线候选。"));
+                assert(answer.includes("另有 1 条未能生成：无效候选（地点没有结果）"));
                 assert(answer.includes("\n\n当前预览：滨江路线"));
                 assertEqual(elements.aiRouteCandidates.children.length, 1);
+                assert(elements.aiRouteCandidates.children[0].children[0].children[2].textContent.includes("距离偏离目标"));
                 assertEqual(elements.aiRouteSegmentPanel.hidden, false);
                 assertEqual(elements.aiRouteSegmentList.children.length, 2);
                 const generatedActions = elements.aiRouteCandidates.children[0].children[1];
@@ -138,9 +140,11 @@ function buildDraft() {
             durationMinutes: 120,
             provider: "AMap",
             stravaSegments: "",
+            warnings: ["距离偏离目标"],
             active: true,
             confirmed: false,
         }],
+        rejectedCandidates: [{ name: "无效候选", reason: "地点没有结果" }],
         segments: [
             { segmentId: 101, name: "滨江 A", distanceKm: 6, averageGradePercent: 0, distanceToRouteKm: 0.2, candidateIds: ["candidate-1"] },
             { segmentId: 202, name: "滨江 B", distanceKm: 8, averageGradePercent: 0.2, distanceToRouteKm: 0.4, candidateIds: ["candidate-1"] },

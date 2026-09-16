@@ -54,12 +54,6 @@ export function buildRiderRouteFromAgentCandidate(draft, candidateId) {
     };
 }
 
-export function isRouteActivationOnly(turnResult) {
-    const activatedRouteSkill = /^plan-/.test(String(turnResult?.skill_id || ""));
-    const activatedTool = (turnResult?.executions ?? []).some((item) => item?.tool === "activate_skill");
-    return !turnResult?.route_plan && (activatedRouteSkill || activatedTool);
-}
-
 function resolveRouteWaypoints(routePath) {
     const first = routePath[0];
     const last = routePath.at(-1);

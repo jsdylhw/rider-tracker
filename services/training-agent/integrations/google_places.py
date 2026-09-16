@@ -12,6 +12,8 @@ from urllib.request import Request, urlopen
 
 import requests
 
+from integrations.provider_error import ProviderError, TransientProviderError
+
 SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PHOTO_NAME_RE = re.compile(r"^places/[A-Za-z0-9_-]+/photos/[A-Za-z0-9_-]+$")
 ROUTE_FIELD_MASK = ",".join((
@@ -266,22 +268,44 @@ def _optional_positive_int(value: Any) -> int | None:
     return number if number > 0 else None
 
 
-class TransientProviderError(RuntimeError):
-    """Retryable transport failure before a valid provider response."""
-
-
 def _read_json(request: Request, timeout_s: float) -> dict[str, Any]:
     try:
         with urlopen(request, timeout=timeout_s) as response:  # noqa: S310 - fixed HTTPS provider URL
             payload = json.load(response)
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"Google Places HTTP {exc.code}: {detail}") from exc
+        error_type = TransientProviderError if exc.code in {408, 429} or exc.code >= 500 else ProviderError
+        raise error_type(
+            f"Google Places HTTP {exc.code}: {detail}",
+            provider="google_places",
+            stage="place_search",
+            **({} if error_type is TransientProviderError else {"code": "provider_http_error"}),
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise ProviderError(
+            "Google Places returned invalid JSON",
+            provider="google_places",
+            stage="place_search",
+            code="provider_invalid_response",
+        ) from exc
     except (TimeoutError, URLError, OSError) as exc:
         reason = getattr(exc, "reason", None)
-        raise TransientProviderError(f"Google Places request failed: {reason or exc.__class__.__name__}") from exc
+        raise TransientProviderError(
+            f"Google Places request failed: {reason or exc.__class__.__name__}",
+            provider="google_places",
+            stage="place_search",
+        ) from exc
     if not isinstance(payload, dict):
-        raise RuntimeError("Google Places returned an invalid JSON object")
+        raise ProviderError(
+            "Google Places returned an invalid JSON object",
+            provider="google_places",
+            stage="place_search",
+            code="provider_invalid_response",
+        )
     if isinstance(payload.get("error"), dict):
-        raise RuntimeError(f"Google Places error: {payload['error'].get('message') or 'unknown provider error'}")
+        raise ProviderError(
+            f"Google Places error: {payload['error'].get('message') or 'unknown provider error'}",
+            provider="google_places",
+            stage="place_search",
+        )
     return payload

@@ -8,10 +8,13 @@ from unittest.mock import patch
 import pytest
 
 from agent.main_agent.context import AgentContext
+from agent.main_agent.execution_policy import TurnExecutionPolicy
 from integrations.llm import LLMRequestError
+from integrations.provider_error import TransientProviderError
 from agent.main_agent.loop import MAX_TOOL_STEPS, _build_state_preamble, _build_system_prompt, run_tool_loop
 from agent.main_agent.turn_policy import should_continue_route_skill
 from project_paths import resolve_project_path
+from services.route.single_day import RouteProviderFailed
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +65,7 @@ def test_ordinary_chat_answers_in_one_main_model_request():
     assert [tool["name"] for tool in tools] == ["activate_skill"]
 
 
-def test_explicit_route_followup_reuses_recent_skill_and_fails_closed_without_tool(monkeypatch):
+def test_explicit_route_followup_reuses_recent_skill_without_becoming_a_required_action(monkeypatch):
     context = AgentContext(
         session_id="route-followup", workspace_id="workspace", last_used_skills=["plan-routes"],
     )
@@ -77,8 +80,8 @@ def test_explicit_route_followup_reuses_recent_skill_and_fails_closed_without_to
 
         result = run_tool_loop("在当前路线中增加一个途经点", context=context)
 
-    assert result["status"] == "action_not_executed"
-    assert "没有实际执行路线更新" in result["answer"]
+    assert result["status"] == "completed"
+    assert result["answer"] == "已更新路线。"
     assert context.active_skill_id == "plan-routes"
     assert context.active_skill_reason == "continued_from_recent_skill"
     assert context.last_used_skills == ["plan-routes"]
@@ -87,6 +90,402 @@ def test_explicit_route_followup_reuses_recent_skill_and_fails_closed_without_to
     names = {tool["name"] for tool in tools}
     assert "update_route_plan" in names
     assert "activate_skill" not in names
+
+
+def test_trusted_route_request_forces_route_skill_and_fails_closed_without_tool():
+    context = AgentContext(
+        session_id="trusted-route-request",
+        workspace_id="workspace",
+        route_request_options={"include_elevation": False},
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.return_value = {
+            "id": "msg-route-text-only",
+            "content": [{"type": "text", "text": "本轮已生成三条路线。"}],
+            "stop_reason": "end_turn",
+        }
+
+        result = run_tool_loop(
+            "规划一条京都 30 km 环线",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("create"),
+        )
+
+    assert result["status"] == "action_not_executed"
+    assert "本轮已生成三条路线" not in result["answer"]
+    assert context.active_skill_id == "plan-routes"
+    assert context.active_skill_reason == "request_policy"
+    assert context.last_used_skills == ["plan-routes"]
+    assert context.conversation_used_skills == ["plan-routes"]
+    tools = client.return_value.create_messages.call_args.kwargs["tools"]
+    names = {tool["name"] for tool in tools}
+    assert "create_route_plan" in names
+    assert "activate_skill" not in names
+    assert client.return_value.create_messages.call_args.kwargs["tool_choice"] == {
+        "type": "tool", "name": "create_route_plan",
+    }
+    assert client.return_value.create_messages.call_args.kwargs["thinking"] == "disabled"
+
+
+def test_trusted_route_request_stops_forcing_tools_after_failed_attempt(monkeypatch):
+    context = AgentContext(
+        session_id="trusted-route-failed-tool",
+        workspace_id="workspace",
+        route_request_options={"include_elevation": False},
+    )
+    monkeypatch.setitem(
+        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+        "create_route_plan",
+        lambda args, ctx: {"status": "failed", "error": "Google route request timed out"},
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.side_effect = [
+            {
+                "id": "msg-route-tool",
+                "content": [{
+                    "type": "tool_use",
+                    "name": "create_route_plan",
+                    "id": "tu-route",
+                    "input": {"name": "京都环线", "country_code": "JP", "candidates": []},
+                }],
+                "stop_reason": "tool_use",
+            },
+            {
+                "id": "msg-route-failed",
+                "content": [{"type": "text", "text": "路线服务失败。"}],
+                "stop_reason": "end_turn",
+            },
+        ]
+
+        result = run_tool_loop(
+            "规划一条京都 30 km 环线",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("create"),
+        )
+
+    assert result["status"] == "action_not_executed"
+    calls = client.return_value.create_messages.call_args_list
+    assert calls[0].kwargs["tool_choice"] == {"type": "tool", "name": "create_route_plan"}
+    assert len(calls) == 1
+    assert len(result["executions"]) == 1
+    assert result["executions"][0]["status"] == "failed"
+
+
+def test_trusted_route_request_stops_after_required_tool_is_guarded(monkeypatch):
+    from agent.main_agent.guard import GuardResult
+
+    context = AgentContext(session_id="trusted-route-guarded", workspace_id="workspace")
+    monkeypatch.setattr(
+        "agent.main_agent.guard.guard_tool_call",
+        lambda *args, **kwargs: GuardResult(False, "blocked by deterministic guard"),
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.return_value = {
+            "id": "msg-route-tool",
+            "content": [{
+                "type": "tool_use", "name": "create_route_plan", "id": "tu-route", "input": {},
+            }],
+            "stop_reason": "tool_use",
+        }
+
+        result = run_tool_loop(
+            "规划京都路线",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("create"),
+        )
+
+    assert result["status"] == "action_not_executed"
+    assert result["executions"] == []
+    assert context.last_failed_action is None
+    assert client.return_value.create_messages.call_count == 1
+
+
+def test_route_provider_failure_keeps_structured_error_and_stops(monkeypatch):
+    context = AgentContext(session_id="route-provider-failure", workspace_id="workspace")
+    monkeypatch.setitem(
+        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+        "create_route_plan",
+        lambda args, ctx: (_ for _ in ()).throw(RouteProviderFailed([{
+            "code": "provider_unavailable",
+            "provider": "google_places",
+            "stage": "place_search",
+            "retryable": True,
+            "message": "TLS timeout",
+        }])),
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.return_value = {
+            "id": "msg-route-tool",
+            "content": [{
+                "type": "tool_use", "name": "create_route_plan", "id": "tu-route",
+                "input": {"title": "京都环线", "country_code": "JP", "candidates": []},
+            }],
+            "stop_reason": "tool_use",
+        }
+        result = run_tool_loop(
+            "规划京都路线",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("create"),
+        )
+
+    assert result["status"] == "provider_error"
+    assert result["answer"] == "路线服务暂时不可用，请稍后重试。"
+    assert result["executions"][0]["error"] == "route_provider_error"
+    assert client.return_value.create_messages.call_count == 1
+
+
+def test_direct_update_provider_failure_keeps_adapter_error_fields(monkeypatch):
+    context = AgentContext(session_id="route-update-provider-failure", workspace_id="workspace")
+    monkeypatch.setitem(
+        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+        "update_route_plan",
+        lambda args, ctx: (_ for _ in ()).throw(TransientProviderError(
+            "Google Routes request timed out",
+            provider="google_routes",
+            stage="route_calculation",
+        )),
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.return_value = {
+            "id": "msg-route-update-tool",
+            "content": [{
+                "type": "tool_use", "name": "update_route_plan", "id": "tu-route-update",
+                "input": {"plan_id": "plan-1", "operation": "replace_waypoints"},
+            }],
+            "stop_reason": "tool_use",
+        }
+        result = run_tool_loop(
+            "修改京都路线",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("update"),
+        )
+
+    assert result["status"] == "provider_error"
+    assert result["executions"][0]["code"] == "provider_unavailable"
+    assert result["executions"][0]["provider"] == "google_routes"
+    assert result["executions"][0]["stage"] == "route_calculation"
+    assert result["executions"][0]["retryable"] is True
+    assert client.return_value.create_messages.call_count == 1
+
+
+def test_trusted_route_request_fails_closed_when_llm_is_unavailable():
+    context = AgentContext(
+        session_id="trusted-route-llm-unavailable",
+        workspace_id="workspace",
+        route_request_options={"include_elevation": False},
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.side_effect = LLMRequestError("connection closed")
+
+        result = run_tool_loop(
+            "规划一条京都 30 km 环线",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("create"),
+        )
+
+    assert result["status"] == "action_not_executed"
+    assert result["intent"] == "route_advice"
+    assert result["skill_id"] == "plan-routes"
+    assert result["executions"] == []
+    assert context.last_llm_error["type"] == "LLMRequestError"
+
+
+def test_route_policy_clears_stale_execution_before_client_initialization_failure():
+    context = AgentContext(session_id="stale-route-client-failure", workspace_id="workspace")
+    context.execution_trace = [{
+        "tool": "get_route_plan",
+        "status": "completed",
+        "result": {"status": "completed", "result": {"plan_id": "old-plan"}},
+    }]
+    with patch("agent.main_agent.loop.AnthropicMessagesClient", side_effect=RuntimeError("missing model")):
+        result = run_tool_loop(
+            "规划京都路线",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("create"),
+        )
+
+    assert result["status"] == "action_not_executed"
+    assert result["executions"] == []
+    assert "route_plan" not in result
+
+
+def test_create_policy_is_not_completed_by_reading_an_old_route(monkeypatch):
+    context = AgentContext(session_id="create-read-old-route", workspace_id="workspace")
+    monkeypatch.setitem(
+        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+        "get_route_plan",
+        lambda args, ctx: {
+            "status": "completed", "answer": "读取旧路线",
+            "result": {"plan_id": "old-plan"},
+        },
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.side_effect = [
+            {
+                "id": "msg-wrong-tool",
+                "content": [{
+                    "type": "tool_use", "name": "get_route_plan", "id": "tu-old", "input": {},
+                }],
+                "stop_reason": "tool_use",
+            },
+            {"id": "msg-text", "content": [{"type": "text", "text": "已生成。"}], "stop_reason": "end_turn"},
+        ]
+        result = run_tool_loop(
+            "规划京都路线",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("create"),
+        )
+
+    assert result["status"] == "action_not_executed"
+    assert [item["tool"] for item in result["executions"]] == ["get_route_plan"]
+    assert "route_plan" not in result
+
+
+def test_retrying_a_route_action_projects_the_completed_plan(monkeypatch):
+    context = AgentContext(
+        session_id="retry-route-plan",
+        workspace_id="workspace",
+        active_skill_id="plan-routes",
+        last_failed_action={"tool": "update_route_plan", "input": {"plan_id": "plan-1"}},
+    )
+    monkeypatch.setitem(
+        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+        "update_route_plan",
+        lambda args, ctx: {
+            "status": "completed", "answer": "路线已更新",
+            "result": {"plan_id": "plan-1"},
+        },
+    )
+    monkeypatch.setattr(
+        "agent.main_agent.result_builder.RoutePlanStore.get",
+        lambda self, plan_id: {
+            "plan_id": plan_id, "revision": 2,
+            "candidates": [{"candidate_id": "candidate-1"}],
+        },
+    )
+
+    result = run_tool_loop("重试", context=context)
+
+    assert result["status"] == "completed"
+    assert result["route_plan"]["plan_id"] == "plan-1"
+
+
+def test_route_retry_obeys_current_create_policy_instead_of_replaying_update(monkeypatch):
+    context = AgentContext(
+        session_id="retry-route-create-policy",
+        workspace_id="workspace",
+        active_skill_id="plan-routes",
+        last_failed_action={"tool": "update_route_plan", "input": {"plan_id": "old-plan"}},
+    )
+    update_calls = []
+    monkeypatch.setitem(
+        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+        "update_route_plan",
+        lambda args, ctx: update_calls.append(args) or {"status": "completed"},
+    )
+    monkeypatch.setitem(
+        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+        "create_route_plan",
+        lambda args, ctx: {
+            "status": "completed", "answer": "新路线已生成",
+            "result": {"plan_id": "new-plan"},
+        },
+    )
+    monkeypatch.setattr(
+        "agent.main_agent.result_builder.RoutePlanStore.get",
+        lambda self, plan_id: {
+            "plan_id": plan_id, "revision": 1,
+            "candidates": [{"candidate_id": "candidate-1"}],
+        },
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.return_value = {
+            "id": "msg-create-route",
+            "content": [{
+                "type": "tool_use", "name": "create_route_plan", "id": "tu-create",
+                "input": {"title": "新路线", "country_code": "JP", "candidates": []},
+            }],
+            "stop_reason": "tool_use",
+        }
+        result = run_tool_loop(
+            "重试",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("create"),
+        )
+
+    assert update_calls == []
+    assert result["status"] == "completed"
+    assert result["route_plan"]["plan_id"] == "new-plan"
+    assert [item["tool"] for item in result["executions"]] == ["create_route_plan"]
+
+
+def test_route_retry_of_required_action_uses_policy_failure_projection(monkeypatch):
+    context = AgentContext(
+        session_id="retry-required-route-action",
+        workspace_id="workspace",
+        active_skill_id="plan-routes",
+        last_failed_action={"tool": "create_route_plan", "input": {"title": "京都路线"}},
+    )
+    monkeypatch.setitem(
+        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+        "create_route_plan",
+        lambda args, ctx: {
+            "status": "failed",
+            "error": "provider_unavailable",
+            "code": "provider_unavailable",
+            "provider": "google_places",
+            "stage": "place_search",
+            "message": "Google Places 暂时不可用",
+            "retryable": True,
+        },
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        result = run_tool_loop(
+            "重试",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("create"),
+        )
+
+    assert client.call_count == 0
+    assert result["status"] == "provider_error"
+    assert result["answer"] == "Google Places 暂时不可用"
+    assert result["executions"][0]["retryable"] is True
+
+
+def test_non_retryable_tool_failure_is_not_saved_by_loop_hooks(monkeypatch):
+    context = AgentContext(
+        session_id="non-retryable-route-failure",
+        workspace_id="workspace",
+        last_failed_action={"tool": "create_route_plan", "input": {"title": "旧请求"}},
+    )
+    monkeypatch.setitem(
+        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+        "create_route_plan",
+        lambda args, ctx: {
+            "status": "failed",
+            "error": "place_not_found",
+            "code": "place_not_found",
+            "message": "地点不存在",
+            "retryable": False,
+        },
+    )
+    with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
+        client.return_value.create_messages.return_value = {
+            "id": "msg-route-rejected",
+            "content": [{
+                "type": "tool_use", "name": "create_route_plan", "id": "tu-route-rejected",
+                "input": {"title": "路线", "country_code": "JP", "candidates": []},
+            }],
+            "stop_reason": "tool_use",
+        }
+        result = run_tool_loop(
+            "规划路线",
+            context=context,
+            execution_policy=TurnExecutionPolicy.route_plan("create"),
+        )
+
+    assert result["status"] == "route_rejected"
+    assert context.last_failed_action is None
 
 
 def test_route_followup_recognizes_waypoint_language(monkeypatch):

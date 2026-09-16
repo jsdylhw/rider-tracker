@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent.main_agent.tool_result import is_failed_tool_output
+from agent.main_agent.tool_result import is_failed_tool_output, remember_failed_action
 from agent.main_agent.turn_policy import is_terminal_tool_result
 from agent.runtime.models import ToolExecution
 from agent.tools.display import format_tool_args, summarize_tool_output, tool_label
@@ -14,15 +14,19 @@ class ToolLoopHooks:
     """Apply the fixed middleware order around each model-requested tool."""
 
     def __init__(self, context, allowed_cats, has_resolved_ref, steps_taken, *,
-                 allowed_tool_names=None, allowed_tool_provider=None, verbose=False):
+                 allowed_tool_names=None, allowed_tool_provider=None,
+                 terminal_tool_names=None, stop_on_failed_tools=None, verbose=False):
         self.context = context
         self.allowed_cats = allowed_cats
         self.has_resolved_ref = has_resolved_ref
         self.steps_taken = steps_taken
         self.allowed_tool_names = set(allowed_tool_names) if allowed_tool_names is not None else None
         self.allowed_tool_provider = allowed_tool_provider
+        self.terminal_tool_names = set(terminal_tool_names) if terminal_tool_names is not None else None
+        self.stop_on_failed_tools = set(stop_on_failed_tools or [])
         self.verbose = verbose
         self.final_response_only = False
+        self.stop_after_tool_round = False
         self.terminal_answer: str | None = None
         self._tool_call_count = 0
         self._tool_call_indices: dict[str, int] = {}
@@ -39,7 +43,17 @@ class ToolLoopHooks:
         return None
 
     def on_error(self, block: dict[str, Any], error: Exception) -> dict[str, Any] | None:
+        converter = getattr(error, "to_tool_result", None)
+        if callable(converter):
+            return converter()
         return None
+
+    def on_blocked(
+        self, block: dict[str, Any], blocked: dict[str, Any], *, step_count: int,
+    ) -> None:
+        """Stop a required action after Guard rejection without saving it for retry."""
+        if str(block.get("name") or "") in self.stop_on_failed_tools:
+            self.stop_after_tool_round = True
 
     def on_loop_end(self, *, messages: list[dict[str, Any]], response: dict[str, Any], steps: int) -> None:
         return None
@@ -81,24 +95,29 @@ class ToolLoopHooks:
             status=str(payload.get("status") or ("failed" if is_failed_tool_output(output) else "completed")),
             message=str(payload["message"]) if payload.get("message") is not None else None,
             error=str(payload["error"]) if payload.get("error") is not None else None,
+            code=str(payload["code"]) if payload.get("code") is not None else None,
+            provider=str(payload["provider"]) if payload.get("provider") is not None else None,
+            stage=str(payload["stage"]) if payload.get("stage") is not None else None,
+            retryable=payload.get("retryable") if isinstance(payload.get("retryable"), bool) else None,
             result=output,
             navigation_before=self._navigation_before.get(call_id),
             navigation_after=_navigation_summary(self.context),
         ).to_dict())
-        if is_failed_tool_output(output):
-            self.context.last_failed_action = {"tool": name, "input": block.get("input", {}) or {}}
-        elif name == (self.context.last_failed_action or {}).get("tool"):
-            self.context.last_failed_action = None
+        failed = is_failed_tool_output(output)
+        remember_failed_action(self.context, name, block.get("input", {}) or {}, output)
         if name == "resolve_activities":
             self.has_resolved_ref["value"] = True
             if self.context.active_skill_id == "analyze-activity":
                 self._append_activity_sport_reference()
-        if is_terminal_tool_result(name, output):
+        terminal_allowed = self.terminal_tool_names is None or name in self.terminal_tool_names
+        if terminal_allowed and is_terminal_tool_result(name, output):
             self.final_response_only = True
             if isinstance(output, dict):
                 answer = str(output.get("answer") or "").strip()
                 if answer:
                     self.terminal_answer = answer
+        if failed and name in self.stop_on_failed_tools:
+            self.stop_after_tool_round = True
         if self.verbose:
             self._log_post_tool(block, output, tool_index=tool_index)
 

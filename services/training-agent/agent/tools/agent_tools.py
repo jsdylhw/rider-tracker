@@ -415,7 +415,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
     ToolDef(
         name="create_route_plan",
         description=(
-            "统一创建并持久化单日路线。明确途经点时按给定骨架算路；开放需求由模型先给出至多三个"
+            "统一创建并持久化单日路线。明确途经点时按给定骨架算路；开放需求由模型给出恰好三个"
             "骨架。国内使用高德，国外使用 Google Routes；默认尝试用真实 Strava 路段增强，"
             "失败时保留地图基线。complete_loop 用于围绕一个完整闭合 Strava 热门环线接驳往返。"
         ),

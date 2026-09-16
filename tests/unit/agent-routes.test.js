@@ -1,9 +1,37 @@
-import { normalizeCommandRequest } from "../../src/server/routes/agent-routes.js";
+import { normalizeChatRequest, normalizeCommandRequest } from "../../src/server/routes/agent-routes.js";
 import { assert, assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
     name: "agent-routes",
     tests: [
+        {
+            name: "requires an explicit route action for route-plan requests",
+            run() {
+                const request = normalizeChatRequest({
+                    session_id: "session-1",
+                    request_id: "request-1",
+                    message: "生成京都路线",
+                    request_mode: "route_plan",
+                    route_action: "create",
+                    route_options: { include_elevation: false }
+                });
+                assertEqual(request.request_mode, "route_plan");
+                assertEqual(request.route_action, "create");
+
+                let error = null;
+                try {
+                    normalizeChatRequest({
+                        session_id: "session-1",
+                        request_id: "request-2",
+                        message: "生成京都路线",
+                        request_mode: "route_plan"
+                    });
+                } catch (caught) {
+                    error = caught;
+                }
+                assert(error, "route_plan 缺少动作时必须拒绝");
+            }
+        },
         {
             name: "preserves the saved route snapshot for atomic confirmation",
             run() {

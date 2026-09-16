@@ -14,8 +14,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, build_opener
+
+from integrations.provider_error import ProviderError, TransientProviderError
 
 
 AMAP_BICYCLING_URL = "https://restapi.amap.com/v5/direction/bicycling"
@@ -56,12 +58,25 @@ def _path_coordinates(path: dict[str, Any]) -> list[tuple[float, float]]:
         polyline = step.get("polyline")
         if not polyline:
             continue
-        step_coordinates = parse_polyline(str(polyline))
+        try:
+            step_coordinates = parse_polyline(str(polyline))
+        except ValueError as exc:
+            raise ProviderError(
+                "AMap response contained invalid bicycling geometry",
+                provider="amap",
+                stage="route_calculation",
+                code="provider_invalid_response",
+            ) from exc
         if coordinates and step_coordinates[0] == coordinates[-1]:
             step_coordinates = step_coordinates[1:]
         coordinates.extend(step_coordinates)
     if len(coordinates) < 2:
-        raise RuntimeError("AMap response did not contain a usable bicycling geometry")
+        raise ProviderError(
+            "AMap response did not contain a usable bicycling geometry",
+            provider="amap",
+            stage="route_calculation",
+            code="provider_invalid_response",
+        )
     return coordinates
 
 
@@ -70,6 +85,21 @@ def _successful_path(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _successful_paths(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    validate_amap_response(payload, stage="route_calculation")
+    paths = ((payload.get("route") or {}).get("paths") or (payload.get("data") or {}).get("paths") or [])
+    normalized = [dict(path) for path in paths if isinstance(path, dict)]
+    if not normalized:
+        raise ProviderError(
+            str(payload.get("errmsg") or "AMap bicycling request returned no path"),
+            provider="amap",
+            stage="route_calculation",
+            code="provider_no_route",
+        )
+    return normalized
+
+
+def validate_amap_response(payload: dict[str, Any], *, stage: str) -> None:
+    """Classify an AMap API error before consumers inspect result collections."""
     # The current v5 endpoint reports ``status=1`` / ``infocode=10000``.
     # Keep the older ``errcode`` check for a compatible error response shape.
     status = payload.get("status")
@@ -77,12 +107,8 @@ def _successful_paths(payload: dict[str, Any]) -> list[dict[str, Any]]:
     errcode = payload.get("errcode")
     if (status is not None and str(status) != "1") or (infocode is not None and str(infocode) != "10000") or (errcode is not None and str(errcode) not in {"0", "10000"}):
         detail = payload.get("errdetail") or payload.get("errmsg") or payload.get("info") or "AMap bicycling request failed"
-        raise RuntimeError(str(detail))
-    paths = ((payload.get("route") or {}).get("paths") or (payload.get("data") or {}).get("paths") or [])
-    normalized = [dict(path) for path in paths if isinstance(path, dict)]
-    if not normalized:
-        raise RuntimeError(str(payload.get("errmsg") or "AMap bicycling request returned no path"))
-    return normalized
+        error_type = TransientProviderError if _is_transient_provider_response(payload) else ProviderError
+        raise error_type(str(detail), provider="amap", stage=stage)
 
 
 def _is_transient_provider_response(payload: dict[str, Any]) -> bool:
@@ -181,19 +207,55 @@ class AmapCyclingRouter:
                     payload = json.load(response)
                 try:
                     paths = _successful_paths(payload)
-                except RuntimeError as exc:
-                    if not _is_transient_provider_response(payload) or attempt == self.retries:
+                except ProviderError as exc:
+                    if not _is_transient_provider_response(payload):
                         raise
+                    if attempt == self.retries:
+                        raise TransientProviderError(
+                            str(exc), provider="amap", stage="route_calculation",
+                        ) from exc
                     last_error = exc
                     time.sleep(0.8 * (attempt + 1))
                     continue
                 return [_normalize_path(path) for path in paths]
+            except HTTPError as exc:
+                last_error = exc
+                message = f"AMap bicycling returned HTTP {exc.code}"
+                if exc.code in {408, 429} or exc.code >= 500:
+                    if attempt < self.retries:
+                        time.sleep(0.4 * (attempt + 1))
+                        continue
+                    raise TransientProviderError(
+                        message, provider="amap", stage="route_calculation",
+                    ) from exc
+                raise ProviderError(
+                    message,
+                    provider="amap",
+                    stage="route_calculation",
+                    code="provider_http_error",
+                ) from exc
+            except json.JSONDecodeError as exc:
+                raise ProviderError(
+                    "AMap bicycling returned invalid JSON",
+                    provider="amap",
+                    stage="route_calculation",
+                    code="provider_invalid_response",
+                ) from exc
             except (OSError, TimeoutError, URLError) as exc:
                 last_error = exc
                 if attempt == self.retries:
-                    raise RuntimeError(f"AMap bicycling request failed after {attempt + 1} attempts: {exc.reason if isinstance(exc, URLError) else exc}") from exc
+                    raise TransientProviderError(
+                        f"AMap bicycling request failed after {attempt + 1} attempts: "
+                        f"{exc.reason if isinstance(exc, URLError) else exc}",
+                        provider="amap",
+                        stage="route_calculation",
+                    ) from exc
                 time.sleep(0.4 * (attempt + 1))
-        raise RuntimeError("AMap bicycling request failed") from last_error  # pragma: no cover
+        raise TransientProviderError(
+            "AMap bicycling request failed",
+            provider="amap",
+            stage="route_calculation",
+        ) from last_error  # pragma: no cover
 
     def route_points(self, points: Sequence[AmapPoint]) -> dict[str, Any]:
         """Compose pairwise bicycle routes, retaining every supplied via point."""
