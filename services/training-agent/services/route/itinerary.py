@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
 
+from services.route.provider_readiness import ensure_google_route_provider_ready
 from services.route.single_day import reverse_waypoint_queries, route_candidate, saved_waypoint_queries
 from settings import load_config
 
@@ -38,6 +39,8 @@ def create_itinerary_plan(
     tolerance = _non_negative_float(handoff_tolerance_km, "handoff_tolerance_km")
     warning_ratio = _non_negative_float(balance_warning_ratio, "balance_warning_ratio")
     config = load_config()
+    if normalized_country != "CN":
+        ensure_google_route_provider_ready(config)
     routed_candidates = [
         _route_itinerary_candidate(
             candidate,
@@ -48,6 +51,7 @@ def create_itinerary_plan(
             handoff_tolerance_km=tolerance,
             balance_warning_ratio=warning_ratio,
             config=config,
+            provider_preflight_completed=True,
         )
         for index, candidate in enumerate(candidates, start=1)
     ]
@@ -105,12 +109,17 @@ def replace_itinerary_stage(
             else previous.get("target_distance_km")
         ),
     }
+    country_code = str(plan.get("country_code") or "").strip().upper()
+    config = load_config()
+    if country_code != "CN":
+        ensure_google_route_provider_ready(config)
     routed = route_candidate(
         spec,
         index=stage_index + 1,
-        country_code=str(plan.get("country_code") or ""),
+        country_code=country_code,
         include_elevation=include_elevation,
-        config=load_config(),
+        config=config,
+        provider_preflight_completed=True,
     )
     updated_stage = _stage_payload(
         routed,
@@ -211,6 +220,7 @@ def _route_itinerary_candidate(
     handoff_tolerance_km: float,
     balance_warning_ratio: float,
     config: dict[str, Any],
+    provider_preflight_completed: bool = False,
 ) -> dict[str, Any]:
     stage_specs = [item for item in candidate.get("stages") or [] if isinstance(item, dict)]
     if not 2 <= len(stage_specs) <= 7:
@@ -240,6 +250,7 @@ def _route_itinerary_candidate(
             country_code=country_code,
             include_elevation=include_elevation,
             config=config,
+            provider_preflight_completed=provider_preflight_completed,
         )
         routed_stages.append(_stage_payload(routed, spec, index))
     return _finalize_candidate(

@@ -22,7 +22,10 @@ LOCATIONS = {
 }
 
 
-def _fake_route_candidate(spec, *, index, country_code, include_elevation, config):
+def _fake_route_candidate(
+    spec, *, index, country_code, include_elevation, config,
+    provider_preflight_completed=False,
+):
     points = []
     for query in spec["waypoints"]:
         lat, lon = LOCATIONS[query]

@@ -28,6 +28,7 @@ from services.route.quality import (
     normalize_route_preferences,
     preference_score,
 )
+from services.route.provider_readiness import ensure_google_route_provider_ready
 from settings import load_config
 
 
@@ -106,6 +107,8 @@ def create_single_day_plan(
     if len(candidates) > 3:
         raise ValueError("at most three route candidates are supported")
     config = load_config()
+    if normalized_country != "CN":
+        ensure_google_route_provider_ready(config)
     normalized_constraints = normalize_route_constraints(route_constraints)
     normalized_preferences = normalize_route_preferences(route_preferences)
     routed: list[dict[str, Any]] = []
@@ -121,6 +124,7 @@ def create_single_day_plan(
                 config=config,
                 route_constraints=normalized_constraints,
                 route_preferences=normalized_preferences,
+                provider_preflight_completed=True,
             ))
         except RouteCandidateRejected as exc:
             rejected.append({
@@ -270,14 +274,19 @@ def replace_candidate(
         ),
         "candidate_id": selected_id,
     }
+    country_code = str(plan.get("country_code") or "").strip().upper()
+    config = load_config()
+    if country_code != "CN":
+        ensure_google_route_provider_ready(config)
     updated = route_candidate(
         spec,
         index=selected_index + 1,
-        country_code=str(plan.get("country_code") or ""),
+        country_code=country_code,
         include_elevation=include_elevation,
-        config=load_config(),
+        config=config,
         route_constraints=route_constraints or plan.get("route_constraints"),
         route_preferences=route_preferences or plan.get("route_preferences"),
+        provider_preflight_completed=True,
     )
     previous = candidates[selected_index]
     updated.update({
@@ -493,6 +502,7 @@ def route_candidate(
     config: dict[str, Any],
     route_constraints: dict[str, Any] | None = None,
     route_preferences: dict[str, Any] | None = None,
+    provider_preflight_completed: bool = False,
 ) -> dict[str, Any]:
     waypoint_queries, is_closed = normalize_waypoint_queries(candidate.get("waypoints") or [])
     queries = waypoint_queries[:-1] if is_closed else waypoint_queries
@@ -509,6 +519,8 @@ def route_candidate(
             route_preferences=route_preferences,
         )
     else:
+        if not provider_preflight_completed:
+            ensure_google_route_provider_ready(config)
         places, route = _route_google(
             queries, country_code, is_closed, config,
             target_distance_km=target,

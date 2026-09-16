@@ -12,6 +12,7 @@ from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint
 from integrations.route_providers.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
 from integrations.route_providers.strava_segments import segment_detail_feature
 from services.route.geometry import haversine_m
+from services.route.provider_readiness import ensure_google_route_provider_ready
 from integrations.strava import StravaSink
 from services.route.segment_aware import build_connector_router
 from services.route.single_day import _elevation_profile, _search_amap_place, create_single_day_plan
@@ -69,6 +70,8 @@ def create_popular_loop_plan(
     if not provider_key:
         setting = "amap.web_service_key" if normalized_country == "CN" else "google.api_key"
         raise ValueError(f"{setting} is not configured")
+    if normalized_country != "CN" and (place_searcher is None or connector_router is None):
+        ensure_google_route_provider_ready(cfg)
     search = place_searcher or (
         _search_amap_place if normalized_country == "CN" else _google_place_searcher(normalized_country)
     )

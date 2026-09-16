@@ -26,6 +26,14 @@ from services.route.single_day import (
 from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
 
 
+@pytest.fixture(autouse=True)
+def _stub_google_connectivity_preflight(monkeypatch):
+    monkeypatch.setattr(
+        "services.route.single_day.ensure_google_route_provider_ready",
+        lambda _config: None,
+    )
+
+
 def _route_result(distance_m=42_000):
     return {
         "provider": "test_provider",
@@ -95,6 +103,76 @@ def test_create_loop_reuses_first_waypoint_and_compacts_geometry():
     compact = compact_route_plan(plan)
     assert "geometry" not in compact["candidates"][0]
     assert compact["candidates"][0]["waypoints"][0]["name"] == "Annecy"
+
+
+def test_google_preflight_runs_once_before_all_candidates(monkeypatch):
+    checks = []
+    routed = []
+    monkeypatch.setattr(
+        "services.route.single_day.ensure_google_route_provider_ready",
+        lambda _config: checks.append("checked"),
+    )
+
+    def route_google(queries, country_code, is_closed, config, **kwargs):
+        routed.append(list(queries))
+        return _places(queries), _route_result(distance_m=30_000)
+
+    with patch(
+        "services.route.single_day.load_config",
+        return_value={"google": {"api_key": "test-key"}},
+    ), patch("services.route.single_day._route_google", side_effect=route_google):
+        plan = create_single_day_plan(
+            workspace_id="workspace",
+            title="三个候选",
+            country_code="JP",
+            candidates=[
+                {"name": f"候选 {index}", "waypoints": [f"起点 {index}", f"终点 {index}"]}
+                for index in range(1, 4)
+            ],
+            include_elevation=False,
+        )
+
+    assert checks == ["checked"]
+    assert len(routed) == 3
+    assert len(plan["candidates"]) == 3
+
+
+def test_google_preflight_failure_stops_before_candidate_requests(monkeypatch):
+    failure = ProviderError(
+        "Google 服务连接预检失败。",
+        provider="google",
+        stage="connection_preflight",
+        code="provider_connection_failed",
+        retryable=True,
+    )
+    monkeypatch.setattr(
+        "services.route.single_day.ensure_google_route_provider_ready",
+        lambda _config: (_ for _ in ()).throw(failure),
+    )
+    monkeypatch.setattr(
+        "services.route.single_day._route_google",
+        lambda *args, **kwargs: pytest.fail("candidate request must not start"),
+    )
+
+    with patch(
+        "services.route.single_day.load_config",
+        return_value={"google": {"api_key": "test-key"}},
+    ), pytest.raises(ProviderError) as raised:
+        create_single_day_plan(
+            workspace_id="workspace",
+            title="不可达路线",
+            country_code="JP",
+            candidates=[{"name": "候选", "waypoints": ["京都站", "鸭川"]}],
+            include_elevation=False,
+        )
+
+    assert raised.value.to_failure() == {
+        "code": "provider_connection_failed",
+        "provider": "google",
+        "stage": "connection_preflight",
+        "retryable": True,
+        "message": "Google 服务连接预检失败。",
+    }
 
 
 def test_provider_failure_rejects_only_that_candidate():

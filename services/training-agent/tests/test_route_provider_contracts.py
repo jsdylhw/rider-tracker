@@ -9,7 +9,9 @@ from urllib.error import URLError
 
 import pytest
 
+from integrations import google_connectivity
 from integrations.route_providers import amap as amap_provider
+from integrations.google_connectivity import ensure_google_route_connectivity
 from integrations.google_places import GOOGLE_PLACES_FIELD_MASK, GooglePlacesClient
 from integrations.provider_error import ProviderError
 from integrations.route_providers.amap import AmapCyclingRouter, AmapPoint, _successful_path, parse_polyline
@@ -330,6 +332,79 @@ def test_google_routes_uses_bounded_field_mask() -> None:
     )
     headers = {key.lower(): value for key, value in captured[0].header_items()}
     assert headers["x-goog-fieldmask"] == GOOGLE_ROUTES_FIELD_MASK
+
+
+def test_google_connectivity_preflight_retries_before_route_work(monkeypatch) -> None:
+    calls = []
+    sleeps = []
+
+    def transport(request, timeout):
+        calls.append((request.full_url, timeout))
+        if len(calls) <= 2:
+            raise URLError("TLS handshake failed")
+
+    monkeypatch.setattr(google_connectivity.time, "sleep", sleeps.append)
+
+    result = ensure_google_route_connectivity(
+        attempts=3,
+        timeout_s=2.5,
+        retry_delay_s=0.25,
+        transport=transport,
+    )
+
+    assert result == {
+        "provider": "google",
+        "stage": "connection_preflight",
+        "endpoints": {
+            "google_places": {"connected": True, "attempts": 3, "reason": "connected"},
+            "google_routes": {"connected": True, "attempts": 1, "reason": "connected"},
+        },
+    }
+    assert len(calls) == 4
+    assert all(timeout == 2.5 for _, timeout in calls)
+    assert sleeps == [0.25, 0.5]
+
+
+def test_google_connectivity_preflight_returns_structured_failure(monkeypatch) -> None:
+    monkeypatch.setattr(google_connectivity.time, "sleep", lambda _delay: None)
+
+    with pytest.raises(ProviderError) as raised:
+        ensure_google_route_connectivity(
+            attempts=3,
+            retry_delay_s=0,
+            transport=lambda _request, _timeout: (_ for _ in ()).throw(URLError("TLS EOF")),
+        )
+
+    assert raised.value.to_failure() == {
+        "code": "provider_connection_failed",
+        "provider": "google",
+        "stage": "connection_preflight",
+        "retryable": True,
+        "message": (
+            "Google 代理链路不稳定：google_places：3 次，失败原因 TLS EOF；"
+            "google_routes：3 次，失败原因 TLS EOF。"
+            "本地请求已交给代理，但上游 TLS 隧道未稳定建立；"
+            "请检查 *.googleapis.com 的代理规则和出口节点后重试。"
+        ),
+    }
+
+
+def test_google_connectivity_does_not_repeat_a_recovered_endpoint(monkeypatch) -> None:
+    calls = {"places": 0, "routes": 0}
+    monkeypatch.setattr(google_connectivity.time, "sleep", lambda _delay: None)
+
+    def transport(request, _timeout):
+        endpoint = "places" if "places.googleapis.com" in request.full_url else "routes"
+        calls[endpoint] += 1
+        if endpoint == "routes":
+            raise URLError("upstream TLS closed")
+
+    with pytest.raises(ProviderError) as raised:
+        ensure_google_route_connectivity(attempts=3, transport=transport)
+
+    assert calls == {"places": 1, "routes": 3}
+    assert "google_places：1 次，已连接" in str(raised.value)
+    assert "google_routes：3 次，失败原因 upstream TLS closed" in str(raised.value)
 
 
 def test_strava_segment_provider_fallback_and_geometry_contract() -> None:
