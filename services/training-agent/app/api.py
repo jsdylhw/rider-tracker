@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import hmac
 import json
+import math
+import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from app.job_api import create_job_router
+from app.browser_security import reject_untrusted_browser_request
 from pydantic import BaseModel, Field
 
 from agent.main_agent.loop import run_tool_loop
@@ -55,6 +59,14 @@ from storage.repositories.job import JobConflict
 
 app = FastAPI(title="Personal FIT Agent API")
 chat_sessions = ChatSessionStore()
+
+
+@app.middleware("http")
+async def protect_browser_api(request: Request, call_next: Any) -> Response:
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    rejected = reject_untrusted_browser_request(request, load_config())
+    return rejected if rejected is not None else await call_next(request)
 
 
 class FitRouteLinkRequest(BaseModel):
@@ -171,6 +183,39 @@ def service_info() -> dict[str, str]:
 @app.get("/health")
 def health() -> dict[str, Any]:
     return build_backend_capabilities(load_config())
+
+
+@app.get("/healthz")
+def rider_health() -> dict[str, Any]:
+    """Phase 7 browser-edge compatibility; `/health` remains backend readiness."""
+    return {"ok": True, "service": "rider-tracker"}
+
+
+@app.get("/api/runtime-config/maps")
+def rider_maps_config(request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    google = load_config().get("google") or {}
+    configured_key = google.get("api_key") if isinstance(google, dict) else ""
+    api_key = _configured_secret(os.environ.get("GOOGLE_MAPS_API_KEY") or configured_key)
+    return {"ok": True, "configured": bool(api_key), "apiKey": api_key}
+
+
+@app.get("/api/user-profile")
+def rider_user_profile(request: Request) -> dict[str, Any]:
+    _require_api_access(request)
+    profile = athlete_profile_response(get_athlete_profile())
+    return {"ok": True, "profile": profile["rider_settings"]}
+
+
+@app.put("/api/user-profile")
+def update_rider_user_profile(request: Request, profile: Any = Body(default=None)) -> Any:
+    _require_api_access(request)
+    try:
+        requested = _sanitize_rider_settings(profile if isinstance(profile, dict) else {})
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"ok": False, "error": str(exc)})
+    updated = athlete_profile_response(update_athlete_profile(requested))
+    return {"ok": True, "profile": updated["rider_settings"]}
 
 
 @app.post("/api/activities/ingest-fit")
@@ -860,6 +905,41 @@ def _require_api_access(request: Request) -> None:
         status_code=401,
         detail="Web API is local-only. Configure web_api_token for remote access.",
     )
+
+
+def _configured_secret(value: Any) -> str:
+    normalized = str(value or "").strip()
+    lowered = normalized.lower()
+    if not normalized or lowered.startswith("replace-with") or lowered.startswith("your-"):
+        return ""
+    return normalized
+
+
+def _sanitize_rider_settings(profile: dict[str, Any]) -> dict[str, float]:
+    """Preserve the existing Node browser contract while Python becomes edge-capable."""
+    fields = {
+        "power": (0.0, 600.0),
+        "mass": (40.0, 150.0),
+        "ftp": (120.0, 450.0),
+        "restingHr": (40.0, 100.0),
+        "maxHr": (120.0, 220.0),
+        "cda": (0.2, 0.8),
+        "crr": (0.001, 0.02),
+        "windSpeed": (-10.0, 10.0),
+    }
+    sanitized: dict[str, float] = {}
+    for name, (minimum, maximum) in fields.items():
+        value = profile.get(name)
+        if value in (None, ""):
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid user profile field: {name}") from exc
+        if not math.isfinite(number):
+            raise ValueError(f"Invalid user profile field: {name}")
+        sanitized[name] = min(maximum, max(minimum, number))
+    return sanitized
 
 
 def _require_managed_path(

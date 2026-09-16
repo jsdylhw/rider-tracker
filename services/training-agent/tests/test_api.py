@@ -53,6 +53,122 @@ def test_health_reports_backend_available_when_llm_is_not_configured(tmp_path, m
     assert response.json()["capabilities"]["ai_route_planning"] is False
 
 
+def test_phase_7a_health_and_maps_config_preserve_browser_contract(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    monkeypatch.delenv("GOOGLE_MAPS_API_KEY", raising=False)
+    monkeypatch.setattr(api, "load_config", lambda: {
+        "google": {"api_key": "server-google-key"},
+    })
+
+    health = client.get("/healthz")
+    maps = client.get("/api/runtime-config/maps")
+
+    assert health.status_code == 200
+    assert health.json() == {"ok": True, "service": "rider-tracker"}
+    assert maps.status_code == 200
+    assert maps.json() == {
+        "ok": True,
+        "configured": True,
+        "apiKey": "server-google-key",
+    }
+
+
+def test_phase_7a_maps_config_hides_placeholder_key(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    monkeypatch.delenv("GOOGLE_MAPS_API_KEY", raising=False)
+    monkeypatch.setattr(api, "load_config", lambda: {
+        "google": {"api_key": "replace-with-google-maps-api-key"},
+    })
+
+    response = client.get("/api/runtime-config/maps")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "configured": False, "apiKey": ""}
+
+
+def test_phase_7a_maps_config_preserves_runtime_environment_override(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    monkeypatch.setenv("GOOGLE_MAPS_API_KEY", "runtime-google-key")
+    monkeypatch.setattr(api, "load_config", lambda: {
+        "google": {"api_key": "yaml-google-key"},
+    })
+
+    response = client.get("/api/runtime-config/maps")
+
+    assert response.status_code == 200
+    assert response.json()["apiKey"] == "runtime-google-key"
+
+
+def test_phase_7a_user_profile_alias_adapts_flat_rider_settings(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    saved = []
+    monkeypatch.setattr(api, "get_athlete_profile", lambda: {
+        "shared": {"weight_kg": 72},
+        "cycling": {"ftp_w": 260},
+    })
+    monkeypatch.setattr(api, "update_athlete_profile", lambda profile: saved.append(profile) or profile)
+
+    current = client.get("/api/user-profile")
+    updated = client.put("/api/user-profile", json={
+        "mass": 20,
+        "ftp": 999,
+        "windSpeed": "3.5",
+        "unknown": 10,
+    })
+    invalid = client.put("/api/user-profile", json={"ftp": "not-a-number"})
+    empty = client.put("/api/user-profile")
+
+    assert current.status_code == 200
+    assert current.json() == {"ok": True, "profile": {"mass": 72.0, "ftp": 260.0}}
+    assert updated.status_code == 200
+    assert saved == [{"mass": 40.0, "ftp": 450.0, "windSpeed": 3.5}, {}]
+    assert updated.json() == {
+        "ok": True,
+        "profile": {"mass": 40.0, "ftp": 450.0, "windSpeed": 3.5},
+    }
+    assert invalid.status_code == 400
+    assert invalid.json() == {"ok": False, "error": "Invalid user profile field: ftp"}
+    assert empty.status_code == 200
+
+
+def test_phase_7a_rejects_untrusted_host_and_origin_before_api_handler(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch)
+
+    bad_host = client.get("/api/runtime-config/maps", headers={"host": "attacker.example"})
+    bad_origin = client.get(
+        "/api/runtime-config/maps",
+        headers={"origin": "https://attacker.example"},
+    )
+    local_origin = client.get(
+        "/api/runtime-config/maps",
+        headers={"origin": "http://localhost:8787"},
+    )
+
+    assert bad_host.status_code == 400
+    assert bad_host.json() == {"ok": False, "error": "Invalid local API host."}
+    assert bad_origin.status_code == 403
+    assert bad_origin.json() == {
+        "ok": False,
+        "error": "Cross-origin local API access is not allowed.",
+    }
+    assert local_origin.status_code == 200
+
+
+def test_phase_7a_valid_api_token_retains_explicit_remote_access(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch, web_api_token="secret")
+
+    response = client.get(
+        "/api/runtime-config/maps",
+        headers={
+            "host": "remote.example",
+            "origin": "https://remote.example",
+            "X-API-Token": "secret",
+        },
+    )
+
+    assert response.status_code == 200
+
+
 def test_llm_endpoints_return_agent_unavailable_without_disabling_backend(tmp_path, monkeypatch):
     _, client, _ = _prepare_api(tmp_path, monkeypatch, llm_configured=False)
 
@@ -98,6 +214,8 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/activities/{activity_id}",
         "/api/activities/{activity_id}/detail",
         "/api/athlete-profile",
+        "/api/runtime-config/maps",
+        "/api/user-profile",
         "/api/chat",
             "/api/route-narrations/photo",
             "/api/route-narrations/prepare",

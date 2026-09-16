@@ -86,6 +86,27 @@ def test_browser_http_surface_matches_migration_contract() -> None:
     assert actual == expected
 
 
+def test_python_phase_7a_implements_the_same_browser_contract_subset() -> None:
+    """Move edge ownership without inventing a second set of browser URLs."""
+    contract_path = REPOSITORY_ROOT / "tests" / "contracts" / "rider-browser-http-api.v1.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    browser_surface = {(route["method"], route["path"]) for route in contract["routes"]}
+    phase_7a = {
+        ("GET", "/healthz"),
+        ("GET", "/api/runtime-config/maps"),
+        ("GET", "/api/user-profile"),
+        ("PUT", "/api/user-profile"),
+    }
+    assert phase_7a <= browser_surface
+
+    source = (ROOT / "app" / "api.py").read_text(encoding="utf-8")
+    route_pattern = re.compile(
+        r"@app\.(get|post|put|patch|delete)\(\s*[\"']([^\"']+)",
+    )
+    python_surface = {(method.upper(), path) for method, path in route_pattern.findall(source)}
+    assert phase_7a <= python_surface
+
+
 def test_node_server_does_not_own_database_schema_ddl() -> None:
     """Python migrations are the only production owner of SQLite structure."""
     violations: list[str] = []

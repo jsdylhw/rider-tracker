@@ -35,7 +35,10 @@ try {
             RIDER_TRACKER_DB_PATH: databasePath,
             TRAINING_AGENT_DB_PATH: databasePath,
             TRAINING_AGENT_MANAGED_DATABASE: "1",
-            FIT_FILE_DIR: fitRoot
+            FIT_FILE_DIR: fitRoot,
+            PERSONAL_FIT_AGENT_HOST: "127.0.0.1",
+            PERSONAL_FIT_AGENT_PORT: agentPort,
+            GOOGLE_MAPS_API_KEY: "integration-google-key"
         }
     }));
     await waitForJson(`${agentUrl}/health`, (value) => value.status === "ok");
@@ -44,6 +47,21 @@ try {
         throw new Error(`Unexpected Training Backend root payload: ${JSON.stringify(agentRootMetadata)}`);
     }
     await expectStatus(`${agentUrl}/static/app.js`, 404);
+    const pythonEdgeHealth = await readJson(`${agentUrl}/healthz`);
+    if (!pythonEdgeHealth.ok || pythonEdgeHealth.service !== "rider-tracker") {
+        throw new Error(`Unexpected Python edge health payload: ${JSON.stringify(pythonEdgeHealth)}`);
+    }
+    const pythonMapsConfig = await readJson(`${agentUrl}/api/runtime-config/maps`);
+    if (!pythonMapsConfig.configured || pythonMapsConfig.apiKey !== "integration-google-key") {
+        throw new Error(`Unexpected Python browser maps config: ${JSON.stringify(pythonMapsConfig)}`);
+    }
+    const pythonProfile = await requestJson(`${agentUrl}/api/user-profile`, {
+        method: "PUT",
+        body: { mass: 72, ftp: 260, windSpeed: 2.5 }
+    });
+    if (!pythonProfile.ok || pythonProfile.profile?.ftp !== 260 || pythonProfile.profile?.mass !== 72) {
+        throw new Error(`Unexpected Python browser profile payload: ${JSON.stringify(pythonProfile)}`);
+    }
 
     children.push(spawn(process.execPath, [
         "--disable-warning=ExperimentalWarning",
@@ -70,6 +88,12 @@ try {
     if (!mapsConfig.configured || mapsConfig.apiKey !== "integration-google-key") {
         throw new Error(`Unexpected browser maps config: ${JSON.stringify(mapsConfig)}`);
     }
+    const riderProfile = await readJson(`${riderUrl}/api/user-profile`);
+    if (JSON.stringify(riderProfile) !== JSON.stringify(pythonProfile)) {
+        throw new Error(
+            `Node/Python browser profile mismatch: ${JSON.stringify({ riderProfile, pythonProfile })}`
+        );
+    }
     const activities = await readJson(`${riderUrl}/api/activities`);
     if (!activities.ok || !Array.isArray(activities.activities)) {
         throw new Error(`Unexpected Rider activity payload: ${JSON.stringify(activities)}`);
@@ -86,7 +110,7 @@ try {
         throw new Error(`Unexpected Agent proxy health payload: ${JSON.stringify(proxyHealth)}`);
     }
     await assertNarrationJobSubmission();
-    console.log("[integration] Unified Rider page, Python activity/route stores, atomic FIT/session/route persistence, Agent proxy, and removed legacy UI checks passed.");
+    console.log("[integration] Unified Rider page, Python edge parity, activity/route stores, atomic FIT/session/route persistence, Agent proxy, and removed legacy UI checks passed.");
 } finally {
     await Promise.all(children.map(async (child) => {
         if (child.exitCode !== null || child.signalCode !== null) return;
