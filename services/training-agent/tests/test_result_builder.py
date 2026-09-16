@@ -1,5 +1,6 @@
 from agent.main_agent.context import AgentContext
 from agent.main_agent.execution_policy import TurnExecutionPolicy
+from unittest.mock import patch
 from agent.main_agent.result_builder import build_completed_result, build_turn_result, with_execution_header
 
 
@@ -161,14 +162,14 @@ def test_route_turn_fails_closed_when_route_tool_did_not_succeed():
         execution_policy=TurnExecutionPolicy.route_plan("create"),
     )
 
-    assert result["status"] == "action_not_executed"
+    assert result["status"] == "tool_failed"
     assert "本轮三条候选全部被拒" not in result["answer"]
-    assert "没有实际执行路线更新" in result["answer"]
+    assert result["error"]["code"] == "tool_failed"
     assert result["executions"][0]["status"] == "failed"
     assert "route_plan" not in result
 
 
-def test_route_turn_without_success_prefers_action_not_executed_over_max_steps():
+def test_route_turn_without_success_preserves_budget_exhaustion():
     context = AgentContext(
         session_id="route-max-steps",
         active_skill_id="plan-routes",
@@ -185,5 +186,73 @@ def test_route_turn_without_success_prefers_action_not_executed_over_max_steps()
         execution_policy=TurnExecutionPolicy.route_plan("create"),
     )
 
-    assert result["status"] == "action_not_executed"
-    assert "达到最大步数" not in result["answer"]
+    assert result["status"] == "max_steps_exceeded"
+    assert result["error"]["code"] == "budget_exhausted"
+    assert "达到最大步数" in result["answer"]
+
+
+def test_public_error_projection_excludes_internal_details():
+    from agent.runtime.models import public_turn_dict
+
+    result = public_turn_dict({
+        "status": "blocked", "answer": "拒绝调用",
+        "error": {
+            "code": "guard_rejected", "stage": "guard", "retryable": False,
+            "message": "拒绝调用", "input": {"secret": "private"}, "traceback": "private",
+        },
+    })
+    assert result["error"] == {
+        "code": "guard_rejected", "stage": "guard", "retryable": False, "message": "拒绝调用",
+    }
+    assert "provider" not in result["error"]
+
+
+def test_preparation_success_does_not_hide_analysis_failure():
+    context = AgentContext(session_id="preparation-failure")
+    context.execution_trace = [
+        {"tool": "resolve_activities", "status": "completed", "result": {"status": "completed"}},
+        {"tool": "analyze_activity", "status": "failed", "result": {"status": "failed"}},
+    ]
+    result = build_completed_result("analysis", context, "分析", step_count=2, max_tool_steps=10, steps=[])
+    assert result["status"] == "tool_failed"
+    assert result["error"]["code"] == "tool_failed"
+
+
+def test_status_only_and_nested_failures_are_executed_failures():
+    for payload in [
+        {"status": "failed", "answer": "上传任务失败", "tasks": [{"status": "failed"}]},
+        {"result": {"error": "network_failure", "message": "上传网络失败"}},
+    ]:
+        context = AgentContext(session_id="workflow-failure")
+        context.execution_trace = [{"tool": "run_activity_workflow", "status": "failed", "result": payload}]
+        result = build_completed_result("workflow", context, "上传", step_count=1, max_tool_steps=10, steps=[])
+        assert result["status"] == "tool_failed"
+        assert result["error"]["code"] == "tool_failed"
+        assert "上传" in result["error"]["message"]
+
+
+def test_nonrequired_guard_rejection_remains_public():
+    context = AgentContext(session_id="refine-blocked")
+    context.execution_trace = [{
+        "tool": "get_route_plan", "status": "blocked",
+        "result": {"code": "guard_rejected", "message": "工具不在白名单", "retryable": False},
+    }]
+    result = build_completed_result(
+        "route_advice", context, "修改", step_count=1, max_tool_steps=10, steps=[],
+        execution_policy=TurnExecutionPolicy.route_plan("refine"),
+    )
+    assert result["status"] == "blocked"
+    assert result["error"]["message"] == "工具不在白名单"
+    assert "provider" not in result["error"]
+
+
+def test_successful_same_target_replay_recovers_but_other_target_does_not():
+    for target, expected in [("a", "completed"), ("b", "tool_failed")]:
+        context = AgentContext(session_id="recovered-analysis")
+        context.execution_trace = [
+            {"tool": "analyze_activity", "input": {"activity_key": "a"}, "status": "failed", "result": {"status": "failed"}},
+            {"tool": "analyze_activity", "input": {"activity_key": target}, "status": "completed", "result": {"status": "completed", "answer": "分析完成"}},
+        ]
+        with patch("agent.main_agent.result_builder.write_main_agent_markdown_log", return_value=""):
+            result = build_completed_result("analysis", context, "分析", step_count=2, max_tool_steps=10, steps=[])
+        assert result["status"] == expected

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import json
 
 from agent.main_agent.context import AgentContext
 from agent.main_agent.execution_policy import ROUTE_RESULT_TOOLS, TurnExecutionPolicy
@@ -11,6 +12,7 @@ from agent.runtime.models import TurnResult, executions_from_trace
 from agent.runtime.presentation_projector import project_presentations
 from services.route.view import build_route_plan_view
 from storage.repositories.route import RoutePlanStore
+from agent.main_agent.tool_result import is_failed_tool_output
 
 
 def build_completed_result(
@@ -26,9 +28,6 @@ def build_completed_result(
     """Build a completed or max-steps result from the current turn only."""
     execution_policy = execution_policy or TurnExecutionPolicy.chat()
     context.last_llm_error = None
-    if not execution_policy.is_satisfied(context.execution_trace):
-        return build_policy_unsatisfied_result(context, steps, execution_policy)
-
     if step_count > max_tool_steps:
         return build_turn_result(
             "max_steps_exceeded",
@@ -36,7 +35,15 @@ def build_completed_result(
             context,
             steps,
             f"达到最大步数 ({max_tool_steps}), 已执行 {len(steps)} 步, 但未完成。",
+            project_route_plan=execution_policy.is_satisfied(context.execution_trace),
+            error={"code": "budget_exhausted", "stage": "tool_loop", "retryable": False,
+                   "message": "达到本轮工具调用预算，任务尚未完成。"},
         )
+
+    if not execution_policy.is_satisfied(context.execution_trace):
+        return build_policy_unsatisfied_result(context, steps, execution_policy)
+    if _unresolved_failure(context.execution_trace) is not None:
+        return build_policy_unsatisfied_result(context, steps, execution_policy)
 
     final_answer = _current_terminal_answer(context)
     if not final_answer:
@@ -88,7 +95,13 @@ def build_llm_unavailable_result(
     execution_policy = execution_policy or TurnExecutionPolicy.chat()
     context.last_llm_error = {"type": type(error).__name__, "message": str(error)}
     if not execution_policy.is_satisfied(context.execution_trace):
-        return build_policy_unsatisfied_result(context, steps, execution_policy)
+        return build_turn_result(
+            "llm_unavailable", intent, context, steps,
+            "模型服务连接失败，本轮要求尚未完成；已保留实际执行记录，请稍后重试。",
+            project_route_plan=False,
+            error={"code": "llm_unavailable", "stage": "model_request", "retryable": True,
+                   "message": "模型服务连接失败，请稍后重试。"},
+        )
     workflow_answer = completed_workflow_fallback(context, steps=steps)
     if workflow_answer:
         return build_turn_result("llm_unavailable", intent, context, steps, workflow_answer)
@@ -97,7 +110,11 @@ def build_llm_unavailable_result(
         f"本轮已执行 {len(steps)} 步；不会自动执行新的下载、分析或上传。\n\n"
         "请稍后回复“重试”继续。"
     )
-    return build_turn_result("llm_unavailable", intent, context, steps, answer)
+    return build_turn_result(
+        "llm_unavailable", intent, context, steps, answer,
+        error={"code": "llm_unavailable", "stage": "model_request", "retryable": True,
+               "message": "模型服务连接失败，请稍后重试。"},
+    )
 
 
 def build_activation_unavailable_result(
@@ -110,10 +127,56 @@ def build_activation_unavailable_result(
     execution_policy = execution_policy or TurnExecutionPolicy.chat()
     context.last_llm_error = {"type": type(error).__name__, "message": str(error)}
     if not execution_policy.is_satisfied(context.execution_trace):
-        return build_policy_unsatisfied_result(context, [], execution_policy)
+        return build_turn_result(
+            "llm_unavailable", "route_advice", context, [],
+            "模型客户端初始化失败，本轮尚未执行路线工具。请检查模型配置后重试。",
+            project_route_plan=False,
+            error={"code": "llm_initialization_failed", "stage": "model_initialization",
+                   "retryable": False, "message": "模型客户端初始化失败，请检查模型配置。"},
+        )
     context.active_skill_id = None
     answer = "LLM 服务连接暂时不可用，尚未选择领域 Skill，因此本轮没有暴露或执行任何活动工具。请稍后重试。"
-    return build_turn_result("llm_unavailable", "skill_activation", context, [], answer)
+    return build_turn_result(
+        "llm_unavailable", "skill_activation", context, [], answer,
+        error={"code": "llm_initialization_failed", "stage": "model_initialization", "retryable": False,
+               "message": "模型客户端初始化失败，请检查模型配置。"},
+    )
+
+
+def _unresolved_failure(trace: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Preparation success cannot recover another operation's failure.
+
+    A later successful replay of the same tool and arguments resolves its
+    earlier failure. Different targets remain independent.
+    """
+    recovered = set()
+    for item in reversed(trace):
+        if not isinstance(item, dict):
+            continue
+        key = (str(item.get("tool") or ""), json.dumps(item.get("input") or {}, sort_keys=True, default=str))
+        failed = item.get("status") in {"failed", "blocked"} or is_failed_tool_output(item.get("result"))
+        if failed:
+            if key not in recovered:
+                return item
+        elif item.get("status") == "completed":
+            recovered.add(key)
+    return None
+
+
+def _failure_diagnostic(execution: dict[str, Any]) -> dict[str, Any]:
+    payload = execution.get("result") if isinstance(execution.get("result"), dict) else {}
+    nested = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+    upload = nested.get("upload_result") if isinstance(nested.get("upload_result"), dict) else {}
+    sources = [payload, nested, upload, execution]
+    diagnostic = {}
+    for key in ("code", "provider", "stage", "retryable", "message"):
+        value = next((source[key] for source in sources if source.get(key) is not None), None)
+        if value is not None:
+            diagnostic[key] = value
+    diagnostic.setdefault("code", "guard_rejected" if execution.get("status") == "blocked" else "tool_failed")
+    diagnostic.setdefault("stage", "guard" if execution.get("status") == "blocked" else "tool_execution")
+    diagnostic.setdefault("message", str(payload.get("answer") or "工具执行失败，任务尚未完成。"))
+    return diagnostic
 
 
 def build_policy_unsatisfied_result(
@@ -122,31 +185,38 @@ def build_policy_unsatisfied_result(
     execution_policy: TurnExecutionPolicy,
 ) -> dict[str, Any]:
     """Return the required tool's structured failure or a missing-action error."""
-    failure = next((
-        item.get("result") for item in reversed(context.execution_trace)
-        if isinstance(item, dict)
-        and item.get("tool") == execution_policy.required_tool_name
-        and isinstance(item.get("result"), dict)
-    ), None)
-    if isinstance(failure, dict) and failure.get("code"):
-        code = str(failure["code"])
-        status = "provider_error" if code.startswith("provider_") or code == "route_provider_error" else "route_rejected"
+    result_intent = "route_advice" if execution_policy.request_mode == "route_plan" else "chat"
+    failure = _unresolved_failure(context.execution_trace)
+    if failure is not None:
+        diagnostic = _failure_diagnostic(failure)
+        code = str(diagnostic["code"])
+        status = (
+            "blocked" if code == "guard_rejected" else
+            "provider_error" if code.startswith("provider_") or code == "route_provider_error" else
+            "route_rejected" if code != "tool_failed" and execution_policy.request_mode == "route_plan" else
+            "tool_failed"
+        )
         return build_turn_result(
             status,
-            "route_advice",
+            result_intent,
             context,
             steps,
-            str(failure.get("message") or "路线处理失败。"),
+            diagnostic["message"],
             project_route_plan=False,
+            error=diagnostic,
         )
     return build_turn_result(
         "action_not_executed",
-        "route_advice",
+        result_intent,
         context,
         steps,
-        "本轮没有实际执行路线更新，也没有成功生成新路线；"
-        "当前已保存路线保持不变。请查看工具失败原因后重试。",
+        ("本轮没有实际执行路线更新，也没有成功生成新路线；"
+         "当前已保存路线保持不变。请查看工具失败原因后重试。"
+         if execution_policy.request_mode == "route_plan" else
+         "本轮未产生满足请求要求的工具结果，请补充说明后重试。"),
         project_route_plan=False,
+        error={"code": "action_not_executed", "stage": "completion_check", "retryable": False,
+               "message": "本轮未产生满足请求要求的工具结果。"},
     )
 
 
@@ -158,6 +228,7 @@ def build_turn_result(
     answer: str,
     log_path: str = "",
     project_route_plan: bool = True,
+    error: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create the typed result while preserving the legacy dictionary API."""
     executions = executions_from_trace(context.execution_trace, steps=steps)
@@ -172,6 +243,7 @@ def build_turn_result(
         selected_activities=context.selected_activities,
         current_fit_file=str(context.current_fit_file) if context.current_fit_file else None,
         log_path=log_path,
+        error=error,
     ).to_dict()
     route_plan = _route_plan_from_executions(executions) if project_route_plan else None
     if route_plan:

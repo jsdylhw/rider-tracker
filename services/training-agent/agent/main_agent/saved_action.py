@@ -29,6 +29,7 @@ def execute_saved_action(
         context.messages.append({"role": "assistant", "content": [{"type": "text", "text": answer}]})
         return TurnResult(
             answer=answer, status="failed", context=context, intent=intent,
+            error={"code": "unknown_tool", "stage": "dispatch", "retryable": False, "message": answer},
             skill_id=context.active_skill_id,
             selected_activities=context.selected_activities,
             current_fit_file=str(context.current_fit_file) if context.current_fit_file else None,
@@ -71,7 +72,7 @@ def execute_saved_action(
         from agent.main_agent.hooks import _log
         _log(f"  [{label}] \033[1m{tool_name}\033[0m {result_json[:120]}")
 
-    from agent.main_agent.result_builder import build_completed_result, build_turn_result
+    from agent.main_agent.result_builder import build_completed_result, build_turn_result, build_policy_unsatisfied_result
 
     steps = [execution.to_step()]
     if execution_policy is not None and execution_policy.completion_tool_names:
@@ -84,6 +85,9 @@ def execute_saved_action(
             steps=steps,
             execution_policy=execution_policy,
         )
+
+    if failed:
+        return build_policy_unsatisfied_result(context, steps, execution_policy or TurnExecutionPolicy.chat())
 
     return build_turn_result(
         "failed" if failed else "completed",

@@ -52,6 +52,7 @@ class TurnResult:
     selected_activities: list[dict[str, Any]] = field(default_factory=list)
     current_fit_file: str | None = None
     log_path: str = ""
+    error: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         value = {
@@ -68,6 +69,8 @@ class TurnResult:
         }
         if self.log_path:
             value["log_path"] = self.log_path
+        if self.error:
+            value["error"] = self.error
         return value
 
     def to_public_dict(self) -> dict[str, Any]:
@@ -146,4 +149,9 @@ def public_turn_dict(value: dict[str, Any]) -> dict[str, Any]:
         "executions": executions,
         "presentations": presentations,
         **({"route_plan": value["route_plan"]} if isinstance(value.get("route_plan"), dict) else {}),
+        **({"error": {
+            key: value["error"][key]
+            for key in ("code", "stage", "provider", "retryable", "message")
+            if value["error"].get(key) is not None
+        }} if isinstance(value.get("error"), dict) else {}),
     }

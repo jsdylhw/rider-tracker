@@ -52,6 +52,18 @@ class ToolLoopHooks:
         self, block: dict[str, Any], blocked: dict[str, Any], *, step_count: int,
     ) -> None:
         """Stop a required action after Guard rejection without saving it for retry."""
+        output = {
+            "status": "blocked", "error": "guard_rejected", "code": "guard_rejected",
+            "stage": "guard", "retryable": False,
+            "message": str(blocked.get("reason") or blocked.get("message") or "工具调用被执行检查拒绝。"),
+        }
+        self.context.execution_trace.append(ToolExecution(
+            index=self._tool_call_count - 1,
+            tool=str(block.get("name") or ""),
+            input=block.get("input") if isinstance(block.get("input"), dict) else {},
+            status="blocked", code="guard_rejected", error="guard_rejected",
+            stage="guard", retryable=False, message=output["message"], result=output,
+        ).to_dict())
         if str(block.get("name") or "") in self.stop_on_failed_tools:
             self.stop_after_tool_round = True
 

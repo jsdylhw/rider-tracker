@@ -163,7 +163,8 @@ def test_trusted_route_request_stops_forcing_tools_after_failed_attempt(monkeypa
             execution_policy=TurnExecutionPolicy.route_plan("create"),
         )
 
-    assert result["status"] == "action_not_executed"
+    assert result["status"] == "tool_failed"
+    assert result["error"]["code"] == "tool_failed"
     calls = client.return_value.create_messages.call_args_list
     assert calls[0].kwargs["tool_choice"] == {"type": "tool", "name": "create_route_plan"}
     assert len(calls) == 1
@@ -194,8 +195,10 @@ def test_trusted_route_request_stops_after_required_tool_is_guarded(monkeypatch)
             execution_policy=TurnExecutionPolicy.route_plan("create"),
         )
 
-    assert result["status"] == "action_not_executed"
-    assert result["executions"] == []
+    assert result["status"] == "blocked"
+    assert result["executions"][0]["status"] == "blocked"
+    assert result["error"]["message"] == "blocked by deterministic guard"
+    assert "provider" not in result["error"]
     assert context.last_failed_action is None
     assert client.return_value.create_messages.call_count == 1
 
@@ -283,7 +286,8 @@ def test_trusted_route_request_fails_closed_when_llm_is_unavailable():
             execution_policy=TurnExecutionPolicy.route_plan("create"),
         )
 
-    assert result["status"] == "action_not_executed"
+    assert result["status"] == "llm_unavailable"
+    assert result["error"]["stage"] == "model_request"
     assert result["intent"] == "route_advice"
     assert result["skill_id"] == "plan-routes"
     assert result["executions"] == []
@@ -304,7 +308,9 @@ def test_route_policy_clears_stale_execution_before_client_initialization_failur
             execution_policy=TurnExecutionPolicy.route_plan("create"),
         )
 
-    assert result["status"] == "action_not_executed"
+    assert result["status"] == "llm_unavailable"
+    assert result["error"]["stage"] == "model_initialization"
+    assert result["error"]["retryable"] is False
     assert result["executions"] == []
     assert "route_plan" not in result
 
@@ -729,11 +735,12 @@ def test_retry_reports_failure_when_saved_action_fails_again():
         mock_retry.return_value = {"status": "failed", "error": "still_broken"}
         result = run_tool_loop("重试", context=context)
 
-    assert result["status"] == "failed"
+    assert result["status"] == "tool_failed"
+    assert result["error"]["code"] == "tool_failed"
     assert context.last_failed_action == {
         "tool": "retry_activity_workflow", "input": {"workflow_id": "run-1"},
     }
-    assert "仍未完成" in result["answer"]
+    assert "尚未完成" in result["answer"]
 
 
 def test_llm_disconnect_keeps_completed_tool_state(monkeypatch):

@@ -2,6 +2,16 @@ import { buildCoordinateRoute } from "./coordinate-route.js";
 import { parseRoutePlanView } from "./route-plan-view.js";
 
 export function parseAgentRouteDraft(turnResult) {
+    if (turnResult?.error?.code) {
+        const diagnostic = turnResult.error;
+        const error = new Error(String(diagnostic.message || turnResult.answer || "路线处理失败。"));
+        error.name = "AgentRouteError";
+        error.code = diagnostic.code;
+        error.stage = diagnostic.stage ?? null;
+        error.provider = diagnostic.provider ?? null;
+        error.retryable = diagnostic.retryable === true;
+        throw error;
+    }
     if (!turnResult?.route_plan) {
         if (turnResult?.status === "llm_unavailable") {
             throw new Error("Personal FIT Agent 当前不可用，请稍后重试。");

@@ -80,6 +80,26 @@ export const suite = {
             }
         },
         {
+            name: "preserves structured failures and never projects stale routes",
+            run() {
+                let error = null;
+                try {
+                    parseAgentRouteDraft({
+                        ...buildTurnResult(),
+                        error: { code: "guard_rejected", stage: "guard", retryable: false, message: "版本已过期" }
+                    });
+                } catch (caught) {
+                    error = caught;
+                }
+                assertEqual(error?.name, "AgentRouteError");
+                assertEqual(error?.message, "版本已过期");
+                assertEqual(error?.code, "guard_rejected");
+                assertEqual(error?.stage, "guard");
+                assertEqual(error?.provider, null);
+                assertEqual(error?.retryable, false);
+            }
+        },
+        {
             name: "rejects an answer without usable route candidates",
             run() {
                 let error = null;
