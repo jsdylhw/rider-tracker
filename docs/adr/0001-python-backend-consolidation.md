@@ -611,3 +611,20 @@ Strava、Garmin 和运动员档案状态。基础 FIT、活动详情、导入路
 
 本切片不实现异常退出恢复、周期 checkpoint、多次尝试历史或跨设备同步，相关边界继续由已知问题文档
 跟踪。
+
+### 2026-09-14：阶段 7A Python 浏览器 API 基础
+
+阶段 7A 在不切换默认 `:8787` 入口的前提下，让 Python 首次实现既有 Browser API 的一个兼容子集：
+`GET /healthz`、`GET /api/runtime-config/maps` 以及 `GET/PUT /api/user-profile`。这些路径与 Node 当前公开
+路径完全一致，不新增第二套浏览器协议。用户档案接口只负责平铺 Rider settings 与规范运动员档案之间的
+适配，并保留既有数值范围收敛和错误语义；地图配置继续只向本地浏览器提供 Maps JavaScript 必需的 Key，
+占位配置按未配置处理。
+
+Python 的 `/api/*` 增加浏览器入口前置防护：未携带有效 `X-API-Token` 时，Host 必须属于本地或显式配置
+的 Rider 主机，Origin 若存在则必须属于本地应用来源。无 Origin 的 Node 内部代理仍按原有 loopback/token
+规则访问；携带有效 Token 的显式服务端客户端保留远程访问能力。该边界同时防止恶意网页跨域调用本地
+Garmin、Strava 和模型接口，以及通过非受信 Host 进行本地 DNS rebinding。
+
+本切片没有提供静态前端资源、multipart FIT/GPX 上传或 Strava OAuth callback，也没有让浏览器改连
+Python。Node 仍是正式入口，Python 新路径只通过同一份 Browser HTTP surface 基线和响应级回归证明协议
+兼容。后续阶段 7 切片再逐项补齐静态资源、上传和 OAuth，全部对照通过后才进入端口切换阶段。

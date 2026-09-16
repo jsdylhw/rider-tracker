@@ -67,10 +67,14 @@ Python 服务层确定性淘汰并记录原因，不能依赖模型或前端隐�
 `rejected_candidates`，不得丢弃已经成功的候选并触发整批重算。路线计划顶层的目标距离会作为
 未单独声明距离的候选默认值，确保实际算路结果都经过同一距离门槛。
 
-Rider 的虚拟 ERG 路线通过 `/api/chat` 的请求级 `route_options` 明确传递
-`include_elevation=false`，Python 在当前工具执行期间覆盖模型参数并在请求结束后清空，不能把该
-选项写入会话记忆。长时间地图请求仍是同步请求；路线对话框以本地阶段提示和已等待秒数说明进展，
-这些提示不是服务端完成事件，也不改变最终路线状态。
+Rider 的 AI 路线请求通过 `/api/chat` 显式传递 `request_mode=route_plan` 和
+`route_action=create|update`；`route_options` 只承载 `include_elevation=false` 等业务参数，不再用于
+推断本轮是否必须执行路线工具。Python 在进入模型前生成不可变的本轮执行策略：新建必须成功执行
+`create_route_plan`，修改必须成功执行 `update_route_plan`，读取旧计划或模型文字不能冒充完成。
+Provider 失败后本轮立即停止，并以 `code/provider/stage/retryable` 保留结构化原因；网络失败、地点
+解析失败和业务约束淘汰不得互相替代。请求结束后清空 `route_options`，不能把请求级参数写入会话记忆。
+长时间地图请求仍是同步请求；路线对话框以本地阶段提示和已等待秒数说明进展，这些提示不是服务端
+完成事件，也不改变最终路线状态。
 
 统一启动器会把 `agent.base_url` 的主机追加到 `NO_PROXY/no_proxy`，让模型请求直连；Google、
 Strava 等地图和业务服务不加入该列表，继续使用操作系统现有代理配置。

@@ -88,7 +88,7 @@ UI 可以把用户输入交给应用服务，也可以展示 Domain 或 view-mod
 
 ### 其他目录
 
-- `src/server`：Node 服务端接口、代理和数据库边界。
+- `src/server`：迁移期 Node Browser API、同源安全、上传/OAuth 边缘能力和 Python 代理；不再拥有数据库。
 - `src/shared`：没有 Rider 特定业务语义的通用格式化和辅助函数。
 - `services/training-agent`：内嵌 Python Training Agent，不属于 `src/domain`；负责 Skill、FIT
   历史分析、路线规划和外部活动工作流。

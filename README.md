@@ -139,4 +139,8 @@ npm run test:integration  # 运行本地服务集成测试
 npm run test:all          # 运行完整测试
 ```
 
+参与开发或使用编码 Agent 修改项目时，请从 [开发文档导航](docs/README.md) 和
+[开发与排障指南](docs/development-guide.md) 开始；它们说明当前代码 owner、主要业务时序、测试边界和
+文档权威层级。
+
 Rider Tracker 仍在持续开发中，功能和界面可能随版本更新而调整。
