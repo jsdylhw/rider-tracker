@@ -111,7 +111,7 @@ export function createAgentFloatingWindow({
         return article;
     }
 
-    function addThinkingMessage(sequence) {
+    function addThinkingMessage(sequence, prompt) {
         const article = root.createElement("article");
         article.className = "agent-message is-agent is-thinking";
         article.dataset.sequence = String(sequence);
@@ -119,7 +119,9 @@ export function createAgentFloatingWindow({
         label.textContent = "Agent";
         const body = root.createElement("div");
         body.className = "agent-message-body";
-        body.textContent = "正在查询本地活动与分析上下文";
+        body.textContent = isBlockingActivityWorkflowPrompt(prompt)
+            ? "正在同步并处理活动。当前工作流会等待请求中的全部步骤完成后一次性返回，可能需要几分钟，请勿重复提交。"
+            : "正在查询本地活动与分析上下文";
         const dots = root.createElement("i");
         dots.setAttribute("aria-hidden", "true");
         body.append(dots);
@@ -149,7 +151,7 @@ export function createAgentFloatingWindow({
             return { answer, presentations: [] };
         }
 
-        const thinking = addThinkingMessage(sequence);
+        const thinking = addThinkingMessage(sequence, normalized);
         setBusy(true);
         try {
             const result = await agentClient.chat(normalized);
@@ -256,6 +258,12 @@ export function inferPromptKind(text) {
     if (/趋势|历史|最近.*周|最近.*月|周期/.test(normalized)) return "history";
     if (/活动|分析|报告|掉速|心率/.test(normalized)) return "activity";
     return "general";
+}
+
+export function isBlockingActivityWorkflowPrompt(text) {
+    const normalized = String(text ?? "");
+    return /同步|Garmin/i.test(normalized)
+        && /活动|分析|报告|上传|Strava/i.test(normalized);
 }
 
 export function workflowConversationSummary(result) {

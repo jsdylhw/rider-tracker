@@ -1,6 +1,7 @@
 import {
     createAgentFloatingWindow,
     inferPromptKind,
+    isBlockingActivityWorkflowPrompt,
     workflowConversationSummary
 } from "../../src/ui/agent/agent-floating-window.js";
 import { assertEqual } from "../helpers/test-harness.js";
@@ -50,6 +51,15 @@ export const suite = {
                 assertEqual(inferPromptKind("分析最近一次活动为什么掉速"), "activity");
                 assertEqual(inferPromptKind("我现在的实时强度怎么样"), "live");
                 assertEqual(inferPromptKind("你好"), "general");
+            }
+        },
+        {
+            name: "recognizes blocking activity workflow prompts",
+            run() {
+                assertEqual(isBlockingActivityWorkflowPrompt("同步最新3个活动，分析后上传 Strava"), true);
+                assertEqual(isBlockingActivityWorkflowPrompt("同步 Garmin 最新一个活动并分析，不要上传 Strava"), true);
+                assertEqual(isBlockingActivityWorkflowPrompt("分析最近一次活动"), false);
+                assertEqual(isBlockingActivityWorkflowPrompt("规划一条骑行路线"), false);
             }
         },
         {
@@ -177,6 +187,32 @@ export const suite = {
                 await Promise.resolve();
 
                 assertEqual(messages[0], "同步 Garmin 最新一个活动并分析，不要上传 Strava");
+                windowController.destroy();
+            }
+        },
+        {
+            name: "explains that activity workflows block until all requested steps finish",
+            async run() {
+                const { root, elements } = createAgentTestDom();
+                let finishRequest;
+                const pendingRequest = new Promise((resolve) => { finishRequest = resolve; });
+                const windowController = createAgentFloatingWindow({
+                    root,
+                    seedConversation: false,
+                    agentClient: {
+                        async chat() { return pendingRequest; }
+                    }
+                });
+
+                const request = windowController.sendMessage("同步最新3个活动，分析后上传 Strava");
+                const thinkingBody = elements.agentMessages.children.at(-1).children[1];
+                assertEqual(thinkingBody.textContent.includes("全部步骤完成后一次性返回"), true);
+                assertEqual(thinkingBody.textContent.includes("请勿重复提交"), true);
+                assertEqual(windowController.getState().busy, true);
+
+                finishRequest({ answer: "处理完成。", presentations: [] });
+                await request;
+                assertEqual(windowController.getState().busy, false);
                 windowController.destroy();
             }
         },
