@@ -628,3 +628,11 @@ Garmin、Strava 和模型接口，以及通过非受信 Host 进行本地 DNS re
 本切片没有提供静态前端资源、multipart FIT/GPX 上传或 Strava OAuth callback，也没有让浏览器改连
 Python。Node 仍是正式入口，Python 新路径只通过同一份 Browser HTTP surface 基线和响应级回归证明协议
 兼容。后续阶段 7 切片再逐项补齐静态资源、上传和 OAuth，全部对照通过后才进入端口切换阶段。
+
+## 2026-09-18：Route Agent 材料准备与本地骨架
+
+- 新增版本化材料与准备结果，独立 Route Agent 可在搜索后调用非终结准备工具。
+- Python service 承接地点解析、可选 Strava 获取和有界骨架组合；不新增 Worker，不修改浏览器实时骑行。
+- 地点骨架复用已解析坐标进入既有地图服务；Strava 混合骨架保持 pending，第三步再验证地图后端。
+- 自由探索路网 owner 迁移记录在 `../known-issues-and-technical-debt.md`；尚未执行迁移。
+- 详细范围与验证边界见 `../route-agent-implementation.md`。
