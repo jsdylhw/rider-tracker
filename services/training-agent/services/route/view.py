@@ -31,6 +31,7 @@ def build_route_plan_view(plan: dict[str, Any]) -> dict[str, Any]:
         "active_candidate_id": str(plan.get("active_candidate_id") or "") or None,
         "confirmed_candidate_id": str(planning.get("confirmed_candidate_id") or "") or None,
         "candidates": candidates,
+        "research_sources": plan.get("research_sources") or [],
         "rejected_candidates": [
             {
                 "name": str(item.get("name") or "候选路线"),
@@ -59,7 +60,8 @@ def _candidate_view(candidate: dict[str, Any]) -> dict[str, Any] | None:
     return {
         "candidate_id": candidate_id,
         "parent_candidate_id": str(candidate.get("parent_candidate_id") or "") or None,
-        "name": str(candidate.get("name") or candidate_id),
+        "name": _candidate_name(candidate),
+        "description": _candidate_description(candidate),
         "distance_m": _meters(candidate.get("distance_m"), candidate.get("distance_km")),
         "provider_duration_s": _seconds(candidate.get("duration_s"), candidate.get("duration_min")),
         "provider": str(candidate.get("provider") or "") or None,
@@ -71,6 +73,26 @@ def _candidate_view(candidate: dict[str, Any]) -> dict[str, Any] | None:
         "stages": stages,
         "warnings": [str(value) for value in candidate.get("warnings") or [] if str(value)],
     }
+
+
+def _candidate_name(candidate):
+    name = str(candidate.get("name") or "")
+    if name and not name.startswith("本地候选"):
+        return name
+    names = [p["name"] for p in _waypoints(candidate.get("waypoints")) if p["name"]]
+    unique = list(dict.fromkeys(names))
+    return "—".join(unique[:2]) + ("环线" if candidate.get("is_closed") else "路线") if unique else "骑行路线"
+
+
+def _candidate_description(candidate):
+    points = [p["name"] for p in _waypoints(candidate.get("waypoints")) if p["name"]]
+    if not points:
+        return "按地图道路规划的骑行路线，请预览后选择。"
+    closed = bool(candidate.get("is_closed") or candidate.get("route_type") == "loop")
+    middle = (points[1:-1] if not closed or points[-1] == points[0] else points[1:]) if len(points) > 1 else []
+    via = "，途经" + "、".join(list(dict.fromkeys(middle))[:4]) if middle else ""
+    end = "，最后返回起点。" if closed else (f"，抵达{points[-1]}。" if len(points) > 1 else "。")
+    return f"从{points[0]}出发{via}{end}"
 
 
 def _stage_view(stage: dict[str, Any]) -> dict[str, Any] | None:

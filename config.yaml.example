@@ -84,3 +84,7 @@ amap:
 # Leave blank for local-only access. When set, Rider automatically uses the
 # same token for its server-side Agent proxy.
 web_api_token: ""
+
+# Route Agent 的网页路线资料搜索；也兼容已有 Tavily: 块。
+tavily:
+  api_key: ""

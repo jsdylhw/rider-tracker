@@ -8,6 +8,7 @@ const ROUTE_ELEMENT_IDS = [
     "loadSavedRouteBtn", "continueSavedRouteBtn", "saveCurrentRouteBtn", "deleteSavedRouteBtn",
     "routeLibraryLocalTabBtn", "routeLibraryStravaTabBtn", "routeLibraryGpxTabBtn",
     "routeLibraryLocalPanel", "routeLibraryStravaPanel", "routeLibraryGpxPanel",
+    "aiRouteProgress", "aiRouteProgressStatus", "aiRouteProgressElapsed", "aiRouteProgressSteps",
     "aiRoutePanel", "aiRouteMessages", "aiRouteComposer", "aiRouteMessageInput", "aiRouteSendBtn",
     "aiRouteCandidates", "aiRouteResultTitle", "aiRouteResultStatus", "aiRouteReverseBtn",
     "aiRouteUndoBtn", "aiRouteExploreSegmentsBtn", "aiRouteSegmentPanel", "aiRouteSegmentList",

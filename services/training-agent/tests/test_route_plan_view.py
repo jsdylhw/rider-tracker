@@ -103,3 +103,12 @@ def test_route_plan_view_projects_itinerary_stages():
     assert view["candidates"][0]["stages"][0]["stage_id"] == "day-1"
     assert view["candidates"][0]["stages"][0]["distance_m"] == 100_000
     assert view["segments"][0]["candidate_ids"] == ["candidate-1"]
+
+
+def test_local_candidate_has_grounded_name_and_description():
+    from services.route.view import build_route_plan_view
+    view = build_route_plan_view({'candidates': [{'candidate_id': 'c', 'name': '本地候选 1',
+        'is_closed': True, 'waypoints': [{'name': name} for name in ['京都站', '鸭川', '京都御苑', '京都站']]}]})
+    candidate = view['candidates'][0]
+    assert '本地候选' not in candidate['name']
+    assert candidate['description'] == '从京都站出发，途经鸭川、京都御苑，最后返回起点。'

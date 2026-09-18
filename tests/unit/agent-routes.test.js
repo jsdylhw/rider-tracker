@@ -1,9 +1,45 @@
-import { normalizeChatRequest, normalizeCommandRequest } from "../../src/server/routes/agent-routes.js";
+import express from "express";
+import { createPersonalFitAgentClient } from "../../src/server/personal-fit-agent-client.js";
+import { createAgentApiClient } from "../../src/adapters/agent/personal-fit-agent-client.js";
+import { createAgentRoutes, normalizeChatRequest, normalizeCommandRequest } from "../../src/server/routes/agent-routes.js";
 import { assert, assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
     name: "agent-routes",
     tests: [
+        {
+            name: "BFF forwards live route progress and the final result through both clients",
+            async run() {
+                let release;
+                const gate = new Promise((resolve) => { release = resolve; });
+                const upstream = createPersonalFitAgentClient({ fetchImpl: async (_, options) => {
+                    assertEqual(options.headers.Accept, "application/x-ndjson");
+                    return new Response(new ReadableStream({ async start(controller) {
+                        const emit = (event) => controller.enqueue(new TextEncoder().encode(JSON.stringify({ schema_version: "route_stream.v1", ...event }) + "\n"));
+                        emit({ type: "progress", stage: "create_route_plan", status: "running" });
+                        await gate;
+                        emit({ type: "result", result: { status: "completed" } });
+                        controller.close();
+                    } }), { headers: { "Content-Type": "application/x-ndjson" } });
+                } });
+                const app = express();
+                app.use(express.json());
+                app.use(createAgentRoutes({ agentClient: upstream }));
+                const server = app.listen(0, "127.0.0.1");
+                await new Promise((resolve) => server.once("listening", resolve));
+                try {
+                    const browser = createAgentApiClient({ baseUrl: `http://127.0.0.1:${server.address().port}`, storage: null });
+                    const result = await browser.chat("京都", { requestMode: "route_plan", routeAction: "create", onProgress(event) {
+                        assertEqual(event.stage, "create_route_plan");
+                        release();
+                    } });
+                    assertEqual(result.status, "completed");
+                } finally {
+                    release();
+                    await new Promise((resolve) => server.close(resolve));
+                }
+            }
+        },
         {
             name: "forwards optional get revision and rejects malformed revisions",
             run() {

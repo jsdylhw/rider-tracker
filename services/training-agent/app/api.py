@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
+from app.route_stream import route_stream_response
 from app.job_api import create_job_router
 from app.browser_security import reject_untrusted_browser_request
 from pydantic import BaseModel, Field
@@ -565,7 +566,15 @@ def strava_route_gpx_endpoint(route_id: int, request: Request) -> Response:
 
 
 @app.post("/api/chat")
-def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]:
+def chat_endpoint(request: ChatRequest, http_request: Request):
+    _require_api_access(http_request)
+    _require_llm_capability("ai_route_planning" if request.request_mode == "route_plan" else None)
+    if request.request_mode == "route_plan" and "application/x-ndjson" in http_request.headers.get("accept", ""):
+        return route_stream_response(lambda callback: _chat_turn(request, http_request, on_progress=callback))
+    return _chat_turn(request, http_request)
+
+
+def _chat_turn(request: ChatRequest, http_request: Request, *, on_progress=None) -> dict[str, Any]:
     """Run one serialized, idempotent turn in a durable chat session."""
     _require_api_access(http_request)
     _require_llm_capability("ai_route_planning" if request.request_mode == "route_plan" else None)
@@ -615,7 +624,7 @@ def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]
                     if session.context.route_reference:
                         session.context.route_messages = []
                     session.context.route_reference = None
-                result, route_messages = run_route_agent(task, history=session.context.route_messages)
+                result, route_messages = run_route_agent(task, history=session.context.route_messages, **({"on_progress": on_progress} if on_progress else {}))
                 session.context.route_messages = route_messages
                 if task.action == "create" or result.get("route_task", {}).get("action") == "create":
                     session.context.route_reference = None

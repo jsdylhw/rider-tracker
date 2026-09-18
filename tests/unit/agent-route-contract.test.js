@@ -16,6 +16,7 @@ export const suite = {
                 assertEqual(draft.candidates.length, 2);
                 assertEqual(draft.countryCode, "JP");
                 assertEqual(draft.candidates[0].name, "鸭川路线");
+                assertEqual(draft.candidates[0].description, "从京都站出发，经鸭川返回。");
                 assertEqual(draft.candidates[0].warnings[0], "距离偏离目标");
                 assertEqual(draft.rejectedCandidates[0].name, "无效候选");
                 assertApprox(draft.candidates[0].distanceKm, 30.4, 0.001);
@@ -175,6 +176,7 @@ function buildTurnResult() {
             candidates: [{
                 candidate_id: "candidate-1",
                 name: "鸭川路线",
+                description: "从京都站出发，经鸭川返回。",
                 distance_m: 30_400,
                 provider_duration_s: 5_520,
                 provider: "Google",

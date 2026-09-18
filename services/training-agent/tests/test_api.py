@@ -1313,3 +1313,48 @@ def test_route_page_new_task_failure_does_not_leave_old_task_target(tmp_path, mo
     assert preview.status_code == 200
     assert context.route_reference is None
     assert context.route_messages == [{"role": "user", "content": "另建法国路线"}]
+
+
+def test_route_chat_stream_preserves_final_result_and_idempotency(tmp_path, monkeypatch):
+    import json
+    api, client, _ = _prepare_api(tmp_path, monkeypatch, route_configured=True)
+    calls = []
+    def run(task, *, history, on_progress):
+        calls.append(task)
+        on_progress({'stage': 'search_cycling_routes', 'status': 'running'})
+        on_progress({'stage': 'search_cycling_routes', 'status': 'completed'})
+        return {'status': 'clarification_required', 'answer': '从哪里出发？',
+                'route_task': {'status': 'clarification_required'}}, history
+    monkeypatch.setattr(api, 'run_route_agent', run)
+    body = {'session_id': 'stream', 'request_id': 'turn', 'message': '京都30km',
+            'request_mode': 'route_plan', 'route_action': 'create'}
+    response = client.post('/api/chat', json=body, headers={'Accept': 'application/x-ndjson'})
+    events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+    assert [e['type'] for e in events] == ['progress', 'progress', 'result']
+    assert all(e['schema_version'] == 'route_stream.v1' for e in events)
+    assert events[-1]['result']['status'] == 'clarification_required'
+    assert client.post('/api/chat', json=body).json() == events[-1]['result']
+    assert len(calls) == 1
+
+
+def test_route_stream_requires_authentication(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch, web_api_token='secret')
+    response = client.post('/api/chat', json={'session_id': 's', 'request_id': 'r',
+        'message': '京都', 'request_mode': 'route_plan', 'route_action': 'create'},
+        headers={'Accept': 'application/x-ndjson'})
+    assert response.status_code in (401, 403)
+
+
+def test_route_stream_error_keeps_progress_and_hides_internal_exception(tmp_path, monkeypatch):
+    import json
+    api, client, _ = _prepare_api(tmp_path, monkeypatch, route_configured=True)
+    def fail(task, *, history, on_progress):
+        on_progress({'stage': 'search_cycling_routes', 'status': 'completed'})
+        raise RuntimeError('private-provider-details')
+    monkeypatch.setattr(api, 'run_route_agent', fail)
+    response = client.post('/api/chat', json={'session_id': 's', 'request_id': 'r',
+        'message': '京都', 'request_mode': 'route_plan', 'route_action': 'create'},
+        headers={'Accept': 'application/x-ndjson'})
+    events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+    assert [e['type'] for e in events] == ['progress', 'error']
+    assert 'private-provider-details' not in response.text

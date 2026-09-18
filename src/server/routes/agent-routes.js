@@ -19,6 +19,26 @@ export function createAgentRoutes({ agentClient }) {
     router.post("/api/agent/chat", async (req, res) => {
         try {
             const request = normalizeChatRequest(req.body);
+            if (request.request_mode === "route_plan" && req.headers.accept?.includes("application/x-ndjson")) {
+                res.setHeader("Content-Type", "application/x-ndjson");
+                res.setHeader("Cache-Control", "no-cache");
+                res.setHeader("X-Accel-Buffering", "no");
+                res.flushHeaders();
+                const emit = (event) => {
+                    if (!res.destroyed) res.write(JSON.stringify({ schema_version: "route_stream.v1", ...event }) + "\n");
+                };
+                const heartbeat = setInterval(() => { if (!res.destroyed) res.write("\n"); }, 10_000);
+                try {
+                    const result = await agentClient.chatStream(request, emit);
+                    emit({ type: "result", result });
+                } catch (error) {
+                    emit({ type: "error", message: error.message });
+                } finally {
+                    clearInterval(heartbeat);
+                    res.end();
+                }
+                return;
+            }
             const result = await agentClient.chat(request);
             return res.json({ ok: true, result });
         } catch (error) {

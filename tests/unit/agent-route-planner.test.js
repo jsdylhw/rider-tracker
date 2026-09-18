@@ -6,17 +6,46 @@ export const suite = {
     name: "agent-route-planner",
     tests: [
         {
+            name: "keeps completed progress after a route failure and ignores late events",
+            async run() {
+                const { documentRef, elements } = createPlannerDom();
+                let onProgress;
+                const planner = createAgentRoutePlanner({ elements, onPlanAgentRoutes: async (_, options) => {
+                    onProgress = options.onProgress;
+                    onProgress({ stage: "search_cycling_routes", status: "completed" });
+                    onProgress({ stage: "prepare_route_materials", status: "failed" });
+                    throw new Error("地图连接失败");
+                } });
+                elements.aiRoutePanel.ownerDocument = documentRef;
+                planner.render({ route: {}, liveRide: { isActive: false } });
+                await planner.sendMessage("京都30km");
+                assertEqual(elements.aiRouteMessages.children.length, 3);
+                assert(elements.aiRouteProgressSteps.children[0].textContent.includes("已完成"));
+                assert(elements.aiRouteProgressSteps.children[1].textContent.includes("未完成"));
+                assertEqual(elements.aiRouteProgressStatus.textContent, "本次处理未完成");
+                const before = elements.aiRouteProgressStatus.textContent;
+                onProgress({ stage: "create_route_plan", status: "completed" });
+                assertEqual(elements.aiRouteProgressStatus.textContent, before);
+                planner.destroy();
+            }
+        },
+        {
             name: "conversation displays provider warnings instead of only the success summary",
             async run() {
                 const { documentRef, elements } = createPlannerDom();
                 elements.aiRoutePanel.ownerDocument = documentRef;
-                const planner = createAgentRoutePlanner({ elements, onPlanAgentRoutes: async () => buildDraft() });
+                const draft = { ...buildDraft(), researchSources: [{ title: "隐藏参考", url: "https://example.org" }] };
+                draft.candidates[0].description = "从京都站出发，经鸭川返回。";
+                const planner = createAgentRoutePlanner({ elements, onPlanAgentRoutes: async () => draft });
                 planner.bindEvents();
                 planner.render({ route: {}, liveRide: { isActive: false } });
                 await planner.sendMessage("京都市内风景好的 30 km 环线");
                 const text = elements.aiRouteMessages.children.at(-1).messageBody.textContent;
                 assert(text.includes("路线提示：距离偏离目标"));
                 assert(text.includes("无效候选（地点没有结果）"));
+                const copy = elements.aiRouteCandidates.children[0].children[0];
+                assert(copy.children.some((node) => node.textContent.includes("从京都站出发")));
+                assert(!copy.children.some((node) => node.textContent.includes("参考资料")));
                 planner.destroy();
             }
         },
@@ -77,7 +106,7 @@ export const suite = {
                 assert(answer.includes("另有 1 条未能生成：无效候选（地点没有结果）"));
                 assert(answer.includes("\n\n当前预览：滨江路线"));
                 assertEqual(elements.aiRouteCandidates.children.length, 1);
-                assert(elements.aiRouteCandidates.children[0].children[0].children[2].textContent.includes("距离偏离目标"));
+                assert(elements.aiRouteCandidates.children[0].children[0].children[3].textContent.includes("距离偏离目标"));
                 assertEqual(elements.aiRouteSegmentPanel.hidden, false);
                 assertEqual(elements.aiRouteSegmentList.children.length, 2);
                 const generatedActions = elements.aiRouteCandidates.children[0].children[1];
@@ -106,9 +135,10 @@ export const suite = {
                 let resolvePlan;
                 let now = 0;
                 let tick = null;
+                let onProgress;
                 const planner = createAgentRoutePlanner({
                     elements,
-                    onPlanAgentRoutes: () => new Promise((resolve) => { resolvePlan = resolve; }),
+                    onPlanAgentRoutes: (_, options) => new Promise((resolve) => { resolvePlan = resolve; onProgress = options.onProgress; }),
                     progressClock: {
                         now: () => now,
                         setInterval(callback) { tick = callback; return 1; },
@@ -121,13 +151,21 @@ export const suite = {
                 const pendingPlan = planner.sendMessage("马来西亚沿海 30km");
                 now = 40_000;
                 tick();
-                const pendingMessage = elements.aiRouteMessages.children.at(-1);
-                assert(pendingMessage.messageBody.textContent.includes("地图服务"));
-                assert(pendingMessage.messageBody.textContent.includes("40 秒"));
-
+                assertEqual(elements.aiRouteMessages.children.length, 2, "进度不能加入聊天气泡");
+                assertEqual(elements.aiRouteProgress.hidden, false);
+                onProgress({ stage: "search_cycling_routes", status: "completed" });
+                onProgress({ stage: "prepare_route_materials", status: "failed" });
+                onProgress({ stage: "prepare_route_materials", status: "running" });
+                assert(elements.aiRouteProgressStatus.textContent.includes("正在处理：定位"));
+                assertEqual(elements.aiRouteProgressElapsed.textContent, "40 秒");
+                onProgress({ stage: "prepare_route_materials", status: "completed" });
+                assertEqual(elements.aiRouteProgressSteps.children.length, 2);
+                assert(elements.aiRouteProgressSteps.children[1].textContent.includes("已完成"));
+                assert(!elements.aiRouteProgressSteps.children[1].textContent.includes("未完成"));
                 resolvePlan(buildDraft());
                 await pendingPlan;
                 assertEqual(tick, null, "路线完成后必须停止进展计时器");
+                assertEqual(elements.aiRouteProgressStatus.textContent, "处理完成");
                 planner.destroy();
             }
         },
@@ -190,6 +228,10 @@ function createPlannerDom() {
     const elements = {
         aiRoutePanel: createElement({ ownerDocument: documentRef }),
         aiRouteMessages: createElement(),
+        aiRouteProgress: createElement({ hidden: true }),
+        aiRouteProgressStatus: createElement(),
+        aiRouteProgressElapsed: createElement(),
+        aiRouteProgressSteps: createElement(),
         aiRouteComposer: createElement(),
         aiRouteMessageInput: createElement(),
         aiRouteSendBtn: createElement(),

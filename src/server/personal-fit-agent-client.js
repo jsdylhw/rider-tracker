@@ -1,3 +1,4 @@
+import { readAgentStream } from "../shared/agent-stream.js";
 import { createAgentUnavailableError } from "./agent-unavailable.js";
 
 const DEFAULT_TIMEOUT_MS = 240_000;
@@ -90,6 +91,19 @@ export function createPersonalFitAgentClient({
         }
     }
 
+    async function chatStream(request, onProgress) {
+        const response = await fetchImpl(`${normalizedBaseUrl}/api/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/x-ndjson",
+                ...(apiToken ? { "X-API-Token": apiToken } : {}) },
+            body: JSON.stringify(request),
+            signal: AbortSignal.timeout(timeoutMs)
+        });
+        if (!response.ok) throw responseError(response, await readJson(response));
+        if (!response.headers.get("content-type")?.includes("application/x-ndjson")) return readJson(response);
+        return readAgentStream(response, onProgress);
+    }
+
     async function getBinary(pathname, requestTimeoutMs = timeoutMs) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
@@ -120,6 +134,7 @@ export function createPersonalFitAgentClient({
     }
 
     return {
+        chatStream,
         health: () => get("/health", healthTimeoutMs),
         jobCapabilities: () => get("/api/jobs/capabilities", 2_000),
         submitJob: (request) => post("/api/jobs", request, 2_000),

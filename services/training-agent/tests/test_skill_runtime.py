@@ -150,7 +150,7 @@ def test_every_business_tool_is_reachable_from_at_least_one_skill():
     # Route execution contracts stay registered for the child and deterministic
     # commands, but cannot be granted by any Main Agent Skill.
     route_execution = {"create_route_plan", "create_itinerary_plan", "update_route_plan",
-                       "get_route_plan", "explore_route_segments"}
+                       "get_route_plan", "explore_route_segments", "search_cycling_routes", "prepare_route_materials"}
     assert not route_execution & reachable
     assert registered - reachable == {"activate_skill", "casual_chat", "ask_user_clarification"} | route_execution
 

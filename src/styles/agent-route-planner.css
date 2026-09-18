@@ -319,3 +319,38 @@
         grid-template-columns: 1fr;
     }
 }
+
+.ai-route-progress {
+    padding: 12px 14px;
+    border: 1px solid rgba(125, 160, 180, 0.22);
+    border-radius: 10px;
+    background: rgba(125, 160, 180, 0.06);
+    font-size: 12px;
+}
+
+.ai-route-progress-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.ai-route-progress-heading > span {
+    opacity: 0.6;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.ai-route-progress-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.ai-route-progress-steps > li::before { content: "○ "; }
+.ai-route-progress-steps > li[data-status="completed"]::before { content: "✓ "; color: #278a65; }
+.ai-route-progress-steps > li[data-status="running"] { font-weight: 600; }
+.ai-route-progress-steps > li[data-status="failed"]::before { content: "! "; color: #b77820; }

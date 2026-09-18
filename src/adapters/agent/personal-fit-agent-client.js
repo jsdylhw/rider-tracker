@@ -1,3 +1,4 @@
+import { readAgentStream } from "../../shared/agent-stream.js";
 const DEFAULT_SESSION_STORAGE_KEY = "rider-tracker:agent-session-id";
 
 export function createAgentApiClient({
@@ -24,12 +25,15 @@ export function createAgentApiClient({
         return payload;
     }
 
-    async function post(pathname, body) {
+    async function post(pathname, body, onProgress) {
         const response = await fetchImpl(`${baseUrl}${pathname}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...(onProgress ? { Accept: "application/x-ndjson" } : {}) },
             body: JSON.stringify(body)
         });
+        if (response.ok && response.headers?.get?.("content-type")?.includes("application/x-ndjson")) {
+            return readAgentStream(response, onProgress);
+        }
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload?.ok !== true) {
             throw new Error(payload?.error || `Agent 请求失败（HTTP ${response.status}）`);
@@ -45,7 +49,7 @@ export function createAgentApiClient({
             job_type: "activity_report_rebuild.v1", request_id: requestId,
             payload: { scope: "all", activity_keys: activityKeys }
         }),
-        chat(message, { routeOptions = null, requestMode = "chat", routeAction = null, routeReference = null, sessionId: routeSessionId = sessionId } = {}) {
+        chat(message, { onProgress = null, routeOptions = null, requestMode = "chat", routeAction = null, routeReference = null, sessionId: routeSessionId = sessionId } = {}) {
             return post("/api/agent/chat", {
                 session_id: routeSessionId,
                 request_id: `request-${crypto.randomUUID()}`,
@@ -54,7 +58,7 @@ export function createAgentApiClient({
                 ...(routeAction ? { route_action: routeAction } : {}),
                 ...(routeReference ? { route_reference: routeReference } : {}),
                 ...(routeOptions ? { route_options: routeOptions } : {})
-            });
+            }, requestMode === "route_plan" ? onProgress : null);
         },
         selectRouteCandidate(planId, candidateId, expectedRevision) {
             return post("/api/agent/route-plans/select", {

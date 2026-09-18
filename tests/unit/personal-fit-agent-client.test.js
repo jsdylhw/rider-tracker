@@ -8,6 +8,35 @@ export const suite = {
     name: "personal-fit-agent-client",
     tests: [
         {
+            name: "route stream delivers progress before the final result across split UTF8 chunks",
+            async run() {
+                const events = [];
+                let release;
+                const gate = new Promise((resolve) => { release = resolve; });
+                const wire = new TextEncoder().encode(JSON.stringify({ schema_version: "route_stream.v1", type: "progress", stage: "search_cycling_routes", status: "completed", message: "京都" }) + "\n");
+                const client = createAgentApiClient({ storage: null, fetchImpl: async () => new Response(new ReadableStream({
+                    async start(controller) {
+                        for (let i = 0; i < wire.length; i += 7) controller.enqueue(wire.slice(i, i + 7));
+                        await gate;
+                        controller.enqueue(new TextEncoder().encode(JSON.stringify({ schema_version: "route_stream.v1", type: "result", result: { status: "completed" } })));
+                        controller.close();
+                    }
+                }), { headers: { "Content-Type": "application/x-ndjson" } }) });
+                const result = await client.chat("京都", { requestMode: "route_plan", onProgress: (event) => { events.push(event); release(); } });
+                assertEqual(events[0].message, "京都");
+                assertEqual(result.status, "completed");
+            }
+        },
+        {
+            name: "route stream rejects disconnects without inventing a completed result",
+            async run() {
+                const client = createAgentApiClient({ storage: null, fetchImpl: async () => new Response("\n", { headers: { "Content-Type": "application/x-ndjson" } }) });
+                let error;
+                try { await client.chat("京都", { requestMode: "route_plan", onProgress() {} }); } catch (caught) { error = caught; }
+                assertEqual(error.message.includes("尚未收到最终结果"), true);
+            }
+        },
+        {
             name: "browser route calls forward the current plan revision",
             async run() {
                 let body;

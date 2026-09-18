@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from typing import Any
 
@@ -91,6 +92,8 @@ def create_route_plan_tool(
     args = _with_route_options(context, args)
     include_elevation = bool(args.get("include_elevation", True))
     segment_strategy = str(args.get("segment_strategy") or "auto").lower()
+    if args.get("use_prepared_candidates") and segment_strategy in {"require", "complete_loop"}:
+        raise ValueError("准备骨架路径的 Strava 是可选材料，不能与 require/complete_loop 合用。")
     country_code = str(args.get("country_code") or "")
     route_constraints = normalize_route_constraints(args.get("route_constraints"))
     route_preferences = normalize_route_preferences(args.get("route_preferences"))
@@ -113,7 +116,7 @@ def create_route_plan_tool(
             rejection_type=RouteCandidateRejected,
         )
         plan = {**plan, "route_preferences": route_preferences}
-        stored = RoutePlanStore().save(plan)
+        stored = RoutePlanStore().save(_with_research(plan, context))
         compact = compact_route_plan(stored)
         prefix = "已生成热门环线" if stored.get("route_mode") == "popular_loop" else "已降级生成普通地图路线"
         return {
@@ -142,15 +145,30 @@ def create_route_plan_tool(
         }
         for candidate in candidates if isinstance(candidate, dict)
     ]
-    plan = create_single_day_plan(
-        workspace_id=_workspace_id(context),
-        title=str(args.get("title") or "单日骑行路线"),
-        country_code=country_code,
-        candidates=candidates,
-        include_elevation=include_elevation and not segment_active,
-        route_constraints=route_constraints,
-        route_preferences=route_preferences,
-    )
+    # Internal resolved coordinates may only come from this turn's service result.
+    candidates = [{k: v for k, v in c.items() if not k.startswith("_")} for c in candidates]
+    preparation = None
+    if args.get("use_prepared_candidates"):
+        preparation = context.route_preparation
+        if not preparation:
+            raise ValueError("本轮没有可用的路线准备结果，请先准备材料。")
+        from services.route.preparation import create_prepared_plan
+        segment_active = False
+        plan = create_prepared_plan(
+            preparation, workspace_id=_workspace_id(context),
+            title=str(args.get("title") or "单日骑行路线"), include_elevation=include_elevation,
+            route_constraints=route_constraints, route_preferences=route_preferences,
+        )
+    else:
+        plan = create_single_day_plan(
+            workspace_id=_workspace_id(context),
+            title=str(args.get("title") or "单日骑行路线"),
+            country_code=country_code,
+            candidates=candidates,
+            include_elevation=include_elevation and not segment_active,
+            route_constraints=route_constraints,
+            route_preferences=route_preferences,
+        )
     if segment_active:
         preserve_amap_evidence = (
             country_code.strip().upper() == "CN"
@@ -175,7 +193,7 @@ def create_route_plan_tool(
             rejection_type=RouteCandidateRejected,
         )
     plan = _mark_route_proposed(plan, include_elevation=include_elevation)
-    stored = RoutePlanStore().save(plan)
+    stored = RoutePlanStore().save(_with_research(plan, context))
     compact = compact_route_plan(stored)
     return {
         "step": name,
@@ -215,7 +233,7 @@ def create_itinerary_plan_tool(
             include_elevation=bool(args.get("include_elevation", True)),
         )
         plan = refresh_itinerary_plan(plan)
-    stored = RoutePlanStore().save(plan)
+    stored = RoutePlanStore().save(_with_research(plan, context))
     compact = compact_route_plan(stored)
     return {
         "step": name,
@@ -427,6 +445,7 @@ def update_route_plan_tool(
             candidate_id=selected_id,
             rejection_type=RouteCandidateRejected,
         )
+    plan = _with_research(plan, context)
     stored = _save_route_plan(
         store,
         plan,
@@ -487,6 +506,7 @@ def explore_route_segments_tool(
     # Segment discovery enriches the current route but is not itself a route
     # edit. Do not make a later conversational undo stop at this metadata-only
     # revision instead of restoring the previous waypoint/geometry version.
+    plan = _with_research(plan, context)
     stored = _save_route_plan(
         store,
         updated,
@@ -762,7 +782,39 @@ def _latest_user_message(context: AgentContext) -> str:
     return ""
 
 
+def search_cycling_routes_tool(args, context):
+    from services.route.research import search_cycling_routes
+    result = search_cycling_routes(args.get("queries"))
+    known = {item["source_id"]: item for item in context.route_research}
+    known.update({item["source_id"]: item for item in result.get("sources", [])})
+    context.route_research = list(known.values())[-10:]
+    return result
+
+
+def prepare_route_materials_tool(args, context):
+    from services.route.preparation import prepare_route_materials
+    context.route_preparation = None  # Failed replacement cannot reuse stale preparation.
+    result = prepare_route_materials(args.get("materials"), sources=context.route_research,
+                                     use_strava=args.get("use_strava", True))
+    context.route_preparation = result
+    summary = deepcopy(result)
+    summary["segments"] = [{k: v for k, v in s.items() if k != "geometry"} for s in result["segments"]]
+    return summary
+
+
+def _with_research(plan, context):
+    if not context.route_research:
+        return plan
+    # Consulted references, not a claim that every source was used or verified.
+    return {**plan, "research_sources": [
+        {k: item.get(k) for k in ("source_id", "title", "url", "published_date")}
+        for item in context.route_research
+    ]}
+
+
 HANDLERS = {
+    "prepare_route_materials": prepare_route_materials_tool,
+    "search_cycling_routes": search_cycling_routes_tool,
     "create_route_plan": create_route_plan,
     "create_itinerary_plan": create_itinerary_plan,
     "update_route_plan": update_route_plan,

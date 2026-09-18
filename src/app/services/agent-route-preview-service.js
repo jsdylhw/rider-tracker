@@ -31,17 +31,18 @@ export function createAgentRoutePreviewService({
         return draft;
     }
 
-    async function planAgentRoutes(message) {
+    async function planAgentRoutes(message, { onProgress } = {}) {
         if (!operations.ensureRouteEditingAllowed()) return null;
         invalidateExploration?.();
         const { requestId, route: loadingRoute } = operations.beginRouteRequest(
-            currentDraft ? "正在按新要求修改当前 AI 路线..." : "正在请求 Personal FIT Agent 生成路线候选..."
+            currentDraft ? "正在基于所选路线重新生成候选..." : "正在请求 Personal FIT Agent 生成路线候选..."
         );
         try {
             const request = currentDraft
                 ? buildRouteRefinementRequest(message, currentDraft)
                 : buildVirtualRouteRequest(message);
             const chatOptions = {
+                ...(onProgress ? { onProgress: (event) => { if (operations.isCurrent(requestId)) onProgress(event); } } : {}),
                 routeOptions: { include_elevation: false },
                 ...(routeSessionId ? { sessionId: routeSessionId } : {}),
                 requestMode: "route_plan",
@@ -243,14 +244,14 @@ function activeCandidateId(draft) {
 function buildVirtualRouteRequest(message) {
     return [
         String(message || "").trim(),
-        "这是 Rider Tracker 的虚拟观景路线：如果用户只给区域、距离或偏好等开放需求，必须在一次 create_route_plan 调用的 candidates 数组中生成恰好 3 条有实质区别的候选；如果用户已经明确给出完整起终点或途经点顺序，则保持原顺序并可只生成 1 条。不要为每条候选分别调用工具；不请求海拔，坡度按 0 处理；路线将配合 ERG 骑行。"
+        "这是 Rider Tracker 的虚拟观景路线：如果用户只给区域、距离或偏好等开放需求，应准备 3 条有实质区别的候选骨架，通过一次 create_route_plan 调用验证；使用材料准备时传 use_prepared_candidates=true，不重写 candidates；如果用户已经明确给出完整起终点或途经点顺序，则保持原顺序并可只生成 1 条。不要为每条候选分别调用工具；不请求海拔，坡度按 0 处理；路线将配合 ERG 骑行。"
     ].filter(Boolean).join("\n\n");
 }
 
 function buildRouteRefinementRequest(message, draft) {
     return [
         String(message || "").trim(),
-        `当前路线计划 ${draft.planId}。如果用户仍在修改同一地理区域或路线概念，调用 update_route_plan；如果用户明确换到其他国家、城市或路线概念，调用 create_route_plan 新建计划。`,
+        `当前路线计划 ${draft.planId}。以当前选中路线为基准，结合修改建议重新准备并生成三条可预览候选，调用 create_route_plan 新建候选组，不要只修改一条。`,
         "同一区域修改时保留未被用户否定的起点、终点和路线意图；跨区域时不得用旧计划的 country_code 或途经点继续更新。",
         "这是无海拔 ERG 虚拟路线，include_elevation 必须为 false。修改后返回可预览的路线候选。"
     ].filter(Boolean).join("\n\n");

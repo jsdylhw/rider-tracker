@@ -117,7 +117,7 @@ export const suite = {
                 const draft = await service.planAgentRoutes("从上海出发骑 50km");
                 assertEqual(draft.candidates.length, 1);
                 assertEqual(chatMessages.length, 1);
-                assert(chatMessages[0].includes("恰好 3 条"), "开放式首次生成应明确要求三个候选");
+                assert(chatMessages[0].includes("3 条有实质区别"), "开放式首次生成应明确要求三个候选");
                 assert(chatMessages[0].includes("不请求海拔"), "首次生成应明确无海拔约束");
                 assertEqual(chatOptions[0].routeOptions.include_elevation, false);
                 assertEqual(chatOptions[0].requestMode, "route_plan");
@@ -171,7 +171,8 @@ export const suite = {
                 assertEqual(chatOptions[0].routeAction, "create");
                 assertEqual(chatOptions[1].routeAction, "refine");
                 assert(chatMessages[1].includes("当前路线计划 plan-1"), "后续语义修改应绑定当前页面内计划");
-                assert(chatMessages[1].includes("其他国家、城市"), "后续请求应允许跨区域时重建计划");
+                assert(chatMessages[1].includes("重新准备并生成三条"));
+                assert(chatMessages[1].includes("跨区域"), "后续请求应允许跨区域时重建计划");
 
                 await service.exploreAgentRouteSegments("candidate-1");
                 await service.composeAgentRouteSegments([

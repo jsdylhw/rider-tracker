@@ -36,7 +36,7 @@ def test_clarification_has_no_provider_or_old_plan_and_isolated_history():
     assert dialogue[-1]["content"] == "从哪个城市出发？"
     assert len(client.calls) == 1
     names = {tool["name"] for tool in client.calls[0]["tools"]}
-    assert names == {"create_route_plan", "request_route_clarification"}
+    assert names == {"create_route_plan", "request_route_clarification", "search_cycling_routes", "prepare_route_materials"}
 
 
 def test_create_terminal_has_plan_and_exact_action_without_second_model_call(monkeypatch):
@@ -66,7 +66,7 @@ def test_update_reference_is_server_bound_and_virtual_options_do_not_leak(monkey
         return {"status": "completed", "answer": "已更新", "result": {"plan_id": "plan"}}
 
     monkeypatch.setitem(agent.TOOL_HANDLERS, "update_route_plan", update)
-    result, _ = run_route_agent(task(action="refine", plan_id="plan", revision=2), client=Client(
+    result, _ = run_route_agent(task(action="update", plan_id="plan", revision=2), client=Client(
         "update_route_plan", {"plan_id": "other", "_expected_revision": 99, "operation": "replace_waypoints"},
     ))
     assert seen[0][0]["plan_id"] == "plan" and seen[0][0]["_expected_revision"] == 2
@@ -265,3 +265,41 @@ def test_confirmed_plan_update_passes_trusted_no_elevation_to_service(monkeypatc
     assert result["route_task"]["status"] == "completed"
     assert len(received) == 1 and received[0]["include_elevation"] is False
     assert arguments.get("include_elevation") is model_value
+
+
+def test_refine_uses_selected_candidate_and_regenerates_prepared_group(monkeypatch, tmp_path):
+    monkeypatch.setenv('RIDER_LOG_DIR', str(tmp_path))
+    old = {'plan_id': 'old', 'workspace_id': 'workspace', 'revision': 2,
+           'active_candidate_id': 'b', 'candidates': [
+               {'candidate_id': 'a', 'name': '未选中的路线'},
+               {'candidate_id': 'b', 'name': '选中的鸭川路线', 'waypoints': [{'name': '京都站'}, {'name': '鸭川'}]}]}
+    new = {'plan_id': 'new', 'workspace_id': 'workspace', 'revision': 1,
+           'candidates': [{'candidate_id': str(i)} for i in range(3)]}
+    monkeypatch.setattr(agent, 'RoutePlanStore', lambda: Mock(get=lambda _: old))
+    monkeypatch.setattr(result_builder, 'RoutePlanStore', lambda: Mock(get=lambda _: new))
+    monkeypatch.setattr(result_builder, 'build_route_plan_view', lambda p: p)
+    def prepare(args, context):
+        context.route_preparation = {'status': 'prepared'}
+        return context.route_preparation
+    monkeypatch.setitem(agent.TOOL_HANDLERS, 'prepare_route_materials', prepare)
+    create = Mock(return_value={'status': 'completed', 'result': {'plan_id': 'new'}})
+    monkeypatch.setitem(agent.TOOL_HANDLERS, 'create_route_plan', create)
+    update = Mock()
+    monkeypatch.setitem(agent.TOOL_HANDLERS, 'update_route_plan', update)
+    class RegenerateClient:
+        n = 0
+        def create_messages(self, **kwargs):
+            self.n += 1
+            assert '选中的鸭川路线' in kwargs['system']
+            assert '未选中的路线' not in kwargs['system']
+            tools = {t['name'] for t in kwargs['tools']}
+            assert 'update_route_plan' not in tools
+            assert ('create_route_plan' in tools) == (self.n > 1)
+            return {'stop_reason': 'tool_use', 'content': [{'type': 'tool_use', 'id': str(self.n),
+                'name': 'prepare_route_materials' if self.n == 1 else 'create_route_plan', 'input': {}}]}
+    result, _ = run_route_agent(task(action='refine', plan_id='old', revision=2), client=RegenerateClient())
+    assert result['status'] == 'completed'
+    assert len(result['route_plan']['candidates']) == 3
+    assert create.call_args.args[0]['use_prepared_candidates'] is True
+    update.assert_not_called()
+    assert old['revision'] == 2

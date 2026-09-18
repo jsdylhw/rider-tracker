@@ -20,6 +20,9 @@ export function parseRoutePlanView(view, { answer = "" } = {}) {
         scheduleType,
         countryCode: text(view.country_code) || null,
         answer: String(answer || ""),
+        researchSources: (Array.isArray(view.research_sources) ? view.research_sources : [])
+            .filter((item) => /^https?:\/\//i.test(item?.url || ""))
+            .map((item) => ({ title: text(item.title), url: text(item.url) })),
         planningStatus: text(view.planning_status) || "awaiting_selection",
         activeCandidateId: text(view.active_candidate_id) || candidates[0].candidateId,
         confirmedCandidateId: text(view.confirmed_candidate_id) || null,
@@ -43,6 +46,7 @@ function parseCandidate(candidate, view) {
         candidateId,
         parentCandidateId: text(candidate.parent_candidate_id) || null,
         name: text(candidate.name) || `路线候选 ${candidateId}`,
+        description: text(candidate.description),
         distanceKm,
         durationMinutes: distanceKm ? distanceKm / VIRTUAL_ROUTE_SPEED_KMH * 60 : providerMinutes,
         provider: text(candidate.provider) || "Personal FIT Agent",

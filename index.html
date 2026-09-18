@@ -177,6 +177,13 @@
                                     <div class="ai-route-planner-grid">
                                         <section class="ai-route-conversation" aria-label="AI 路线对话">
                                             <div id="aiRouteMessages" class="ai-route-messages" role="log" aria-live="polite"></div>
+                                            <section id="aiRouteProgress" class="ai-route-progress" hidden aria-label="路线规划进度">
+                                                <div class="ai-route-progress-heading">
+                                                    <strong id="aiRouteProgressStatus" role="status" aria-live="polite"></strong>
+                                                    <span id="aiRouteProgressElapsed"></span>
+                                                </div>
+                                                <ol id="aiRouteProgressSteps" class="ai-route-progress-steps"></ol>
+                                            </section>
                                             <div class="ai-route-suggestions" aria-label="路线示例问题">
                                                 <button type="button" data-ai-route-prompt="京都市内风景好的 30 km 环线">京都风景 30 km</button>
                                                 <button type="button" data-ai-route-prompt="少走城市道路，多一些河边路段">减少城市道路</button>

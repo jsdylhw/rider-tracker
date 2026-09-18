@@ -167,7 +167,7 @@ def _unresolved_failure(trace: list[dict[str, Any]]) -> dict[str, Any] | None:
     """
     recovered = set()
     for item in reversed(trace):
-        if not isinstance(item, dict):
+        if not isinstance(item, dict) or item.get("status") == "recovered":
             continue
         key = (str(item.get("tool") or ""), json.dumps(item.get("input") or {}, sort_keys=True, default=str))
         failed = item.get("status") in {"failed", "blocked"} or is_failed_tool_output(item.get("result"))

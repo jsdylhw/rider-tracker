@@ -37,6 +37,8 @@ class AgentContext:
     # Separate route dialogue; never loaded into the Main Agent tool loop.
     route_messages: list[dict[str, Any]] = field(default_factory=list)
     # Active route task target; independent of previously generated/previewed plans.
+    route_research: list[dict[str, Any]] = field(default_factory=list)
+    route_preparation: dict[str, Any] | None = None
     route_reference: dict[str, Any] | None = None
     history_enabled: bool = True
     last_tool_result: dict[str, Any] | None = None

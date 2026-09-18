@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from services.route.materials import MATERIALS_SCHEMA
+
 from agent.tools.spec import (
     CATEGORY_ACTIVITY_SELECTION,
     CATEGORY_ANALYSIS,
@@ -90,6 +92,18 @@ ROUTE_PREFERENCES_SCHEMA = {
 }
 
 MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
+    ToolDef(name="prepare_route_materials", category=CATEGORY_COACHING,
+            description="结构化地点和有序线路走廊，解析坐标，尝试可选 Strava 路段并本地组合骨架。仅准备材料，不生成路线；不得将估算距离报告为实际距离。",
+            input_schema={"type": "object", "additionalProperties": False,
+                          "required": ["materials"], "properties": {
+                              "materials": MATERIALS_SCHEMA,
+                              "use_strava": {"type": "boolean", "default": True},
+                          }}),
+    ToolDef(name="search_cycling_routes", category=CATEGORY_COACHING,
+            description="搜索真实骑行路线资料。开放式路线先搜索，阅读来源后在下一轮创建路线；搜索不是规划成功。",
+            input_schema={"type": "object", "additionalProperties": False,
+                          "properties": {"queries": {"type": "array", "minItems": 1, "maxItems": 2,
+                          "items": {"type": "string", "minLength": 1, "maxLength": 300}}}, "required": ["queries"]}),
     ToolDef(
         name="run_route_agent", category=CATEGORY_COACHING,
         description="委派独立路线 Agent 生成或修改草稿；也可以返回澄清。不会确认保存路线。",
@@ -423,8 +437,8 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
     ToolDef(
         name="create_route_plan",
         description=(
-            "统一创建并持久化单日路线。明确途经点时按给定骨架算路；开放需求由模型给出恰好三个"
-            "骨架。国内使用高德，国外使用 Google Routes；默认尝试用真实 Strava 路段增强，"
+            "统一创建并持久化单日路线。明确途经点时按给定骨架算路；开放需求先准备材料，"
+            "use_prepared_candidates 使用本轮本地生成的地点骨架。国内使用高德，国外使用 Google Routes；旧直接路径尝试 Strava 增强，"
             "失败时保留地图基线。complete_loop 用于围绕一个完整闭合 Strava 热门环线接驳往返。"
         ),
         input_schema={
@@ -432,6 +446,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
             "required": ["title", "country_code"],
             "properties": {
                 "title": {"type": "string"},
+                "use_prepared_candidates": {"type": "boolean", "description": "使用本轮准备结果的地点骨架、目标距离与国家；不再次发现 Strava。混合路段骨架等待后续地图验证接入，不能声称已使用。"},
                 "country_code": {"type": "string", "description": "ISO 两字母国家代码，如 CN、FR、JP"},
                 "include_elevation": {"type": "boolean", "default": True},
                 "route_constraints": ROUTE_CONSTRAINTS_SCHEMA,

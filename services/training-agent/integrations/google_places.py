@@ -216,6 +216,12 @@ def _normalize_route_place(value: Any) -> dict[str, Any] | None:
         "location": {"latitude": latitude, "longitude": longitude},
         "types": [str(item) for item in value.get("types") or []],
         "country_code": _country_code(value.get("addressComponents")),
+        "localities": list(dict.fromkeys(
+            str(component.get(key) or "")
+            for component in value.get("addressComponents") or []
+            if isinstance(component, dict) and "locality" in (component.get("types") or [])
+            for key in ("longText", "shortText") if component.get(key)
+        )),
     }
 
 

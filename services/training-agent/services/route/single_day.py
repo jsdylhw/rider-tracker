@@ -545,6 +545,13 @@ def route_candidate(
     if len(queries) < 2:
         raise ValueError("each candidate requires at least two distinct waypoint queries")
     target = _optional_float(candidate.get("target_distance_km"))
+    prepared = candidate.get("_resolved_places")
+    resolved_options = {}
+    if prepared is not None:
+        prepared = deepcopy(prepared[:-1] if is_closed else prepared)
+        if len(prepared) != len(queries) or any(p.get("query") != q for p, q in zip(prepared, queries)):
+            raise ValueError("prepared places do not match candidate waypoints")
+        resolved_options = {"resolved_places": prepared}
     if country_code == "CN":
         places, route = _route_amap(
             queries,
@@ -553,6 +560,7 @@ def route_candidate(
             target_distance_km=target,
             route_constraints=route_constraints,
             route_preferences=route_preferences,
+            **resolved_options,
         )
     else:
         if not provider_preflight_completed:
@@ -561,6 +569,7 @@ def route_candidate(
             queries, country_code, is_closed, config,
             target_distance_km=target,
             place_cache=google_place_cache,
+            **resolved_options,
         )
     if is_closed:
         places = [*places, dict(places[0])]
@@ -619,13 +628,14 @@ def _route_amap(
     target_distance_km: float | None = None,
     route_constraints: dict[str, Any] | None = None,
     route_preferences: dict[str, Any] | None = None,
+    resolved_places: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     amap = config.get("amap") if isinstance(config.get("amap"), dict) else {}
     key = str(amap.get("web_service_key") or "")
     if not key:
         raise ValueError("amap.web_service_key is not configured")
-    places: list[dict[str, Any]] = []
-    for query in queries:
+    places: list[dict[str, Any]] = deepcopy(resolved_places) if resolved_places is not None else []
+    for query in ([] if resolved_places is not None else queries):
         anchor = places[-1] if places else None
         # Keep later anchors in the same city, not the same district. A route
         # may legitimately cross district boundaries inside one city.
@@ -792,7 +802,7 @@ def _target_reachability_gap(
     return 0.0
 
 
-def _route_google(
+def resolve_google_places(
     queries: list[str],
     country_code: str,
     is_closed: bool,
@@ -800,7 +810,7 @@ def _route_google(
     *,
     target_distance_km: float | None = None,
     place_cache: dict[tuple[Any, ...], dict[str, Any]] | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+) -> list[dict[str, Any]]:
     google = config.get("google") if isinstance(config.get("google"), dict) else {}
     key = str(google.get("api_key") or "")
     if not key:
@@ -846,6 +856,9 @@ def _route_google(
             location = raw["location"]
             place = {
                 "query": query,
+                "place_id": raw.get("place_id") or raw.get("id") or "",
+                "localities": raw.get("localities") or [],
+                "country_code": raw.get("country_code") or "",
                 "name": raw.get("name") or query,
                 "address": raw.get("address") or "",
                 "latitude": float(location["latitude"]),
@@ -864,6 +877,20 @@ def _route_google(
         if place_cache is not None:
             place_cache[cache_key] = deepcopy(place)
         places.append(place)
+    return places
+
+
+def _route_google(
+    queries: list[str], country_code: str, is_closed: bool, config: dict[str, Any], *,
+    target_distance_km: float | None = None,
+    place_cache: dict[tuple[Any, ...], dict[str, Any]] | None = None,
+    resolved_places: list[dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    places = deepcopy(resolved_places) if resolved_places is not None else resolve_google_places(
+        queries, country_code, is_closed, config,
+        target_distance_km=target_distance_km, place_cache=place_cache,
+    )
+    key = str((config.get("google") or {}).get("api_key") or "")
     points = [WgsPoint(place["latitude"], place["longitude"]) for place in places]
     if is_closed and points[-1] != points[0]:
         points.append(points[0])
@@ -984,6 +1011,7 @@ def _search_amap_place(
         "adcode": str(poi.get("adcode") or ""),
         "citycode": str(poi.get("citycode") or ""),
         "place_id": str(poi.get("id") or ""),
+        "localities": [str(poi["cityname"])] if poi.get("cityname") else [],
     }
 
 

@@ -18,6 +18,7 @@ export function createAgentRoutePlanner({
     let currentDraft = null;
     let requestSequence = 0;
     let isBusy = false;
+    let stopActiveProgress = null;
     let selectedSegmentIds = [];
 
     function listen(element, type, handler) {
@@ -78,16 +79,18 @@ export function createAgentRoutePlanner({
         requestSequence += 1;
         const sequence = requestSequence;
         addMessage("user", normalized);
-        const pending = addMessage("agent", currentDraft
-            ? "正在根据新要求增量修改当前路线……"
-            : "正在检索地点并生成路线候选……", { pending: true });
-        const stopProgress = startProgressUpdates(pending, Boolean(currentDraft));
+        const progress = startProgressUpdates(sequence);
+        stopActiveProgress = progress.stop;
         if (elements.aiRouteMessageInput) elements.aiRouteMessageInput.value = "";
         setBusy(true);
         try {
-            const draft = await onPlanAgentRoutes?.(normalized);
-            if (sequence !== requestSequence || !draft) return;
-            pending.remove?.();
+            const draft = await onPlanAgentRoutes?.(normalized, { onProgress: progress.update });
+            if (sequence !== requestSequence) return;
+            if (!draft) {
+                progress.finish("本次请求已结束，未更新路线");
+                return;
+            }
+            progress.finish(draft.clarificationRequired ? "等待补充信息" : "处理完成");
             if (draft.clarificationRequired) {
                 addMessage("agent", draft.answer);
                 return;
@@ -97,10 +100,12 @@ export function createAgentRoutePlanner({
             addMessage("agent", formatRouteDraftAnswer(draft));
             renderDraft();
         } catch (error) {
-            pending.remove?.();
+            if (sequence !== requestSequence) return;
+            progress.finish("本次处理未完成");
             addMessage("agent", `路线处理失败：${error?.message || "请确认 Personal FIT Agent 已启动后重试。"}`);
         } finally {
-            stopProgress();
+            progress.stop();
+            stopActiveProgress = null;
             if (sequence === requestSequence) {
                 setBusy(false);
                 renderDraft();
@@ -174,14 +179,13 @@ export function createAgentRoutePlanner({
         const metrics = documentRef.createElement("span");
         metrics.textContent = candidateMetrics(candidate);
         const description = documentRef.createElement("p");
-        const source = candidate.stravaSegments
-            ? `已包含 Strava 路段：${candidate.stravaSegments}`
-            : `算路来源：${candidate.provider || "Personal FIT Agent"}`;
-        description.textContent = candidate.warnings?.length
-            ? `${source}；提示：${candidate.warnings.join("；")}`
-            : source;
+        description.textContent = candidate.description || "请预览地图，选择适合的路线。";
         copy.append(title, metrics, description);
-
+        if (candidate.warnings?.length) {
+            const warnings = documentRef.createElement("p");
+            warnings.textContent = `提示：${candidate.warnings.join("；")}`;
+            copy.append(warnings);
+        }
 
         const actions = documentRef.createElement("div");
         actions.className = "ai-route-candidate-actions";
@@ -312,30 +316,58 @@ export function createAgentRoutePlanner({
         return article;
     }
 
-    function startProgressUpdates(message, refining) {
+    function startProgressUpdates(sequence) {
         const now = () => progressClock.now?.() ?? Date.now();
         const startedAt = now();
-        const stages = refining
-            ? [
-                [15, "正在解析修改要求并重新检索受影响的地点"],
-                [35, "正在重新计算路线并校验距离"],
-                [70, "正在检查路线材料和可用候选"],
-            ]
-            : [
-                [15, "已理解路线偏好，正在检索候选地点"],
-                [35, "正在调用地图服务计算真实道路路线"],
-                [70, "正在校验候选距离并检查 Strava 路段"],
-                [120, "外部地图服务响应较慢，仍在继续处理"],
-            ];
-        const update = () => {
-            const elapsed = Math.max(0, Math.floor((now() - startedAt) / 1000));
-            const stage = [...stages].reverse().find(([after]) => elapsed >= after)?.[1]
-                || (refining ? "正在根据新要求增量修改当前路线" : "正在检索地点并生成路线候选");
-            if (message?.messageBody) message.messageBody.textContent = `${stage}……已等待 ${elapsed} 秒`;
+        const labels = {
+            reasoning: "分析需求与规划下一步",
+            search_cycling_routes: "搜索骑行地点与线路资料",
+            prepare_route_materials: "定位地点、检查可用路段并准备候选线路",
+            create_route_plan: "计算道路路线并校验候选",
+            update_route_plan: "重新计算并校验修改后的路线",
+            request_route_clarification: "整理需要补充的信息",
         };
-        update();
-        const timer = progressClock.setInterval?.(update, 5_000);
-        return () => progressClock.clearInterval?.(timer);
+        const stages = new Map();
+        if (elements.aiRouteProgress) elements.aiRouteProgress.hidden = false;
+        let current = "请求已发送，等待规划进度";
+        let finished = false;
+        const renderProgress = () => {
+            if (sequence !== requestSequence) return;
+            const elapsed = Math.max(0, Math.floor((now() - startedAt) / 1000));
+            if (elements.aiRouteProgressStatus) elements.aiRouteProgressStatus.textContent = current;
+            if (elements.aiRouteProgressElapsed) elements.aiRouteProgressElapsed.textContent = `${elapsed} 秒`;
+            elements.aiRouteProgressSteps?.replaceChildren(...[...stages].map(([stage, status]) => {
+                const item = documentRef.createElement("li");
+                item.dataset.status = status;
+                const state = { running: "处理中", completed: "已完成", failed: "未完成" }[status];
+                item.textContent = `${labels[stage]} · ${state}`;
+                return item;
+            }));
+        };
+        const timer = progressClock.setInterval?.(renderProgress, 5_000);
+        const stop = () => { finished = true; progressClock.clearInterval?.(timer); };
+        renderProgress();
+        return {
+            stop,
+            update(event) {
+                if (finished || sequence !== requestSequence || !labels[event.stage]) return;
+                if (!["running", "completed", "failed"].includes(event.status)) return;
+                const label = labels[event.stage];
+                if (event.stage !== "reasoning") stages.set(event.stage, event.status);
+                if (event.status === "running") current = `正在处理：${label}`;
+                else if (event.status === "completed") {
+                    current = "等待下一步处理";
+                } else if (event.status === "failed") {
+                    current = "正在判断是否可以恢复";
+                }
+                renderProgress();
+            },
+            finish(text) {
+                current = text;
+                renderProgress();
+                stop();
+            },
+        };
     }
 
     function activeCandidateId() {
@@ -402,6 +434,7 @@ export function createAgentRoutePlanner({
 
     function destroy() {
         requestSequence += 1;
+        stopActiveProgress?.();
         listeners.splice(0).forEach((remove) => remove());
     }
 
