@@ -15,6 +15,7 @@ export function createAgentFloatingWindow({
     schedule = setTimeout,
     seedConversation = true,
     reportJobOptions = {},
+    onOpenRoute,
     agentClient = createAgentApiClient({ sessionStorageKey: "rider-tracker:home-agent-session-id" })
 } = {}) {
     const elements = collectElements(root);
@@ -85,7 +86,7 @@ export function createAgentFloatingWindow({
     function setBusy(nextBusy) {
         busy = nextBusy;
         const unavailable = agentCapabilities !== null
-            && agentCapabilities?.capabilities?.activity_analysis !== true;
+            && !canChat(agentCapabilities);
         if (elements.sendButton) elements.sendButton.disabled = nextBusy || unavailable;
         if (elements.input) elements.input.disabled = nextBusy || unavailable;
         elements.quickPrompts?.querySelectorAll?.("[data-agent-prompt]").forEach((button) => {
@@ -121,7 +122,7 @@ export function createAgentFloatingWindow({
         body.className = "agent-message-body";
         body.textContent = isBlockingActivityWorkflowPrompt(prompt)
             ? "正在同步并处理活动。当前工作流会等待请求中的全部步骤完成后一次性返回，可能需要几分钟，请勿重复提交。"
-            : "正在查询本地活动与分析上下文";
+            : "正在处理你的请求";
         const dots = root.createElement("i");
         dots.setAttribute("aria-hidden", "true");
         body.append(dots);
@@ -131,11 +132,11 @@ export function createAgentFloatingWindow({
         return article;
     }
 
-    async function sendMessage(text, kind = inferPromptKind(text)) {
+    async function sendMessage(text) {
         const normalized = String(text ?? "").trim();
         if (!normalized || busy) return null;
-        if (agentCapabilities !== null && agentCapabilities?.capabilities?.activity_analysis !== true) {
-            addTextMessage("agent", capabilityMessage(agentCapabilities, "activity_analysis"), { error: true });
+        if (agentCapabilities !== null && !canChat(agentCapabilities)) {
+            addTextMessage("agent", chatUnavailableMessage(agentCapabilities), { error: true });
             return null;
         }
         requestSequence += 1;
@@ -143,22 +144,30 @@ export function createAgentFloatingWindow({
         addTextMessage("user", normalized);
         elements.input.value = "";
 
-        if (kind === "route") {
-            const answer = "路线规划请进入“实时骑行设置 → AI 路线”，候选和地图预览会在那里联动。";
-            addTextMessage("agent", answer);
-            present([], answer);
-            updateContext("路线规划入口");
-            return { answer, presentations: [] };
-        }
-
         const thinking = addThinkingMessage(sequence, normalized);
         setBusy(true);
         try {
-            const result = await agentClient.chat(normalized);
+            const sourceSessionId = agentClient.sessionId;
+            const result = await agentClient.chat(normalized, { routeOptions: { include_elevation: false } });
             if (sequence !== requestSequence) return null;
             thinking.remove();
             const answer = String(result?.answer || "本轮已完成，但没有返回文字说明。");
-            addTextMessage("agent", workflowConversationSummary(result) || answer);
+            const article = addTextMessage("agent", workflowConversationSummary(result) || answer,
+                { error: Boolean(result?.error) });
+            if (onOpenRoute && result?.route_task?.status === "completed" && result?.route_plan && !result?.error) {
+                const button = root.createElement("button");
+                button.type = "button";
+                button.textContent = "打开路线草稿";
+                const reference = { planId: result.route_plan.plan_id, revision: result.route_plan.revision,
+                    sessionId: sourceSessionId };
+                listen(button, "click", async () => {
+                    button.disabled = true;
+                    try { await onOpenRoute(reference); }
+                    catch (error) { addTextMessage("agent", error.message || "打开路线失败", { error: true }); }
+                    finally { button.disabled = false; }
+                });
+                article.append(button);
+            }
             present(result?.presentations, answer);
             updateContext(resolveContextLabel(result));
             if (elements.window.hidden) elements.badge.hidden = false;
@@ -198,7 +207,7 @@ export function createAgentFloatingWindow({
 
     function setCapabilities(value) {
         agentCapabilities = value;
-        const message = capabilityMessage(value, "activity_analysis");
+        const message = chatUnavailableMessage(value);
         if (elements.input) {
             elements.input.placeholder = message || "询问活动或当前骑行……";
             elements.input.title = message;
@@ -224,7 +233,7 @@ export function createAgentFloatingWindow({
     });
 
     if (seedConversation) {
-        addTextMessage("agent", "你好，我可以读取本地活动数据库，分析单次活动或训练历史。路线规划请使用骑行设置中的“AI 路线”栏目。 ");
+        addTextMessage("agent", "你好，我可以读取本地活动数据库，分析单次活动或训练历史。也可以规划路线草稿，再打开 AI 路线页面预览和确认。 ");
         presentationRenderer.clear();
     }
     reportJobs.restore();
@@ -249,15 +258,6 @@ export function createAgentFloatingWindow({
             busy
         })
     };
-}
-
-export function inferPromptKind(text) {
-    const normalized = String(text ?? "");
-    if (/实时|现在|当前强度|本组/.test(normalized)) return "live";
-    if (/路线|骑一圈|途经|起点|终点|爬坡|风景/.test(normalized)) return "route";
-    if (/趋势|历史|最近.*周|最近.*月|周期/.test(normalized)) return "history";
-    if (/活动|分析|报告|掉速|心率/.test(normalized)) return "activity";
-    return "general";
 }
 
 export function isBlockingActivityWorkflowPrompt(text) {
@@ -318,4 +318,12 @@ function collectElements(root) {
 
 function scrollMessages(messages) {
     messages.scrollTop = messages.scrollHeight;
+}
+
+function canChat(state) {
+    return state?.backend === "available" && state?.llm === "ready";
+}
+
+function chatUnavailableMessage(state) {
+    return canChat(state) ? "" : capabilityMessage(state, "activity_analysis");
 }

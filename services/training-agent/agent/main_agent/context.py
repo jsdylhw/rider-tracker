@@ -34,6 +34,10 @@ class AgentContext:
     # Supplied by the trusted Web API for durable side-effect request deduplication.
     request_id: str | None = None
     messages: list[dict[str, Any]] = field(default_factory=list)
+    # Separate route dialogue; never loaded into the Main Agent tool loop.
+    route_messages: list[dict[str, Any]] = field(default_factory=list)
+    # Active route task target; independent of previously generated/previewed plans.
+    route_reference: dict[str, Any] | None = None
     history_enabled: bool = True
     last_tool_result: dict[str, Any] | None = None
     last_failed_action: dict[str, Any] | None = None

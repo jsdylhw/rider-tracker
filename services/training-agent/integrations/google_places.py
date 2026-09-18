@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from integrations.provider_error import network_failure_reason
+
 import json
 import re
 import time
@@ -287,9 +289,8 @@ def _read_json(request: Request, timeout_s: float) -> dict[str, Any]:
             code="provider_invalid_response",
         ) from exc
     except (TimeoutError, URLError, OSError) as exc:
-        reason = getattr(exc, "reason", None)
         raise TransientProviderError(
-            f"Google Places request failed: {reason or exc.__class__.__name__}",
+            f"Google Places request failed: {network_failure_reason(exc)}",
             provider="google_places",
             stage="place_search",
         ) from exc

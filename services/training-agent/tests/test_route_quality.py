@@ -146,3 +146,26 @@ def test_provider_specific_hard_constraint_requires_provider_evidence():
             {"avoid_ferry": True},
             rejection_type=RouteCandidateRejected,
         )
+
+
+@pytest.mark.parametrize("distance_m,accepted", [(17999, False), (18000, True), (45000, True), (45001, False)])
+def test_explicit_target_uses_unrounded_distance_at_acceptance_boundaries(distance_m, accepted):
+    candidate = {"distance_m": distance_m, "distance_km": round(distance_m / 1000, 1),
+                 "target_distance_km": 30, "geometry": {"type": "LineString", "coordinates": []}}
+    if accepted:
+        assert apply_route_constraints(candidate, {}, rejection_type=RouteCandidateRejected)["distance_m"] == distance_m
+    else:
+        with pytest.raises(RouteCandidateRejected, match="距离偏离目标"):
+            apply_route_constraints(candidate, {}, rejection_type=RouteCandidateRejected)
+
+
+def test_final_candidate_filter_rejects_short_composition_and_retains_valid_baseline():
+    from services.route.quality import filter_plan_route_constraints
+    plan = {"active_candidate_id": "composed", "candidates": [
+        {"candidate_id": "composed", "name": "拼接短线", "distance_m": 11100, "target_distance_km": 30},
+        {"candidate_id": "baseline", "name": "地图基线", "distance_m": 29800, "target_distance_km": 30},
+    ]}
+    result = filter_plan_route_constraints(plan, {}, rejection_type=RouteCandidateRejected)
+    assert result["active_candidate_id"] == "baseline"
+    assert len(result["candidates"]) == 1
+    assert "实际 11.1 km" in result["rejected_candidates"][0]["reason"]

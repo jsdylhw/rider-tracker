@@ -60,6 +60,60 @@ def _places(queries):
     ]
 
 
+def test_google_recovery_reuses_successes_but_not_failed_place_searches():
+    searches = []
+    cache = {}
+
+    def search(query, **kwargs):
+        searches.append(query)
+        if query == "retry" and searches.count(query) == 1:
+            raise ProviderError("temporary failure", provider="google_places", stage="place_search")
+        return {"places": [{"name": query, "address": "Japan", "location": {
+            "latitude": 35.0, "longitude": 139.0,
+        }}]}
+
+    with patch("services.route.single_day.GooglePlacesClient") as places, patch(
+        "services.route.single_day.GoogleRoutesClient"
+    ) as routes:
+        places.return_value.search.side_effect = search
+        routes.return_value.route.return_value = _route_result()
+        with pytest.raises(ProviderError):
+            _route_google(["origin", "retry"], "JP", False, {"google": {"api_key": "test"}}, place_cache=cache)
+        resolved, _ = _route_google(
+            ["origin", "retry"], "JP", False, {"google": {"api_key": "test"}}, place_cache=cache,
+        )
+        resolved[0]["name"] = "mutated"
+        again, _ = _route_google(
+            ["origin", "retry"], "JP", False, {"google": {"api_key": "test"}}, place_cache=cache,
+        )
+        assert again[0]["name"] == "origin"
+        assert searches == ["origin", "retry", "retry"]
+        assert routes.return_value.route.call_count == 2
+
+
+def test_google_recovery_cache_is_scoped_to_anchor_and_planning_call():
+    searches = []
+
+    def search(query, **kwargs):
+        searches.append(query)
+        return {"places": [{"name": query, "address": "Japan", "location": {
+            "latitude": 35.0 if query != "other" else 35.1, "longitude": 139.0,
+        }}]}
+
+    config = {"google": {"api_key": "test"}}
+    with patch("services.route.single_day.GooglePlacesClient") as places, patch(
+        "services.route.single_day.GoogleRoutesClient"
+    ) as routes:
+        places.return_value.search.side_effect = search
+        routes.return_value.route.return_value = _route_result()
+        cache = {}
+        _route_google(["origin", "shared"], "JP", False, config, place_cache=cache)
+        _route_google(["other", "shared"], "JP", False, config, place_cache=cache)
+        assert searches.count("shared") == 2
+        _route_google(["origin", "shared"], "JP", False, config, place_cache={})
+        assert searches.count("origin") == 2
+
+
 def test_amap_place_api_error_is_not_reported_as_place_not_found():
     with patch("services.route.single_day._read_json_url", return_value={
         "status": "0", "infocode": "10001", "info": "INVALID_USER_KEY",
@@ -72,6 +126,41 @@ def test_amap_place_api_error_is_not_reported_as_place_not_found():
     assert raised.value.code == "provider_rejected"
     assert raised.value.retryable is False
     assert "INVALID_USER_KEY" in str(raised.value)
+
+
+def test_create_plan_shares_successful_places_after_route_failure_and_resets_next_call():
+    searches = []
+
+    def search(query, **kwargs):
+        searches.append(query)
+        return {"places": [{"name": query, "country_code": "JP", "location": {
+            "latitude": 35.0, "longitude": 139.0,
+        }}]}
+
+    arguments = {
+        "workspace_id": "workspace", "title": "Tokyo", "country_code": "JP",
+        "include_elevation": False,
+        "candidates": [
+            {"name": name, "waypoints": ["origin", name], "target_distance_km": 30}
+            for name in ["first", "second", "third"]
+        ],
+    }
+    with patch("services.route.single_day.load_config", return_value={"google": {"api_key": "test"}}), patch(
+        "services.route.single_day.GooglePlacesClient"
+    ) as places, patch("services.route.single_day.GoogleRoutesClient") as routes:
+        places.return_value.search.side_effect = search
+        routes.return_value.route.side_effect = [
+            ProviderError("connection failed", provider="google_routes", stage="route"),
+            _route_result(30_000), _route_result(30_000),
+            _route_result(30_000), _route_result(30_000), _route_result(30_000),
+        ]
+        first = create_single_day_plan(**arguments)
+        assert len(first["candidates"]) == 2
+        assert searches.count("origin") == 1
+        second = create_single_day_plan(**arguments)
+        assert len(second["candidates"]) == 3
+        assert searches.count("origin") == 2
+        assert all(searches.count(name) == 2 for name in ["first", "second", "third"])
 
 
 def test_create_loop_reuses_first_waypoint_and_compacts_geometry():
@@ -678,7 +767,7 @@ def test_semantic_waypoint_update_regenerates_candidate_name():
     assert updated["title"] == "A → D → C"
 
 
-def test_route_plan_keeps_routable_candidates_outside_target_distance_with_warning():
+def test_route_plan_rejects_routable_candidates_outside_target_distance():
     def route_google(queries, country_code, is_closed, config, **kwargs):
         distance = 1_474_800 if queries[0] == "高松駅" else 22_000
         return _places(queries), _route_result(distance_m=distance)
@@ -695,11 +784,11 @@ def test_route_plan_keeps_routable_candidates_outside_target_distance_with_warni
             include_elevation=False,
         )
 
-    assert [item["name"] for item in plan["candidates"]] == ["异常高松环线", "松山环线"]
+    assert [item["name"] for item in plan["candidates"]] == ["松山环线"]
     assert plan["active_candidate_id"] == "candidate_2"
-    assert plan["rejected_candidates"] == []
-    assert "建议范围 18.0-45.0 km" in plan["candidates"][0]["warnings"][0]
-    assert plan["candidates"][1]["warnings"] == []
+    assert len(plan["rejected_candidates"]) == 1
+    assert "允许范围 18.0-45.0 km" in plan["rejected_candidates"][0]["reason"]
+    assert plan["candidates"][0]["warnings"] == []
 
 
 def test_domestic_plan_activates_candidate_closest_to_explicit_target():

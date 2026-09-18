@@ -71,12 +71,21 @@ export function normalizeChatRequest(body = {}) {
     if (requestMode === "chat" && routeAction) {
         throw new RequestValidationError("普通聊天不能指定 route_action。");
     }
+    const reference = body.route_reference;
+    if (reference != null && (requestMode !== "route_plan" || typeof reference !== "object" || Array.isArray(reference))) {
+        throw new RequestValidationError("route_reference 格式无效。");
+    }
+    const routeReference = reference == null ? null : {
+        plan_id: normalizeText(reference.plan_id, "plan_id"),
+        revision: normalizeRevision(reference.revision)
+    };
     return {
         session_id: sessionId,
         request_id: requestId,
         message,
         request_mode: requestMode,
         ...(routeAction ? { route_action: routeAction } : {}),
+        ...(routeReference ? { route_reference: routeReference } : {}),
         ...(routeOptions ? { route_options: routeOptions } : {})
     };
 }
@@ -121,7 +130,7 @@ export function normalizeCommandRequest(body = {}) {
         operation,
     };
     if (body.plan_id) request.plan_id = normalizeText(body.plan_id, "plan_id");
-    if (operation !== "get") request.expected_revision = normalizeRevision(body.expected_revision);
+    if (operation !== "get" || body.expected_revision != null) request.expected_revision = normalizeRevision(body.expected_revision);
     if (body.candidate_id) request.candidate_id = normalizeText(body.candidate_id, "candidate_id");
     if (body.candidate_name) request.candidate_name = String(body.candidate_name).trim().slice(0, 200);
     if (body.target_distance_km !== undefined && body.target_distance_km !== null) {

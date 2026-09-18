@@ -6,6 +6,39 @@ export const suite = {
     name: "agent-route-planner",
     tests: [
         {
+            name: "conversation displays provider warnings instead of only the success summary",
+            async run() {
+                const { documentRef, elements } = createPlannerDom();
+                elements.aiRoutePanel.ownerDocument = documentRef;
+                const planner = createAgentRoutePlanner({ elements, onPlanAgentRoutes: async () => buildDraft() });
+                planner.bindEvents();
+                planner.render({ route: {}, liveRide: { isActive: false } });
+                await planner.sendMessage("京都市内风景好的 30 km 环线");
+                const text = elements.aiRouteMessages.children.at(-1).messageBody.textContent;
+                assert(text.includes("路线提示：距离偏离目标"));
+                assert(text.includes("无效候选（地点没有结果）"));
+                planner.destroy();
+            }
+        },
+        {
+            name: "shows route clarification as a normal answer without creating candidates",
+            async run() {
+                const { documentRef, elements } = createPlannerDom();
+                elements.aiRoutePanel.ownerDocument = documentRef;
+                const planner = createAgentRoutePlanner({
+                    elements, onPlanAgentRoutes: async () => ({
+                        clarificationRequired: true, answer: "从哪个城市出发？"
+                    })
+                });
+                planner.bindEvents();
+                planner.render({ route: {}, liveRide: { isActive: false } });
+                await planner.sendMessage("骑一圈");
+                assertEqual(elements.aiRouteMessages.children.at(-1).messageBody.textContent, "从哪个城市出发？");
+                assertEqual(elements.aiRouteCandidates.children.length, 0);
+                planner.destroy();
+            }
+        },
+        {
             name: "renders candidate confirmation and ordered clickable Strava segments",
             async run() {
                 const { documentRef, elements } = createPlannerDom();

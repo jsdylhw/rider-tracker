@@ -6,6 +6,8 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from services.route.distance import target_distance_error
+
 
 DEFAULT_MAXIMUM_SELF_OVERLAP_RATIO = 0.10
 SAMPLE_LENGTH_METERS = 20.0
@@ -232,6 +234,13 @@ def apply_route_constraints(
     rejection_type: type[ValueError] = ValueError,
 ) -> dict[str, Any]:
     """Attach quality evidence and reject a candidate that breaks constraints."""
+    distance_error = target_distance_error(
+        float(candidate.get("distance_m") if candidate.get("distance_m") is not None
+              else float(candidate.get("distance_km") or 0) * 1000),
+        candidate.get("target_distance_km"),
+    )
+    if distance_error:
+        raise rejection_type(distance_error)
     normalized = normalize_route_constraints(constraints)
     geometry = candidate.get("geometry") if isinstance(candidate.get("geometry"), dict) else {}
     coordinates = geometry.get("coordinates") if isinstance(geometry.get("coordinates"), list) else []

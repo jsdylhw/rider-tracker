@@ -64,7 +64,7 @@ class ToolLoopHooks:
             status="blocked", code="guard_rejected", error="guard_rejected",
             stage="guard", retryable=False, message=output["message"], result=output,
         ).to_dict())
-        if str(block.get("name") or "") in self.stop_on_failed_tools:
+        if str(block.get("name") or "") in self.stop_on_failed_tools or self.context.active_skill_id == "plan-routes":
             self.stop_after_tool_round = True
 
     def on_loop_end(self, *, messages: list[dict[str, Any]], response: dict[str, Any], steps: int) -> None:
@@ -116,7 +116,13 @@ class ToolLoopHooks:
             navigation_after=_navigation_summary(self.context),
         ).to_dict())
         failed = is_failed_tool_output(output)
-        remember_failed_action(self.context, name, block.get("input", {}) or {}, output)
+        if name == "run_route_agent":
+            # A child result is terminal even when it asks a question or fails.
+            # Do not replay an entire child loop through saved-action retry.
+            self.stop_after_tool_round = True
+            self.context.last_failed_action = None
+        else:
+            remember_failed_action(self.context, name, block.get("input", {}) or {}, output)
         if name == "resolve_activities":
             self.has_resolved_ref["value"] = True
             if self.context.active_skill_id == "analyze-activity":

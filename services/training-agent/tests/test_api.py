@@ -10,7 +10,7 @@ from storage.repositories.saved_route import SavedRouteStore
 from storage.repositories.activity import ActivityStore, ActivityStoreBusy, entry_from_fit_summary
 
 
-def _prepare_api(tmp_path, monkeypatch, *, web_api_token: str = "", llm_configured: bool = True):
+def _prepare_api(tmp_path, monkeypatch, *, web_api_token: str = "", llm_configured: bool = True, route_configured: bool = False):
     monkeypatch.chdir(tmp_path)
     fit_dir = tmp_path / "fits"
     fit_dir.mkdir()
@@ -25,6 +25,8 @@ def _prepare_api(tmp_path, monkeypatch, *, web_api_token: str = "", llm_configur
     }
     if web_api_token:
         config["web_api_token"] = web_api_token
+    if route_configured:
+        config["google"] = {"api_key": "test-map-key"}
     api = importlib.import_module("app.api")
     monkeypatch.setattr(api, "load_config", lambda: config)
     api.chat_sessions.clear()
@@ -178,7 +180,7 @@ def test_llm_endpoints_return_agent_unavailable_without_disabling_backend(tmp_pa
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "agent_unavailable"
-    assert response.json()["detail"]["capability"] == "activity_analysis"
+    assert response.json()["detail"]["capability"] == "chat"
 
 
 def test_legacy_web_ui_routes_are_not_exposed(tmp_path, monkeypatch):
@@ -956,7 +958,7 @@ def test_chat_rejects_request_id_reuse_with_different_message(tmp_path, monkeypa
 
 
 def test_chat_applies_route_options_only_for_current_request(tmp_path, monkeypatch):
-    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    api, client, _ = _prepare_api(tmp_path, monkeypatch, route_configured=True)
     seen = []
 
     def run(message, *, context, execution_policy):
@@ -969,6 +971,10 @@ def test_chat_applies_route_options_only_for_current_request(tmp_path, monkeypat
         return {"answer": "ok", "status": "completed", "intent": "route_advice"}
 
     monkeypatch.setattr(api, "run_tool_loop", run)
+    def route_run(task, *, history):
+        seen.append((task.message, task.options, "route_plan", "create_route_plan"))
+        return {"answer": "ok", "status": "clarification_required"}, []
+    monkeypatch.setattr(api, "run_route_agent", route_run)
     first = client.post("/api/chat", json={
         "session_id": "session-1", "request_id": "request-1", "message": "生成虚拟路线",
         "request_mode": "route_plan", "route_action": "create",
@@ -987,14 +993,18 @@ def test_chat_applies_route_options_only_for_current_request(tmp_path, monkeypat
 
 
 def test_chat_refine_route_policy_accepts_create_or_update(tmp_path, monkeypatch):
-    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    api, client, _ = _prepare_api(tmp_path, monkeypatch, route_configured=True)
     seen = []
 
     def run(message, *, context, execution_policy):
         seen.append(execution_policy.completion_tool_names)
         return {"answer": "ok", "status": "completed", "intent": "route_advice"}
 
-    monkeypatch.setattr(api, "run_tool_loop", run)
+    def route_run(task, *, history):
+        from agent.main_agent.execution_policy import TurnExecutionPolicy
+        seen.append(TurnExecutionPolicy.route_plan(task.action).completion_tool_names)
+        return {"answer": "ok", "status": "clarification_required"}, []
+    monkeypatch.setattr(api, "run_route_agent", route_run)
     response = client.post("/api/chat", json={
         "session_id": "session-1", "request_id": "request-refine",
         "message": "把杭州路线改成安纳西路线",
@@ -1006,7 +1016,7 @@ def test_chat_refine_route_policy_accepts_create_or_update(tmp_path, monkeypatch
 
 
 def test_chat_rejects_route_mode_without_an_explicit_action(tmp_path, monkeypatch):
-    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    api, client, _ = _prepare_api(tmp_path, monkeypatch, route_configured=True)
     calls = []
     monkeypatch.setattr(
         api,
@@ -1026,7 +1036,10 @@ def test_chat_rejects_route_mode_without_an_explicit_action(tmp_path, monkeypatc
 
 
 def test_chat_idempotency_fingerprint_includes_route_action(tmp_path, monkeypatch):
-    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    api, client, _ = _prepare_api(tmp_path, monkeypatch, route_configured=True)
+    monkeypatch.setattr(api, "run_route_agent", lambda task, *, history: ({
+        "answer": "ok", "status": "clarification_required",
+    }, []))
     monkeypatch.setattr(api, "run_tool_loop", lambda message, *, context, execution_policy: {
         "answer": "ok", "status": "completed", "intent": "route_advice",
     })
@@ -1091,8 +1104,8 @@ def test_chat_returns_only_public_execution_and_presentation_fields(tmp_path, mo
 
 
 def test_chat_exposes_structured_provider_failure_without_raw_tool_data(tmp_path, monkeypatch):
-    api, client, _ = _prepare_api(tmp_path, monkeypatch)
-    monkeypatch.setattr(api, "run_tool_loop", lambda message, *, context, execution_policy: {
+    api, client, _ = _prepare_api(tmp_path, monkeypatch, route_configured=True)
+    monkeypatch.setattr(api, "run_route_agent", lambda task, *, history: ({
         "answer": "路线服务暂时不可用，请稍后重试。",
         "status": "provider_error",
         "intent": "route_advice",
@@ -1110,7 +1123,7 @@ def test_chat_exposes_structured_provider_failure_without_raw_tool_data(tmp_path
             "input": {"api_key": "secret"},
             "result": {"upstream": "raw"},
         }],
-    })
+    }, []))
 
     response = client.post("/api/chat", json={
         "session_id": "session-1",
@@ -1132,6 +1145,30 @@ def test_chat_exposes_structured_provider_failure_without_raw_tool_data(tmp_path
         "stage": "place_search",
         "retryable": True,
     }
+
+
+def test_route_entry_isolated_from_main_chat_and_reference_is_idempotent(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch, route_configured=True)
+    parent = api.chat_sessions.get_or_create("session-1").context
+    parent.messages = [{"role": "user", "content": "分析活动"}]
+    calls = []
+    def route_run(task, *, history):
+        calls.append((task, history))
+        return {"status": "clarification_required", "answer": "哪个城市？", "route_task": {
+            "schema_version": "route_task.v1", "status": "clarification_required",
+            "request_id": task.request_id, "action": None, "plan_id": None, "revision": None,
+        }}, [{"role": "assistant", "content": "哪个城市？"}]
+    monkeypatch.setattr(api, "run_route_agent", route_run)
+    monkeypatch.setattr(api, "run_tool_loop", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Main Agent called")))
+    request = {"session_id": "session-1", "request_id": "request", "message": "规划一圈",
+               "request_mode": "route_plan", "route_action": "refine",
+               "route_reference": {"plan_id": "plan", "revision": 1}}
+    response = client.post("/api/chat", json=request)
+    assert response.status_code == 200 and response.json()["route_task"]["status"] == "clarification_required"
+    assert client.post("/api/chat", json=request).json() == response.json()
+    assert len(calls) == 1 and parent.messages == [{"role": "user", "content": "分析活动"}]
+    assert parent.route_messages == [{"role": "assistant", "content": "哪个城市？"}]
+    assert client.post("/api/chat", json={**request, "route_reference": {"plan_id": "plan", "revision": 2}}).status_code == 409
 
 
 def test_chat_uses_existing_api_token_boundary(tmp_path, monkeypatch):
@@ -1194,3 +1231,85 @@ def _confirmed_route_payload(
         "agentCandidateId": candidate_id,
         "metadata": {},
     }
+
+
+def test_chat_draft_open_keeps_owner_and_selection_without_replanning(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    owner = api.chat_sessions.get_or_create("main-owner")
+    stored = RoutePlanStore().save({
+        "plan_id": "cross-entry-plan", "workspace_id": owner.context.workspace_id,
+        "active_candidate_id": "candidate-1", "planning": {"status": "awaiting_selection"},
+        "candidates": [_route_candidate("candidate-1", "候选")],
+    })
+    owner.context.route_reference = {"plan_id": "current-B", "revision": 7}
+    owner.context.route_messages = [{"role": "user", "content": "继续修改 B"}]
+    def forbidden(*args, **kwargs):
+        raise AssertionError("opening a draft must not invoke a model")
+    monkeypatch.setattr(api, "run_tool_loop", forbidden)
+    monkeypatch.setattr(api, "run_route_agent", forbidden)
+    request = {"session_id": "main-owner", "request_id": "open-draft", "operation": "get", "plan_id": stored["plan_id"], "expected_revision": stored["revision"]}
+    opened = client.post("/api/route-plans/command", json=request)
+    assert opened.status_code == 200
+    assert opened.json()["route_plan"]["revision"] == stored["revision"]
+    assert owner.context.route_reference == {"plan_id": "current-B", "revision": 7}
+    foreign = client.post("/api/route-plans/command", json={**request, "session_id": "different-owner"})
+    assert foreign.status_code == 400
+    assert "does not belong" in foreign.json()["detail"]
+    assert RoutePlanStore().get(stored["plan_id"])["revision"] == stored["revision"]
+
+    # Even an accepted get and a replay cannot switch the pending task.
+    assert client.post("/api/route-plans/command", json=request).status_code == 200
+    newer = RoutePlanStore().save(stored, expected_revision=stored["revision"])
+    stale = client.post("/api/route-plans/command", json={**request, "request_id": "stale-open"})
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "route_revision_conflict"
+    latest = client.post("/api/route-plans/command", json={**request, "request_id": "latest-read", "expected_revision": newer["revision"]})
+    assert latest.status_code == 200
+    assert owner.context.route_reference == {"plan_id": "current-B", "revision": 7}
+    assert owner.context.route_messages == [{"role": "user", "content": "继续修改 B"}]
+
+
+def test_chat_does_not_require_activity_analysis_capability(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    monkeypatch.setattr(api, "build_backend_capabilities", lambda _: {
+        "llm": "ready", "capabilities": {"activity_analysis": False, "ai_route_planning": True},
+    })
+    monkeypatch.setattr(api, "run_tool_loop", lambda *args, **kwargs: {"status": "completed", "answer": "可以规划路线"})
+    response = client.post("/api/chat", json={"session_id": "route-only", "request_id": "consult", "message": "支持哪些路线功能？"})
+    assert response.status_code == 200
+    assert response.json()["answer"] == "可以规划路线"
+
+
+def test_route_page_new_task_failure_does_not_leave_old_task_target(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch, route_configured=True)
+    context = api.chat_sessions.get_or_create("new-france").context
+    old = RoutePlanStore().save({
+        "plan_id": "japan", "workspace_id": context.workspace_id,
+        "active_candidate_id": "candidate-1", "planning": {"status": "awaiting_selection"},
+        "candidates": [_route_candidate("candidate-1", "日本路线")],
+    })
+    context.route_reference = {"plan_id": old["plan_id"], "revision": old["revision"]}
+    context.route_messages = [{"role": "user", "content": "日本路线"}]
+    def fail(task, *, history):
+        assert task.plan_id is None and history == []
+        return {"status": "provider_error", "answer": "法国地点连接失败",
+                "route_task": {"status": "failed", "action": "create"},
+                "error": {"code": "provider_connection_failed", "retryable": True}}, [
+                    {"role": "user", "content": "另建法国路线"}]
+    monkeypatch.setattr(api, "run_route_agent", fail)
+    response = client.post("/api/chat", json={
+        "session_id": "new-france", "request_id": "create-france", "message": "另建法国路线",
+        "request_mode": "route_plan", "route_action": "create",
+    })
+    assert response.status_code == 200
+    assert context.route_reference is None
+    assert context.route_messages == [{"role": "user", "content": "另建法国路线"}]
+    # Previewing a previous plan remains possible without selecting it as
+    # the pending France task's target.
+    preview = client.post("/api/route-plans/command", json={
+        "session_id": "new-france", "request_id": "preview-old", "operation": "select",
+        "plan_id": old["plan_id"], "candidate_id": "candidate-1", "expected_revision": old["revision"],
+    })
+    assert preview.status_code == 200
+    assert context.route_reference is None
+    assert context.route_messages == [{"role": "user", "content": "另建法国路线"}]

@@ -36,8 +36,11 @@ Python Training Backend 内部开发还应阅读：
 | --- | --- |
 | 骑行能否开始、设备/控制模式 | [`ride-readiness-and-control.md`](ride-readiness-and-control.md) |
 | 配置缺失时哪些功能可用 | [`feature-capability-matrix.md`](feature-capability-matrix.md) |
+| 目标距离验收与真实 Agent 对话 | [`route-distance-dialogue-validation.md`](route-distance-dialogue-validation.md) |
 | 国内路线自然语言约束和排序 | [`domestic-route-preferences.md`](domestic-route-preferences.md) |
 | Agent 失败出口、公开诊断 | [`agent-failure-outcomes.md`](agent-failure-outcomes.md) |
+| 路线错误恢复、成功地点复用 | [`route-planning-recovery.md`](route-planning-recovery.md) |
+| 独立 Route Agent、任务契约与页面接入 | [`route-agent-implementation.md`](route-agent-implementation.md) |
 | AI 路线、Node/Python 接入 | [`training-agent-integration.md`](training-agent-integration.md) |
 | 街景讲解、卡片和异步任务 | [`route-narration.md`](route-narration.md) |
 | Strava 路线缓存和导入 | [`strava-route-import.md`](strava-route-import.md) |

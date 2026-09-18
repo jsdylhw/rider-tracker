@@ -20,6 +20,7 @@ from app.browser_security import reject_untrusted_browser_request
 from pydantic import BaseModel, Field
 
 from agent.main_agent.loop import run_tool_loop
+from agent.route.agent import run_route_agent
 from agent.runtime.models import public_turn_dict
 from agent.runtime.models import ToolExecution
 from agent.runtime.presentation_projector import project_presentations
@@ -127,6 +128,7 @@ class ChatRequest(BaseModel):
     request_mode: str = "chat"
     route_action: str | None = None
     route_options: dict[str, Any] | None = None
+    route_reference: dict[str, Any] | None = None
 
 
 class SelectRouteCandidateRequest(BaseModel):
@@ -566,7 +568,7 @@ def strava_route_gpx_endpoint(route_id: int, request: Request) -> Response:
 def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]:
     """Run one serialized, idempotent turn in a durable chat session."""
     _require_api_access(http_request)
-    _require_llm_capability("activity_analysis")
+    _require_llm_capability("ai_route_planning" if request.request_mode == "route_plan" else None)
     session = chat_sessions.get_or_create(request.session_id)
     with session.lock:
         request_fingerprint = json.dumps({
@@ -574,6 +576,7 @@ def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]
             "request_mode": request.request_mode,
             "route_action": request.route_action,
             "route_options": request.route_options or {},
+            "route_reference": request.route_reference,
         }, ensure_ascii=False, sort_keys=True)
         try:
             cached = session.cached_response(request.request_id, request_fingerprint)
@@ -595,11 +598,34 @@ def chat_endpoint(request: ChatRequest, http_request: Request) -> dict[str, Any]
                 execution_policy = TurnExecutionPolicy.chat()
             else:
                 raise HTTPException(status_code=400, detail="invalid request_mode or route_action")
-            result = run_tool_loop(
-                request.message,
-                context=session.context,
-                execution_policy=execution_policy,
-            )
+            if request.request_mode == "route_plan":
+                from agent.route.contracts import RouteTaskInput
+
+                reference = request.route_reference or {}
+                try:
+                    task = RouteTaskInput(
+                        message=request.message, workspace_id=str(session.context.workspace_id),
+                        request_id=request.request_id, action=str(request.route_action),
+                        plan_id=reference.get("plan_id"), revision=reference.get("revision"),
+                        options={"include_elevation": False, **session.context.route_request_options},
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                if task.action == "create":
+                    if session.context.route_reference:
+                        session.context.route_messages = []
+                    session.context.route_reference = None
+                result, route_messages = run_route_agent(task, history=session.context.route_messages)
+                session.context.route_messages = route_messages
+                if task.action == "create" or result.get("route_task", {}).get("action") == "create":
+                    session.context.route_reference = None
+                if result.get("route_task", {}).get("status") == "completed":
+                    plan = result["route_plan"]
+                    session.context.route_reference = {"plan_id": plan["plan_id"], "revision": plan["revision"]}
+            else:
+                result = run_tool_loop(
+                    request.message, context=session.context, execution_policy=execution_policy,
+                )
             response = public_turn_dict(result)
         finally:
             session.context.route_request_options = {}
@@ -686,13 +712,13 @@ def route_narration_photo_endpoint(
     )
 
 
-def _require_llm_capability(capability: str) -> None:
+def _require_llm_capability(capability: str | None) -> None:
     availability = build_backend_capabilities(load_config())
-    if availability["capabilities"].get(capability) is True:
+    if (capability is None and availability["llm"] == "ready") or availability["capabilities"].get(capability) is True:
         return
     raise HTTPException(status_code=503, detail={
         "code": "agent_unavailable",
-        "capability": capability,
+        "capability": capability or "chat",
         "retryable": availability["llm"] != "disabled",
         "llm": availability["llm"],
         "message": availability.get("reason") or "AI capability is unavailable.",
@@ -759,6 +785,12 @@ def route_plan_command_endpoint(
             return cached
         try:
             response = _run_route_plan_command(session.context, request)
+            plan = response.get("route_plan")
+            reference = session.context.route_reference or {}
+            if plan and request.operation.strip().lower() != "get" and reference.get("plan_id") == plan["plan_id"]:
+                # Commands may refresh the current task's revision, never select
+                # another task merely because an old preview was opened/used.
+                session.context.route_reference = {"plan_id": plan["plan_id"], "revision": plan["revision"]}
             session.cache_response(request.request_id, fingerprint, response)
             return response
         except RouteRevisionConflict as exc:
@@ -842,6 +874,8 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
     full_plan = RoutePlanStore().get(resolved_plan_id)
     if not full_plan:
         raise ValueError("route plan does not exist")
+    if operation == "get" and request.expected_revision is not None and full_plan["revision"] != request.expected_revision:
+        raise RouteRevisionConflict(plan_id=resolved_plan_id, expected=request.expected_revision, actual=full_plan["revision"])
     presentations = project_presentations([ToolExecution(
         index=0,
         tool="get_route_plan",

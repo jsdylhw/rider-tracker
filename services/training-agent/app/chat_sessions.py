@@ -162,6 +162,8 @@ class ChatSessionStore:
 def _context_dict(context: AgentContext) -> dict[str, Any]:
     return {
         "messages": context.messages,
+        "route_messages": context.route_messages,
+        "route_reference": context.route_reference,
         "history_enabled": context.history_enabled,
         "last_tool_result": context.last_tool_result,
         "last_failed_action": context.last_failed_action,
@@ -180,6 +182,8 @@ def _restore_context(session_id: str, data: Any) -> AgentContext:
         session_id=f"web-chat:{session_id}",
         workspace_id=f"web-chat:{session_id}",
         messages=list(payload.get("messages") or []),
+        route_messages=list(payload.get("route_messages") or []),
+        route_reference=payload.get("route_reference"),
         history_enabled=bool(payload.get("history_enabled", True)),
         last_tool_result=payload.get("last_tool_result"),
         last_failed_action=payload.get("last_failed_action"),

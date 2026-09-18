@@ -8,6 +8,20 @@ export const suite = {
     name: "personal-fit-agent-client",
     tests: [
         {
+            name: "browser route calls forward the current plan revision",
+            async run() {
+                let body;
+                const client = createAgentApiClient({ storage: null, fetchImpl: async (url, options) => {
+                    body = JSON.parse(options.body);
+                    return { ok: true, json: async () => ({ ok: true, result: { status: "clarification_required" } }) };
+                } });
+                await client.chat("换个起点", { requestMode: "route_plan", routeAction: "refine",
+                    routeReference: { plan_id: "plan", revision: 2 } });
+                assertEqual(body.route_reference.plan_id, "plan");
+                assertEqual(body.route_reference.revision, 2);
+            }
+        },
+        {
             name: "browser report jobs use raw job contracts and bounded requests",
             async run() {
                 const calls = [];

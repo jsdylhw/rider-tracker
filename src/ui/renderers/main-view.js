@@ -257,6 +257,7 @@ export function shouldRenderDashboard(state, previousState) {
 
 export function shouldRenderRouteWorkspace(state, previousState) {
     return previousState === undefined
+        || state.agentRouteDraft !== previousState.agentRouteDraft
         || state.route !== previousState.route
         || state.agentCapabilities !== previousState.agentCapabilities
         || state.uiMode !== previousState.uiMode;

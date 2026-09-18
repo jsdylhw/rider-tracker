@@ -1,6 +1,5 @@
 import {
     createAgentFloatingWindow,
-    inferPromptKind,
     isBlockingActivityWorkflowPrompt,
     workflowConversationSummary
 } from "../../src/ui/agent/agent-floating-window.js";
@@ -10,6 +9,31 @@ import { createFakeClassList } from "../helpers/fake-dom.js";
 export const suite = {
     name: "agent-floating-window",
     tests: [
+        {
+            name: "successful route card opens its captured session and failed turns expose no card",
+            async run() {
+                const { root, elements } = createAgentTestDom();
+                const opened = [];
+                const client = { sessionId: "original-session", async chat() {
+                    return { answer: "草稿已生成", route_task: { status: "completed" }, route_plan: { plan_id: "plan", revision: 3 } };
+                } };
+                const controller = createAgentFloatingWindow({ root, seedConversation: false, agentClient: client,
+                    onOpenRoute: async (reference) => opened.push(reference) });
+                await controller.sendMessage("规划一圈");
+                client.sessionId = "new-session";
+                const button = elements.agentMessages.children.at(-1).children.at(-1);
+                assertEqual(button.textContent, "打开路线草稿");
+                button.dispatch("click");
+                await Promise.resolve();
+                assertEqual(opened[0].sessionId, "original-session");
+                assertEqual(opened[0].revision, 3);
+                client.chat = async () => ({ answer: "失败", error: { code: "provider_error" },
+                    route_task: { status: "failed" }, route_plan: { plan_id: "old", revision: 1 } });
+                await controller.sendMessage("修改路线");
+                assertEqual(elements.agentMessages.children.at(-1).children.length, 2);
+                controller.destroy();
+            }
+        },
         {
             name: "report cards survive later replies and context reset; cancel remains available without AI",
             async run() {
@@ -44,13 +68,17 @@ export const suite = {
             }
         },
         {
-            name: "classifies route, activity and live-ride mock prompts",
-            run() {
-                assertEqual(inferPromptKind("规划京都 30km 路线"), "route");
-                assertEqual(inferPromptKind("分析一下这条路线的爬坡"), "route");
-                assertEqual(inferPromptKind("分析最近一次活动为什么掉速"), "activity");
-                assertEqual(inferPromptKind("我现在的实时强度怎么样"), "live");
-                assertEqual(inferPromptKind("你好"), "general");
+            name: "route consultation reaches chat even without activity capability",
+            async run() {
+                const { root } = createAgentTestDom();
+                const messages = [];
+                const controller = createAgentFloatingWindow({ root, seedConversation: false,
+                    agentClient: { async chat(text) { messages.push(text); return { answer: "支持路线规划" }; } }
+                });
+                controller.setCapabilities({ backend: "available", llm: "ready", capabilities: { activity_analysis: false, ai_route_planning: true } });
+                await controller.sendMessage("路线规划支持哪些功能？");
+                assertEqual(messages.length, 1);
+                controller.destroy();
             }
         },
         {

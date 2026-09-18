@@ -13,6 +13,23 @@ export function createAgentRoutePreviewService({
     agentClient = createAgentApiClient()
 }) {
     let currentDraft = null;
+    let routeSessionId = null;
+
+    async function openAgentRoute({ planId, revision, sessionId }) {
+        if (!operations.ensureRouteEditingAllowed()) return null;
+        const requestId = operations.invalidateRequests();
+        const response = await agentClient.routePlanCommand("get", { plan_id: planId, session_id: sessionId, expected_revision: revision });
+        if (!operations.isCurrent(requestId)) return null;
+        if (operations.discardAfterRideStart("骑行已开始，已忽略打开路线请求。")) return null;
+        const draft = parseAgentRouteDraft({ ...response, status: "completed" });
+        if (draft.planId !== planId || draft.revision !== revision) {
+            throw new Error("路线版本已变化，请在主对话重新获取草稿后打开。");
+        }
+        routeSessionId = sessionId;
+        saveDraft(draft);
+        commitActiveRoute(draft, "已打开路线草稿，请检查地图后确认。");
+        return draft;
+    }
 
     async function planAgentRoutes(message) {
         if (!operations.ensureRouteEditingAllowed()) return null;
@@ -26,12 +43,18 @@ export function createAgentRoutePreviewService({
                 : buildVirtualRouteRequest(message);
             const chatOptions = {
                 routeOptions: { include_elevation: false },
+                ...(routeSessionId ? { sessionId: routeSessionId } : {}),
                 requestMode: "route_plan",
-                routeAction: currentDraft ? "refine" : "create"
+                routeAction: currentDraft ? "refine" : "create",
+                routeReference: currentDraft ? { plan_id: currentDraft.planId, revision: currentDraft.revision } : null
             };
             const turnResult = await agentClient.chat(request, chatOptions);
             if (!operations.isCurrent(requestId) || store.getState().route !== loadingRoute) return null;
             if (operations.discardAfterRideStart("骑行已开始，已忽略未完成的 AI 路线。")) return null;
+            if (turnResult?.status === "clarification_required") {
+                operations.clearRouteLoading(turnResult.answer);
+                return { clarificationRequired: true, answer: turnResult.answer };
+            }
             const draft = saveDraft(parseAgentRouteDraft(turnResult));
             const candidateId = activeCandidateId(draft);
             if (candidateId) {
@@ -147,6 +170,7 @@ export function createAgentRoutePreviewService({
         const response = await agentClient.routePlanCommand(operation, {
             plan_id: currentDraft?.planId,
             expected_revision: currentDraft?.revision,
+            ...(routeSessionId ? { session_id: routeSessionId } : {}),
             ...input
         });
         if (!operations.isCurrent(requestId)) return null;
@@ -179,6 +203,7 @@ export function createAgentRoutePreviewService({
 
     function saveDraft(draft) {
         currentDraft = draft;
+        store.setState?.((state) => ({ ...state, agentRouteDraft: draft }));
         return draft;
     }
 
@@ -187,6 +212,7 @@ export function createAgentRoutePreviewService({
     }
 
     return {
+        openAgentRoute,
         planAgentRoutes,
         previewAgentRoute,
         confirmAgentRoute,

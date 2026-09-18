@@ -38,7 +38,7 @@
 嵌套 result.error 和上传失败；没有稳定错误码时补 tool_failed，不否认工具已经执行。
 只有同一工具、同一参数目标的后续成功重放才消除之前失败；不同活动的成功不代表失败活动已恢复。
 
-下一切片再定义共用路线任务输入、澄清和父子 Agent 结果契约。
+后续已在 [Route Agent 实施记录](route-agent-implementation.md) 中定义共用任务输入、澄清、父子结果契约与跨入口草稿接续；本页保留失败出口切片的验收记录。
 
 本切片验收：JavaScript 426/426、Python 760/760；正常和后端掉线/恢复双进程集成通过，
 compileall 与 git diff --check 通过。组合回归使用隔离 Context/Provider，不调用真实模型或地图。

@@ -479,3 +479,11 @@ def test_strava_segment_provider_fallback_and_geometry_contract() -> None:
         [-120.2, 38.5], [-120.95, 40.7], [-126.453, 43.252],
     ]
     assert decode_polyline("_p~iF~ps|U_ulLnnqC_mqNvxq`@")[0] == [-120.2, 38.5]
+
+
+def test_tls_eof_diagnostic_is_distinct_and_redacted():
+    import ssl
+    from urllib.error import URLError
+    from integrations.provider_error import network_failure_reason
+    assert 'SSLEOFError' in network_failure_reason(URLError(ssl.SSLEOFError('secret')))
+    assert 'secret' not in network_failure_reason(URLError('https://secret@proxy'))

@@ -112,8 +112,13 @@ export function createRouteRenderer({
     routeLibraryRenderer.bindEvents();
     routeLibrarySourceController.bindEvents();
 
+    let displayedDraft = null;
     function render(state) {
         routeInputController.render(state);
+        if (state.agentRouteDraft && displayedDraft !== state.agentRouteDraft) {
+            displayedDraft = state.agentRouteDraft;
+            routeInputController.setInputMode("ai");
+        }
         routeDetailsRenderer.render(state);
         stravaRouteImportRenderer.render(state);
         agentRoutePlanner.render(state);

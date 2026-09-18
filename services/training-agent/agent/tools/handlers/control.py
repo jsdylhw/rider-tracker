@@ -48,7 +48,13 @@ def ask_user_clarification(args: dict[str, Any], context: AgentContext) -> dict[
     return {"answer": args.get("question") or "请再描述一下你的需求。"}
 
 
+def delegate_route(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
+    from agent.route.delegation import delegate_route_task
+    return delegate_route_task(args, context)
+
+
 HANDLERS = {
+    "run_route_agent": delegate_route,
     "activate_skill": activate_skill,
     "casual_chat": casual_chat,
     "ask_user_clarification": ask_user_clarification,

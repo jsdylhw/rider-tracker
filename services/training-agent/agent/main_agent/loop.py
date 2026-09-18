@@ -31,7 +31,6 @@ from agent.main_agent.result_builder import (
 from agent.tools.registry import TOOL_HANDLERS
 from agent.main_agent.turn_control import handle_control_turn
 from agent.main_agent.turn_policy import tools_for_skill
-from agent.main_agent.turn_policy import should_continue_route_skill
 from agent.skills import get_skill, load_skill_instructions
 
 MAX_TOOL_STEPS = 10
@@ -72,6 +71,8 @@ def run_tool_loop(
         execution_policy=execution_policy,
     )
     if control_result is not None:
+        if control_result.get("status") != "completed":
+            return control_result
         if not execution_policy.is_satisfied(context.execution_trace):
             from agent.main_agent.result_builder import build_policy_unsatisfied_result
 
@@ -83,18 +84,15 @@ def run_tool_loop(
             return build_policy_unsatisfied_result(context, steps, execution_policy)
         return control_result
 
-    continue_route_skill = should_continue_route_skill(message, context)
     # Skill authority and sport references are scoped to one user turn.
     context.active_skill_id = None
     context.active_skill_confidence = 0.0
     context.active_skill_reason = None
     context.pending_skill_reference = None
-    if execution_policy.forced_skill_id or continue_route_skill:
-        context.active_skill_id = execution_policy.forced_skill_id or "plan-routes"
+    if execution_policy.forced_skill_id:
+        context.active_skill_id = execution_policy.forced_skill_id
         context.active_skill_confidence = 1.0
-        context.active_skill_reason = (
-            "request_policy" if execution_policy.forced_skill_id else "continued_from_recent_skill"
-        )
+        context.active_skill_reason = "request_policy"
         context.last_used_skills = [context.active_skill_id]
         context.conversation_used_skills.append(context.active_skill_id)
 
@@ -182,7 +180,7 @@ def _execute_main_agent_turn(
         # refine policy uses tool_choice=any, so expose only its two valid
         # terminal alternatives and prevent a read-only route tool from
         # consuming the mandatory call.
-        return names & set(required) if len(required) > 1 else names
+        return set(required) if required else names
 
     def rendered_tools() -> list[dict[str, Any]]:
         names = allowed_tool_names()

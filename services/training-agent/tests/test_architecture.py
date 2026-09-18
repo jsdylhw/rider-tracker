@@ -53,7 +53,7 @@ def test_removed_legacy_packages_are_not_imported() -> None:
     """Prevent old core/activity/workflow package names from returning after migration."""
     violations = _imports_with_prefix(
         ["agent", "app", "domain", "services", "fit", "storage", "integrations", "operations", "worker"],
-        forbidden=("core", "sinks", "agent.activity", "agent.route", "agent.runtime.workflow"),
+        forbidden=("core", "sinks", "agent.activity", "agent.runtime.workflow"),
     )
     assert violations == []
 

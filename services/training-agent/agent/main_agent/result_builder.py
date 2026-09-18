@@ -28,6 +28,22 @@ def build_completed_result(
     """Build a completed or max-steps result from the current turn only."""
     execution_policy = execution_policy or TurnExecutionPolicy.chat()
     context.last_llm_error = None
+    delegation = next((record.get("result") for record in reversed(context.execution_trace)
+                       if record.get("tool") == "run_route_agent" and record.get("status") != "blocked"), None)
+    if isinstance(delegation, dict) and isinstance(delegation.get("route_task"), dict):
+        earlier_failure = _unresolved_failure([record for record in context.execution_trace
+                                               if record.get("tool") != "run_route_agent"])
+        if earlier_failure is not None:
+            return build_policy_unsatisfied_result(context, steps, execution_policy)
+        result = build_turn_result(
+            delegation["status"], intent, context, steps, delegation.get("answer", ""),
+            project_route_plan=False, error=delegation.get("error"),
+        )
+        context.messages.append({"role": "assistant", "content": str(delegation.get("answer") or "")})
+        for key in ("route_task", "route_plan"):
+            if key in delegation:
+                result[key] = delegation[key]
+        return result
     if step_count > max_tool_steps:
         return build_turn_result(
             "max_steps_exceeded",

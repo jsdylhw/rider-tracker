@@ -88,15 +88,8 @@ def create_route_plan_tool(
     name: str = "create_route_plan",
 ) -> dict[str, Any]:
     args = args or {}
-    request_options = (
-        context.route_request_options
-        if isinstance(context.route_request_options, dict) else {}
-    )
-    include_elevation = (
-        bool(request_options["include_elevation"])
-        if "include_elevation" in request_options
-        else bool(args.get("include_elevation", True))
-    )
+    args = _with_route_options(context, args)
+    include_elevation = bool(args.get("include_elevation", True))
     segment_strategy = str(args.get("segment_strategy") or "auto").lower()
     country_code = str(args.get("country_code") or "")
     route_constraints = normalize_route_constraints(args.get("route_constraints"))
@@ -143,7 +136,7 @@ def create_route_plan_tool(
             **candidate,
             **(
                 {"target_distance_km": plan_target_distance}
-                if candidate.get("target_distance_km") is None and plan_target_distance is not None
+                if plan_target_distance is not None
                 else {}
             ),
         }
@@ -238,7 +231,7 @@ def update_route_plan_tool(
     args: dict[str, Any] | None = None,
     name: str = "update_route_plan",
 ) -> dict[str, Any]:
-    args = args or {}
+    args = _with_route_options(context, args or {})
     store = RoutePlanStore()
     plan_id = str(args.get("plan_id") or "").strip()
     plan = _load_plan(store, context, plan_id)
@@ -532,6 +525,14 @@ def _save_route_plan(
     if expected_revision is None:
         return store.save(plan, archive=False) if not archive else store.save(plan)
     return store.save(plan, archive=archive, expected_revision=expected_revision)
+
+
+def _with_route_options(context: AgentContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Trusted task options override model defaults without mutating tool input."""
+    options = context.route_request_options if isinstance(context.route_request_options, dict) else {}
+    if "include_elevation" in options:
+        return {**args, "include_elevation": bool(options["include_elevation"])}
+    return dict(args)
 
 
 def _workspace_id(context: AgentContext) -> str:

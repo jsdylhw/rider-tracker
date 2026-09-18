@@ -118,7 +118,7 @@ export const suite = {
             async run() {
                 const calls = [];
                 const agentClient = fakeAgentClient(calls);
-                const handlers = createActivityLibraryHandlers({ agentClient });
+                const handlers = createActivityLibraryHandlers({ agentClient, now: () => 1000 });
 
                 const listed = response();
                 await handlers.list({ query: { limit: "20", offset: "5", sportType: "cycling", source: "fit-import" } }, listed);

@@ -76,10 +76,8 @@ def classify_http_error(
 ) -> ProviderError:
     """Classify an HTTP failure without exposing an HTML proxy error page.
 
-    Google APIs return structured JSON for request or credential errors. A
-    non-JSON HTTP 400 observed after a successful CONNECT is instead an
-    intermittent proxy/upstream edge response and is safe to retry within the
-    provider's existing bounded retry loop.
+    Non-JSON HTTP 400 is treated as potentially transient. Its origin cannot
+    be attributed to a proxy or Google from response format alone.
     """
     try:
         raw = exc.read().decode("utf-8", errors="replace")
@@ -94,7 +92,7 @@ def classify_http_error(
     transient = exc.code in {408, 429} or exc.code >= 500 or (exc.code == 400 and payload is None)
     if transient:
         detail = (
-            "代理或上游网关返回了非 JSON 响应"
+            "收到非 JSON 错误响应，来源未确认（可能为代理或上游）"
             if exc.code == 400 and payload is None
             else str(exc.reason or "temporary provider failure")
         )
@@ -116,3 +114,15 @@ def classify_http_error(
         stage=stage,
         code="provider_http_error",
     )
+
+
+def network_failure_reason(exc: BaseException) -> str:
+    """Describe transport failures without reflecting URLs or proxy credentials."""
+    import ssl
+    reason = getattr(exc, "reason", None)
+    cause = reason if isinstance(reason, BaseException) else exc
+    if isinstance(cause, ssl.SSLEOFError):
+        return "TLS 连接被提前关闭（SSLEOFError，尚未收到 HTTP 响应）"
+    if isinstance(cause, ssl.SSLCertVerificationError):
+        return "TLS 证书验证失败（SSLCertVerificationError）"
+    return type(cause).__name__

@@ -5,6 +5,17 @@ export const suite = {
     name: "agent-routes",
     tests: [
         {
+            name: "forwards optional get revision and rejects malformed revisions",
+            run() {
+                const base = { session_id: "session", request_id: "open", operation: "get", plan_id: "plan" };
+                assertEqual(normalizeCommandRequest({ ...base, expected_revision: 3 }).expected_revision, 3);
+                assertEqual(normalizeCommandRequest(base).expected_revision, undefined);
+                let rejected = false;
+                try { normalizeCommandRequest({ ...base, expected_revision: 0 }); } catch { rejected = true; }
+                assertEqual(rejected, true);
+            }
+        },
+        {
             name: "requires an explicit route action for route-plan requests",
             run() {
                 const request = normalizeChatRequest({
@@ -36,9 +47,13 @@ export const suite = {
                     request_id: "request-3",
                     message: "把路线改到法国安纳西",
                     request_mode: "route_plan",
-                    route_action: "refine"
+                    route_action: "refine",
+                    route_reference: { plan_id: "plan-1", revision: 3, workspace_id: "untrusted" }
                 });
                 assertEqual(refinement.route_action, "refine");
+                assertEqual(refinement.route_reference.plan_id, "plan-1");
+                assertEqual(refinement.route_reference.revision, 3);
+                assertEqual(refinement.route_reference.workspace_id, undefined);
             }
         },
         {

@@ -114,8 +114,9 @@ UI -> App -> Domain
 ```text
 路线页面输入
  -> Browser route planner/service
- -> Node /api/agent/route-plans/*
- -> Python main Agent 激活 plan-routes Skill
+ -> Node /api/agent/chat
+ -> Python 独立 Route Agent（request_mode=route_plan）
+ -> 澄清问题或真实路线 Tool（见 route-agent-implementation.md）
  -> Tool handler 校验结构化参数
  -> route service 生成/修改候选
  -> AMap 或 Google provider
@@ -129,6 +130,11 @@ UI -> App -> Domain
 排查顺序：先确认 Skill 是否选对工具和参数，再看 handler 是否完整转发，随后检查 provider 原始证据、
 service 的拒绝/排序，最后检查前端是否因 stale revision 或路线 fingerprint 丢弃响应。路线名称或 Agent 文案
 正确不代表几何和约束已经生效。
+
+主对话先由模型激活 plan-routes Skill，再委派同一个 Route Agent；成功结果可通过“打开路线草稿”
+进入 AI 路线页面。打开使用原会话的 get command 和显式 plan/revision，不重新规划。
+父级 Skill 指导位于 route/plan-routes.md，子级业务指导位于 route/execute-routes.md。
+实现与剩余边界见 [Route Agent 实施记录](route-agent-implementation.md)。
 
 ### 5.2 开始、结束和续骑
 

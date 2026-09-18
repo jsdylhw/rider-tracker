@@ -132,13 +132,10 @@ SKILL_CATALOG: tuple[SkillSpec, ...] = (
     SkillSpec(
         skill_id="plan-routes",
         description=(
-            "创建、发现、保存、查看或通过对话修改真实骑行路线。用于明确途经点、开放式路线需求、"
-            "完整热门环线、多日行程和单日分段计划。"
+            "委派路线 Agent 创建或修改真实单日骑行路线草稿，也支持缺少信息时澄清。"
+            "用于明确途经点、开放式路线需求和环线；预览与确认保存由路线页面完成。"
         ),
-        tool_names=(
-            "create_route_plan", "create_itinerary_plan",
-            "update_route_plan", "get_route_plan", "explore_route_segments",
-        ),
+        tool_names=("run_route_agent",),
         public_intent="route_advice",
         library_path="route/plan-routes.md",
     ),

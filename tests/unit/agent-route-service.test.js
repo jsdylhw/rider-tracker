@@ -6,6 +6,80 @@ export const suite = {
     name: "agent-route-service",
     tests: [
         {
+            name: "opens the exact chat draft and keeps its owner for edits without recreating",
+            async run() {
+                let state = { route: baseRoute(), liveRide: { isActive: false } };
+                const commands = [], chats = [];
+                const operations = createOperations(state);
+                const service = createAgentRoutePreviewService({
+                    store: { getState: () => state, setState: (fn) => { Object.assign(state, fn(state)); } },
+                    operations,
+                    agentClient: {
+                        async routePlanCommand(operation, input) { commands.push({ operation, input }); return routeResponse("awaiting_selection"); },
+                        async chat(message, options) { chats.push(options); return routeResponse("awaiting_selection", 2); }
+                    }
+                });
+                await service.openAgentRoute({ planId: "plan-1", revision: 1, sessionId: "home-session" });
+                assertEqual(commands.length, 1);
+                assertEqual(commands[0].operation, "get");
+                assertEqual(commands[0].input.expected_revision, 1);
+                assertEqual(commands[0].input.session_id, "home-session");
+                assertEqual(chats.length, 0);
+                assertEqual(state.agentRouteDraft.planId, "plan-1");
+                assertEqual(state.route.isDraft, true);
+                await service.planAgentRoutes("少左转");
+                assertEqual(chats[0].sessionId, "home-session");
+                assertEqual(chats[0].routeReference.revision, 1);
+                await service.previewAgentRoute("candidate-1");
+                assertEqual(commands[1].input.session_id, "home-session");
+            }
+        },
+        {
+            name: "stale or late draft loads cannot replace the route",
+            async run() {
+                const state = { route: baseRoute(), liveRide: { isActive: false } };
+                const before = state.route;
+                const operations = createOperations(state);
+                let resolve;
+                const service = createAgentRoutePreviewService({ store: { getState: () => state }, operations,
+                    agentClient: { routePlanCommand: () => new Promise((done) => { resolve = done; }) }
+                });
+                const stale = service.openAgentRoute({ planId: "plan-1", revision: 1, sessionId: "owner" });
+                resolve(routeResponse("awaiting_selection", 2));
+                let rejected = false;
+                try { await stale; } catch { rejected = true; }
+                assertEqual(rejected, true);
+                assertEqual(state.route, before);
+                const late = service.openAgentRoute({ planId: "plan-1", revision: 1, sessionId: "owner" });
+                operations.invalidateRequests();
+                resolve(routeResponse("awaiting_selection"));
+                assertEqual(await late, null);
+                assertEqual(state.route, before);
+            }
+        },
+        {
+            name: "returns clarification normally without replacing the existing draft",
+            async run() {
+                const state = { route: baseRoute(), liveRide: { isActive: false }, statusText: "" };
+                const options = [];
+                let count = 0;
+                const service = createAgentRoutePreviewService({
+                    store: { getState: () => state }, operations: createOperations(state),
+                    agentClient: { async chat(message, input) {
+                        options.push(input);
+                        return ++count === 1 ? routeResponse("awaiting_selection")
+                            : { status: "clarification_required", answer: "改到哪个城市？" };
+                    } }
+                });
+                await service.planAgentRoutes("生成路线");
+                const result = await service.planAgentRoutes("换个地方");
+                assertEqual(result.clarificationRequired, true);
+                assertEqual(result.answer, "改到哪个城市？");
+                assertEqual(options[1].routeReference.plan_id, "plan-1");
+                assertEqual(options[1].routeReference.revision, 1);
+            }
+        },
+        {
             name: "previews and confirms one deterministic route response",
             async run() {
                 const state = { route: baseRoute(), liveRide: { isActive: false }, statusText: "" };

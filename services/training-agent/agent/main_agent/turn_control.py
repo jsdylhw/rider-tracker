@@ -56,7 +56,7 @@ def handle_control_turn(
                 return None
             skill = get_skill(context.active_skill_id)
             if not skill_allows_tool(skill, tool_name):
-                answer = "上次失败操作不属于当前有效 Skill，已拒绝直接重放。请重新说明要重试的活动任务。"
+                answer = "上次失败操作不属于当前有效 Skill，已拒绝直接重放。请重新说明要重试的任务。"
                 context.last_failed_action = None
                 return TurnResult(
                     answer=answer, status="retry_rejected", context=context,

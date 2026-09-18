@@ -3,7 +3,6 @@ import { createInitialState } from "./store/initial-state.js";
 import { loadPipPreferences } from "../adapters/storage/session-storage.js";
 import { createMainView } from "../ui/renderers/main-view.js";
 import { createPipController } from "../ui/pip/pip-controller.js";
-import { formatDuration, formatNumber } from "../shared/format.js";
 import { buildPipViewModel } from "./view-models/live-ride-view-model.js";
 import { ensureLeaflet } from "../ui/map/leaflet-loader.js";
 
@@ -44,7 +43,13 @@ const exportService = createExportService({ store });
 const rideService = createRideService({ store, deviceService, exportService, routeService });
 const uiService = createUiService({ store });
 const workoutService = createWorkoutService({ store, deviceService });
-const agentFloatingWindow = createAgentFloatingWindow();
+const agentFloatingWindow = createAgentFloatingWindow({
+    onOpenRoute: async (reference) => {
+        const draft = await routeService.openAgentRoute(reference);
+        if (draft) uiService.enterLiveMode();
+        return draft;
+    }
+});
 const agentCapabilityService = createAgentCapabilityService({ store });
 const stopAgentVisibilitySync = store.subscribe((state, previousState) => {
     if (previousState === undefined || state.uiMode !== previousState.uiMode) {
@@ -158,13 +163,6 @@ window.addEventListener("beforeunload", () => {
 });
 
 // 5. 启动初始化流程
-if (persistedSession) {
-    store.setState((state) => ({
-        ...state,
-        statusText: `已恢复最近一次骑行：${formatDuration(persistedSession.summary.metrics?.ride?.elapsedSeconds ?? 0)} / ${formatNumber(persistedSession.summary.metrics?.ride?.distanceKm ?? 0, 2)} km`
-    }));
-}
-
 userService.loadUserProfile();
 
 function inferInitialUiMode() {

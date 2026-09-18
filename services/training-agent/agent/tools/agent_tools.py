@@ -91,6 +91,14 @@ ROUTE_PREFERENCES_SCHEMA = {
 
 MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
     ToolDef(
+        name="run_route_agent", category=CATEGORY_COACHING,
+        description="委派独立路线 Agent 生成或修改草稿；也可以返回澄清。不会确认保存路线。",
+        input_schema={"type": "object", "properties": {
+            "message": {"type": "string", "minLength": 1},
+            "action": {"type": "string", "enum": ["create", "update", "refine"]},
+        }, "required": ["message", "action"], "additionalProperties": False},
+    ),
+    ToolDef(
         name="activate_skill",
         description=(
             "Activate exactly one registered domain skill for this user turn. "
@@ -441,7 +449,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                 "segment_name_hint": {"type": "string", "description": "可选的热门环线名称片段。"},
                 "target_distance_km": {
                     "type": "number", "minimum": 1,
-                    "description": "仅当用户明确给出目标距离或距离范围时填写，不得自行估算。",
+                    "description": "用户明确给出统一目标距离时必须填写（例如 30 km 填 30）；约束所有候选，不得改小以迁就算路结果。未要求距离时省略。",
                 },
                 "search_radius_km": {"type": "number", "minimum": 0.5, "maximum": 20, "default": 8},
                 "fallback_to_provider": {"type": "boolean", "default": True},
@@ -456,7 +464,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                                 "type": "array", "minItems": 2, "maxItems": 12,
                                 "items": {"type": "string"},
                                 "description": (
-                                    "按顺序排列的真实地点检索词。用户明确给出 A 到 B 再到 C 时必须原样使用"
+                                    "按顺序排列且带城市限定的具体地点检索词。河流/骑行道等线状设施必须选具体入口、桥梁或出口控制点，不能用一个泛称代表整段。用户明确给出 A 到 B 再到 C 时必须原样使用"
                                     " [A,B,C]，不得擅自补回 A；只有用户明确要求环线、返回起点或骑一圈时，"
                                     "才把起点原样重复为最后一点。"
                                 ),

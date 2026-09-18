@@ -64,8 +64,9 @@ SQLite 与可恢复状态暂时保留现有格式，包括 `activity_metrics.v2`
 Python 服务层确定性淘汰并记录原因，不能依赖模型或前端隐藏。
 
 同一批路线候选相互隔离：单条候选的地图检索、算路或范围校验失败只会进入
-`rejected_candidates`，不得丢弃已经成功的候选并触发整批重算。路线计划顶层的目标距离会作为
-未单独声明距离的候选默认值，确保实际算路结果都经过同一距离门槛。
+`rejected_candidates`，不得丢弃已经成功的候选并触发整批重算。路线计划顶层的统一目标距离约束
+所有候选，候选不能自行缩小目标来迁就实际结果；仅未设置统一目标时使用各候选自己的目标。
+多轮模拟与验收范围见 [距离对话验证记录](route-distance-dialogue-validation.md)。
 
 Rider 的 AI 路线请求通过 `/api/chat` 显式传递 `request_mode=route_plan` 和
 `route_action=create|update`；`route_options` 只承载 `include_elevation=false` 等业务参数，不再用于

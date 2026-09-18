@@ -11,6 +11,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import ProxyHandler, build_opener
 from uuid import uuid4
+from copy import deepcopy
 
 from integrations.google_places import GooglePlacesClient
 from integrations.provider_error import ProviderError, TransientProviderError
@@ -29,14 +30,13 @@ from services.route.quality import (
     preference_score,
 )
 from services.route.provider_readiness import ensure_google_route_provider_ready
+from services.route.distance import target_distance_error
 from settings import load_config
 
 
 AMAP_PLACE_TEXT_URL = "https://restapi.amap.com/v5/place/text"
 AMAP_PLACE_AROUND_URL = "https://restapi.amap.com/v5/place/around"
 GOOGLE_ELEVATION_URL = "https://maps.googleapis.com/maps/api/elevation/json"
-MIN_TARGET_DISTANCE_RATIO = 0.60
-MAX_TARGET_DISTANCE_RATIO = 1.50
 LOOP_WAYPOINT_RADIUS_RATIO = 0.75
 MIN_LOOP_WAYPOINT_RADIUS_KM = 5.0
 MAX_GOOGLE_PLACE_BIAS_RADIUS_M = 50_000.0
@@ -68,9 +68,15 @@ class RouteCandidateRejected(ValueError):
 class RouteProviderFailed(RuntimeError):
     """All candidates failed because an upstream route provider was unavailable."""
 
-    def __init__(self, failures: Sequence[dict[str, Any]]) -> None:
+    def __init__(self, failures: Sequence[dict[str, Any]], *, candidate_rejections=()) -> None:
         self.failures = [dict(item) for item in failures]
-        super().__init__(_provider_failure_summary(self.failures))
+        self.candidate_rejections = [dict(item) for item in candidate_rejections]
+        message = _provider_failure_summary(self.failures)
+        if self.candidate_rejections:
+            message += " 其他候选未满足路线要求：" + "；".join(
+                f"{item['name']}：{item['reason']}" for item in self.candidate_rejections
+            )
+        super().__init__(message)
 
     def to_tool_result(self) -> dict[str, Any]:
         first = self.failures[0] if self.failures else {}
@@ -137,6 +143,9 @@ def create_single_day_plan(
     routed: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     provider_failures: list[dict[str, Any]] = []
+    # Only successful resolutions are shared within this planning call. No
+    # negative cache survives a candidate failure or application restart.
+    google_place_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
     for index, candidate in enumerate(candidates, start=1):
         try:
             routed.append(route_candidate(
@@ -148,6 +157,7 @@ def create_single_day_plan(
                 route_constraints=normalized_constraints,
                 route_preferences=normalized_preferences,
                 provider_preflight_completed=True,
+                google_place_cache=google_place_cache,
             ))
         except RouteCandidateRejected as exc:
             rejected.append({
@@ -171,7 +181,9 @@ def create_single_day_plan(
             provider_failures.append(failure)
     if not routed:
         if provider_failures:
-            raise RouteProviderFailed(provider_failures)
+            raise RouteProviderFailed(provider_failures, candidate_rejections=[
+                item for item in rejected if item.get("stage") == "route_validation"
+            ])
         reasons = "；".join(f"{item['name']}：{item['reason']}" for item in rejected)
         rejection_codes = {str(item.get("code") or "") for item in rejected}
         rejection_stages = {str(item.get("stage") or "") for item in rejected}
@@ -526,6 +538,7 @@ def route_candidate(
     route_constraints: dict[str, Any] | None = None,
     route_preferences: dict[str, Any] | None = None,
     provider_preflight_completed: bool = False,
+    google_place_cache: dict[tuple[Any, ...], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     waypoint_queries, is_closed = normalize_waypoint_queries(candidate.get("waypoints") or [])
     queries = waypoint_queries[:-1] if is_closed else waypoint_queries
@@ -547,6 +560,7 @@ def route_candidate(
         places, route = _route_google(
             queries, country_code, is_closed, config,
             target_distance_km=target,
+            place_cache=google_place_cache,
         )
     if is_closed:
         places = [*places, dict(places[0])]
@@ -555,9 +569,9 @@ def route_candidate(
     warnings = list(route.get("warnings") or [])
     if route.get("warning"):
         warnings.append(str(route["warning"]))
-    distance_warning = _target_distance_warning(distance_km, target)
-    if distance_warning:
-        warnings.append(distance_warning)
+    distance_error = target_distance_error(float(route.get("distance_m") or 0), target)
+    if distance_error:
+        raise RouteCandidateRejected(distance_error)
     elevation = None
     if include_elevation:
         try:
@@ -685,20 +699,6 @@ def _route_amap(
     return places, accepted[0]
 
 
-def _target_distance_warning(distance_km: float, target_distance_km: float | None) -> str | None:
-    """Describe a target miss without hiding an otherwise routable candidate."""
-    if target_distance_km is None:
-        return None
-    minimum_km = target_distance_km * MIN_TARGET_DISTANCE_RATIO
-    maximum_km = target_distance_km * MAX_TARGET_DISTANCE_RATIO
-    if minimum_km <= distance_km <= maximum_km:
-        return None
-    return (
-        f"距离偏离目标：实际 {distance_km:.1f} km，目标 {target_distance_km:.1f} km，"
-        f"建议范围 {minimum_km:.1f}-{maximum_km:.1f} km"
-    )
-
-
 def _amap_route_combinations(
     leg_options: Sequence[Sequence[dict[str, Any]]],
     route_preferences: dict[str, Any] | None,
@@ -799,6 +799,7 @@ def _route_google(
     config: dict[str, Any],
     *,
     target_distance_km: float | None = None,
+    place_cache: dict[tuple[Any, ...], dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     google = config.get("google") if isinstance(config.get("google"), dict) else {}
     key = str(google.get("api_key") or "")
@@ -824,22 +825,32 @@ def _route_google(
             MAX_GOOGLE_PLACE_BIAS_RADIUS_M,
             maximum_radius_km * 1_000 if maximum_radius_km is not None else 20_000,
         )
-        results = client.search(query, near=near, radius_m=search_radius_m, limit=5).get("places") or []
-        if not results:
-            raise RouteCandidateRejected(
-                f"地点检索没有结果：{query}",
-                code="place_not_found",
-                stage="place_resolution",
-            )
-        raw = _select_google_place(results, query=query, country_code=country_code, anchor=anchor)
-        location = raw["location"]
-        place = {
-            "query": query,
-            "name": raw.get("name") or query,
-            "address": raw.get("address") or "",
-            "latitude": float(location["latitude"]),
-            "longitude": float(location["longitude"]),
-        }
+        # Bias changes the meaning of a query. Keep exact coordinates/radius
+        # in the key; do not merge searches around different origins.
+        anchor_key = (
+            (float(anchor["latitude"]), float(anchor["longitude"])) if anchor is not None else None
+        )
+        cache_key = (country_code, query, anchor_key, near, search_radius_m if near is not None else None)
+        cached = place_cache.get(cache_key) if place_cache is not None else None
+        if cached is not None:
+            place = deepcopy(cached)
+        else:
+            results = client.search(query, near=near, radius_m=search_radius_m, limit=5).get("places") or []
+            if not results:
+                raise RouteCandidateRejected(
+                    f"地点检索没有结果：{query}",
+                    code="place_not_found",
+                    stage="place_resolution",
+                )
+            raw = _select_google_place(results, query=query, country_code=country_code, anchor=anchor)
+            location = raw["location"]
+            place = {
+                "query": query,
+                "name": raw.get("name") or query,
+                "address": raw.get("address") or "",
+                "latitude": float(location["latitude"]),
+                "longitude": float(location["longitude"]),
+            }
         if anchor is not None and maximum_radius_km is not None:
             distance_km = _haversine_km(
                 float(anchor["latitude"]), float(anchor["longitude"]),
@@ -850,6 +861,8 @@ def _route_google(
                     f"地点“{query}”解析为“{place['name']}”，距起点 {distance_km:.1f} km，"
                     f"超过环线途经点上限 {maximum_radius_km:.1f} km"
                 )
+        if place_cache is not None:
+            place_cache[cache_key] = deepcopy(place)
         places.append(place)
     points = [WgsPoint(place["latitude"], place["longitude"]) for place in places]
     if is_closed and points[-1] != points[0]:

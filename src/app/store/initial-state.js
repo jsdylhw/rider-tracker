@@ -54,6 +54,7 @@ export function createInitialState(options = {}) {
         selectedActivity: null,
         liveRide: createInitialLiveRideState(),
         ble: createInitialBleState(),
+        agentRouteDraft: null,
         agentCapabilities: {
             ...DEFAULT_AGENT_CAPABILITIES,
             capabilities: { ...DEFAULT_AGENT_CAPABILITIES.capabilities }

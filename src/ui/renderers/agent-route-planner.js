@@ -53,6 +53,11 @@ export function createAgentRoutePlanner({
 
     function render(state) {
         lastState = state;
+        if (state.agentRouteDraft && state.agentRouteDraft !== currentDraft) {
+            currentDraft = state.agentRouteDraft;
+            selectedSegmentIds = [];
+            renderDraft();
+        }
         if (!initialized && elements.aiRouteMessages && elements.aiRouteCandidates) {
             initialized = true;
             addMessage("agent", "告诉我起点、距离和偏好，我会生成真实路线候选。先预览，再继续修改或最终确认；无海拔虚拟路线适合配合 ERG 骑行。");
@@ -83,6 +88,10 @@ export function createAgentRoutePlanner({
             const draft = await onPlanAgentRoutes?.(normalized);
             if (sequence !== requestSequence || !draft) return;
             pending.remove?.();
+            if (draft.clarificationRequired) {
+                addMessage("agent", draft.answer);
+                return;
+            }
             currentDraft = draft;
             selectedSegmentIds = [];
             addMessage("agent", formatRouteDraftAnswer(draft));
@@ -172,6 +181,7 @@ export function createAgentRoutePlanner({
             ? `${source}；提示：${candidate.warnings.join("；")}`
             : source;
         copy.append(title, metrics, description);
+
 
         const actions = documentRef.createElement("div");
         actions.className = "ai-route-candidate-actions";
@@ -431,6 +441,7 @@ function formatRouteDraftAnswer(draft) {
         "",
         `当前预览：${active.name}`,
         metrics.length ? `距离与用时：${metrics.join(" · ")}` : "",
+        active.warnings?.length ? `路线提示：${active.warnings.join("；")}` : "",
         "",
         "可以切换候选、继续输入修改要求，或最终确认。",
     ].filter((line, index, lines) => line || (index > 0 && lines[index - 1])).join("\n");

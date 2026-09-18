@@ -12,7 +12,6 @@ from agent.main_agent.execution_policy import TurnExecutionPolicy
 from integrations.llm import LLMRequestError
 from integrations.provider_error import TransientProviderError
 from agent.main_agent.loop import MAX_TOOL_STEPS, _build_state_preamble, _build_system_prompt, run_tool_loop
-from agent.main_agent.turn_policy import should_continue_route_skill
 from project_paths import resolve_project_path
 from services.route.single_day import RouteProviderFailed
 
@@ -65,31 +64,17 @@ def test_ordinary_chat_answers_in_one_main_model_request():
     assert [tool["name"] for tool in tools] == ["activate_skill"]
 
 
-def test_explicit_route_followup_reuses_recent_skill_without_becoming_a_required_action(monkeypatch):
-    context = AgentContext(
-        session_id="route-followup", workspace_id="workspace", last_used_skills=["plan-routes"],
-    )
-    monkeypatch.setattr("agent.main_agent.loop.should_continue_route_skill", lambda *_: True)
-    monkeypatch.setattr("agent.main_agent.turn_policy.should_continue_route_skill", lambda *_: True)
+def test_route_followup_still_requires_model_skill_selection():
+    context = AgentContext(session_id="route-followup", workspace_id="workspace", last_used_skills=["plan-routes"])
     with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
         client.return_value.create_messages.return_value = {
-            "id": "msg-route-text-only",
-            "content": [{"type": "text", "text": "已更新路线。"}],
-            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "你想增加哪个途经点？"}], "stop_reason": "end_turn",
         }
-
         result = run_tool_loop("在当前路线中增加一个途经点", context=context)
-
     assert result["status"] == "completed"
-    assert result["answer"] == "已更新路线。"
-    assert context.active_skill_id == "plan-routes"
-    assert context.active_skill_reason == "continued_from_recent_skill"
-    assert context.last_used_skills == ["plan-routes"]
-    assert context.conversation_used_skills == ["plan-routes"]
-    tools = client.return_value.create_messages.call_args.kwargs["tools"]
-    names = {tool["name"] for tool in tools}
-    assert "update_route_plan" in names
-    assert "activate_skill" not in names
+    assert context.active_skill_id is None
+    assert context.conversation_used_skills == []
+    assert [t["name"] for t in client.return_value.create_messages.call_args.kwargs["tools"]] == ["activate_skill"]
 
 
 def test_trusted_route_request_forces_route_skill_and_fails_closed_without_tool():
@@ -376,38 +361,23 @@ def test_create_policy_is_not_completed_by_reading_an_old_route(monkeypatch):
             execution_policy=TurnExecutionPolicy.route_plan("create"),
         )
 
-    assert result["status"] == "action_not_executed"
+    assert result["status"] == "blocked"
     assert [item["tool"] for item in result["executions"]] == ["get_route_plan"]
     assert "route_plan" not in result
 
 
-def test_retrying_a_route_action_projects_the_completed_plan(monkeypatch):
-    context = AgentContext(
-        session_id="retry-route-plan",
-        workspace_id="workspace",
-        active_skill_id="plan-routes",
-        last_failed_action={"tool": "update_route_plan", "input": {"plan_id": "plan-1"}},
-    )
-    monkeypatch.setitem(
-        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
-        "update_route_plan",
-        lambda args, ctx: {
-            "status": "completed", "answer": "路线已更新",
-            "result": {"plan_id": "plan-1"},
-        },
-    )
-    monkeypatch.setattr(
-        "agent.main_agent.result_builder.RoutePlanStore.get",
-        lambda self, plan_id: {
-            "plan_id": plan_id, "revision": 2,
-            "candidates": [{"candidate_id": "candidate-1"}],
-        },
-    )
-
+def test_legacy_route_retry_cannot_bypass_the_child_agent(monkeypatch):
+    context = AgentContext(session_id="retry-route-plan", workspace_id="workspace",
+                           active_skill_id="plan-routes",
+                           last_failed_action={"tool": "update_route_plan", "input": {"plan_id": "plan-1"}})
+    def forbidden(*args, **kwargs):
+        raise AssertionError("legacy route handler must not run")
+    monkeypatch.setitem(__import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
+                        "update_route_plan", forbidden)
     result = run_tool_loop("重试", context=context)
-
-    assert result["status"] == "completed"
-    assert result["route_plan"]["plan_id"] == "plan-1"
+    assert result["status"] == "retry_rejected"
+    assert "route_plan" not in result
+    assert context.last_failed_action is None
 
 
 def test_route_retry_obeys_current_create_policy_instead_of_replaying_update(monkeypatch):
@@ -459,37 +429,16 @@ def test_route_retry_obeys_current_create_policy_instead_of_replaying_update(mon
     assert [item["tool"] for item in result["executions"]] == ["create_route_plan"]
 
 
-def test_route_retry_of_required_action_uses_policy_failure_projection(monkeypatch):
-    context = AgentContext(
-        session_id="retry-required-route-action",
-        workspace_id="workspace",
-        active_skill_id="plan-routes",
-        last_failed_action={"tool": "create_route_plan", "input": {"title": "京都路线"}},
-    )
-    monkeypatch.setitem(
-        __import__("agent.tools.registry", fromlist=["TOOL_HANDLERS"]).TOOL_HANDLERS,
-        "create_route_plan",
-        lambda args, ctx: {
-            "status": "failed",
-            "error": "provider_unavailable",
-            "code": "provider_unavailable",
-            "provider": "google_places",
-            "stage": "place_search",
-            "message": "Google Places 暂时不可用",
-            "retryable": True,
-        },
-    )
+def test_legacy_route_retry_rejection_is_not_overwritten_by_policy(monkeypatch):
+    context = AgentContext(session_id="retry-required-route-action", workspace_id="workspace",
+                           active_skill_id="plan-routes",
+                           last_failed_action={"tool": "create_route_plan", "input": {"title": "京都路线"}})
     with patch("agent.main_agent.loop.AnthropicMessagesClient") as client:
-        result = run_tool_loop(
-            "重试",
-            context=context,
-            execution_policy=TurnExecutionPolicy.route_plan("create"),
-        )
-
+        result = run_tool_loop("重试", context=context, execution_policy=TurnExecutionPolicy.route_plan("create"))
     assert client.call_count == 0
-    assert result["status"] == "provider_error"
-    assert result["answer"] == "Google Places 暂时不可用"
-    assert result["executions"][0]["retryable"] is True
+    assert result["status"] == "retry_rejected"
+    assert context.execution_trace == []
+    assert context.last_failed_action is None
 
 
 def test_non_retryable_tool_failure_is_not_saved_by_loop_hooks(monkeypatch):
@@ -527,21 +476,6 @@ def test_non_retryable_tool_failure_is_not_saved_by_loop_hooks(monkeypatch):
     assert result["status"] == "route_rejected"
     assert context.last_failed_action is None
 
-
-def test_route_followup_recognizes_waypoint_language(monkeypatch):
-    class Store:
-        def get_latest(self, workspace_id):
-            assert workspace_id == "workspace"
-            return {"plan_id": "route_test"}
-
-    monkeypatch.setattr("storage.repositories.route.RoutePlanStore", Store)
-    context = AgentContext(
-        session_id="route-waypoint-followup",
-        workspace_id="workspace",
-        last_used_skills=["plan-routes"],
-    )
-
-    assert should_continue_route_skill("在第二个点位后加入 Lac Besson", context)
 
 
 def test_pure_sync_executes_without_starting_analysis_workflow(monkeypatch):

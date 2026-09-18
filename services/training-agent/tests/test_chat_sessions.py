@@ -12,6 +12,8 @@ def test_chat_session_restores_context_and_idempotency_after_restart(tmp_path):
     first = first_store.get_or_create("ride-planning")
     first.context.messages = [{"role": "user", "content": "把路线反转"}]
     first.context.last_failed_action = {"tool_name": "update_route_plan", "args": {"operation": "reverse"}}
+    first.context.route_messages = [{"role": "assistant", "content": "从哪里出发？"}]
+    first.context.route_reference = {"plan_id": "plan-1", "revision": 2}
     first.context.last_used_skills = ["plan-routes"]
     first.context.conversation_used_skills = ["analyze-activity", "plan-routes"]
     first.context.set_single_activity(ActivityHandle(activity_key="activity-1", fit_path="fits/one.fit"))
@@ -21,6 +23,8 @@ def test_chat_session_restores_context_and_idempotency_after_restart(tmp_path):
     restored = ChatSessionStore(database=database).get_or_create("ride-planning")
 
     assert restored.context.messages == first.context.messages
+    assert restored.context.route_messages == first.context.route_messages
+    assert restored.context.route_reference == {"plan_id": "plan-1", "revision": 2}
     assert restored.context.last_failed_action == first.context.last_failed_action
     assert restored.context.last_used_skills == ["plan-routes"]
     assert restored.context.conversation_used_skills == ["analyze-activity", "plan-routes"]
