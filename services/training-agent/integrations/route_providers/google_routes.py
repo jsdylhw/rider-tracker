@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from integrations.route_providers.budget import consume_route_request
 from integrations.provider_error import network_failure_reason
 
 import json
@@ -16,7 +17,7 @@ from integrations.provider_error import ProviderError, TransientProviderError, c
 
 
 GOOGLE_ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
-GOOGLE_ROUTES_FIELD_MASK = "routes.distanceMeters,routes.duration,routes.polyline.geoJsonLinestring"
+GOOGLE_ROUTES_FIELD_MASK = "routes.distanceMeters,routes.duration,routes.polyline.geoJsonLinestring,routes.legs.distanceMeters,routes.legs.startLocation,routes.legs.endLocation"
 JsonTransport = Callable[[Request, float], dict[str, Any]]
 
 
@@ -103,6 +104,12 @@ class GoogleRoutesClient:
                 "coordinates": [[float(lon), float(lat)] for lon, lat, *_ in geometry["coordinates"]],
             },
             "instructions": [],
+            "legs": [
+                {"distance_m": float(leg.get("distanceMeters") or 0),
+                 "start_location": leg.get("startLocation"),
+                 "end_location": leg.get("endLocation")}
+                for leg in route.get("legs") or [] if isinstance(leg, dict)
+            ],
         }
         if fallback_reason:
             result["fallback_reason"] = fallback_reason
@@ -140,7 +147,7 @@ class GoogleRoutesClient:
         )
         for attempt in range(self.retries + 1):
             try:
-                return self.transport(request, self.timeout_s)
+                return self.transport(request, consume_route_request(self.timeout_s))
             except TransientProviderError:
                 if attempt >= self.retries:
                     raise

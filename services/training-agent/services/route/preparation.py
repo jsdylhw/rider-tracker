@@ -4,7 +4,6 @@ Coordinates are provider-owned WGS84; connector distances are lower-bound
 estimates, never route distances. No plan or database mutation happens here.
 """
 from copy import deepcopy
-from itertools import combinations, permutations
 import math
 import time
 import unicodedata
@@ -14,6 +13,7 @@ from integrations.google_places import GooglePlacesClient
 from integrations.route_providers.strava_segments import segment_detail_feature
 from services.route.geometry import haversine_m
 from services.route.materials import validate_materials
+from services.route.skeleton_search import rank_skeletons
 from services.route.single_day import resolve_google_places, _search_amap_place, RouteCandidateRejected
 from settings import load_config
 
@@ -41,10 +41,20 @@ def resolve_material_points(materials, *, config):
             else:
                 queries = [query] if anchor is None else [anchor["query"], query]
                 # A call-local cache also avoids resolving the origin repeatedly.
-                place = resolve_google_places(
-                    queries, country, materials["is_loop"], config,
-                    target_distance_km=materials.get("target_distance_km"), place_cache=google_cache,
-                )[-1]
+                try:
+                    place = resolve_google_places(
+                        queries, country, materials["is_loop"], config,
+                        target_distance_km=materials.get("target_distance_km"), place_cache=google_cache,
+                        point_intents={p["query"]: p for p in ordered},
+                        locality_names=tuple((locality_evidence or {}).get("names") or []),
+                    )[-1]
+                except RouteCandidateRejected as exc:
+                    mandatory = (point.get("required") or point["id"] in {
+                        materials["origin_id"], materials.get("destination_id"), *materials.get("ordered_point_ids", [])}
+                        or any(c.get("required") and point["id"] in c["point_ids"] for c in materials.get("corridors", [])))
+                    if mandatory or exc.code not in {"place_ambiguous", "place_not_found"}:
+                        raise
+                    continue
             coordinate = [float(place.get("display_longitude", place["longitude"])),
                           float(place.get("display_latitude", place["latitude"]))]
             _valid_coordinate(coordinate)
@@ -176,109 +186,6 @@ which may contain credentials or URLs.
                   "未取得合适的 Strava 路段，继续使用地点和线路方向规划。"}
 
 
-def rank_skeletons(materials, points, segments=(), *, limit=3):
-    """Bounded beam search over atomic point/corridor blocks, then segment inserts.
-
-Required points keep their declared order. Corridor order is immutable. Strava
-direction is preserved; geometry reversal cannot prove reverse travel is legal.
-"""
-    origin = materials["origin_id"]
-    end = origin if materials["is_loop"] else materials["destination_id"]
-    required = [p["id"] for p in materials["points"] if p["required"] and p["id"] not in {origin, end}]
-    blocks = [[p["id"]] for p in materials["points"] if p["id"] not in {origin, end}]
-    blocks += [c["point_ids"] for c in materials["corridors"]]
-    target = materials.get("target_distance_km")
-
-    def score(ids):
-        coordinates = [points[i]["coordinate"] for i in [origin, *ids, end]]
-        distance = sum(haversine_m(a, b) for a, b in zip(coordinates, coordinates[1:]))
-        return abs(distance - target * 1000) if target else distance
-
-    def valid(ids):
-        full = [origin, *ids, end]
-        if len(full) > 12 or len(set(full)) != len(full) - int(materials["is_loop"]):
-            return False
-        present_required = [p for p in ids if p in required]
-        if present_required != [p for p in required if p in ids]:
-            return False
-        for corridor in materials["corridors"]:
-            sequence = corridor["point_ids"]
-            if all(p in full for p in sequence):
-                # Adjacent control points preserve the named corridor as a block.
-                if not any(full[i:i+len(sequence)] == sequence for i in range(len(full))):
-                    return False
-        return True
-
-    beam, finished = [tuple()], set()
-    for _ in range(10):
-        expanded = set()
-        for ids in beam:
-            for block in blocks:
-                middle = list(block)
-                if middle and middle[0] == origin:
-                    middle = middle[1:]
-                if middle and middle[-1] == end:
-                    middle = middle[:-1]
-                if not middle or set(middle) & set(ids) or origin in middle or end in middle:
-                    continue
-                for index in range(len(ids)+1):
-                    candidate = (*ids[:index], *middle, *ids[index:])
-                    if valid(candidate):
-                        expanded.add(candidate)
-        beam = sorted(expanded, key=lambda ids: (score(ids), ids))[:64]
-        finished.update(ids for ids in beam if set(required) <= set(ids) and all(
-            not c["required"] or set(c["point_ids"]) <= {origin, *ids, end}
-            for c in materials["corridors"]
-        ))
-        if not beam:
-            break
-    if not materials["is_loop"] and not required and not any(c["required"] for c in materials["corridors"]):
-        finished.add(tuple())
-    candidates = []
-    for ids in sorted(finished, key=lambda ids: (score(ids), ids))[:limit]:
-        point_ids = [origin, *ids, end]
-        legs = [{"kind": "connector", "from": points[a]["coordinate"], "to": points[b]["coordinate"]}
-                for a, b in zip(point_ids, point_ids[1:])]
-        candidates.append(_skeleton(point_ids, legs, materials))
-    # Insert one/two directed segments at a connector boundary. Never break
-    # a corridor block or delete a mandatory point to improve an estimate.
-    mixed = []
-    for base in candidates:
-        for size in (1, 2):
-            for subset in combinations(segments[:10], size):
-                for ordered in permutations(subset):
-                    for index, leg in enumerate(base["legs"]):
-                        a, b = base["point_ids"][index:index+2]
-                        if any((a, b) in list(zip(c["point_ids"], c["point_ids"][1:])) for c in materials["corridors"]):
-                            continue
-                        replacement, current = [], leg["from"]
-                        for segment in ordered:
-                            geometry = segment["geometry"]["coordinates"]
-                            replacement.extend([
-                                {"kind": "connector", "from": current, "to": geometry[0]},
-                                {"kind": "segment", "segment_id": segment["segment_id"],
-                                 "direction": "forward", "distance_m": segment["distance_m"]},
-                            ])
-                            current = geometry[-1]
-                        replacement.append({"kind": "connector", "from": current, "to": leg["to"]})
-                        mixed.append(_skeleton(base["point_ids"], base["legs"][:index]+replacement+base["legs"][index+1:], materials))
-    # Reserve point-only alternatives: optional Strava must not crowd them out.
-    selected = candidates + sorted(mixed, key=lambda s: (s["score"], repr(s["legs"])))[:limit]
-    for index, candidate in enumerate(selected, 1):
-        candidate["skeleton_id"] = f"s{index}"
-    return selected
-
-
-def _skeleton(point_ids, legs, materials):
-    distance = sum(leg["distance_m"] if leg["kind"] == "segment" else
-                   haversine_m(leg["from"], leg["to"]) for leg in legs)
-    target = materials.get("target_distance_km")
-    return {"point_ids": list(point_ids), "legs": legs, "estimated_distance_m": round(distance, 1),
-            "score": abs(distance-target*1000) if target else distance,
-            "distance_kind": "geometry_plus_straight_connectors", "validation_status": "pending",
-            "corridor_ids": [c["id"] for c in materials["corridors"] if set(c["point_ids"]) <= set(point_ids)]}
-
-
 def prepare_route_materials(value, *, sources=(), use_strava=True, config=None,
                             resolver=None, discoverer=None):
     if not isinstance(use_strava, bool):
@@ -286,38 +193,36 @@ def prepare_route_materials(value, *, sources=(), use_strava=True, config=None,
     materials = validate_materials(value, source_ids=[s["source_id"] for s in sources])
     cfg = config if config is not None else load_config()
     points = (resolver or resolve_material_points)(materials, config=cfg)
+    unresolved = [p for p in materials["points"] if p["id"] not in points]
+    if unresolved:
+        materials["points"] = [p for p in materials["points"] if p["id"] in points]
+        # Do not bridge a missing corridor anchor and claim continuous coverage.
+        materials["corridors"] = [c for c in materials.get("corridors", []) if all(pid in points for pid in c["point_ids"])]
+        materials = validate_materials(materials, source_ids=[s["source_id"] for s in sources])
     origin = points[materials["origin_id"]]["coordinate"]
     radius = min(20, max(2, (materials.get("target_distance_km") or 20) / 2))
     segments, status = (discoverer or discover_optional_segments)(origin, radius_km=radius, config=cfg, enabled=use_strava)
-    skeletons = rank_skeletons(materials, points, segments)
+    skeletons = rank_skeletons(materials, points, segments, limit=24)
     if not skeletons:
         raise ValueError("无法组合保留必经点和线路方向的骨架，请调整材料。")
     return {"schema_version": "route_preparation.v1", "status": "prepared", "materials": materials,
             "points": points, "segments": segments, "strava": status, "skeletons": skeletons,
+            "unresolved_optional_points": [{"id": p["id"], "query": p["query"]} for p in unresolved],
             "notice": "仅为待验证骨架，估算距离不代表实际路线距离；没有生成或保存路线。"}
 
 
 def create_prepared_plan(preparation, *, workspace_id, title, include_elevation,
                          route_constraints=None, route_preferences=None):
-    """Temporary bridge for point skeletons only; mixed validation is phase three."""
-    from services.route.single_day import create_single_day_plan
-    materials = preparation["materials"]
-    candidates = []
-    for skeleton in preparation["skeletons"]:
-        if any(leg["kind"] == "segment" for leg in skeleton["legs"]):
-            continue
-        points = [preparation["points"][pid] for pid in skeleton["point_ids"]]
-        candidates.append({"name": f"本地候选 {len(candidates)+1}",
-                           "waypoints": [p["query"] for p in points],
-                           "target_distance_km": materials.get("target_distance_km"),
-                           "_resolved_places": [deepcopy(p["place"]) for p in points]})
-    plan = create_single_day_plan(
-        workspace_id=workspace_id, title=title, country_code=materials["country_code"],
-        candidates=candidates, include_elevation=include_elevation,
+    """Measure point skeletons with bounded feedback; Strava remains optional evidence."""
+    from services.route.feedback import plan_with_feedback
+    plan = plan_with_feedback(
+        preparation, workspace_id=workspace_id, title=title, include_elevation=include_elevation,
         route_constraints=route_constraints, route_preferences=route_preferences,
     )
     plan["route_preparation"] = deepcopy(preparation)
     message = preparation["strava"]["message"]
+    if preparation.get("unresolved_optional_points"):
+        message += " 未能确定的可选地点及受影响走廊已移除：" + "、".join(p["query"] for p in preparation["unresolved_optional_points"])
     if preparation["segments"]:
         message += " 当前地图验证仅使用地点骨架，未采用 Strava 混合骨架。"
     for candidate in plan.get("candidates", []):

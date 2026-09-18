@@ -63,3 +63,17 @@ description: 根据明确途经点或开放式骑行需求，创建并持续修�
 - 用户限定“某市内”时，materials.locality 必须保留该城市名（如京都市），不能用京都府或邻近龟冈市替换。搜索词也必须保留市内限制，检索到外地路线要舍弃。地点解析后按 Provider 城市字段核验，缺少证据不能声称满足地域限制。
 - 输入校验最多修正三次，与最多两次真实准备执行分开计数。没有成功准备结果时不得调用 use_prepared_candidates=true；次数耗尽时澄清或说明失败，不要重复创建。
 - 已有明确完整起终点的简单请求优先直接创建，不需要额外搜索、材料准备，也不要擅自添加泛称途经点。
+
+
+## 本地搜索与两轮反馈
+
+- prepare_route_materials 的 changes 只列出用户本轮明确修改的字段。例如改成40km：fields=["target_distance_km"]；多经过鸭川：fields=["corridors"]；明确换城市：mode="replace"。未列出的旧起点、距离、城市、必经条件由服务端合并，不要静默丢弃。初次规划无需changes。
+- “多走沿河/某条线路”用 corridor.preference_weight 表达偏好（1–10），允许只走一段时 allow_partial=true；“必须经过完整线路”用required=true。必经点不等于定序，只有用户明确顺序时设置 ordered_point_ids。
+- 本地准备保留多种长度与走廊组合。create_route_plan 对这些骨架最多两轮、六条进行实际道路测量，根据当轮道路/直线距离比例修正下一轮搜索；不需要模型重复调用创建。
+- 准备路径的最终候选距离需落在目标±10%内；若预算内找不到，不得宣称无解或已满足。走廊覆盖字段只表示连续控制点，不代表真实沿河里程。不要声称已经验证山路坡度或沿河通行。
+
+地点消歧：每个 points 条目提供资料支持的 name、local_name、category、description。
+category 用 natural（河岸、公园等）、landmark、bridge、road、station、business 或 unknown。
+例如鸭川三角洲应明确为 natural，description 为河流汇合处；不能只给容易与商家重名的 query。
+不编造别名或 GPS。place_ambiguous/place_not_found 时补充有资料依据的名称与用途；可选点可以删除，
+但须同步修正走廊并保留用户必经要求；必经点不能静默替换。服务端最多自动补查一次。

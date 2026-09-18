@@ -18,6 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, build_opener
 
 from integrations.provider_error import ProviderError, TransientProviderError
+from integrations.route_providers.budget import consume_route_request
 
 
 AMAP_BICYCLING_URL = "https://restapi.amap.com/v5/direction/bicycling"
@@ -203,7 +204,7 @@ class AmapCyclingRouter:
         for attempt in range(self.retries + 1):
             try:
                 opener = openers[attempt % len(openers)]
-                with opener.open(request_url, timeout=self.timeout_s) as response:
+                with opener.open(request_url, timeout=consume_route_request(self.timeout_s)) as response:
                     payload = json.load(response)
                 try:
                     paths = _successful_paths(payload)

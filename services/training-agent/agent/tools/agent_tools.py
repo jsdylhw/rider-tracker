@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from services.route.materials import MATERIALS_SCHEMA
+from services.route.requirements import CHANGES_SCHEMA
 
 from agent.tools.spec import (
     CATEGORY_ACTIVITY_SELECTION,
@@ -97,6 +98,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
             input_schema={"type": "object", "additionalProperties": False,
                           "required": ["materials"], "properties": {
                               "materials": MATERIALS_SCHEMA,
+                              "changes": CHANGES_SCHEMA,
                               "use_strava": {"type": "boolean", "default": True},
                           }}),
     ToolDef(name="search_cycling_routes", category=CATEGORY_COACHING,

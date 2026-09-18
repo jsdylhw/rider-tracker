@@ -13,12 +13,19 @@ MATERIALS_SCHEMA = {
         "origin_id": {"type": "string"}, "destination_id": {"type": "string"},
         "is_loop": {"type": "boolean"},
         "target_distance_km": {"type": "number", "minimum": 1, "maximum": 500},
+        "ordered_point_ids": {"type": "array", "maxItems": 12, "uniqueItems": True,
+                              "items": {"type": "string"},
+                              "description": "明确要求先后顺序的地点；必经不自动表示顺序。"},
         "points": {"type": "array", "minItems": 2, "maxItems": 12, "items": {
             "type": "object", "additionalProperties": False,
             "required": ["id", "query", "required", "source_ids"],
             "properties": {
                 "id": {"type": "string", "minLength": 1, "maxLength": 80},
                 "query": {"type": "string", "minLength": 1, "maxLength": 300},
+                "name": {"type": "string", "minLength": 1, "maxLength": 150},
+                "local_name": {"type": "string", "minLength": 1, "maxLength": 150},
+                "category": {"type": "string", "enum": ["natural", "landmark", "bridge", "road", "station", "business", "unknown"]},
+                "description": {"type": "string", "maxLength": 200, "description": "资料支持的地理特征与用途，不提供猜测坐标。"},
                 "required": {"type": "boolean"},
                 "source_ids": {"type": "array", "maxItems": 10, "items": {"type": "string"}},
             },
@@ -29,6 +36,10 @@ MATERIALS_SCHEMA = {
             "properties": {
                 "id": {"type": "string", "minLength": 1, "maxLength": 80},
                 "name": {"type": "string", "minLength": 1, "maxLength": 300},
+                "preference_weight": {"type": "number", "minimum": 0, "maximum": 10,
+                                      "description": "偏好强度；未提供时为 1，不能覆盖必经约束。"},
+                "allow_partial": {"type": "boolean",
+                                  "description": "可选走廊允许选连续子段；required=true 仍必须保留整段。"},
                 "point_ids": {"type": "array", "minItems": 2, "maxItems": 12,
                               "items": {"type": "string"}},
                 "required": {"type": "boolean"},
@@ -74,6 +85,11 @@ def validate_materials(value, *, source_ids=()):
     for key in ("origin_id", "destination_id"):
         if key in result:
             result[key] = aliases.get(result[key], result[key])
+    if "ordered_point_ids" in result:
+        ordered = [aliases.get(pid, pid) for pid in result["ordered_point_ids"]]
+        if len(set(ordered)) != len(ordered) or not set(ordered) <= points.keys():
+            raise MaterialInputError("ordered_point_ids 必须引用不重复的已知地点")
+        result["ordered_point_ids"] = ordered
     for corridor in result.get("corridors", []):
         ids = [aliases.get(pid, pid) for pid in corridor["point_ids"]]
         # Only the trailing origin is a closure marker. Never erase an internal revisit.
@@ -97,6 +113,8 @@ def validate_materials(value, *, source_ids=()):
     if len({c["id"] for c in corridors}) != len(corridors):
         raise MaterialInputError("corridor IDs must be unique")
     for corridor in corridors:
+        if not math.isfinite(corridor.get("preference_weight", 1)):
+            raise MaterialInputError("corridor preference_weight must be finite")
         if not set(corridor["point_ids"]) <= points.keys():
             raise MaterialInputError("corridor references unknown points")
     known = set(source_ids)

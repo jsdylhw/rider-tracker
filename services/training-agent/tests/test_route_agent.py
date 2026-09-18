@@ -267,9 +267,11 @@ def test_confirmed_plan_update_passes_trusted_no_elevation_to_service(monkeypatc
     assert arguments.get("include_elevation") is model_value
 
 
-def test_refine_uses_selected_candidate_and_regenerates_prepared_group(monkeypatch, tmp_path):
+@pytest.mark.parametrize("replace_requirements", [False, True])
+def test_refine_uses_selected_candidate_and_regenerates_prepared_group(monkeypatch, tmp_path, replace_requirements):
     monkeypatch.setenv('RIDER_LOG_DIR', str(tmp_path))
     old = {'plan_id': 'old', 'workspace_id': 'workspace', 'revision': 2,
+           'route_constraints': {'avoid_repeated_roads': True},
            'active_candidate_id': 'b', 'candidates': [
                {'candidate_id': 'a', 'name': '未选中的路线'},
                {'candidate_id': 'b', 'name': '选中的鸭川路线', 'waypoints': [{'name': '京都站'}, {'name': '鸭川'}]}]}
@@ -279,7 +281,8 @@ def test_refine_uses_selected_candidate_and_regenerates_prepared_group(monkeypat
     monkeypatch.setattr(result_builder, 'RoutePlanStore', lambda: Mock(get=lambda _: new))
     monkeypatch.setattr(result_builder, 'build_route_plan_view', lambda p: p)
     def prepare(args, context):
-        context.route_preparation = {'status': 'prepared'}
+        context.route_preparation = {'status': 'prepared', 'requirement_changes': {
+            'mode': 'replace' if replace_requirements else 'merge'}}
         return context.route_preparation
     monkeypatch.setitem(agent.TOOL_HANDLERS, 'prepare_route_materials', prepare)
     create = Mock(return_value={'status': 'completed', 'result': {'plan_id': 'new'}})
@@ -301,5 +304,6 @@ def test_refine_uses_selected_candidate_and_regenerates_prepared_group(monkeypat
     assert result['status'] == 'completed'
     assert len(result['route_plan']['candidates']) == 3
     assert create.call_args.args[0]['use_prepared_candidates'] is True
+    assert create.call_args.args[0]['route_constraints'] == ({} if replace_requirements else old['route_constraints'])
     update.assert_not_called()
     assert old['revision'] == 2

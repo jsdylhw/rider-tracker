@@ -135,8 +135,15 @@ def run_route_agent(task: RouteTaskInput, *, history=None, client=None, on_progr
 
     handlers = {name: TOOL_HANDLERS[name] for name in names if name != CLARIFY}
     if regenerate:
+        context.route_base_plan = deepcopy(plan)
+        context.route_research = deepcopy(plan.get("research_sources") or [])
         def regenerate_plan(args, ctx):
-            return TOOL_HANDLERS["create_route_plan"]({**args, "use_prepared_candidates": True}, ctx)
+            options = dict(args)
+            replacing = ((ctx.route_preparation or {}).get("requirement_changes") or {}).get("mode") == "replace"
+            for key in ("route_constraints", "route_preferences"):
+                inherited = {} if replacing else (plan.get(key) or {})
+                options[key] = {**inherited, **(args.get(key) or {})}
+            return TOOL_HANDLERS["create_route_plan"]({**options, "use_prepared_candidates": True}, ctx)
         handlers["create_route_plan"] = regenerate_plan
     handlers[CLARIFY] = clarify
     if "update_route_plan" in names:

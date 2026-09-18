@@ -1,4 +1,7 @@
-"""Dialogue regressions: scripted model + map replies, real Agent/Tool/Service/store."""
+"""Direct-update contract regression; refine regeneration has separate coverage.
+
+Scripted model/map replies are deterministic tests, not route-quality evidence.
+"""
 from copy import deepcopy
 import pytest
 
@@ -56,7 +59,7 @@ def turn(message, tool, args, *, number, reference=None, history=None):
     model = ScriptedModel(tool, args)
     result, dialogue = run_route_agent(RouteTaskInput(
         message=message, workspace_id="dialogue", request_id=f"turn-{number}",
-        action="refine" if reference else "create", plan_id=reference.get("plan_id"),
+        action="update" if reference else "create", plan_id=reference.get("plan_id"),
         revision=reference.get("revision"), options={"include_elevation": False},
     ), history=history, client=model)
     assert len(model.calls) == 1

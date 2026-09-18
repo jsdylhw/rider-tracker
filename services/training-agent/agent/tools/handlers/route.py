@@ -794,8 +794,26 @@ def search_cycling_routes_tool(args, context):
 def prepare_route_materials_tool(args, context):
     from services.route.preparation import prepare_route_materials
     context.route_preparation = None  # Failed replacement cannot reuse stale preparation.
-    result = prepare_route_materials(args.get("materials"), sources=context.route_research,
+    from services.route.requirements import merge_material_requirements, selected_route_seed
+    base = context.route_base_plan or {}
+    previous = (base.get("route_preparation") or {}).get("materials")
+    from services.route.materials import validate_materials
+    sources = [*context.route_research, *(base.get("research_sources") or [])]
+    if previous:
+        sources += [{"source_id": sid} for item in [*previous.get("points", []), *previous.get("corridors", [])]
+                    for sid in item.get("source_ids", [])]
+    supplied = validate_materials(args.get("materials"), source_ids=[s["source_id"] for s in sources])
+    materials = merge_material_requirements(supplied, previous, args.get("changes"))
+    result = prepare_route_materials(materials, sources=sources,
                                      use_strava=args.get("use_strava", True))
+    result["requirement_changes"] = deepcopy(args.get("changes") or {})
+    selected = next((c for c in base.get("candidates", []) if c.get("candidate_id") == base.get("active_candidate_id")), None)
+    if selected and (args.get("changes") or {}).get("mode") != "replace":
+        queries = [p.get("query") or p.get("name") for p in selected.get("waypoints", [])]
+        result["seed_point_ids"] = selected_route_seed(queries, result["materials"])
+        from services.route.skeleton_search import rank_skeletons
+        result["skeletons"] = rank_skeletons(result["materials"], result["points"], limit=24,
+                                               seed_point_ids=result["seed_point_ids"])
     context.route_preparation = result
     summary = deepcopy(result)
     summary["segments"] = [{k: v for k, v in s.items() if k != "geometry"} for s in result["segments"]]

@@ -62,6 +62,11 @@ class RouteCandidateRejected(ValueError):
             "status": "failed", "error": self.code, "code": self.code,
             "stage": self.stage, "retryable": self.retryable,
             "message": str(self),
+            **({"route_search": {
+                **self.search_diagnostics,
+                "measurements": [{k: v for k, v in row.items() if k != "geometry"}
+                                 for row in self.search_diagnostics["measurements"]],
+            }} if hasattr(self, "search_diagnostics") else {}),
         }
 
 
@@ -539,6 +544,7 @@ def route_candidate(
     route_preferences: dict[str, Any] | None = None,
     provider_preflight_completed: bool = False,
     google_place_cache: dict[tuple[Any, ...], dict[str, Any]] | None = None,
+    measurement_only: bool = False,
 ) -> dict[str, Any]:
     waypoint_queries, is_closed = normalize_waypoint_queries(candidate.get("waypoints") or [])
     queries = waypoint_queries[:-1] if is_closed else waypoint_queries
@@ -558,7 +564,7 @@ def route_candidate(
             is_closed,
             config,
             target_distance_km=target,
-            route_constraints=route_constraints,
+            route_constraints=None if measurement_only else route_constraints,
             route_preferences=route_preferences,
             **resolved_options,
         )
@@ -579,10 +585,10 @@ def route_candidate(
     if route.get("warning"):
         warnings.append(str(route["warning"]))
     distance_error = target_distance_error(float(route.get("distance_m") or 0), target)
-    if distance_error:
+    if distance_error and not measurement_only:
         raise RouteCandidateRejected(distance_error)
     elevation = None
-    if include_elevation:
+    if include_elevation and not measurement_only:
         try:
             elevation = _elevation_profile(geometry["coordinates"], float(route.get("distance_m") or 0), config)
         except (RuntimeError, ValueError) as exc:
@@ -605,6 +611,7 @@ def route_candidate(
         "target_distance_km": target,
         "distance_delta_km": round(distance_km - target, 1) if target is not None else None,
         "geometry": geometry,
+        "legs": deepcopy(route.get("legs") or []),
         "navigation_steps": list(route.get("instructions") or []),
         "provider_alternative_count": int(route.get("provider_alternative_count") or 1),
         "baseline_distance_m": route.get("baseline_distance_m"),
@@ -613,11 +620,37 @@ def route_candidate(
         "elevation": elevation,
         "warnings": warnings,
     }
+    if measurement_only:
+        measured = apply_route_constraints({**resolved, "target_distance_km": None}, None)
+        measured["target_distance_km"] = target
+        return measured
     return apply_route_constraints(
         resolved,
         route_constraints,
         rejection_type=RouteCandidateRejected,
     )
+
+
+def validate_measured_candidate(
+    result: dict[str, Any],
+    constraints: dict[str, Any] | None = None,
+    *,
+    include_elevation: bool = False,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Accept an existing measurement without routing again; enrich finalists only."""
+    accepted = apply_route_constraints(
+        deepcopy(result), constraints, rejection_type=RouteCandidateRejected,
+    )
+    if include_elevation and accepted.get("elevation") is None:
+        try:
+            accepted["elevation"] = _elevation_profile(
+                accepted["geometry"]["coordinates"], accepted["distance_m"],
+                config if config is not None else load_config(),
+            )
+        except (RuntimeError, ValueError) as exc:
+            accepted.setdefault("warnings", []).append(f"海拔请求失败：{exc}")
+    return accepted
 
 
 def _route_amap(
@@ -810,6 +843,8 @@ def resolve_google_places(
     *,
     target_distance_km: float | None = None,
     place_cache: dict[tuple[Any, ...], dict[str, Any]] | None = None,
+    point_intents: dict[str, dict] | None = None,
+    locality_names: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     google = config.get("google") if isinstance(config.get("google"), dict) else {}
     key = str(google.get("api_key") or "")
@@ -841,20 +876,30 @@ def resolve_google_places(
             (float(anchor["latitude"]), float(anchor["longitude"])) if anchor is not None else None
         )
         cache_key = (country_code, query, anchor_key, near, search_radius_m if near is not None else None)
+        if point_intents is not None:
+            cache_key += (str(sorted((point_intents.get(query) or {}).items())), tuple(locality_names))
         cached = place_cache.get(cache_key) if place_cache is not None else None
         if cached is not None:
             place = deepcopy(cached)
         else:
-            results = client.search(query, near=near, radius_m=search_radius_m, limit=5).get("places") or []
-            if not results:
-                raise RouteCandidateRejected(
-                    f"地点检索没有结果：{query}",
-                    code="place_not_found",
-                    stage="place_resolution",
-                )
-            raw = _select_google_place(results, query=query, country_code=country_code, anchor=anchor)
+            if point_intents is not None:
+                from services.route.place_resolution import resolve_place
+                raw = resolve_place(client, query, country=country_code,
+                    intent=point_intents.get(query) or {}, locality_names=locality_names,
+                    anchor=anchor, radius_km=maximum_radius_km)
+            else:
+                results = client.search(query, near=near, radius_m=search_radius_m, limit=5).get("places") or []
+                if not results:
+                    raise RouteCandidateRejected(
+                        f"地点检索没有结果：{query}",
+                        code="place_not_found",
+                        stage="place_resolution",
+                    )
+                raw = _select_google_place(results, query=query, country_code=country_code, anchor=anchor)
             location = raw["location"]
             place = {
+                "types": raw.get("types") or [],
+                "resolution_evidence": raw.get("resolution_evidence"),
                 "query": query,
                 "place_id": raw.get("place_id") or raw.get("id") or "",
                 "localities": raw.get("localities") or [],

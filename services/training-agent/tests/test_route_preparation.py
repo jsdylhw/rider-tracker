@@ -178,23 +178,16 @@ def test_preparation_without_strava_preserves_required_corridor_and_target():
         assert "distance_m" not in skeleton
 
 
-def test_mixed_skeletons_keep_point_fallback_and_segment_direction():
+def test_optional_segments_are_not_claimed_as_validated_point_skeletons():
     value = materials()
     points = resolved(value)
     segment = {"segment_id": 12, "distance_m": 1500,
                "geometry": {"type": "LineString", "coordinates": [[135.73, 35.02], [135.74, 35.03]]}}
     snapshot = deepcopy(segment)
     candidates = rank_skeletons(value, points, [segment])
-    mixed = [s for s in candidates if any(l["kind"] == "segment" for l in s["legs"])]
-    assert 1 <= len(mixed) <= 3 and len(candidates) <= 6
-    assert len(candidates) > len(mixed)
+    assert candidates and len(candidates) <= 24
+    assert not any(leg["kind"] == "segment" for s in candidates for leg in s["legs"])
     assert segment == snapshot
-    for skeleton in mixed:
-        legs = skeleton["legs"]
-        i = next(i for i, leg in enumerate(legs) if leg["kind"] == "segment")
-        assert legs[i]["direction"] == "forward"
-        assert legs[i-1]["to"] == segment["geometry"]["coordinates"][0]
-        assert legs[i+1]["from"] == segment["geometry"]["coordinates"][-1]
 
 
 def test_strava_disabled_or_disconnected_never_blocks():
@@ -315,6 +308,10 @@ def test_prepared_creation_reuses_coordinates_and_never_repeats_strava(monkeypat
     store = RoutePlanStore(tmp_path / "routes.db")
     monkeypatch.setattr(handler, "RoutePlanStore", lambda: store)
     monkeypatch.setattr(handler, "_apply_segment_strategy", Mock(side_effect=AssertionError("must not repeat discovery")))
+    from services.route import provider_readiness
+    import settings
+    monkeypatch.setattr(settings, "load_config", lambda: {"google": {"api_key": "test"}})
+    monkeypatch.setattr(provider_readiness, "ensure_google_route_provider_ready", lambda c: None)
     monkeypatch.setattr(single_day, "load_config", lambda: {"google": {"api_key": "test"}})
     monkeypatch.setattr(single_day, "ensure_google_route_provider_ready", lambda c: None)
     monkeypatch.setattr(single_day, "GooglePlacesClient", Mock(side_effect=AssertionError("must not resolve again")))
@@ -392,3 +389,26 @@ def test_corrected_corridor_does_not_poison_final_result(monkeypatch, tmp_path, 
         assert not result.get('route_plan')
         assert result['error']['code'] == ('route_materials_invalid' if outcome == 'uncorrected' else 'provider_connection_failed')
     assert create.call_count == (0 if outcome == 'uncorrected' else 1)
+
+
+@pytest.mark.parametrize('mandatory', [False, True])
+def test_ambiguous_optional_point_is_removed_without_bridging_corridor(monkeypatch, mandatory):
+    from services.route import preparation
+    from services.route.single_day import RouteCandidateRejected
+    value = materials()
+    value['corridors'][0]['required'] = mandatory
+    def resolve(queries, *args, **kwargs):
+        if queries[-1] == 'Kyoto c':
+            raise RouteCandidateRejected('ambiguous', code='place_ambiguous')
+        return [{'query': queries[-1], 'name': queries[-1], 'latitude': 35, 'longitude': 135 + ord(queries[-1][-1])*.001}]
+    monkeypatch.setattr(preparation, 'resolve_google_places', resolve)
+    if mandatory:
+        with pytest.raises(RouteCandidateRejected):
+            preparation.resolve_material_points(value, config={})
+    else:
+        result = preparation.prepare_route_materials(value, config={},
+            discoverer=lambda *a, **kw: ([], {'status':'disabled','message':'disabled'}))
+        assert 'c' not in result['points']
+        assert result['materials']['corridors'] == []
+        assert result['unresolved_optional_points'] == [{'id':'c','query':'Kyoto c'}]
+        assert value['corridors']  # Input remains unchanged.
