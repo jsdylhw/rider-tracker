@@ -40,7 +40,7 @@ def build_completed_result(
             project_route_plan=False, error=delegation.get("error"),
         )
         context.messages.append({"role": "assistant", "content": str(delegation.get("answer") or "")})
-        for key in ("route_task", "route_plan"):
+        for key in ("route_task", "route_plan", "route_workflow"):
             if key in delegation:
                 result[key] = delegation[key]
         return result
@@ -58,7 +58,7 @@ def build_completed_result(
 
     if not execution_policy.is_satisfied(context.execution_trace):
         return build_policy_unsatisfied_result(context, steps, execution_policy)
-    if _unresolved_failure(context.execution_trace) is not None:
+    if _context_failure(context) is not None:
         return build_policy_unsatisfied_result(context, steps, execution_policy)
 
     final_answer = _current_terminal_answer(context)
@@ -179,6 +179,14 @@ def _unresolved_failure(trace: list[dict[str, Any]]) -> dict[str, Any] | None:
     return None
 
 
+def _context_failure(context):
+    if context.route_workflow is not None:
+        from agent.route.workflow import TOOL_STAGE
+        return context.route_workflow.failure() or _unresolved_failure([
+            record for record in context.execution_trace if record.get("tool") not in TOOL_STAGE])
+    return _unresolved_failure(context.execution_trace)
+
+
 def _failure_diagnostic(execution: dict[str, Any]) -> dict[str, Any]:
     payload = execution.get("result") if isinstance(execution.get("result"), dict) else {}
     nested = payload.get("result") if isinstance(payload.get("result"), dict) else {}
@@ -202,11 +210,12 @@ def build_policy_unsatisfied_result(
 ) -> dict[str, Any]:
     """Return the required tool's structured failure or a missing-action error."""
     result_intent = "route_advice" if execution_policy.request_mode == "route_plan" else "chat"
-    failure = _unresolved_failure(context.execution_trace)
+    failure = _context_failure(context)
     if failure is not None:
         diagnostic = _failure_diagnostic(failure)
         code = str(diagnostic["code"])
         status = (
+            "failed" if code == "route_result_missing" else
             "blocked" if code == "guard_rejected" else
             "provider_error" if code.startswith("provider_") or code == "route_provider_error" else
             "route_rejected" if code != "tool_failed" and execution_policy.request_mode == "route_plan" else

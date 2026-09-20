@@ -1,6 +1,8 @@
 """Semantic search checks; no model, provider, or database calls."""
 from copy import deepcopy
 
+import pytest
+
 from services.route.skeleton_search import rank_skeletons
 
 
@@ -20,7 +22,7 @@ def fixture():
 def test_pool_retains_shorter_lengths_and_removes_reverse_duplicates():
     materials, points = fixture()
     result = rank_skeletons(materials, points)
-    assert len(result) > 3
+    assert 3 < len(result) <= 24
     assert min(route["estimated_distance_m"] for route in result) < 24000
     assert max(route["estimated_distance_m"] for route in result) > 30000
     signatures = [min(tuple(route["point_ids"]), tuple(reversed(route["point_ids"]))) for route in result]
@@ -41,16 +43,25 @@ def test_required_points_do_not_imply_array_order_but_explicit_order_does():
     assert all(route["point_ids"].index("b") < route["point_ids"].index("c") < route["point_ids"].index("f") for route in result)
 
 
-def test_required_corridor_is_contiguous_and_directed():
+@pytest.mark.parametrize("sequence,extra_required", [
+    (["b", "c", "d"], False), (["b", "c", "d", "e"], True),
+], ids=["default", "partial-allowed-with-extra-required"])
+def test_required_corridor_is_contiguous_and_directed(sequence, extra_required):
     materials, points = fixture()
-    materials["corridors"] = [{"id": "river", "point_ids": ["b", "c", "d"], "required": True}]
-    result = rank_skeletons(materials, points)
+    corridor = {"id": "river", "point_ids": sequence, "required": True}
+    if extra_required:
+        corridor["allow_partial"] = True
+        materials["points"][-1]["required"] = True
+    materials["corridors"] = [corridor]
+    result = rank_skeletons(materials, points, limit=100)
     assert result
     for route in result:
         ids = route["point_ids"]
         start = ids.index("b")
-        assert ids[start:start + 3] == ["b", "c", "d"]
+        assert ids[start:start + len(sequence)] == sequence
         assert route["control_corridor_coverage"]["river"] == 1
+        if extra_required:
+            assert ids.index("f") < start or ids.index("f") >= start + len(sequence)
 
 
 def test_optional_corridor_has_partial_contiguous_coverage_and_preference():
@@ -78,20 +89,6 @@ def test_whole_optional_corridor_never_rewards_fragments():
             assert route["point_ids"][start:start + 4] == ["b", "c", "d", "e"]
 
 
-def test_required_corridor_preserves_full_block_even_when_partial_is_allowed():
-    materials, points = fixture()
-    materials["points"][-1]["required"] = True
-    materials["corridors"] = [{"id": "river", "point_ids": ["b", "c", "d", "e"],
-                               "required": True, "allow_partial": True}]
-    result = rank_skeletons(materials, points, limit=100)
-    assert result
-    for route in result:
-        ids = route["point_ids"]
-        start = ids.index("b")
-        assert ids[start:start + 4] == ["b", "c", "d", "e"]
-        assert ids.index("f") < start or ids.index("f") >= start + 4
-
-
 def test_estimate_target_and_selected_route_seed_do_not_mutate_inputs():
     materials, points = fixture()
     before = deepcopy((materials, points))
@@ -101,7 +98,11 @@ def test_estimate_target_and_selected_route_seed_do_not_mutate_inputs():
     assert before == (materials, points)
     assert all(abs(route["score"] - abs(route["estimated_distance_m"] - 18000)) < .1 for route in result)
     # Strava is evidence only until actual mixed-path validation is implemented.
-    assert result == rank_skeletons(materials, points, [{"segment_id": 3}], estimated_target_m=18000, seed_point_ids=seed)
+    segments = [{"segment_id": 3, "distance_m": 1500,
+                 "geometry": {"type": "LineString", "coordinates": [[135, 35], [135.01, 35.02]]}}]
+    original_segments = deepcopy(segments)
+    assert result == rank_skeletons(materials, points, segments, estimated_target_m=18000, seed_point_ids=seed)
+    assert segments == original_segments
     assert all(leg["kind"] == "connector" for route in result for leg in route["legs"])
 
 

@@ -47,6 +47,9 @@ function parseCandidate(candidate, view) {
         parentCandidateId: text(candidate.parent_candidate_id) || null,
         name: text(candidate.name) || `路线候选 ${candidateId}`,
         description: text(candidate.description),
+        estimatedAscentMeters: candidate.ascent_preview?.schema_version === "route_ascent.v1"
+            && candidate.ascent_preview?.simulation_usable === false
+            ? finiteNumber(candidate.ascent_preview.ascent_m) : null,
         distanceKm,
         durationMinutes: distanceKm ? distanceKm / VIRTUAL_ROUTE_SPEED_KMH * 60 : providerMinutes,
         provider: text(candidate.provider) || "Personal FIT Agent",

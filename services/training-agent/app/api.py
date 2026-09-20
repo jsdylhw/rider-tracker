@@ -703,6 +703,8 @@ def _normalized_route_options(value: dict[str, Any] | None) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if isinstance(options.get("include_elevation"), bool):
         result["include_elevation"] = options["include_elevation"]
+    if isinstance(options.get("include_ascent"), bool):
+        result["include_ascent"] = options["include_ascent"]
     return result
 
 

@@ -169,7 +169,7 @@ export function createAgentFloatingWindow({
         setBusy(true);
         try {
             const sourceSessionId = agentClient.sessionId;
-            const result = await agentClient.chat(normalized, { routeOptions: { include_elevation: false } });
+            const result = await agentClient.chat(normalized, { routeOptions: { include_elevation: false, include_ascent: true } });
             if (sequence !== requestSequence) return null;
             thinking.remove();
             renderResponse(result, sourceSessionId);

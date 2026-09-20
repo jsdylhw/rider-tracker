@@ -26,6 +26,9 @@ def resolve_material_points(materials, *, config):
     ]]
     resolved, cache, google_cache, anchor = {}, {}, {}, None
     country = materials["country_code"]
+    scope = materials.get("locality_scope", "origin")
+    target = materials.get("target_distance_km")
+    point_radius = float(target) * (0.6 if materials["is_loop"] else 1.2) if target else 50.0
     locality_evidence = None
     if country != "CN" and materials.get("locality"):
         locality_evidence = resolve_google_locality(materials["locality"], country, config)
@@ -47,6 +50,8 @@ def resolve_material_points(materials, *, config):
                         target_distance_km=materials.get("target_distance_km"), place_cache=google_cache,
                         point_intents={p["query"]: p for p in ordered},
                         locality_names=tuple((locality_evidence or {}).get("names") or []),
+                        locality_scope=scope, origin_locality_evidence=locality_evidence,
+                        point_radius_km=point_radius,
                     )[-1]
                 except RouteCandidateRejected as exc:
                     mandatory = (point.get("required") or point["id"] in {
@@ -58,7 +63,15 @@ def resolve_material_points(materials, *, config):
             coordinate = [float(place.get("display_longitude", place["longitude"])),
                           float(place.get("display_latitude", place["latitude"]))]
             _valid_coordinate(coordinate)
-            check_locality(place, materials.get("locality"), evidence=locality_evidence)
+            if country == "CN" and anchor is not None:
+                anchor_coordinate = [float(anchor.get("display_longitude", anchor["longitude"])),
+                                     float(anchor.get("display_latitude", anchor["latitude"]))]
+                if haversine_m(anchor_coordinate, coordinate) > point_radius * 1000:
+                    raise RouteCandidateRejected(f"地点 {query} 超过起点范围 {point_radius:.1f} km",
+                                                 code="place_outside_radius", stage="place_resolution")
+            spatial_origin = (place.get("resolution_evidence") or {}).get("origin_locality_match") == "city_center_radius_5km"
+            if (scope == "city" or anchor is None) and not (scope != "city" and anchor is None and spatial_origin):
+                check_locality(place, materials.get("locality"), evidence=locality_evidence)
             cache[query] = {"place": place, "coordinate": coordinate}
         entry = cache[query]
         resolved[point["id"]] = {**point, **deepcopy(entry), "coordinate_system": "wgs84"}
@@ -88,7 +101,7 @@ def resolve_google_locality(locality, country, config):
                  and p.get("country_code") == country and "locality" in (p.get("types") or [])]
     names = [*city["localities"], *[name for p in same_city for name in p.get("localities") or []]]
     return {"query": locality, "country_code": country, "place_id": city["id"],
-            "names": list(dict.fromkeys(names)), "provider": "google_places"}
+            "names": list(dict.fromkeys(names)), "location": city.get("location"), "provider": "google_places"}
 
 
 def check_locality(place, locality, *, evidence=None):
@@ -191,6 +204,8 @@ def prepare_route_materials(value, *, sources=(), use_strava=True, config=None,
     if not isinstance(use_strava, bool):
         raise ValueError("use_strava must be a boolean")
     materials = validate_materials(value, source_ids=[s["source_id"] for s in sources])
+    from services.route.requirements import normalize_planning_requirements
+    materials = normalize_planning_requirements(materials)
     cfg = config if config is not None else load_config()
     points = (resolver or resolve_material_points)(materials, config=cfg)
     unresolved = [p for p in materials["points"] if p["id"] not in points]
@@ -206,25 +221,34 @@ def prepare_route_materials(value, *, sources=(), use_strava=True, config=None,
     if not skeletons:
         raise ValueError("无法组合保留必经点和线路方向的骨架，请调整材料。")
     return {"schema_version": "route_preparation.v1", "status": "prepared", "materials": materials,
+            "unavailable_scenery": sorted(set(materials.get("scenery_preferences", [])) - {
+                theme for corridor in materials.get("corridors", []) for theme in corridor.get("scenery", [])}),
             "points": points, "segments": segments, "strava": status, "skeletons": skeletons,
             "unresolved_optional_points": [{"id": p["id"], "query": p["query"]} for p in unresolved],
             "notice": "仅为待验证骨架，估算距离不代表实际路线距离；没有生成或保存路线。"}
 
 
 def create_prepared_plan(preparation, *, workspace_id, title, include_elevation,
-                         route_constraints=None, route_preferences=None):
-    """Measure point skeletons with bounded feedback; Strava remains optional evidence."""
+                         route_constraints=None, route_preferences=None, include_ascent=False):
+    """Measure road skeletons, optionally compare ascent before selecting finalists."""
     from services.route.feedback import plan_with_feedback
     plan = plan_with_feedback(
         preparation, workspace_id=workspace_id, title=title, include_elevation=include_elevation,
-        route_constraints=route_constraints, route_preferences=route_preferences,
+        route_constraints=route_constraints, route_preferences=route_preferences, include_ascent=include_ascent,
     )
     plan["route_preparation"] = deepcopy(preparation)
     message = preparation["strava"]["message"]
     if preparation.get("unresolved_optional_points"):
         message += " 未能确定的可选地点及受影响走廊已移除：" + "、".join(p["query"] for p in preparation["unresolved_optional_points"])
-    if preparation["segments"]:
-        message += " 当前地图验证仅使用地点骨架，未采用 Strava 混合骨架。"
     for candidate in plan.get("candidates", []):
         candidate.setdefault("warnings", []).append(message)
+        materials = preparation["materials"]
+        if materials.get("distance_mode") == "default":
+            candidate["warnings"].append("未指定距离，本次按默认约 30 km 规划；可继续调整。")
+        if materials.get("scenery_preferences"):
+            candidate["warnings"].append("景观偏好已用于材料和控制点选择，未验证沿线景观连续性或实际坡度。")
+        if preparation.get("unavailable_scenery"):
+            labels = {"mountain": "山区", "riverside": "沿河", "forest": "林地", "coast": "海岸", "countryside": "乡村", "urban": "城区"}
+            candidate["warnings"].append("当前材料缺少可用的" + "、".join(labels[x] for x in preparation["unavailable_scenery"])
+                                         + "走廊，保留该偏好但不能确认本次候选满足。")
     return plan

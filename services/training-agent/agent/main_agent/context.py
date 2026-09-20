@@ -39,6 +39,7 @@ class AgentContext:
     # Active route task target; independent of previously generated/previewed plans.
     route_research: list[dict[str, Any]] = field(default_factory=list)
     route_preparation: dict[str, Any] | None = None
+    route_workflow: Any = None
     route_base_plan: dict[str, Any] | None = None
     route_reference: dict[str, Any] | None = None
     history_enabled: bool = True

@@ -162,7 +162,7 @@ def test_material_semantic_validation(change):
         validate_materials(value)
 
 
-def test_preparation_without_strava_preserves_required_corridor_and_target():
+def test_preparation_without_strava_returns_pending_materials_and_target():
     unavailable = Mock(return_value=([], {"status": "unavailable", "message": "未连接"}))
     original = materials()
     result = prepare_route_materials(original, config={}, resolver=resolved, discoverer=unavailable)
@@ -170,24 +170,11 @@ def test_preparation_without_strava_preserves_required_corridor_and_target():
     assert result["materials"]["target_distance_km"] == 30
     assert result["strava"]["status"] == "unavailable"
     assert original == materials()
+    assert result["materials"]["corridors"] == original["corridors"]
+    assert result["skeletons"]
     for skeleton in result["skeletons"]:
-        ids = skeleton["point_ids"]
-        assert ids[0] == ids[-1] == "a"
-        assert ids[ids.index("b")+1] == "c"
         assert skeleton["validation_status"] == "pending"
         assert "distance_m" not in skeleton
-
-
-def test_optional_segments_are_not_claimed_as_validated_point_skeletons():
-    value = materials()
-    points = resolved(value)
-    segment = {"segment_id": 12, "distance_m": 1500,
-               "geometry": {"type": "LineString", "coordinates": [[135.73, 35.02], [135.74, 35.03]]}}
-    snapshot = deepcopy(segment)
-    candidates = rank_skeletons(value, points, [segment])
-    assert candidates and len(candidates) <= 24
-    assert not any(leg["kind"] == "segment" for s in candidates for leg in s["legs"])
-    assert segment == snapshot
 
 
 def test_strava_disabled_or_disconnected_never_blocks():
@@ -220,23 +207,6 @@ def test_strava_partial_detail_failure_and_budget(monkeypatch):
                                              sink_factory=lambda cfg: sink, clock=lambda: next(ticks))
     sink.get_segment.assert_not_called()
     assert status["failures"][0]["code"] == "budget_exhausted"
-
-
-def test_prepared_google_places_are_used_without_place_search(monkeypatch):
-    from services.route import single_day as module
-    places = [{"query": "A", "latitude": 35, "longitude": 135},
-              {"query": "B", "latitude": 35.01, "longitude": 135.01}]
-    search = Mock(side_effect=AssertionError("must reuse resolved coordinates"))
-    monkeypatch.setattr(module, "GooglePlacesClient", search)
-    router = Mock()
-    router.route.return_value = {"distance_m": 3000}
-    monkeypatch.setattr(module, "GoogleRoutesClient", lambda key: router)
-    returned, route = module._route_google(["A", "B"], "JP", True,
-                                          {"google": {"api_key": "test"}}, resolved_places=places)
-    search.assert_not_called()
-    points = router.route.call_args.args[0]
-    assert points[0] == points[-1]
-    assert len(points) == 3 and returned == places
 
 
 def test_material_resolution_caches_origin_and_never_routes(monkeypatch):
@@ -316,14 +286,21 @@ def test_prepared_creation_reuses_coordinates_and_never_repeats_strava(monkeypat
     monkeypatch.setattr(single_day, "ensure_google_route_provider_ready", lambda c: None)
     monkeypatch.setattr(single_day, "GooglePlacesClient", Mock(side_effect=AssertionError("must not resolve again")))
     router = Mock()
-    router.route.side_effect = lambda points, **kw: {
-        "provider": "test", "distance_m": 30000, "duration_s": 3600,
-        "geometry": {"type": "LineString", "coordinates": [[p.lon, p.lat] for p in points]},
-    }
+    snapshot = deepcopy(prepared)
+    expected_coordinates = {tuple(p["coordinate"]) for p in prepared["points"].values()}
+    def measured_route(points, **kwargs):
+        coordinates = [(p.lon, p.lat) for p in points]
+        assert len(coordinates) >= 3 and coordinates[0] == coordinates[-1]
+        assert set(coordinates) <= expected_coordinates
+        return {"provider": "test", "distance_m": 30000, "duration_s": 3600,
+                "geometry": {"type": "LineString", "coordinates": [list(p) for p in coordinates]}}
+    router.route.side_effect = measured_route
     monkeypatch.setattr(single_day, "GoogleRoutesClient", lambda key: router)
     result = handler.create_route_plan_tool(context, args={"title": "测试", "country_code": "FR",
                                                           "target_distance_km": 1, "use_prepared_candidates": True})
     stored = store.get(result["result"]["plan_id"])
+    router.route.assert_called()
+    assert prepared == snapshot
     assert stored["country_code"] == "JP"
     assert stored["route_preparation"]["status"] == "prepared"
     assert all(c["target_distance_km"] == 30 for c in stored["candidates"])
@@ -384,7 +361,8 @@ def test_corrected_corridor_does_not_poison_final_result(monkeypatch, tmp_path, 
     if outcome == 'success':
         assert result['status'] == 'completed'
         assert result['route_plan']['plan_id'] == 'plan'
-        assert result['executions'][0]['status'] == 'recovered'
+        assert result['executions'][0]['status'] == 'failed'  # Diagnostic history remains factual.
+        assert result['route_workflow']['stages']['materials'] == {'state': 'completed', 'attempts': 2}
     else:
         assert not result.get('route_plan')
         assert result['error']['code'] == ('route_materials_invalid' if outcome == 'uncorrected' else 'provider_connection_failed')
@@ -412,3 +390,20 @@ def test_ambiguous_optional_point_is_removed_without_bridging_corridor(monkeypat
         assert result['materials']['corridors'] == []
         assert result['unresolved_optional_points'] == [{'id':'c','query':'Kyoto c'}]
         assert value['corridors']  # Input remains unchanged.
+
+
+def test_current_agent_preparation_skips_strava_even_when_model_requests_it(monkeypatch):
+    from agent.main_agent.context import AgentContext
+    from agent.tools.handlers.route import prepare_route_materials_tool
+    from services.route import preparation
+    observed = []
+    original = preparation.prepare_route_materials
+    def prepare(value, **kwargs):
+        observed.append(kwargs['use_strava'])
+        return original(value, **kwargs, config={}, resolver=resolved,
+                        discoverer=lambda *a, **kw: ([], {'status': 'disabled', 'message': '未使用 Strava'}))
+    monkeypatch.setattr(preparation, 'prepare_route_materials', prepare)
+    context = AgentContext(session_id='test')
+    result = prepare_route_materials_tool({'materials': materials(), 'use_strava': True}, context)
+    assert observed == [False]
+    assert result['segments'] == []

@@ -9,10 +9,17 @@ MATERIALS_SCHEMA = {
     "properties": {
         "schema_version": {"const": "route_materials.v1", "type": "string"},
         "country_code": {"type": "string", "pattern": "^[A-Z]{2}$"},
-        "locality": {"type": "string", "minLength": 1, "maxLength": 100, "description": "用户限定的城市，如京都市；不可替换为京都府。无城市限制可省略。"},
+        "locality": {"type": "string", "minLength": 1, "maxLength": 100, "description": "起点城市，用于确认起点身份；不表示全部途经点必须属于该城市。"},
+        "locality_scope": {"type": "string", "enum": ["origin", "city"], "default": "origin",
+                           "description": "默认 origin 仅校验起点城市，途经点按起点半径筛选；仅用户明确只在市内时用 city。"},
         "origin_id": {"type": "string"}, "destination_id": {"type": "string"},
         "is_loop": {"type": "boolean"},
         "target_distance_km": {"type": "number", "minimum": 1, "maximum": 500},
+        "distance_mode": {"type": "string", "enum": ["target", "default", "unrestricted", "route_length"],
+                          "description": "数字目标用 target；开放式需求缺省 default=30km；明确不限距离用 unrestricted；完整起终点按实际距离用 route_length。"},
+        "scenery_preferences": {"type": "array", "uniqueItems": True, "maxItems": 6,
+                               "items": {"type": "string", "enum": ["mountain", "riverside", "forest", "coast", "countryside", "urban"]},
+                               "description": "观景方向，不是训练坡度或通行保证。适量爬坡映射山区观景，不编造爬升数字。"},
         "ordered_point_ids": {"type": "array", "maxItems": 12, "uniqueItems": True,
                               "items": {"type": "string"},
                               "description": "明确要求先后顺序的地点；必经不自动表示顺序。"},
@@ -25,6 +32,8 @@ MATERIALS_SCHEMA = {
                 "name": {"type": "string", "minLength": 1, "maxLength": 150},
                 "local_name": {"type": "string", "minLength": 1, "maxLength": 150},
                 "category": {"type": "string", "enum": ["natural", "landmark", "bridge", "road", "station", "business", "unknown"]},
+                "scenery": {"type": "array", "uniqueItems": True, "items": {"type": "string", "enum": ["mountain", "riverside", "forest", "coast", "countryside", "urban"]},
+                            "description": "资料支持的地点景观；山区入口/山口标记 mountain，用于山区控制点选择，不代表实际道路景观已验证。"},
                 "description": {"type": "string", "maxLength": 200, "description": "资料支持的地理特征与用途，不提供猜测坐标。"},
                 "required": {"type": "boolean"},
                 "source_ids": {"type": "array", "maxItems": 10, "items": {"type": "string"}},
@@ -38,6 +47,9 @@ MATERIALS_SCHEMA = {
                 "name": {"type": "string", "minLength": 1, "maxLength": 300},
                 "preference_weight": {"type": "number", "minimum": 0, "maximum": 10,
                                       "description": "偏好强度；未提供时为 1，不能覆盖必经约束。"},
+                "scenery": {"type": "array", "uniqueItems": True, "maxItems": 6,
+                            "items": {"type": "string", "enum": ["mountain", "riverside", "forest", "coast", "countryside", "urban"]},
+                            "description": "仅根据来源标记走廊景观，用于匹配观景偏好。"},
                 "allow_partial": {"type": "boolean",
                                   "description": "可选走廊允许选连续子段；required=true 仍必须保留整段。"},
                 "point_ids": {"type": "array", "minItems": 2, "maxItems": 12,
@@ -56,8 +68,11 @@ def validate_materials(value, *, source_ids=()):
     errors = sorted(Draft202012Validator(MATERIALS_SCHEMA).iter_errors(value), key=lambda e: str(e.path))
     if errors:
         raise MaterialInputError(f"{errors[0].json_path}: {errors[0].message}")
+    if value.get("locality_scope") == "city" and not value.get("locality"):
+        raise MaterialInputError("locality_scope=city requires locality")
     result = deepcopy(value)
     result["schema_version"] = "route_materials.v1"
+    result.setdefault("locality_scope", "origin")
     for point in result["points"]:
         point["query"] = point["query"].strip()
     points = {p["id"]: p for p in result["points"]}

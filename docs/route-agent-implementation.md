@@ -1,8 +1,30 @@
 # Route Agent 结构整改交付记录
 
+测试职责、运行范围和清理准则见 [路线测试基准](route-testing-baseline.md)。
+
 本项收敛 Agent 调用、任务状态和跨入口草稿接续，不属于 Python 目录迁移，不修改冻结架构或迁移 ADR。
 
 ## 当前调用链
+
+当前距离容差、海拔请求预算与地理范围以文末 2026-09-20 两节为准；下方较早日期的章节保留当时实施记录。
+
+2026-09-20：会话管理已独立提交 `59d864e`；以下路线状态、缺省要求和爬升预览为后续整改。
+
+路线请求新增 `route_workflow.v1`：固定 `research → materials → routing` 三阶段，统一使用
+`pending/running/completed/blocked/skipped`。每次阶段开始、结束以及任务结束均保存到 SQLite
+`route_workflows`（schema 14），以 workspace/request 隔离；结束返回仅含阶段状态和次数的摘要。
+原始工具记录保留诊断事实，不再因旧的 `failed`、`prepared`、`ok` 字符串或参数变化否决已修复阶段。
+重新执行上游会使下游证据失效；完整途经点请求可跳过未执行的资料阶段，但不能跳过已受阻阶段直接保存。
+这些检查点用于追踪实际执行，不自动恢复中断工具，也不是任务 Worker。删除会话同时删除对应检查点。
+
+材料 v1 增加兼容字段 `distance_mode` 与 `scenery_preferences`：开放式缺省距离为 30 km，明确
+`unrestricted` 或 `route_length` 则不补数字；距离/景观通过 changes 合并，换地区仍用 replace。
+走廊的 `scenery` 只描述来源支持的景观；本地候选按匹配偏好排序，不据此保证实际景观连续或道路坡度。
+材料损失导致景观走廊缺失时保留原偏好并提示。
+
+浏览器传 `include_elevation=false, include_ascent=true`，在准备材料路径的最终筛选前请求 Google 估算爬升，直接途经点路径补充最终候选爬升。
+公开 `route_ascent.v1` 只含爬升及参考用途，不含最大坡度；海拔失败不拒绝路线。
+同几何预览复用爬升，几何改变或反转后重新估算。预览数据不进入 Rider 路线海拔或骑行台，仍按平坡 ERG。
 
 ```text
 主对话 → Main Agent → activate_skill(plan-routes) → run_route_agent
@@ -227,3 +249,23 @@ Strava 发现不可用时继续规划得到真实验证；地图选型和距离�
 
 本次不更改旧的直接 waypoints Google 路径或 AMap 选点逻辑。类型为 unknown 的旧材料不能获得
 新的用途判断能力，需通过重新准备材料补齐语义。跨语言 Place ID 别名库、真实走廊入口/可通行性仍未实现。
+
+### 山区候选：搜索、地图道路与 Google 爬升（2026-09-20）
+
+当前 Route Agent 材料准备固定关闭 Strava，创建适配强制 `segment_strategy=ignore`；既有独立 Strava 能力保留，本轮不接入混合路段。
+
+1. 搜索有来源的山区入口、山口、出口与线路方向，形成控制点及 `corridors.scenery`。
+2. 本地束搜索产生不同控制点骨架；两轮反馈最多测量六条真实道路路线。
+3. 实测距离在目标 ±20% 内且通过道路约束的候选，在最终筛选**之前**采样 Google 海拔（由可信请求选项 `include_ascent` 控制，两个页面入口开启）。
+4. 山区偏好排序分为距离误差减去有限爬升加分：`error_ratio - 0.15 * min(1, ascent_m / distance_km / 20)`；同分优先走廊材料得分和原路线保留程度，再做几何差异过滤。该初始启发式不是景观质量认证，也不保证三条候选。
+5. 海拔失败按未知处理，保留道路候选；当前候选几何不变时，最终展示复用采样结果或失败记录，不重复请求。Google 最大坡度不展示，模拟仍为平坡/ERG。
+
+山区且启用爬升时继续完成两轮候选比较。Google 海拔最多代理/直连各尝试一次，单次最多八秒，并计入道路测量阶段共享的 90 秒、72 HTTP 请求预算。`route_search.request_count_scope=routing_and_elevation`，`ascent_evaluation_count` 为候选采样次数，并非实际 HTTP 次数。未启用爬升则不参与爬升排序。
+
+### 起点城市与路线活动范围（2026-09-20）
+
+`route_materials.v1` 增加可选 `locality_scope=origin|city`，新材料默认并持久化 `origin`。`locality` 用于确定起点城市；仅用户明确要求不出市时设置 `city`，并通过 `changes.fields=["locality_scope"]` 表达限制变化。旧计划只有 locality 而没有 scope 时，修改流程保守继承原有 city 语义，避免默默放宽旧约束。
+
+- 已确认起点之后，普通途经点不再要求同一行政城市，仍检查国家、身份、用途与起点距离。材料路径环线半径为目标公里数 ×0.6，开放路线 ×1.2；无距离目标时暂用 50 km。范围是控制点筛选，不保证道路里程合格。高德材料路径使用 WGS84 展示坐标检查半径。
+- Google 起点缺少 locality 时，仅 origin 模式允许在同国家、可信城市中心 5 km 内补充空间证据；名称身份和用途仍需通过。明确属于其他城市、同名但过远、国家错误或身份不明都不接受。该证据标记为 `origin_locality_match=city_center_radius_5km`，不是行政边界证明；city 模式不使用该回退。
+- 地点缓存区分城市约束、城市证据与实际校验半径，不能复用宽范围结果绕过窄范围检查。必经地点失败继续阻止规划，可选地点失败沿用移除与提示。

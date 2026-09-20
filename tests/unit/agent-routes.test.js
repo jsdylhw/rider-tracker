@@ -89,10 +89,11 @@ export const suite = {
                     message: "生成京都路线",
                     request_mode: "route_plan",
                     route_action: "create",
-                    route_options: { include_elevation: false }
+                    route_options: { include_elevation: false, include_ascent: true }
                 });
                 assertEqual(request.request_mode, "route_plan");
                 assertEqual(request.route_action, "create");
+                assertEqual(request.route_options.include_ascent, true);
 
                 let error = null;
                 try {

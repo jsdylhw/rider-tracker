@@ -512,7 +512,9 @@ def _compact_route_segment(item: dict[str, Any], *, id_key: str) -> dict[str, An
         "provider_alternative_count": item.get("provider_alternative_count"),
         "target_distance_km": item.get("target_distance_km"),
         "distance_delta_km": item.get("distance_delta_km"),
-        "elevation_summary": elevation.get("summary") or {},
+        "elevation_summary": {k: v for k, v in (elevation.get("summary") or {}).items()
+                              if k in {"samples", "sample_spacing_m", "minimum_m", "maximum_m", "ascent_m", "descent_m"}},
+        "ascent_preview": item.get("ascent_preview"),
         "warnings": item.get("warnings") or [],
         "strava_segments": [
             {key: value for key, value in segment.items() if key != "geometry"}
@@ -845,6 +847,9 @@ def resolve_google_places(
     place_cache: dict[tuple[Any, ...], dict[str, Any]] | None = None,
     point_intents: dict[str, dict] | None = None,
     locality_names: tuple[str, ...] = (),
+    locality_scope: str = "city",
+    origin_locality_evidence: dict | None = None,
+    point_radius_km: float | None = None,
 ) -> list[dict[str, Any]]:
     google = config.get("google") if isinstance(config.get("google"), dict) else {}
     key = str(google.get("api_key") or "")
@@ -860,8 +865,12 @@ def resolve_google_places(
         max(MIN_LOOP_WAYPOINT_RADIUS_KM, target * LOOP_WAYPOINT_RADIUS_RATIO)
         if target is not None else None
     )
+    if point_radius_km is not None:
+        maximum_radius_km = point_radius_km
     for query in queries:
         anchor = places[0] if places else None
+        names = locality_names if anchor is None or locality_scope == "city" else ()
+        origin_evidence = origin_locality_evidence if anchor is None and locality_scope != "city" else None
         near = (
             (float(anchor["latitude"]), float(anchor["longitude"]))
             if anchor is not None and maximum_radius_km is not None else None
@@ -877,7 +886,7 @@ def resolve_google_places(
         )
         cache_key = (country_code, query, anchor_key, near, search_radius_m if near is not None else None)
         if point_intents is not None:
-            cache_key += (str(sorted((point_intents.get(query) or {}).items())), tuple(locality_names))
+            cache_key += (str(sorted((point_intents.get(query) or {}).items())), tuple(names), str(origin_evidence), maximum_radius_km)
         cached = place_cache.get(cache_key) if place_cache is not None else None
         if cached is not None:
             place = deepcopy(cached)
@@ -885,8 +894,8 @@ def resolve_google_places(
             if point_intents is not None:
                 from services.route.place_resolution import resolve_place
                 raw = resolve_place(client, query, country=country_code,
-                    intent=point_intents.get(query) or {}, locality_names=locality_names,
-                    anchor=anchor, radius_km=maximum_radius_km)
+                    intent=point_intents.get(query) or {}, locality_names=names,
+                    anchor=anchor, radius_km=maximum_radius_km, origin_locality_evidence=origin_evidence)
             else:
                 results = client.search(query, near=near, radius_m=search_radius_m, limit=5).get("places") or []
                 if not results:
@@ -1143,7 +1152,13 @@ def _elevation_profile(
             stage="elevation",
             code="provider_invalid_response",
         )
-    elevations = [float(item["elevation"]) for item in results]
+    try:
+        elevations = [float(item["elevation"]) for item in results]
+        if not all(math.isfinite(value) for value in elevations):
+            raise ValueError("non-finite elevation")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ProviderError("Google Elevation returned invalid samples", provider="google_elevation",
+                            stage="elevation", code="provider_invalid_response") from exc
     smoothed = [
         sum(elevations[max(0, index - 1):min(len(elevations), index + 2)])
         / len(elevations[max(0, index - 1):min(len(elevations), index + 2)])
@@ -1152,13 +1167,10 @@ def _elevation_profile(
     step_m = distance_m / (len(elevations) - 1)
     ascent = sum(max(0.0, second - first) for first, second in zip(smoothed, smoothed[1:]))
     descent = sum(max(0.0, first - second) for first, second in zip(smoothed, smoothed[1:]))
-    span = max(1, round(1_000 / max(step_m, 1)))
-    grades = [
-        (elevations[index + span] - elevations[index]) / (span * step_m) * 100
-        for index in range(len(elevations) - span)
-    ]
     return {
         "kind": "route_elevation",
+        "provider": "google_elevation",
+        "usage": "ascent_reference_only",
         "summary": {
             "samples": len(elevations),
             "sample_spacing_m": round(step_m),
@@ -1166,9 +1178,6 @@ def _elevation_profile(
             "maximum_m": round(max(elevations)),
             "ascent_m": round(ascent),
             "descent_m": round(descent),
-            "maximum_uphill_percent": round(max(grades), 1),
-            "maximum_downhill_percent": round(min(grades), 1),
-            "grade_window_m": round(span * step_m),
         },
         "labels": [round(distance_m * index / (len(elevations) - 1) / 1000, 1) for index in range(len(elevations))],
         "elevations_m": [round(value, 1) for value in elevations],
@@ -1188,10 +1197,15 @@ def _read_json_url(
         if direct_first
         else (ProxyHandler(), ProxyHandler({}))
     )
-    for attempt in range(3):
+    # Optional elevation must not exhaust the candidate comparison latency budget.
+    for attempt in range(1 if normalized_provider == "google_elevation" else 3):
         for proxy_handler in proxy_handlers:
             try:
-                with build_opener(proxy_handler).open(url, timeout=25) as response:
+                timeout = 25
+                if normalized_provider == "google_elevation":
+                    from integrations.route_providers.budget import consume_route_request
+                    timeout = consume_route_request(8)
+                with build_opener(proxy_handler).open(url, timeout=timeout) as response:
                     value = json.load(response)
                 if not isinstance(value, dict):
                     raise ProviderError(

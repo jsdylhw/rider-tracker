@@ -9,6 +9,19 @@ export const suite = {
     name: "agent-route-contract",
     tests: [
         {
+            name: "ascent preview never becomes simulation elevation",
+            run() {
+                const turn = buildTurnResult();
+                turn.route_plan.candidates[0].ascent_preview = {
+                    schema_version: "route_ascent.v1", ascent_m: 466, simulation_usable: false
+                };
+                const draft = parseAgentRouteDraft(turn);
+                assertEqual(draft.candidates[0].estimatedAscentMeters, 466);
+                const route = buildRiderRouteFromAgentCandidate(draft, draft.candidates[0].candidateId);
+                assertEqual(route.hasElevationData, false);
+            }
+        },
+        {
             name: "parses route_plan_view and builds a no-elevation Rider route",
             run() {
                 const draft = parseAgentRouteDraft(buildTurnResult());

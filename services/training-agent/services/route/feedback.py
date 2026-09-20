@@ -38,7 +38,7 @@ def route_signature(ids):
 
 
 def plan_with_feedback(preparation, *, workspace_id, title, include_elevation,
-                       route_constraints=None, route_preferences=None, config=None,
+                       route_constraints=None, route_preferences=None, config=None, include_ascent=False,
                        evaluator=None, validator=None, pool_builder=None, clock=time.monotonic):
     from services.route.single_day import route_candidate, validate_measured_candidate
     from services.route.skeleton_search import rank_skeletons
@@ -51,6 +51,8 @@ def plan_with_feedback(preparation, *, workspace_id, title, include_elevation,
     materials, points = preparation['materials'], preparation['points']
     target = float(materials.get('target_distance_km') or 0) * 1000
     seed = preparation.get('seed_point_ids') or []
+    mountain = 'mountain' in materials.get('scenery_preferences', [])
+    ascent_evaluations = 0
     constraints = normalize_route_constraints(route_constraints)
     preferences = normalize_route_preferences(route_preferences)
     if evaluator is None and materials['country_code'] != 'CN':
@@ -59,7 +61,7 @@ def plan_with_feedback(preparation, *, workspace_id, title, include_elevation,
     latitude = points[materials['origin_id']]['coordinate'][1]
     started = clock()
     measurements, failures, valid, seen = [], [], [], set()
-    # Count actual routing HTTP attempts independently of full-route evaluations.
+    # Count routing and elevation HTTP attempts independently of full-route evaluations.
     pool = preparation['skeletons']
     ratio = None
     seed_edges = {frozenset(pair) for pair in zip(seed, seed[1:])}
@@ -81,7 +83,7 @@ def plan_with_feedback(preparation, *, workspace_id, title, include_elevation,
             def key(s):
                 edges = {frozenset(pair) for pair in zip(s['point_ids'], s['point_ids'][1:])}
                 overlap = max((similarity(edges, {frozenset(pair) for pair in zip(c['point_ids'], c['point_ids'][1:])}) for c in chosen), default=0)
-                fit = abs(s['estimated_distance_m'] - aim) / max(1, aim)
+                fit = abs(s['estimated_distance_m'] - aim) / aim if aim else 0
                 best_preference = max(float(x.get('preferred_score', 0)) for x in rows)
                 preference_gap = (best_preference - float(s.get('preferred_score', 0))) / max(1, best_preference)
                 return (fit + overlap * .2 + preference_gap * .25 - retention(s) * .03, tuple(s['point_ids']))
@@ -129,8 +131,8 @@ def plan_with_feedback(preparation, *, workspace_id, title, include_elevation,
                               geometry=measured.get('geometry'), status='measured')
                 error = abs(actual - target) / target if target else 0
                 record['distance_error_ratio'] = error
-                if error > .10:
-                    record.update(status='distance_rejected', message='实际距离超出目标 ±10%，保留测量用于反馈。')
+                if error > .20:
+                    record.update(status='distance_rejected', message='实际距离超出目标 ±20%，保留测量用于反馈。')
                     continue
                 try:
                     accepted = validate(measured, constraints, include_elevation=False, config=cfg)
@@ -138,24 +140,36 @@ def plan_with_feedback(preparation, *, workspace_id, title, include_elevation,
                     record.update(status='quality_rejected', message=str(exc))
                     continue
                 record['status'] = 'accepted'
+                if include_ascent:
+                    from services.route.ascent import enrich_ascent_preview, ascent_view
+                    ascent_evaluations += 1
+                    accepted = enrich_ascent_preview({'candidates': [accepted]}, config=cfg)['candidates'][0]
+                    preview = ascent_view(accepted)
+                    record['estimated_ascent_m'] = preview['ascent_m'] if preview else None
+                    # A bounded preference bonus, never a claim of scenic coverage.
+                    # Saturate at 20 m/km so extreme climbs do not dominate distance.
+                    record['mountain_bonus'] = (.15 * min(1, preview['ascent_m'] / max(1, actual / 1000) / 20)
+                                                if mountain and preview else 0)
+                record['ranking_score'] = error - record.get('mountain_bonus', 0)
                 accepted['planning_evidence'] = {k: record[k] for k in ('control_corridor_coverage', 'distance_error_ratio', 'selected_route_retention')}
                 accepted['planning_evidence']['corridor_geometry_verified'] = False
+                accepted['planning_evidence']['ranking_score'] = record['ranking_score']
                 cells = geometry_cells(accepted['geometry']['coordinates'], latitude)
                 valid.append((accepted, record, cells))
             ratios = [r['actual_distance_m'] / r['estimated_distance_m'] for r in measurements
                       if r.get('actual_distance_m', 0) > 0 and r.get('estimated_distance_m', 0) > 0]
             ratio = max(1, min(3, median(ratios))) if ratios else None
-            if len(select_diverse(valid)) >= 3:
+            if len(select_diverse(valid)) >= 3 and not (mountain and include_ascent):
                 break
     selected = select_diverse(valid)
     diagnostics = {'schema_version': 'route_search.v1', 'evaluation_count': len(measurements),
-                   'request_count': budget.count, 'elapsed_seconds': round(clock()-started, 3),
-                   'observed_distance_ratio': ratio, 'distance_tolerance_ratio': .10,
+                   'request_count': budget.count, 'request_count_scope': 'routing_and_elevation', 'elapsed_seconds': round(clock()-started, 3),
+                   'observed_distance_ratio': ratio, 'distance_tolerance_ratio': .20, 'ascent_evaluation_count': ascent_evaluations,
                    'measurements': measurements, 'corridor_evidence': 'ordered_control_points_only'}
     if not selected:
         if failures and not any('actual_distance_m' in r for r in measurements):
             raise RouteProviderFailed(failures)
-        error = RouteCandidateRejected('当前材料与两轮算路预算内未找到距离在目标 ±10% 内且满足约束的路线；原路线保持不变。',
+        error = RouteCandidateRejected('当前材料与两轮算路预算内未找到距离在目标 ±20% 内且满足约束的路线；原路线保持不变。',
                                        code='route_search_exhausted', stage='route_validation')
         error.search_diagnostics = diagnostics
         raise error
@@ -182,7 +196,7 @@ def plan_with_feedback(preparation, *, workspace_id, title, include_elevation,
 
 def select_diverse(valid):
     selected = []
-    for item in sorted(valid, key=lambda v: (v[1]['distance_error_ratio'], -float(v[1].get('preferred_score', 0)),
+    for item in sorted(valid, key=lambda v: (v[1].get('ranking_score', v[1]['distance_error_ratio']), -float(v[1].get('preferred_score', 0)),
                                             -v[1]['selected_route_retention'])):
         if any(similarity(item[2], other[2]) >= .88 for other in selected):
             continue

@@ -142,7 +142,8 @@ export const suite = {
                 assertEqual(draft.candidates.length, 1);
                 assertEqual(chatMessages.length, 1);
                 assert(chatMessages[0].includes("3 条有实质区别"), "开放式首次生成应明确要求三个候选");
-                assert(chatMessages[0].includes("不请求海拔"), "首次生成应明确无海拔约束");
+                assert(chatMessages[0].includes("模拟坡度按 0"), "首次生成应明确平坡模拟约束");
+                assertEqual(chatOptions[0].routeOptions.include_ascent, true);
                 assertEqual(chatOptions[0].routeOptions.include_elevation, false);
                 assertEqual(chatOptions[0].requestMode, "route_plan");
                 assertEqual(chatOptions[0].routeAction, "create");

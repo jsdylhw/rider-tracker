@@ -22,13 +22,15 @@ description: 根据明确途经点或开放式骑行需求，创建并持续修�
 
 - 用户给出明确起终点或途经点时，保持原顺序并调用一次 `create_route_plan`。除非用户明确要求返回、骑环线或回到起点，否则不得擅自闭合路线。
 - 开放式需求在阅读搜索结果后调用 `prepare_route_materials`。用 `route_materials.v1` 表达地点和走廊；地点只传城市限定的 query，不传模型猜测坐标。origin_id 引用起点；is_loop 只在用户要求返回时为 true，非环线必须提供 destination_id。
-- points 中 required 只标记用户明确必经的地点；数组顺序表达必经顺序。corridors 用有序 point_ids 表达入口、中间控制点和出口，不把一条长道路压缩成一个点。source_ids 只能引用本轮搜索返回的 ID；用户给出的地点可以没有来源。target_distance_km 保留用户目标。
-- 准备服务先解析地点，再尝试可选 Strava，最后本地组合；Strava 失败/为空时读取提示并继续，不要求用户连接 Strava。只有用户明确不要 Strava 时 use_strava=false。
+- points 中 required 只标记用户明确必经的地点；用户明确的必经顺序用 ordered_point_ids 表达。corridors 用有序 point_ids 表达入口、中间控制点和出口，不把一条长道路压缩成一个点。source_ids 只能引用本轮搜索返回的 ID；用户给出的地点可以没有来源。target_distance_km 保留用户目标。
+- 准备服务解析搜索材料中的地点和线路方向，再由本地算法组合道路控制点。本阶段不查询 Strava，use_strava=false。
 - 下一模型轮使用 `create_route_plan(use_prepared_candidates=true)`，由服务端取本轮地点骨架和解析坐标，不自行重写途经点。不要再指定 complete_loop/require。准备结果只表示待验证材料，估算距离不能报告为真实距离。
-- 当前阶段只将地点骨架交给既有 Google/AMap 验证；混合 Strava 骨架保留供第三步接入，不能声称最终路线已采用它们。明确完整途经点仍可直接创建。
+- 当前阶段仅将地点骨架交给既有 Google/AMap 验证；不采用 Strava 混合骨架。
 - 起点、“骑一圈再回来”和目标距离已经足够，不要要求用户自行设计中间点。
 - 路线形状只由途经点顺序表达。点到点路线的首尾不同；环线必须把完全相同的起点检索词重复为最后一点。不得另外传递猜测的路线类型。
-- 只有用户提供数字目标或范围时才设置 `target_distance_km`。用户要求统一距离（例如“京都市内风景好的 30 km 环线”）时必须在创建工具顶层传 `target_distance_km=30`，不得遗漏、改小或只写进标题；顶层目标约束每条候选。不得根据著名路线的常见长度自行编造目标；没有距离要求的明确途经点路线必须按地图服务的实际距离接受。
+- 用户指定数字时用 distance_mode=target 并传 target_distance_km；开放式观景规划缺少距离时用 distance_mode=default，由服务端补为 30 km，并向用户说明默认值。明确“不限距离”用 unrestricted；完整起终点按实际长度用 route_length，这两种不得同时传数字目标。不得将推荐线路的长度当用户目标。直接创建的数字目标仍在 create_route_plan 顶层传递。
+- scenery_preferences 保存观景方向：mountain、riverside、forest、coast、countryside、urban。“适量爬坡/山区看看”在虚拟骑行中优先理解为 mountain 观景，不编造爬升或坡度数字。检索相应有依据的入口、出口，corridors.scenery 标记来源支持的景观类型；没有相应材料时补查一次或明确说明无法验证，不能只在标题写山区。景观要求修改时 changes.fields 包含 scenery_preferences。
+- 山区偏好使用有来源的入口、山口和出口构建 corridors，标记 scenery=mountain。地图测量并校验道路后，服务端按实际几何采样 Google 海拔，再比较距离与估算爬升；爬升只是观景偏好代理，不能保证连续山景。
 - “不走重复路”“不要原路返回”“去回程分开”是确定性路线约束：必须传入 `route_constraints.avoid_repeated_roads=true`，通常保留 `maximum_self_overlap_ratio=0.1`。不得只把要求写进路线名称、理由或 `segment_preferences`。
 - 国内路线中，“不要掉头”“不坐轮渡”“不走阶梯”分别映射到 `route_constraints.avoid_u_turns`、`avoid_ferry`、`avoid_stairs`。用户明确给出允许绕行比例时才设置 `maximum_detour_ratio`；“不要绕路”但没有数字时使用 `route_preferences.routing_priority=shortest`，不得编造比例。
 - 国内路线中，“少左转”“少右转”“少拐弯”分别映射到 `route_preferences.turn_bias=fewer_left`、`fewer_right`、`fewer_turns`；“路线简单、好记、少换路”使用 `navigation_complexity=simple`；“尽量快”和“尽量短”分别使用 `routing_priority=fastest` 与 `shortest`。
@@ -36,7 +38,7 @@ description: 根据明确途经点或开放式骑行需求，创建并持续修�
 - 用户明确要求某条有名称或特定区域的完整热门环线时，调用 `create_route_plan`，并传入 `segment_strategy=complete_loop`、`origin`、`area`，以及确有依据的 `segment_name_hint`。
 - 只有多日行程或同一天拆成多个阶段时，才使用 `create_itinerary_plan`。
 
-旧的直接途经点路径默认使用 `segment_strategy=auto`（材料准备路径不重复增强）：地图服务先验证每个骨架，随后服务可以用可用的 Strava 路段组合替换基准路线。发现、选择或组合失败时保留已验证的地图基准路线。只有用户明确要求必须有 Strava 证据时才使用 `require`；用户明确不要时使用 `ignore`。
+直接途经点路径使用 `segment_strategy=ignore`，本阶段不进行 Strava 增强。
 
 中国大陆使用高德算路，其他国家使用 Google Places 和 Google Routes。服务只解析一次环线中重复的起点，并使用完全相同的起点坐标闭合路线。必须报告地图服务返回的实际距离，不得假装路线达到目标；明确目标距离的候选必须通过服务端距离校验，超出目标 60%-150% 的候选淘汰，不能因地图算路成功就报告为满足需求，地点未解析、Provider 失败或违反硬约束的候选不能作为有效路线报告。
 
@@ -50,11 +52,10 @@ description: 根据明确途经点或开放式骑行需求，创建并持续修�
 - 自然语言修改（refine）以服务端给出的当前选中路线为基准，保留未被否定的起点、目标距离、城市和偏好，结合新要求重新准备材料并调用 create_route_plan(use_prepared_candidates=true)，生成最多三条不同的有效候选。不要仅替换当前一条，也不要以未选中候选为基准。只有不足三条通过时才返回较少候选，不复制路线凑数。
 - 修改转向或重复道路偏好时，在新建候选组时传入更新后的 route_preferences / route_constraints；只能按地图证据报告效果。
 - 明确的 update 工具任务仍可更新单条；反转和撤销由页面确定性命令处理。
-- 用户希望查看附近 Strava 素材时使用 `explore_route_segments`。
-- 只有当前计划的已发现候选池中存在真实 Segment ID 时，才能使用 `compose_segments`。保持用户要求的路段顺序，绝不能编造 ID。
 - 跨地区修改使用新地区材料，不继承旧城市限制。
 
 海拔和 Strava 热度只是参考证据。不得声称掌握实时交通、道路安全、通行许可、街景连续性或精确路面坡度。
+Google 海拔仅提供估算爬升参考，不计算、不展示、不引用最大坡度，也不据此验收“适量爬坡”。include_ascent 是应用控制的独立预览选项；include_elevation=false 的虚拟路线始终按平坡模拟，不能把海拔预览传给物理引擎或骑行台。海拔不可用不影响已通过校验的路线。
 
 ## 材料协议与失败恢复
 
@@ -70,10 +71,14 @@ description: 根据明确途经点或开放式骑行需求，创建并持续修�
 - prepare_route_materials 的 changes 只列出用户本轮明确修改的字段。例如改成40km：fields=["target_distance_km"]；多经过鸭川：fields=["corridors"]；明确换城市：mode="replace"。未列出的旧起点、距离、城市、必经条件由服务端合并，不要静默丢弃。初次规划无需changes。
 - “多走沿河/某条线路”用 corridor.preference_weight 表达偏好（1–10），允许只走一段时 allow_partial=true；“必须经过完整线路”用required=true。必经点不等于定序，只有用户明确顺序时设置 ordered_point_ids。
 - 本地准备保留多种长度与走廊组合。create_route_plan 对这些骨架最多两轮、六条进行实际道路测量，根据当轮道路/直线距离比例修正下一轮搜索；不需要模型重复调用创建。
-- 准备路径的最终候选距离需落在目标±10%内；若预算内找不到，不得宣称无解或已满足。走廊覆盖字段只表示连续控制点，不代表真实沿河里程。不要声称已经验证山路坡度或沿河通行。
+- 准备路径的最终候选距离需落在目标±20%内；若预算内找不到，不得宣称无解或已满足。走廊覆盖字段只表示连续控制点，不代表真实沿河里程。不要声称已经验证山路坡度或沿河通行。
 
 地点消歧：每个 points 条目提供资料支持的 name、local_name、category、description。
 category 用 natural（河岸、公园等）、landmark、bridge、road、station、business 或 unknown。
 例如鸭川三角洲应明确为 natural，description 为河流汇合处；不能只给容易与商家重名的 query。
 不编造别名或 GPS。place_ambiguous/place_not_found 时补充有资料依据的名称与用途；可选点可以删除，
 但须同步修正走廊并保留用户必经要求；必经点不能静默替换。服务端最多自动补查一次。
+
+材料提交前自检：points 最多 12 个，corridors 最多 6 条；每条走廊至少两个控制点。is_loop=false 必须提供与 origin_id 不同的 destination_id；不能用空终点表示开放式需求。
+
+地理范围：locality 表示起点城市，默认 locality_scope=origin；尼斯周边等跨城路线不要设置 city。仅用户明确“只在市内/不得出城”才用 locality_scope=city。途经点由服务端按已确认起点的几何半径筛选，目标环线为目标距离的 60%，开放路线为 120%；无距离目标暂以 50 km 为搜索范围。调整市内限制时 changes.fields 包含 locality_scope，不要擅自删除用户原有约束。城市字段缺失时起点可采用可信城市中心附近的空间证据，但名称身份仍须匹配。

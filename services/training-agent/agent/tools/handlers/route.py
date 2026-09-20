@@ -157,6 +157,7 @@ def create_route_plan_tool(
         plan = create_prepared_plan(
             preparation, workspace_id=_workspace_id(context),
             title=str(args.get("title") or "单日骑行路线"), include_elevation=include_elevation,
+            include_ascent=bool(context.route_request_options.get("include_ascent")),
             route_constraints=route_constraints, route_preferences=route_preferences,
         )
     else:
@@ -596,6 +597,12 @@ def _plan_answer(plan: dict[str, Any], *, prefix: str) -> str:
             f"隧道 {int(passage_counts.get('tunnel') or 0)} 段。"
         )
     planning = plan.get("planning") if isinstance(plan.get("planning"), dict) else {}
+    for warning in active.get("warnings") or []:
+        if str(warning).startswith("未指定距离"):
+            answer += " " + str(warning)
+    ascent = active.get("ascent_preview") or {}
+    if ascent.get("ascent_m") is not None:
+        answer += f" Google 估算爬升约 {ascent['ascent_m']} m，仅供参考；平坡模拟，不提供最大坡度。"
     if planning.get("status") == "awaiting_selection":
         answer += f" 当前共有 {len(candidates)} 条候选，尚未最终确认；可以选择候选或继续按语义修改。"
     elif planning.get("status") == "confirmed":
@@ -805,7 +812,7 @@ def prepare_route_materials_tool(args, context):
     supplied = validate_materials(args.get("materials"), source_ids=[s["source_id"] for s in sources])
     materials = merge_material_requirements(supplied, previous, args.get("changes"))
     result = prepare_route_materials(materials, sources=sources,
-                                     use_strava=args.get("use_strava", True))
+                                     use_strava=False)
     result["requirement_changes"] = deepcopy(args.get("changes") or {})
     selected = next((c for c in base.get("candidates", []) if c.get("candidate_id") == base.get("active_candidate_id")), None)
     if selected and (args.get("changes") or {}).get("mode") != "replace":
@@ -821,6 +828,9 @@ def prepare_route_materials_tool(args, context):
 
 
 def _with_research(plan, context):
+    if context.route_request_options.get("include_ascent"):
+        from services.route.ascent import enrich_ascent_preview
+        plan = enrich_ascent_preview(plan)
     if not context.route_research:
         return plan
     # Consulted references, not a claim that every source was used or verified.

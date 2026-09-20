@@ -4,6 +4,30 @@ import pytest
 
 from services.route.materials import MaterialInputError, validate_materials
 from services.route.requirements import merge_material_requirements, selected_route_seed
+from services.route.requirements import normalize_planning_requirements
+
+
+@pytest.mark.parametrize("mode,target,expected", [(None, None, 30), ("unrestricted", None, None),
+                                                ("route_length", None, None), ("target", 40, 40)])
+def test_distance_defaults_preserve_explicit_intent(mode, target, expected):
+    value = materials()
+    value.pop("target_distance_km")
+    if mode:
+        value["distance_mode"] = mode
+    if target:
+        value["target_distance_km"] = target
+    result = normalize_planning_requirements(validate_materials(value))
+    assert result.get("target_distance_km") == expected
+    inherited = normalize_planning_requirements(merge_material_requirements(materials(), result))
+    assert inherited.get("target_distance_km") == expected
+
+
+def test_distance_and_scenery_change_independently():
+    previous = normalize_planning_requirements({**materials(), "scenery_preferences": ["mountain"]})
+    new = {**materials(), "target_distance_km": 40, "scenery_preferences": ["riverside"]}
+    merged = normalize_planning_requirements(merge_material_requirements(new, previous, {"fields": ["target_distance_km"]}))
+    assert merged["target_distance_km"] == 40
+    assert merged["scenery_preferences"] == ["mountain"]
 
 
 def materials():

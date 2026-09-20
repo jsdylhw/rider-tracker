@@ -47,6 +47,7 @@ def build_route_plan_view(plan: dict[str, Any]) -> dict[str, Any]:
 
 
 def _candidate_view(candidate: dict[str, Any]) -> dict[str, Any] | None:
+    from services.route.ascent import ascent_view
     candidate_id = str(candidate.get("candidate_id") or "")
     if not candidate_id:
         return None
@@ -72,6 +73,7 @@ def _candidate_view(candidate: dict[str, Any]) -> dict[str, Any] | None:
         "segment_sequence": _segment_sequence(candidate.get("strava_segments")),
         "stages": stages,
         "warnings": [str(value) for value in candidate.get("warnings") or [] if str(value)],
+        "ascent_preview": ascent_view(candidate),
     }
 
 

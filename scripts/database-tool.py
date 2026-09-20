@@ -36,6 +36,7 @@ REQUIRED_TABLES = {
     "route_progress",
     "chat_sessions",
     "chat_session_views",
+    "route_workflows",
 }
 REQUIRED_ACTIVITY_COLUMNS = {
     "id", "source", "source_activity_id", "sport_type", "sub_sport", "name",

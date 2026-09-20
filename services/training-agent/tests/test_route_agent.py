@@ -307,3 +307,14 @@ def test_refine_uses_selected_candidate_and_regenerates_prepared_group(monkeypat
     assert create.call_args.args[0]['route_constraints'] == ({} if replace_requirements else old['route_constraints'])
     update.assert_not_called()
     assert old['revision'] == 2
+
+
+def test_route_only_tools_disable_segments_without_mutating_shared_contract():
+    from agent.tools import MAIN_AGENT_TOOLS
+    shared = next(t for t in MAIN_AGENT_TOOLS if t.name == 'create_route_plan')
+    before = deepcopy(shared.input_schema)
+    client = Client('request_route_clarification', {'question': '从哪里出发？'})
+    run_route_agent(task(), client=client)
+    presented = next(t for t in client.calls[0]['tools'] if t['name'] == 'create_route_plan')
+    assert presented['input_schema']['properties']['segment_strategy']['enum'] == ['ignore']
+    assert shared.input_schema == before

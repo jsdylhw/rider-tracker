@@ -66,3 +66,68 @@ def test_exact_duplicates_do_not_consume_second_round_measurements():
                                pool_builder=lambda *a,**kw: prep['skeletons'])
     assert len(seen) == 3 and len(result['candidates']) == 1
     assert '仅找到 1 条' in result['candidates'][0]['warnings'][0]
+
+
+def test_unrestricted_distance_does_not_drown_out_scenery_preference():
+    prep, _ = fixture()
+    prep['materials'].pop('target_distance_km')
+    prep['materials']['distance_mode'] = 'unrestricted'
+    prep['skeletons'][0].update(estimated_distance_m=1000, preferred_score=0)
+    prep['skeletons'][1].update(estimated_distance_m=30000, preferred_score=10)
+    seen = []
+    def measure(spec, **kw):
+        seen.append(spec['waypoints'][1])
+        return {'distance_m': 35000, 'geometry': {'coordinates': [[135,35],[135.1,35.1],[135,35]]}, 'warnings': []}
+    result = plan_with_feedback(prep, workspace_id='t', title='t', include_elevation=False, config={},
+                               evaluator=measure, validator=lambda v,*a,**kw: deepcopy(v),
+                               pool_builder=lambda *a,**kw: prep['skeletons'])
+    assert seen[0] == 'b'
+    assert result['route_search']['measurements'][0]['distance_error_ratio'] == 0
+
+
+def test_mountain_candidates_compare_google_ascent_before_selection(monkeypatch):
+    from services.route import single_day
+    from services.route.ascent import enrich_ascent_preview
+    prep, _ = fixture()
+    prep['materials'].update(target_distance_km=40, scenery_preferences=['mountain'])
+    calls = []
+    def elevation(coords, distance, config):
+        calls.append(distance)
+        return {'summary': {'ascent_m': {40000: 50, 42000: 840, 47000: 940}[distance]}}
+    monkeypatch.setattr(single_day, '_elevation_profile', elevation)
+    def measure(spec, **kwargs):
+        n = 'abc'.index(spec['waypoints'][1])
+        return {'distance_m': [40000, 42000, 47000][n],
+                'geometry': {'coordinates': [[135,35],[135+.1*(n+1),35+.02*n],[135,35]]}}
+    result = plan_with_feedback(prep, workspace_id='t', title='t', include_elevation=False,
+        include_ascent=True, config={}, evaluator=measure, validator=lambda v,*a,**kw:deepcopy(v),
+        pool_builder=lambda *a,**kw:prep['skeletons'])
+    assert result['candidates'][0]['distance_m'] == 42000
+    assert {c['distance_m'] for c in result['candidates']} == {40000,42000,47000}
+    assert len(calls) == 3
+    assert result['route_search']['ascent_evaluation_count'] == 3
+    enrich_ascent_preview(result, config={})
+    assert len(calls) == 3
+    assert all('elevation' not in c for c in result['candidates'])
+
+
+def test_ascent_failure_keeps_road_and_does_not_retry_in_final_preview(monkeypatch):
+    from services.route import single_day
+    from services.route.ascent import enrich_ascent_preview
+    prep, _ = fixture()
+    prep['materials']['scenery_preferences'] = ['mountain']
+    calls = []
+    def unavailable(*args):
+        calls.append(1)
+        raise RuntimeError('unavailable')
+    monkeypatch.setattr(single_day, '_elevation_profile', unavailable)
+    def measure(*args, **kwargs):
+        return {'distance_m': 30000, 'geometry': {'coordinates': [[135,35],[135.1,35.1],[135,35]]}}
+    result = plan_with_feedback(prep, workspace_id='t', title='t', include_elevation=False,
+        include_ascent=True, config={}, evaluator=measure, validator=lambda v,*a,**kw:deepcopy(v),
+        pool_builder=lambda *a,**kw:prep['skeletons'])
+    assert len(result['candidates']) == 1
+    assert all(r['estimated_ascent_m'] is None for r in result['route_search']['measurements'])
+    before = len(calls)
+    enrich_ascent_preview(result, config={})
+    assert len(calls) == before

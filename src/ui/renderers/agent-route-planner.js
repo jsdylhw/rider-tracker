@@ -485,7 +485,10 @@ function candidateMetrics(candidate) {
     const values = [];
     if (candidate.distanceKm) values.push(`${candidate.distanceKm.toFixed(1)} km`);
     if (candidate.durationMinutes) values.push(`虚拟骑行约 ${Math.round(candidate.durationMinutes)} 分钟`);
-    values.push("无海拔 · ERG 适用");
+    if (candidate.estimatedAscentMeters !== null && candidate.estimatedAscentMeters !== undefined) {
+        values.push(`估算爬升 ${Math.round(candidate.estimatedAscentMeters)} m（仅供参考）`);
+    }
+    values.push("平坡模拟 · ERG 适用");
     return values.join(" · ");
 }
 

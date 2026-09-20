@@ -94,12 +94,12 @@ ROUTE_PREFERENCES_SCHEMA = {
 
 MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
     ToolDef(name="prepare_route_materials", category=CATEGORY_COACHING,
-            description="结构化地点和有序线路走廊，解析坐标，尝试可选 Strava 路段并本地组合骨架。仅准备材料，不生成路线；不得将估算距离报告为实际距离。",
+            description="结构化地点和有序线路走廊，解析坐标并本地组合道路骨架；本阶段不查询 Strava。仅准备材料，不生成路线；不得将估算距离报告为实际距离。",
             input_schema={"type": "object", "additionalProperties": False,
                           "required": ["materials"], "properties": {
                               "materials": MATERIALS_SCHEMA,
                               "changes": CHANGES_SCHEMA,
-                              "use_strava": {"type": "boolean", "default": True},
+                              "use_strava": {"type": "boolean", "default": False, "description": "兼容字段；当前材料准备固定不查询 Strava。"},
                           }}),
     ToolDef(name="search_cycling_routes", category=CATEGORY_COACHING,
             description="搜索真实骑行路线资料。开放式路线先搜索，阅读来源后在下一轮创建路线；搜索不是规划成功。",

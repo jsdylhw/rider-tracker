@@ -36,6 +36,7 @@ Python Training Backend 内部开发还应阅读：
 | --- | --- |
 | 骑行能否开始、设备/控制模式 | [`ride-readiness-and-control.md`](ride-readiness-and-control.md) |
 | 配置缺失时哪些功能可用 | [`feature-capability-matrix.md`](feature-capability-matrix.md) |
+| 路线测试职责、运行范围与质量基准 | [`route-testing-baseline.md`](route-testing-baseline.md) |
 | 目标距离验收与真实 Agent 对话 | [`route-distance-dialogue-validation.md`](route-distance-dialogue-validation.md) |
 | 国内路线自然语言约束和排序 | [`domestic-route-preferences.md`](domestic-route-preferences.md) |
 | Agent 会话持久化、列表和上下文隔离 | [`agent-sessions.md`](agent-sessions.md) |

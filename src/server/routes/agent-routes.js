@@ -134,6 +134,12 @@ function normalizeRouteOptions(value) {
         }
         result.include_elevation = value.include_elevation;
     }
+    if (value.include_ascent !== undefined) {
+        if (typeof value.include_ascent !== "boolean") {
+            throw new RequestValidationError("route_options.include_ascent 必须是布尔值。");
+        }
+        result.include_ascent = value.include_ascent;
+    }
     return result;
 }
 

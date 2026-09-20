@@ -69,7 +69,7 @@ export function createAgentRoutePreviewService({
                 : buildVirtualRouteRequest(message);
             const chatOptions = {
                 ...(onProgress ? { onProgress: (event) => { if (operations.isCurrent(requestId)) onProgress(event); } } : {}),
-                routeOptions: { include_elevation: false },
+                routeOptions: { include_elevation: false, include_ascent: true },
                 ...(routeSessionId ? { sessionId: routeSessionId } : {}),
                 requestMode: "route_plan",
                 routeAction: currentDraft ? "refine" : "create",
@@ -272,7 +272,7 @@ function activeCandidateId(draft) {
 function buildVirtualRouteRequest(message) {
     return [
         String(message || "").trim(),
-        "这是 Rider Tracker 的虚拟观景路线：如果用户只给区域、距离或偏好等开放需求，应准备 3 条有实质区别的候选骨架，通过一次 create_route_plan 调用验证；使用材料准备时传 use_prepared_candidates=true，不重写 candidates；如果用户已经明确给出完整起终点或途经点顺序，则保持原顺序并可只生成 1 条。不要为每条候选分别调用工具；不请求海拔，坡度按 0 处理；路线将配合 ERG 骑行。"
+        "这是 Rider Tracker 的虚拟观景路线：如果用户只给区域、距离或偏好等开放需求，应准备 3 条有实质区别的候选骨架，通过一次 create_route_plan 调用验证；使用材料准备时传 use_prepared_candidates=true，不重写 candidates；如果用户已经明确给出完整起终点或途经点顺序，则保持原顺序并可只生成 1 条。不要为每条候选分别调用工具；Google 爬升由服务端独立估算，仅供参考，不计算最大坡度；模拟坡度按 0 处理，配合 ERG 骑行。"
     ].filter(Boolean).join("\n\n");
 }
 
@@ -281,6 +281,6 @@ function buildRouteRefinementRequest(message, draft) {
         String(message || "").trim(),
         `当前路线计划 ${draft.planId}。以当前选中路线为基准，结合修改建议重新准备并生成三条可预览候选，调用 create_route_plan 新建候选组，不要只修改一条。`,
         "同一区域修改时保留未被用户否定的起点、终点和路线意图；跨区域时不得用旧计划的 country_code 或途经点继续更新。",
-        "这是无海拔 ERG 虚拟路线，include_elevation 必须为 false。修改后返回可预览的路线候选。"
+        "这是平坡 ERG 虚拟路线，include_elevation 必须为 false；服务端独立估算爬升，仅供参考，不用于模拟或最大坡度。修改后返回可预览的路线候选。"
     ].filter(Boolean).join("\n\n");
 }

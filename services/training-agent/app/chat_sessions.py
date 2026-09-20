@@ -103,6 +103,7 @@ class ChatSessionStore:
             self._sessions.clear()
             with connect_database(self.database) as connection:
                 connection.execute("DELETE FROM chat_sessions")
+                connection.execute("DELETE FROM route_workflows")
                 connection.execute("DELETE FROM chat_session_views")
 
     def _new_session(self, session_id: str) -> ChatSession:
@@ -223,6 +224,7 @@ class ChatSessionStore:
             try:
                 with connect_database(self.database) as connection:
                     connection.execute("DELETE FROM chat_sessions WHERE session_id = ?", (session_id,))
+                    connection.execute("DELETE FROM route_workflows WHERE workspace_id = ?", (f"web-chat:{session_id}",))
                     connection.execute("UPDATE chat_session_views SET deleted = 1, title = '', turns_json = '[]' WHERE session_id = ?", (session_id,))
                 session.deleted = True
                 self._sessions.pop(session_id, None)

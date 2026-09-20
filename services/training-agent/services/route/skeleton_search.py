@@ -60,11 +60,13 @@ Optional Strava evidence is deliberately not interpreted as routable geometry.
         distance = sum(distances[a, b] for a, b in zip(full, full[1:]))
         coverage = {c["id"]: run_length(full, c["point_ids"]) / max(1, len(c["point_ids"]) - 1)
                     for c in corridors}
-        preference = sum(float(c.get("preference_weight", c.get("weight", 1))) * (
+        preference = sum((float(c.get("preference_weight", c.get("weight", 1))) +
+                          3 * bool(set(c.get("scenery", [])) & set(materials.get("scenery_preferences", [])))) * (
                              coverage[c["id"]] if c.get("allow_partial", True) else int(coverage[c["id"]] == 1))
                          for c in corridors if not c.get("required"))
         retention = len(seeds.intersection(ids)) / max(1, len(seeds))
-        error = abs(distance - target) / target if target else distance / 1000
+        # No target means no distance-fit objective; meters must not drown out scenery.
+        error = abs(distance - target) / target if target else 0
         return distance, coverage, preference, error - .15 * preference - .04 * retention
 
     def valid(ids):
