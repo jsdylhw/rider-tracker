@@ -1,3 +1,4 @@
+import { createAgentSessionControls } from "./agent-session-controls.js";
 import { createAgentApiClient } from "../../adapters/agent/personal-fit-agent-client.js";
 import { createAgentPresentationRenderer } from "./agent-presentation-renderer.js";
 import { replaceWithSafeMarkdown } from "../shared/safe-markdown-renderer.js";
@@ -52,6 +53,23 @@ export function createAgentFloatingWindow({
     let visible = true;
     let busy = false;
     let agentCapabilities = null;
+    let sessions = null;
+    let restoringSession = false;
+    sessions = createAgentSessionControls({
+        container: root.getElementById?.("agentSessions"), client: agentClient, kind: "chat",
+        onBusy(value) { restoringSession = value; setBusy(value); },
+        onLoad(detail) {
+            requestSequence += 1;
+            elements.messages.replaceChildren();
+            present([]);
+            for (const turn of detail.turns) {
+                if (turn.message) addTextMessage("user", turn.message);
+                if (turn.response?.answer) renderResponse(turn.response, detail.session_id);
+            }
+            if (!detail.turns.length) addTextMessage("agent", "新会话已就绪。可以询问活动、训练或路线。");
+            updateContext("本地骑行助手");
+        }
+    });
 
     const listen = (element, type, handler) => {
         element?.addEventListener(type, handler);
@@ -65,6 +83,7 @@ export function createAgentFloatingWindow({
         elements.launcher.setAttribute("aria-expanded", String(shouldOpen));
         elements.launcher.classList.toggle("is-hidden", shouldOpen);
         if (shouldOpen) {
+            void sessions?.restore();
             elements.badge.hidden = true;
             schedule(() => elements.input?.focus(), 0);
         }
@@ -85,6 +104,8 @@ export function createAgentFloatingWindow({
 
     function setBusy(nextBusy) {
         busy = nextBusy;
+        if (!restoringSession) sessions?.setBlocked(nextBusy);
+        if (elements.clearContextButton && sessions) elements.clearContextButton.disabled = nextBusy && !restoringSession;
         const unavailable = agentCapabilities !== null
             && !canChat(agentCapabilities);
         if (elements.sendButton) elements.sendButton.disabled = nextBusy || unavailable;
@@ -151,25 +172,8 @@ export function createAgentFloatingWindow({
             const result = await agentClient.chat(normalized, { routeOptions: { include_elevation: false } });
             if (sequence !== requestSequence) return null;
             thinking.remove();
-            const answer = String(result?.answer || "本轮已完成，但没有返回文字说明。");
-            const article = addTextMessage("agent", workflowConversationSummary(result) || answer,
-                { error: Boolean(result?.error) });
-            if (onOpenRoute && result?.route_task?.status === "completed" && result?.route_plan && !result?.error) {
-                const button = root.createElement("button");
-                button.type = "button";
-                button.textContent = "打开路线草稿";
-                const reference = { planId: result.route_plan.plan_id, revision: result.route_plan.revision,
-                    sessionId: sourceSessionId };
-                listen(button, "click", async () => {
-                    button.disabled = true;
-                    try { await onOpenRoute(reference); }
-                    catch (error) { addTextMessage("agent", error.message || "打开路线失败", { error: true }); }
-                    finally { button.disabled = false; }
-                });
-                article.append(button);
-            }
-            present(result?.presentations, answer);
-            updateContext(resolveContextLabel(result));
+            renderResponse(result, sourceSessionId);
+            void sessions?.refreshList();
             if (elements.window.hidden) elements.badge.hidden = false;
             return result;
         } catch (error) {
@@ -185,6 +189,28 @@ export function createAgentFloatingWindow({
         }
     }
 
+    function renderResponse(result, sourceSessionId) {
+        const answer = String(result?.answer || "本轮已完成，但没有返回文字说明。");
+        const article = addTextMessage("agent", workflowConversationSummary(result) || answer,
+            { error: Boolean(result?.error) });
+        if (onOpenRoute && result?.route_task?.status === "completed" && result?.route_plan && !result?.error) {
+            const button = root.createElement("button");
+            button.type = "button";
+            button.textContent = "打开路线草稿";
+            const reference = { planId: result.route_plan.plan_id, revision: result.route_plan.revision,
+                sessionId: sourceSessionId };
+            listen(button, "click", async () => {
+                button.disabled = true;
+                try { await onOpenRoute(reference); }
+                catch (error) { addTextMessage("agent", error.message || "打开路线失败", { error: true }); }
+                finally { button.disabled = false; }
+            });
+            article.append(button);
+        }
+        present(result?.presentations, answer);
+        updateContext(resolveContextLabel(result));
+    }
+
     function updateContext(label) {
         contextCleared = false;
         elements.contextBar.hidden = false;
@@ -192,6 +218,7 @@ export function createAgentFloatingWindow({
     }
 
     function clearContext() {
+        if (sessions) { void sessions.newSession(); return; }
         requestSequence += 1;
         setBusy(false);
         agentClient.resetSession?.();
@@ -236,6 +263,7 @@ export function createAgentFloatingWindow({
         addTextMessage("agent", "你好，我可以读取本地活动数据库，分析单次活动或训练历史。也可以规划路线草稿，再打开 AI 路线页面预览和确认。 ");
         presentationRenderer.clear();
     }
+    void sessions?.restore();
     reportJobs.restore();
     if (reportJobs.blocks().length) setExpanded(true);
 
@@ -247,6 +275,7 @@ export function createAgentFloatingWindow({
         sendMessage,
         destroy() {
             requestSequence += 1;
+            sessions?.destroy();
             reportJobs.destroy();
             listeners.splice(0).forEach((remove) => remove());
         },

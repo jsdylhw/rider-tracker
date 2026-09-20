@@ -1,7 +1,10 @@
+import { createAgentSessionControls } from "../agent/agent-session-controls.js";
 import { capabilityMessage } from "../../domain/agent/agent-capabilities.js";
 
 export function createAgentRoutePlanner({
     elements,
+    agentSessionClient,
+    onRestoreAgentRouteSession,
     onPlanAgentRoutes,
     onPreviewAgentRoute,
     onConfirmAgentRoute,
@@ -20,6 +23,27 @@ export function createAgentRoutePlanner({
     let isBusy = false;
     let stopActiveProgress = null;
     let selectedSegmentIds = [];
+    let restoringSession = false;
+    let lastHandoff = null;
+    const sessions = createAgentSessionControls({
+        container: documentRef?.getElementById?.("aiRouteSessions"), client: agentSessionClient, kind: "route_plan",
+        isLocked: () => lastState?.liveRide?.isActive === true,
+        onBusy(value) { restoringSession = value; setBusy(value); },
+        async onLoad(detail) {
+            const draft = await onRestoreAgentRouteSession(detail);
+            requestSequence += 1;
+            currentDraft = draft;
+            selectedSegmentIds = [];
+            if (elements.aiRouteProgress) elements.aiRouteProgress.hidden = true;
+            elements.aiRouteMessages.replaceChildren();
+            for (const turn of detail.turns) {
+                if (turn.message) addMessage("user", turn.message.split("\n\n这是 Rider Tracker")[0].split("\n\n当前路线计划")[0]);
+                if (turn.response?.answer) addMessage("agent", turn.response.answer);
+            }
+            if (!detail.turns.length) addMessage("agent", "告诉我起点、距离和偏好，我会生成路线候选。");
+            renderDraft();
+        }
+    });
 
     function listen(element, type, handler) {
         element?.addEventListener(type, handler);
@@ -54,6 +78,18 @@ export function createAgentRoutePlanner({
 
     function render(state) {
         lastState = state;
+        if (state.agentRouteSession && state.agentRouteSession !== lastHandoff) {
+            lastHandoff = state.agentRouteSession;
+            requestSequence += 1;
+            stopActiveProgress?.();
+            if (elements.aiRouteProgress) elements.aiRouteProgress.hidden = true;
+            sessions?.adopt(lastHandoff);
+            elements.aiRouteMessages?.replaceChildren();
+            for (const turn of lastHandoff.turns) {
+                if (turn.message) addMessage("user", turn.message);
+                if (turn.response?.answer) addMessage("agent", turn.response.answer);
+            }
+        }
         if (state.agentRouteDraft && state.agentRouteDraft !== currentDraft) {
             currentDraft = state.agentRouteDraft;
             selectedSegmentIds = [];
@@ -61,6 +97,7 @@ export function createAgentRoutePlanner({
         }
         if (!initialized && elements.aiRouteMessages && elements.aiRouteCandidates) {
             initialized = true;
+            if (!lastHandoff) void sessions?.restore();
             addMessage("agent", "告诉我起点、距离和偏好，我会生成真实路线候选。先预览，再继续修改或最终确认；无海拔虚拟路线适合配合 ERG 骑行。");
             renderDraft();
         } else {
@@ -85,6 +122,7 @@ export function createAgentRoutePlanner({
         setBusy(true);
         try {
             const draft = await onPlanAgentRoutes?.(normalized, { onProgress: progress.update });
+            void sessions?.refreshList();
             if (sequence !== requestSequence) return;
             if (!draft) {
                 progress.finish("本次请求已结束，未更新路线");
@@ -402,6 +440,7 @@ export function createAgentRoutePlanner({
 
     function setBusy(busy) {
         isBusy = busy;
+        if (!restoringSession) sessions?.setBlocked(busy);
         const locked = !isAiRouteAvailable()
             || busy || lastState?.liveRide?.isActive === true || lastState?.route?.isLoading === true;
         if (elements.aiRouteMessageInput) elements.aiRouteMessageInput.disabled = locked;
@@ -435,6 +474,7 @@ export function createAgentRoutePlanner({
     function destroy() {
         requestSequence += 1;
         stopActiveProgress?.();
+        sessions?.destroy();
         listeners.splice(0).forEach((remove) => remove());
     }
 

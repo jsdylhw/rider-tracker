@@ -1,3 +1,4 @@
+import { buildRoute } from "../../domain/route/route-builder.js";
 import { createAgentApiClient } from "../../adapters/agent/personal-fit-agent-client.js";
 import {
     buildRiderRouteFromAgentCandidate,
@@ -15,6 +16,26 @@ export function createAgentRoutePreviewService({
     let currentDraft = null;
     let routeSessionId = null;
 
+    async function restoreAgentRouteSession(detail) {
+        if (!operations.ensureRouteEditingAllowed()) throw new Error("骑行中不能切换路线会话");
+        const requestId = operations.invalidateRequests();
+        let draft = null;
+        if (detail.route_reference) {
+            const response = await agentClient.routePlanCommand("get", {
+                session_id: detail.session_id, plan_id: detail.route_reference.plan_id,
+                expected_revision: detail.route_reference.revision
+            });
+            draft = parseAgentRouteDraft({ ...response, status: "completed" });
+        }
+        if (!operations.isCurrent(requestId)) throw new Error("会话切换已被更新的操作替代");
+        if (!operations.ensureRouteEditingAllowed()) throw new Error("骑行中不能切换路线会话");
+        routeSessionId = detail.session_id;
+        saveDraft(draft);
+        if (draft) commitActiveRoute(draft, "已恢复会话路线");
+        else if (store.getState().route?.agentPlanId) operations.commitRoute(buildRoute([]), "新路线会话");
+        return draft;
+    }
+
     async function openAgentRoute({ planId, revision, sessionId }) {
         if (!operations.ensureRouteEditingAllowed()) return null;
         const requestId = operations.invalidateRequests();
@@ -25,8 +46,13 @@ export function createAgentRoutePreviewService({
         if (draft.planId !== planId || draft.revision !== revision) {
             throw new Error("路线版本已变化，请在主对话重新获取草稿后打开。");
         }
+        const detail = agentClient.getSession ? await agentClient.getSession(sessionId) : null;
+        if (!operations.isCurrent(requestId)) return null;
+        if (operations.discardAfterRideStart("骑行已开始，已忽略打开路线请求。")) return null;
         routeSessionId = sessionId;
+        if (detail) agentClient.selectSession(sessionId);
         saveDraft(draft);
+        if (detail) store.setState((state) => ({ ...state, agentRouteSession: detail }));
         commitActiveRoute(draft, "已打开路线草稿，请检查地图后确认。");
         return draft;
     }
@@ -213,6 +239,8 @@ export function createAgentRoutePreviewService({
     }
 
     return {
+        agentSessionClient: agentClient,
+        restoreAgentRouteSession,
         openAgentRoute,
         planAgentRoutes,
         previewAgentRoute,

@@ -84,6 +84,17 @@ try {
     if (!riderPage.includes("Rider Tracker") || !riderPage.includes("Training Agent")) {
         throw new Error("Rider root did not return the unified product page.");
     }
+    const createdSession = await requestJson(`${riderUrl}/api/agent/sessions`, {
+        method: "POST", body: { session_id: "integration-chat", kind: "chat" }
+    });
+    const sessionList = await readJson(`${riderUrl}/api/agent/sessions?kind=chat`);
+    const sessionDetail = await readJson(`${riderUrl}/api/agent/sessions/integration-chat`);
+    if (createdSession.result?.schema_version !== "agent_session.v1"
+        || sessionList.result?.sessions?.length !== 1
+        || sessionDetail.result?.turns?.length !== 0) throw new Error("Session creation/list/restore contract failed");
+    await requestJson(`${riderUrl}/api/agent/sessions/integration-chat`, { method: "DELETE" });
+    await expectStatus(`${riderUrl}/api/agent/sessions/integration-chat`, 404);
+
     const mapsConfig = await readJson(`${riderUrl}/api/runtime-config/maps`);
     if (!mapsConfig.configured || mapsConfig.apiKey !== "integration-google-key") {
         throw new Error(`Unexpected browser maps config: ${JSON.stringify(mapsConfig)}`);

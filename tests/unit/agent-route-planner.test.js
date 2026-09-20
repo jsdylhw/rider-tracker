@@ -6,6 +6,43 @@ export const suite = {
     name: "agent-route-planner",
     tests: [
         {
+            name: "route session selection restores transcript and deletion opens an empty session",
+            async run() {
+                const { documentRef, elements } = createPlannerDom();
+                const toolbar = createElement({ ownerDocument: documentRef });
+                documentRef.getElementById = (id) => id === "aiRouteSessions" ? toolbar : null;
+                const details = {
+                    one: { session_id: "one", title: "京都", turns: [{ message: "原问题", response: { answer: "原路线" } }] },
+                    two: { session_id: "two", title: "杭州", turns: [{ message: "杭州环线", response: { answer: "杭州路线" } }] },
+                    fresh: { session_id: "fresh", title: "新会话", turns: [] }
+                };
+                const deleted = [];
+                const client = { sessionId: "one", selectSession(id) { this.sessionId = id; },
+                    async getSession(id = this.sessionId) { return details[id]; },
+                    async listSessions() { return { sessions: Object.values(details) }; },
+                    async deleteSession() { deleted.push(this.sessionId); },
+                    async createSession() { return details.fresh; }
+                };
+                const planner = createAgentRoutePlanner({ elements, agentSessionClient: client,
+                    onRestoreAgentRouteSession: async (detail) => detail.session_id === "fresh" ? null : buildDraft() });
+                planner.render({ route: {}, liveRide: { isActive: false } });
+                await flushPromises();
+                assertEqual(elements.aiRouteMessages.children[0].messageBody.textContent, "原问题");
+                toolbar.children[0].value = "two";
+                toolbar.children[0].dispatch("change");
+                await flushPromises();
+                assertEqual(client.sessionId, "two");
+                assertEqual(elements.aiRouteMessages.children[0].messageBody.textContent, "杭州环线");
+                toolbar.children[2].dispatch("click");
+                await flushPromises();
+                assertEqual(deleted[0], "two");
+                assertEqual(client.sessionId, "fresh");
+                assertEqual(elements.aiRouteCandidates.children.length, 0);
+                assertEqual(elements.aiRouteProgress.hidden, true);
+                planner.destroy();
+            }
+        },
+        {
             name: "keeps completed progress after a route failure and ignores late events",
             async run() {
                 const { documentRef, elements } = createPlannerDom();
@@ -265,6 +302,7 @@ function createElement(initial = {}) {
         scrollTop: 0,
         className: "",
         classList: createFakeClassList(),
+        setAttribute() {},
         addEventListener(type, handler) {
             if (!listeners.has(type)) listeners.set(type, []);
             listeners.get(type).push(handler);

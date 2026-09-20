@@ -141,6 +141,10 @@ export function createPersonalFitAgentClient({
         getJob: (id) => get(`/api/jobs/${encodeURIComponent(id)}`, 2_000),
         cancelJob: (id) => post(`/api/jobs/${encodeURIComponent(id)}/cancel`, {}, 2_000),
         reportRebuildJob: (id) => get(`/api/jobs/${encodeURIComponent(id)}/report-rebuild`, 2_000),
+        listSessions: (kind) => get(`/api/chat-sessions?kind=${encodeURIComponent(kind)}`, 10_000),
+        getSession: (id) => get(`/api/chat-sessions/${encodeURIComponent(id)}`, 10_000),
+        createSession: (request) => post("/api/chat-sessions", request),
+        deleteSession: (id) => remove(`/api/chat-sessions/${encodeURIComponent(id)}`),
         chat: (request) => post("/api/chat", request),
         ingestFit: (request) => post("/api/activities/ingest-fit", request),
         archiveRiderSession: (request) => post(

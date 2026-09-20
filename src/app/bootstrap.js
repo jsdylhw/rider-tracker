@@ -93,6 +93,8 @@ const mainView = createMainView({
             exportCurrentRouteGpx: routeService.exportCurrentRouteGpx,
             deleteSavedRoute: routeService.deleteSavedRoute,
             createMapDrawRoute: routeService.createMapDrawRoute,
+            agentSessionClient: routeService.agentSessionClient,
+            restoreAgentRouteSession: routeService.restoreAgentRouteSession,
             planAgentRoutes: routeService.planAgentRoutes,
             previewAgentRoute: routeService.previewAgentRoute,
             confirmAgentRoute: routeService.confirmAgentRoute,

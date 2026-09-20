@@ -8,6 +8,35 @@ export const suite = {
     name: "agent-routes",
     tests: [
         {
+            name: "session CRUD passes through BFF and preserves the selected ID until explicitly selected",
+            async run() {
+                const calls = [];
+                const upstream = createPersonalFitAgentClient({ fetchImpl: async (url, options = {}) => {
+                    calls.push({ url, method: options.method || "GET", body: options.body && JSON.parse(options.body) });
+                    const body = url.includes("?kind=") ? { sessions: [{ session_id: "created", title: "京都" }] }
+                        : options.method === "DELETE" ? { deleted: true }
+                        : { session_id: "created", kind: "route_plan", turns: [] };
+                    return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+                } });
+                const app = express(); app.use(express.json()); app.use(createAgentRoutes({ agentClient: upstream }));
+                const server = app.listen(0, "127.0.0.1");
+                await new Promise((resolve) => server.once("listening", resolve));
+                try {
+                    const browser = createAgentApiClient({ baseUrl: `http://127.0.0.1:${server.address().port}`, storage: null });
+                    const old = browser.sessionId;
+                    const created = await browser.createSession("route_plan", "created");
+                    assertEqual(browser.sessionId, old);
+                    browser.selectSession(created.session_id);
+                    assertEqual((await browser.getSession()).session_id, "created");
+                    assertEqual((await browser.listSessions("route_plan")).sessions.length, 1);
+                    assertEqual((await browser.deleteSession()).deleted, true);
+                    assertEqual(calls[0].body.kind, "route_plan");
+                    assertEqual(calls[2].url.endsWith("/api/chat-sessions?kind=route_plan"), true);
+                    assertEqual(calls[3].method, "DELETE");
+                } finally { await new Promise((resolve) => server.close(resolve)); }
+            }
+        },
+        {
             name: "BFF forwards live route progress and the final result through both clients",
             async run() {
                 let release;

@@ -11,7 +11,7 @@ import json
 import math
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -30,7 +30,7 @@ from agent.tools.handlers.route import (
     get_route_plan_tool,
     update_route_plan_tool,
 )
-from app.chat_sessions import ChatSessionStore
+from app.chat_sessions import ChatSessionStore, SessionUnavailable
 from settings import cfg_get, load_config
 from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
 from storage.repositories.saved_route import SavedRouteNotFound, SavedRouteStore
@@ -565,6 +565,48 @@ def strava_route_gpx_endpoint(route_id: int, request: Request) -> Response:
     return Response(content=content, media_type="application/gpx+xml")
 
 
+class SessionCreateRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    kind: Literal["chat", "route_plan"] = "chat"
+
+
+@app.exception_handler(SessionUnavailable)
+async def session_unavailable_handler(request: Request, exc: SessionUnavailable):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.get("/api/chat-sessions")
+def list_chat_sessions(http_request: Request, kind: Literal["chat", "route_plan"] = "chat"):
+    _require_api_access(http_request)
+    return chat_sessions.list_sessions(kind)
+
+
+@app.post("/api/chat-sessions")
+def create_chat_session(request: SessionCreateRequest, http_request: Request):
+    _require_api_access(http_request)
+    chat_sessions.create(request.session_id, request.kind)
+    return chat_sessions.detail(request.session_id)
+
+
+@app.get("/api/chat-sessions/{session_id}")
+def get_chat_session(session_id: str, http_request: Request):
+    _require_api_access(http_request)
+    try:
+        return chat_sessions.detail(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+
+@app.delete("/api/chat-sessions/{session_id}")
+def delete_chat_session(session_id: str, http_request: Request):
+    _require_api_access(http_request)
+    try:
+        chat_sessions.delete(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {"schema_version": "agent_session.v1", "session_id": session_id, "deleted": True}
+
+
 @app.post("/api/chat")
 def chat_endpoint(request: ChatRequest, http_request: Request):
     _require_api_access(http_request)
@@ -636,9 +678,21 @@ def _chat_turn(request: ChatRequest, http_request: Request, *, on_progress=None)
                     request.message, context=session.context, execution_policy=execution_policy,
                 )
             response = public_turn_dict(result)
+        except HTTPException:
+            raise
+        except Exception:
+            failure = {"status": "failed", "answer": "本次处理意外中断，请重试。", "error": {"code": "turn_interrupted"}}
+            if not session.turns:
+                session.kind = request.request_mode
+            session.record_turn(request.request_id, request.message, failure)
+            session.cache_response(request.request_id, request_fingerprint, failure)
+            raise
         finally:
             session.context.route_request_options = {}
             session.context.request_id = None
+        if not session.turns:
+            session.kind = request.request_mode
+        session.record_turn(request.request_id, request.message, response)
         session.cache_response(request.request_id, request_fingerprint, response)
         return response
 

@@ -72,6 +72,8 @@ export function createMainView({ store, pipController, actions }) {
         onExportCurrentRouteGpx: route.exportCurrentRouteGpx,
         onDeleteSavedRoute: route.deleteSavedRoute,
         onCreateMapDrawRoute: route.createMapDrawRoute,
+        agentSessionClient: route.agentSessionClient,
+        onRestoreAgentRouteSession: route.restoreAgentRouteSession,
         onPlanAgentRoutes: route.planAgentRoutes,
         onPreviewAgentRoute: route.previewAgentRoute,
         onConfirmAgentRoute: route.confirmAgentRoute,

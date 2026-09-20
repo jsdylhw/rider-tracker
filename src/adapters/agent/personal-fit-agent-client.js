@@ -41,7 +41,33 @@ export function createAgentApiClient({
         return payload.result;
     }
 
+    async function sessionRequest(path = "", method = "GET", body) {
+        const response = await fetchImpl(`${baseUrl}/api/agent/sessions${path}`, {
+            method, headers: { "Content-Type": "application/json" },
+            ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10_000)
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) {
+            const error = new Error(payload.error || "会话加载失败，请重试");
+            error.status = response.status;
+            throw error;
+        }
+        return payload.result;
+    }
+    function selectSession(id) {
+        sessionId = id;
+        try { storage?.setItem(sessionStorageKey, id); } catch { /* memory selection remains usable */ }
+    }
+
     return {
+        selectSession,
+        listSessions: (kind = "chat") => sessionRequest(`?kind=${encodeURIComponent(kind)}`),
+        getSession: (id = sessionId) => sessionRequest(`/${encodeURIComponent(id)}`),
+        async createSession(kind = "chat", id = createSessionId()) {
+            const detail = await sessionRequest("", "POST", { session_id: id, kind });
+            return detail;
+        },
+        deleteSession: (id = sessionId) => sessionRequest(`/${encodeURIComponent(id)}`, "DELETE"),
         get sessionId() { return sessionId; },
         getReportJob: (id) => jobRequest(`/api/jobs/${encodeURIComponent(id)}/report-rebuild`),
         cancelReportJob: (id) => jobRequest(`/api/jobs/${encodeURIComponent(id)}/cancel`, {}),

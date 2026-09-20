@@ -1059,3 +1059,66 @@
         transition: none;
     }
 }
+
+/* Shared conversation toolbar: a quiet surface, one primary action. */
+.agent-session-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    flex: 0 0 auto;
+    gap: 6px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #e8edf4;
+    background: #fff;
+}
+.agent-session-controls .agent-session-select {
+    flex: 1 1 120px;
+    width: 0;
+    min-width: 90px;
+    height: 34px;
+    padding: 0 27px 0 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    appearance: none;
+    background: #f3f6fa url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+    color: #334155;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+.agent-session-controls button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    height: 34px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+}
+.agent-session-controls .agent-session-new {
+    padding: 0 11px;
+    background: #edf3ff;
+    color: #285ac5;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.agent-session-controls .agent-session-new:hover { background: #dfeaff; }
+.agent-session-controls .agent-session-icon { width: 30px; padding: 6px; background: transparent; color: #94a3b8; }
+.agent-session-controls .agent-session-icon svg { display: block; width: 17px; height: 17px; }
+.agent-session-controls .agent-session-icon:hover { background: #f1f5f9; color: #475569; }
+.agent-session-controls .agent-session-icon.is-danger:hover { background: #fff1f2; color: #be3455; }
+.agent-session-controls :is(button, select):focus-visible { outline: 2px solid #7da5f6; outline-offset: 2px; }
+.agent-session-controls :is(button, select):disabled { opacity: .45; cursor: not-allowed; }
+.agent-session-controls .agent-session-status { flex-basis: 100%; color: #64748b; font-size: 11px; line-height: 1.6; }
+.agent-session-controls .agent-session-status[hidden] { display: none; }
+.agent-session-controls.has-session-error .agent-session-status { color: #b45309; }
+@media (max-width: 420px) {
+    .agent-session-controls { padding: 9px 10px; gap: 4px; }
+    .agent-session-controls .agent-session-new { padding: 0 8px; }
+}

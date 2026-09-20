@@ -6,6 +6,18 @@ const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 export function createAgentRoutes({ agentClient }) {
     const router = express.Router();
 
+    const sessionHandler = (action) => async (req, res) => {
+        try { return res.json({ ok: true, result: await action(req) }); }
+        catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "backend" })) return;
+            return res.status(resolveStatus(error)).json({ ok: false, error: error.message });
+        }
+    };
+    router.get("/api/agent/sessions", sessionHandler((req) => agentClient.listSessions(req.query.kind || "chat")));
+    router.post("/api/agent/sessions", sessionHandler((req) => agentClient.createSession(req.body)));
+    router.get("/api/agent/sessions/:id", sessionHandler((req) => agentClient.getSession(req.params.id)));
+    router.delete("/api/agent/sessions/:id", sessionHandler((req) => agentClient.deleteSession(req.params.id)));
+
     router.get("/api/agent/health", async (_req, res) => {
         try {
             const result = await agentClient.health();

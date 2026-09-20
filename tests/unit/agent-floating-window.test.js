@@ -10,6 +10,76 @@ export const suite = {
     name: "agent-floating-window",
     tests: [
         {
+            name: "deleted remembered session opens a fresh ID instead of recreating the tombstone",
+            async run() {
+                const { root, elements } = createAgentTestDom();
+                elements.agentSessions = createElement({ ownerDocument: root });
+                let suppliedId = "not-called";
+                const client = { sessionId: "deleted", selectSession(id) { this.sessionId = id; },
+                    async getSession() { const error = new Error("missing"); error.status = 404; throw error; },
+                    async createSession(kind, id) { suppliedId = id; return { session_id: "fresh", turns: [] }; },
+                    async listSessions() { return { sessions: [{ session_id: "fresh", title: "新会话" }] }; }
+                };
+                const view = createAgentFloatingWindow({ root, seedConversation: false, agentClient: client });
+                for (let i = 0; i < 16; i++) await Promise.resolve();
+                assertEqual(suppliedId, undefined);
+                assertEqual(client.sessionId, "fresh");
+                assertEqual(view.getState().busy, false);
+                assertEqual(elements.agentSessions.children[4].hidden, true);
+                view.destroy();
+            }
+        },
+        {
+            name: "restores visible history before sending and new session has a distinct context",
+            async run() {
+                const { root, elements } = createAgentTestDom();
+                elements.agentSessions = createElement({ ownerDocument: root });
+                const chats = [];
+                let resolveHistory;
+                const client = { sessionId: "old", selectSession(id) { this.sessionId = id; },
+                    getSession: () => new Promise((resolve) => { resolveHistory = resolve; }),
+                    listSessions: async () => ({ sessions: [{ session_id: "old", title: "原会话" }, { session_id: "new", title: "新会话" }] }),
+                    async createSession() { return { session_id: "new", turns: [] }; },
+                    async chat(text) { chats.push(this.sessionId); return { answer: "新回答" }; }
+                };
+                const view = createAgentFloatingWindow({ root, seedConversation: false, agentClient: client });
+                await view.sendMessage("不能提前发送");
+                assertEqual(chats.length, 0);
+                resolveHistory({ session_id: "old", turns: [{ message: "原问题", response: { answer: "原回答" } }] });
+                for (let i = 0; i < 12; i++) await Promise.resolve();
+                assertEqual(elements.agentMessages.children.length, 2);
+                assertEqual(elements.agentMessages.children[0].children[1].textContent, "原问题");
+                elements.agentSessions.children[1].dispatch("click");
+                for (let i = 0; i < 12; i++) await Promise.resolve();
+                await view.sendMessage("新问题");
+                assertEqual(chats[0], "new");
+                assertEqual(elements.agentMessages.children.some((item) => item.children[1]?.textContent === "原问题"), false);
+                view.destroy();
+            }
+        },
+        {
+            name: "failed history restoration blocks hidden-context chat but permits retry",
+            async run() {
+                const { root, elements } = createAgentTestDom();
+                elements.agentSessions = createElement({ ownerDocument: root });
+                let attempts = 0, calls = 0;
+                const client = { sessionId: "old", selectSession() {},
+                    async getSession() { if (++attempts === 1) throw new Error("暂时离线"); return { session_id: "old", turns: [] }; },
+                    listSessions: async () => ({ sessions: [] }), chat: async () => { calls++; return { answer: "ok" }; }
+                };
+                const view = createAgentFloatingWindow({ root, seedConversation: false, agentClient: client });
+                for (let i = 0; i < 8; i++) await Promise.resolve();
+                await view.sendMessage("不应发送");
+                assertEqual(calls, 0);
+                assertEqual(elements.agentSessions.children[3].disabled, false);
+                elements.agentSessions.children[3].dispatch("click");
+                for (let i = 0; i < 12; i++) await Promise.resolve();
+                await view.sendMessage("恢复后发送");
+                assertEqual(calls, 1);
+                view.destroy();
+            }
+        },
+        {
             name: "successful route card opens its captured session and failed turns expose no card",
             async run() {
                 const { root, elements } = createAgentTestDom();

@@ -6,6 +6,30 @@ export const suite = {
     name: "agent-route-service",
     tests: [
         {
+            name: "switching route sessions restores the plan and new context cannot refine the old draft",
+            async run() {
+                const state = { route: baseRoute(), liveRide: { isActive: false } };
+                const calls = [];
+                const service = createAgentRoutePreviewService({
+                    store: { getState: () => state, setState: (fn) => Object.assign(state, fn(state)) },
+                    operations: createOperations(state),
+                    agentClient: {
+                        routePlanCommand: async () => routeResponse("awaiting_selection"),
+                        chat: async (message, options) => { calls.push(options); return routeResponse("awaiting_selection"); }
+                    }
+                });
+                await service.restoreAgentRouteSession({ session_id: "old", route_reference: { plan_id: "plan-1", revision: 1 } });
+                assertEqual(state.agentRouteDraft.planId, "plan-1");
+                await service.restoreAgentRouteSession({ session_id: "new", route_reference: null });
+                assertEqual(state.agentRouteDraft, null);
+                assertEqual(Boolean(state.route.agentPlanId), false);
+                await service.planAgentRoutes("京都");
+                assertEqual(calls[0].sessionId, "new");
+                assertEqual(calls[0].routeAction, "create");
+                assertEqual(calls[0].routeReference, null);
+            }
+        },
+        {
             name: "opens the exact chat draft and keeps its owner for edits without recreating",
             async run() {
                 let state = { route: baseRoute(), liveRide: { isActive: false } };

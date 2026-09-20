@@ -636,3 +636,11 @@ Python。Node 仍是正式入口，Python 新路径只通过同一份 Browser HT
 - 地点骨架复用已解析坐标进入既有地图服务；Strava 混合骨架保持 pending，第三步再验证地图后端。
 - 自由探索路网 owner 迁移记录在 `../known-issues-and-technical-debt.md`；尚未执行迁移。
 - 详细范围与验证边界见 `../route-agent-implementation.md`。
+
+## 2026-09-20：Agent 会话持久化与可见历史
+
+- Python 继续拥有会话上下文与 SQLite 持久化，Node 仅代理新增会话 CRUD；数据库版本升级到 13。
+- 主 Agent 与 AI 路线页面增加分类会话列表、恢复、切换、新建和删除；公开聊天记录独立于模型上下文和请求去重缓存。
+- 修正内存 TTL 删除持久会话的问题，恢复失败时禁止继续发送，防止空界面隐式沿用旧上下文。
+- 保留主对话路线卡片的会话归属；路线会话切换恢复草稿，新建后不再修改旧草稿。
+- 不改变同步 Agent / Worker 边界，也不调整子 Agent 工具选择策略。协议、兼容旧记录及验证范围见 [`../agent-sessions.md`](../agent-sessions.md)。

@@ -24,6 +24,8 @@ export function createRouteRenderer({
     onExportCurrentRouteGpx,
     onDeleteSavedRoute,
     onCreateMapDrawRoute,
+    agentSessionClient,
+    onRestoreAgentRouteSession,
     onPlanAgentRoutes,
     onPreviewAgentRoute,
     onConfirmAgentRoute,
@@ -82,6 +84,8 @@ export function createRouteRenderer({
     });
     const agentRoutePlanner = createAgentRoutePlanner({
         elements,
+        agentSessionClient,
+        onRestoreAgentRouteSession,
         onPlanAgentRoutes,
         onPreviewAgentRoute,
         onConfirmAgentRoute,

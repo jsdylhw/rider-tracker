@@ -15,6 +15,10 @@ from domain.activity.models import ActivityHandle
 from storage.database import connect_database
 
 
+class SessionUnavailable(ValueError):
+    """A deleted or busy conversation must not silently become a new context."""
+
+
 @dataclass
 class ChatSession:
     session_id: str
@@ -24,7 +28,23 @@ class ChatSession:
     touched_at: float = field(default_factory=monotonic)
     persist: Callable[["ChatSession"], None] | None = field(default=None, repr=False)
 
+    kind: str = "chat"
+    title: str = "新会话"
+    turns: list[dict[str, Any]] = field(default_factory=list)
+    created_at: float = field(default_factory=time)
+    deleted: bool = False
+
+    def record_turn(self, request_id: str, message: str, response: dict) -> None:
+        if any(item["request_id"] == request_id for item in self.turns):
+            return
+        self.turns.append({"request_id": request_id, "message": message,
+                           "response": response, "created_at": time()})
+        if self.title == "新会话":
+            self.title = message.split("\n", 1)[0][:60]
+
     def cached_response(self, request_id: str, request_fingerprint: str) -> dict[str, Any] | None:
+        if self.deleted:
+            raise SessionUnavailable("会话已删除，请新建会话")
         entry = self.responses.get(request_id)
         if entry is not None:
             self.responses.move_to_end(request_id)
@@ -83,8 +103,13 @@ class ChatSessionStore:
             self._sessions.clear()
             with connect_database(self.database) as connection:
                 connection.execute("DELETE FROM chat_sessions")
+                connection.execute("DELETE FROM chat_session_views")
 
     def _new_session(self, session_id: str) -> ChatSession:
+        with connect_database(self.database) as connection:
+            row = connection.execute("SELECT deleted FROM chat_session_views WHERE session_id = ?", (session_id,)).fetchone()
+        if row and row["deleted"]:
+            raise SessionUnavailable("会话已删除，请新建会话")
         return ChatSession(
             session_id=session_id,
             context=AgentContext(
@@ -102,14 +127,11 @@ class ChatSessionStore:
             ).fetchone()
             if row is None:
                 return None
-            if time() - float(row["updated_at"]) > self.ttl_seconds:
-                connection.execute("DELETE FROM chat_sessions WHERE session_id = ?", (session_id,))
-                return None
         try:
             context_data = json.loads(row["context_json"])
             response_data = json.loads(row["responses_json"])
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return None
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise SessionUnavailable("会话记录无法读取，请新建会话") from exc
         context = _restore_context(session_id, context_data)
         responses: OrderedDict[str, tuple[str, dict[str, Any]]] = OrderedDict()
         for item in response_data if isinstance(response_data, list) else []:
@@ -118,12 +140,94 @@ class ChatSessionStore:
             responses[str(item.get("request_id") or "")] = (
                 str(item.get("message") or ""), item["response"],
             )
-        return ChatSession(
+        session = ChatSession(
             session_id=session_id,
             context=context,
             responses=responses,
             persist=self._persist,
         )
+
+        with connect_database(self.database) as connection:
+            view = connection.execute("SELECT * FROM chat_session_views WHERE session_id = ?", (session_id,)).fetchone()
+        if view:
+            if view["deleted"]:
+                raise SessionUnavailable("会话已删除，请新建会话")
+            session.kind, session.title = view["kind"], view["title"]
+            session.turns = json.loads(view["turns_json"])
+            session.created_at = view["created_at"]
+        else:
+            session.kind = "route_plan" if context.route_messages and not context.messages else "chat"
+            # Legacy request caches contain public results, unlike model messages.
+            for request_id, (fingerprint, response) in responses.items():
+                try:
+                    request = json.loads(fingerprint)
+                except (ValueError, TypeError):
+                    continue
+                if isinstance(request, dict) and request.get("message"):
+                    if not context.messages:
+                        session.kind = request.get("request_mode", session.kind)
+                    session.record_turn(request_id, request["message"], response)
+            if not session.turns:
+                for index, message in enumerate(context.messages or context.route_messages):
+                    if message.get("role") in ("user", "assistant") and isinstance(message.get("content"), str):
+                        session.turns.append({"request_id": f"legacy-{index}",
+                            "message": message["content"] if message["role"] == "user" else "",
+                            "response": {"answer": message["content"]} if message["role"] == "assistant" else {}})
+            session.title = session.title if session.turns else "历史会话"
+            session.turns.insert(0, {"request_id": "legacy-history-notice", "message": "", "response": {
+                "answer": "此会话来自旧版本，已恢复可用记录；较早消息可能不完整。原上下文仍保留，需要干净上下文时请新建会话。"}})
+            self._persist(session)
+        return session
+
+    def create(self, session_id: str, kind: str) -> ChatSession:
+        session = self.get_or_create(session_id)
+        with session.lock:
+            if not session.turns:
+                session.kind = kind
+            self._persist(session)
+        return session
+
+    def detail(self, session_id: str) -> dict:
+        with self._lock:
+            session = self._sessions.get(session_id) or self._load(session_id)
+            if session is None:
+                raise KeyError(session_id)
+        if not session.lock.acquire(blocking=False):
+            raise SessionUnavailable("会话正在处理中，请稍后重试")
+        try:
+            if session.deleted:
+                raise SessionUnavailable("会话已删除")
+            return {"schema_version": "agent_session.v1", "session_id": session_id,
+                    "kind": session.kind, "title": session.title, "turns": list(session.turns),
+                    "route_reference": session.context.route_reference}
+        finally:
+            session.lock.release()
+
+    def list_sessions(self, kind: str) -> dict:
+        with self._lock:
+            with connect_database(self.database) as connection:
+                legacy = connection.execute("SELECT session_id FROM chat_sessions WHERE session_id NOT IN (SELECT session_id FROM chat_session_views)").fetchall()
+            for row in legacy:
+                self._load(row["session_id"])
+            with connect_database(self.database) as connection:
+                rows = connection.execute("SELECT session_id, kind, title, created_at, updated_at FROM chat_session_views WHERE deleted = 0 AND kind = ? ORDER BY updated_at DESC", (kind,)).fetchall()
+        return {"schema_version": "agent_session_list.v1", "sessions": [dict(row) for row in rows]}
+
+    def delete(self, session_id: str) -> None:
+        with self._lock:
+            session = self._sessions.get(session_id) or self._load(session_id)
+            if session is None:
+                raise KeyError(session_id)
+            if not session.lock.acquire(blocking=False):
+                raise SessionUnavailable("会话正在处理中，暂时不能删除")
+            try:
+                with connect_database(self.database) as connection:
+                    connection.execute("DELETE FROM chat_sessions WHERE session_id = ?", (session_id,))
+                    connection.execute("UPDATE chat_session_views SET deleted = 1, title = '', turns_json = '[]' WHERE session_id = ?", (session_id,))
+                session.deleted = True
+                self._sessions.pop(session_id, None)
+            finally:
+                session.lock.release()
 
     def _persist(self, session: ChatSession) -> None:
         context_json = json.dumps(_context_dict(session.context), ensure_ascii=False, default=str)
@@ -132,6 +236,15 @@ class ChatSessionStore:
             for request_id, (message, response) in session.responses.items()
         ], ensure_ascii=False, default=str)
         with connect_database(self.database) as connection:
+            if not connection.in_transaction:
+                connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute("SELECT deleted FROM chat_session_views WHERE session_id = ?", (session.session_id,)).fetchone()
+            if session.deleted or (row and row["deleted"]):
+                raise SessionUnavailable("会话已删除，请新建会话")
+            connection.execute("""INSERT INTO chat_session_views(session_id, kind, title, turns_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET
+                kind=excluded.kind, title=excluded.title, turns_json=excluded.turns_json, updated_at=excluded.updated_at""",
+                (session.session_id, session.kind, session.title, json.dumps(session.turns, ensure_ascii=False, default=str), session.created_at, time()))
             connection.execute(
                 """
                 INSERT INTO chat_sessions(session_id, context_json, responses_json, updated_at)
@@ -151,12 +264,18 @@ class ChatSessionStore:
             if now - session.touched_at > self.ttl_seconds
         ]
         for session_id in expired:
-            self._sessions.pop(session_id, None)
+            session = self._sessions[session_id]
+            if session.lock.acquire(blocking=False):
+                self._sessions.pop(session_id, None)
+                session.lock.release()
 
     def _discard_oldest(self) -> None:
         while len(self._sessions) > self.max_sessions:
             oldest = min(self._sessions.values(), key=lambda item: item.touched_at)
+            if not oldest.lock.acquire(blocking=False):
+                break
             self._sessions.pop(oldest.session_id, None)
+            oldest.lock.release()
 
 
 def _context_dict(context: AgentContext) -> dict[str, Any]:

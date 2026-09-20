@@ -219,6 +219,8 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/runtime-config/maps",
         "/api/user-profile",
         "/api/chat",
+        "/api/chat-sessions",
+        "/api/chat-sessions/{session_id}",
             "/api/route-narrations/photo",
             "/api/route-narrations/prepare",
             "/api/route-narrations/jobs/{job_id}",
@@ -936,6 +938,14 @@ def test_chat_reuses_context_and_deduplicates_request_id(tmp_path, monkeypatch):
     assert [item[0] for item in calls] == ["第一轮", "第二轮"]
     assert calls[0][1] is calls[1][1]
     assert [item["content"] for item in calls[1][1].messages] == ["第一轮", "第二轮"]
+    detail = client.get("/api/chat-sessions/session-1").json()
+    assert [turn["message"] for turn in detail["turns"]] == ["第一轮", "第二轮"]
+    assert detail["turns"][0]["response"]["answer"] == "answer:第一轮"
+    assert "context" not in detail["turns"][0]["response"]
+    from app.chat_sessions import ChatSessionStore
+    monkeypatch.setattr(api, "chat_sessions", ChatSessionStore())
+    assert client.get("/api/chat-sessions/session-1").json()["turns"] == detail["turns"]
+
 
 
 def test_chat_rejects_request_id_reuse_with_different_message(tmp_path, monkeypatch):
@@ -1358,3 +1368,26 @@ def test_route_stream_error_keeps_progress_and_hides_internal_exception(tmp_path
     events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
     assert [e['type'] for e in events] == ['progress', 'error']
     assert 'private-provider-details' not in response.text
+
+
+def test_session_api_restores_transcript_and_deletes_without_llm(tmp_path, monkeypatch):
+    api, client, _ = _prepare_api(tmp_path, monkeypatch, llm_configured=False)
+    response = client.post("/api/chat-sessions", json={"session_id": "visible", "kind": "route_plan"})
+    assert response.status_code == 200
+    session = api.chat_sessions.get_or_create("visible")
+    session.record_turn("one", "京都环线", {"answer": "已生成", "status": "completed"})
+    session.cache_response("one", "payload", {"answer": "已生成"})
+    detail = client.get("/api/chat-sessions/visible").json()
+    assert detail["schema_version"] == "agent_session.v1"
+    assert detail["turns"][0]["message"] == "京都环线"
+    assert len(client.get("/api/chat-sessions?kind=route_plan").json()["sessions"]) == 1
+    assert client.get("/api/chat-sessions?kind=chat").json()["sessions"] == []
+    assert client.delete("/api/chat-sessions/visible").status_code == 200
+    assert client.post("/api/chat-sessions", json={"session_id": "visible"}).status_code == 409
+    assert client.get("/api/chat-sessions/missing").status_code == 404
+
+
+def test_session_api_requires_same_auth_as_chat(tmp_path, monkeypatch):
+    _, client, _ = _prepare_api(tmp_path, monkeypatch, web_api_token="test-secret")
+    for method, path in [("get", "/api/chat-sessions"), ("get", "/api/chat-sessions/one"), ("delete", "/api/chat-sessions/one")]:
+        assert getattr(client, method)(path).status_code == 401

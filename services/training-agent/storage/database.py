@@ -16,7 +16,7 @@ from project_paths import DEFAULT_PROJECT_ROOT, runtime_paths
 # Compatibility export only. Actual connections call runtime_paths() so
 # environment/config overrides are never frozen at module import time.
 DEFAULT_DATABASE_PATH = DEFAULT_PROJECT_ROOT / "data" / "rider-tracker.db"
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 def database_path(path: str | Path | None = None) -> Path:
@@ -312,6 +312,15 @@ def initialize_database(connection: sqlite3.Connection) -> None:
         -- Web chat state is compact but durable.  Domain artifacts remain in
         -- their dedicated tables; this row restores the transcript, activity
         -- focus, retry state, and request-id idempotency after a process restart.
+        CREATE TABLE IF NOT EXISTS chat_session_views (
+            session_id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            title TEXT NOT NULL,
+            turns_json TEXT NOT NULL DEFAULT '[]',
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL,
+            deleted INTEGER NOT NULL DEFAULT 0
+        );
         CREATE TABLE IF NOT EXISTS chat_sessions (
             session_id TEXT PRIMARY KEY,
             context_json TEXT NOT NULL,

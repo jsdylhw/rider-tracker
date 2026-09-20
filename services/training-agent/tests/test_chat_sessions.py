@@ -46,3 +46,63 @@ def test_chat_session_clear_removes_persisted_state(tmp_path):
 
     assert restored.context.messages == []
     assert restored.cached_response("request", "hello") is None
+
+
+def test_visible_history_survives_cache_limit_and_expiry(tmp_path):
+    store = ChatSessionStore(database=tmp_path / 'sessions.db', ttl_seconds=-1)
+    session = store.create('durable', 'route_plan')
+    for number in range(3):
+        session.record_turn(str(number), f'地点 {number}', {'answer': '已处理'})
+        session.cache_response(str(number), 'payload', {'answer': '已处理'}, limit=1)
+    restored = ChatSessionStore(database=store.database, ttl_seconds=-1)
+    detail = restored.detail('durable')
+    assert len(detail['turns']) == 3
+    assert detail['kind'] == 'route_plan'
+    assert restored.list_sessions('chat')['sessions'] == []
+    assert len(restored.list_sessions('route_plan')['sessions']) == 1
+
+
+def test_deleted_session_cannot_be_resurrected(tmp_path):
+    from app.chat_sessions import SessionUnavailable
+    store = ChatSessionStore(database=tmp_path / 'sessions.db')
+    old = store.create('deleted', 'chat')
+    store.delete('deleted')
+    with pytest.raises(SessionUnavailable):
+        old.cache_response('late', 'hello', {'answer': 'hi'})
+    with pytest.raises(SessionUnavailable):
+        store.get_or_create('deleted')
+    assert store.list_sessions('chat')['sessions'] == []
+
+
+def test_busy_session_cannot_be_deleted_or_reloaded_as_empty(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from app.chat_sessions import SessionUnavailable
+    store = ChatSessionStore(database=tmp_path / 'sessions.db', ttl_seconds=-1)
+    session = store.create('running', 'chat')
+    with session.lock, ThreadPoolExecutor(max_workers=1) as worker:
+        assert worker.submit(store.get_or_create, 'running').result() is session
+        for operation in (store.delete, store.detail):
+            with pytest.raises(SessionUnavailable, match='正在处理'):
+                worker.submit(operation, 'running').result()
+    assert store.detail('running')['session_id'] == 'running'
+
+
+def test_legacy_session_is_migrated_without_expiring_old_history(tmp_path):
+    import json
+    import sqlite3
+    database = tmp_path / 'legacy.db'
+    with sqlite3.connect(database) as connection:
+        connection.execute('CREATE TABLE chat_sessions (session_id TEXT PRIMARY KEY, context_json TEXT NOT NULL, responses_json TEXT NOT NULL, updated_at REAL NOT NULL)')
+        connection.execute('INSERT INTO chat_sessions VALUES (?, ?, ?, ?)', (
+            'legacy', json.dumps({'route_messages': [{'role': 'user', 'content': '京都'}]}),
+            json.dumps([{'request_id': 'one', 'message': json.dumps({'message': '京都', 'request_mode': 'route_plan'}),
+                         'response': {'answer': '旧路线', 'status': 'completed'}}]), 1,
+        ))
+        connection.execute('PRAGMA user_version = 12')
+    store = ChatSessionStore(database=database, ttl_seconds=1)
+    detail = store.detail('legacy')
+    assert detail['kind'] == 'route_plan'
+    assert '旧版本' in detail['turns'][0]['response']['answer']
+    assert detail['turns'][1]['message'] == '京都'
+    assert store.get_or_create('legacy').context.route_messages[0]['content'] == '京都'
+    assert len(store.list_sessions('route_plan')['sessions']) == 1
