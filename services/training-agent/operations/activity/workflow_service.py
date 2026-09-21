@@ -33,6 +33,7 @@ from storage.repositories.activity import ActivityStore
 
 def start_local_activity_workflow(
     *,
+    activities: list[dict[str, Any]] | None = None,
     limit: int = 5,
     order: str = "latest",
     sport_type: str | None = None,
@@ -43,15 +44,26 @@ def start_local_activity_workflow(
 ) -> dict[str, Any]:
     """为已在本地的活动创建并立即推进一个新的运行。"""
     target_directory = _directory(directory)
-    created = create_local_activity_run(
-        limit=limit,
-        order=order,
-        sport_type=sport_type,
-        goals=goals,
-        force=force,
-        force_upload=force_upload,
-        directory=target_directory,
-    )
+    if activities is not None:
+        created = create_activity_run_from_activities(
+            activities,
+            request={
+                "source": "local",
+                "selection": {"kind": "selected", "activity_keys": [a.get("activity_key") for a in activities]},
+                "goals": list(goals), "force": force, "force_upload": force_upload,
+            },
+            directory=target_directory,
+        )
+    else:
+        created = create_local_activity_run(
+            limit=limit,
+            order=order,
+            sport_type=sport_type,
+            goals=goals,
+            force=force,
+            force_upload=force_upload,
+            directory=target_directory,
+        )
     if created.get("status") != "created":
         return created
     run = created["run"]

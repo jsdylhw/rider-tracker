@@ -15,11 +15,13 @@ def compare_selected_activities_tool(
     context: AgentContext,
     *,
     name: str = "compare_activities",
+    metrics: list[str] | None = None,
 ) -> dict[str, Any]:
     """Pass the current concrete selection to the comparison service."""
     return compare_activity_facts(
         [item for item in context.selected_activities if isinstance(item, dict)],
         name=name,
+        metrics=metrics,
     )
 
 
@@ -71,7 +73,7 @@ def analyze_training_history_tool(
 
 
 def compare_activities(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
-    return compare_selected_activities_tool(context, name="compare_activities")
+    return compare_selected_activities_tool(context, name="compare_activities", metrics=args.get("metrics"))
 
 
 def summarize_recent_training_load(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:

@@ -300,3 +300,53 @@ def test_workflow_answer_distinguishes_duplicate_upload(tmp_path):
     result = get_activity_workflow(run["workflow_id"], directory=tmp_path)
 
     assert "a1：Strava 上传活动已存在，未重复上传（activity_id=456）" in result["answer"]
+
+
+def test_selected_workflow_uploads_old_activity_and_recent_scope_can_choose_new(monkeypatch, tmp_path):
+    from agent.main_agent.context import AgentContext
+    from agent.tools.handlers.activity_operations import run_activity_workflow
+    from storage.repositories.activity import ActivityStore
+
+    monkeypatch.setenv("RIDER_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    store = ActivityStore()
+    activities = []
+    for key, date in [("old", "2026-09-01T08:00:00"), ("new", "2026-09-20T08:00:00")]:
+        path = tmp_path / f"{key}.fit"
+        path.write_bytes(b"test")
+        row = {"activity_key": key, "fit_path": str(path), "sport_type": "cycling", "start_time_local": date}
+        store.upsert_activity(row)
+        activities.append(row)
+    uploaded = []
+    monkeypatch.setattr("operations.activity.workflow_handlers._has_existing_report", lambda _: True)
+    monkeypatch.setattr("operations.activity.workflow_handlers.upload_activity", lambda path, **kw: uploaded.append(str(path)) or {"status": "completed", "outcome": "uploaded", "strava_activity_id": "test"})
+    context = AgentContext(session_id="selected-upload", selected_activities=[activities[0]])
+    # Also protect old model calls which used limit=1 for 'this activity'.
+    result = run_activity_workflow({"limit": 1, "goals": ["upload_strava"]}, context)
+    assert result["status"] == "completed"
+    assert uploaded == [str(tmp_path / "old.fit")]
+    assert context.current_activity_key == "old"
+    result = run_activity_workflow({"scope": "recent", "limit": 1, "goals": ["upload_strava"]}, context)
+    assert result["status"] == "completed"
+    assert uploaded[-1] == str(tmp_path / "new.fit")
+    assert context.current_activity_key == "new"
+
+
+def test_selected_workflow_without_selection_does_not_fallback(monkeypatch):
+    from agent.main_agent.context import AgentContext
+    from agent.tools.handlers.activity_operations import run_activity_workflow
+    monkeypatch.setattr("operations.activity.workflow_service.start_local_activity_workflow", lambda **kw: (_ for _ in ()).throw(AssertionError("must not execute")))
+    result = run_activity_workflow({"scope": "selected", "limit": 1, "goals": ["upload_strava"]}, AgentContext(session_id="empty"))
+    assert result["error"] == "activity_selection_required"
+
+
+def test_recent_workflow_requires_explicit_count(monkeypatch):
+    from agent.main_agent.context import AgentContext
+    from agent.tools.handlers.activity_operations import run_activity_workflow
+
+    def unexpected_execution(**kwargs):
+        raise AssertionError("must not execute an unspecified range")
+
+    monkeypatch.setattr("operations.activity.workflow_service.start_local_activity_workflow", unexpected_execution)
+    result = run_activity_workflow({"scope": "recent", "goals": ["upload_strava"]}, AgentContext(session_id="missing-count"))
+    assert result["error"] == "activity_count_required"

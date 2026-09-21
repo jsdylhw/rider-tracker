@@ -370,8 +370,12 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
     ),
     ToolDef(
         name="compare_activities",
-        description="多条活动横向对比，仅用于明确比较意图。",
-        input_schema={"type": "object", "properties": {}},
+        description="多条活动横向对比。按用户指定指标传 metrics；未指定时使用默认概览。缺失指标明确报告，不推测。",
+        input_schema={"type": "object", "properties": {
+            "metrics": {"type": "array", "minItems": 1, "uniqueItems": True,
+                        "items": {"type": "string"},
+                        "description": "指标名称：distance、duration、average_speed、tss、intensity_factor。其他请求指标保留原名，会明确提示暂不支持。"},
+        }},
         category=CATEGORY_ANALYSIS,
     ),
     ToolDef(
@@ -714,7 +718,9 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
         ),
         input_schema={
             "type": "object",
+            "required": ["scope", "goals"],
             "properties": {
+                "scope": {"type": "string", "enum": ["selected", "recent"], "description": "这条/这些活动用 selected，保留会话选择；仅用户明确要求最新/最早 N 条时用 recent 并指定 limit/order。"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 5},
                 "order": {"type": "string", "enum": ["latest", "earliest"], "default": "latest"},
                 "sport_type": {"type": "string"},

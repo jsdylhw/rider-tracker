@@ -93,3 +93,24 @@ def test_compare_selected_activities_uses_imported_facts_without_reports(tmp_pat
     assert result["result"]["totals"]["distance_km"] == 30.0
     assert {item["metrics_source"] for item in result["result"]["activities"]} == {"stored_facts_v1"}
     assert "导入时结构化事实" in result["answer"]
+
+
+def test_requested_metrics_reach_answer_and_missing_speed_is_not_derived(monkeypatch):
+    from agent.tools.handlers.activity_insights import compare_activities
+    facts = {
+        "a": {"activity_key": "a", "scale": {"distance_km": 10, "duration_min": 30}, "performance": {"avg_speed_kmh": 24.5}},
+        "b": {"activity_key": "b", "scale": {"distance_km": 20, "duration_min": 60}},
+    }
+    monkeypatch.setattr("services.activity.comparison.load_activity_metrics", lambda a: (facts[a['activity_key']], "stored_facts_v1", None))
+    monkeypatch.setattr("services.activity.comparison.read_activity_report", lambda _: ({}, None))
+    context = AgentContext(session_id="requested-compare", selected_activities=[{"activity_key": "a"}, {"activity_key": "b"}])
+    result = compare_activities({"metrics": ["distance", "duration", "average_speed", "未知指标"]}, context)
+    assert result["status"] == "completed"
+    rows = result["result"]["metric_results"]
+    assert rows[0]["metrics"]["average_speed"]["value"] == 24.5
+    assert rows[1]["metrics"]["average_speed"]["status"] == "missing"
+    assert rows[0]["metrics"]["未知指标"]["status"] == "unsupported"
+    assert "平均速度：24.5 km/h" in result["answer"]
+    assert "平均速度：无数据" in result["answer"]
+    assert "暂不支持该指标" in result["answer"]
+    assert "TSS" not in result["answer"]

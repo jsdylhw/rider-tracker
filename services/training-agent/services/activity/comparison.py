@@ -13,8 +13,16 @@ def compare_activities(
     activities: list[dict[str, Any]],
     *,
     name: str = "compare_activities",
+    metrics: list[str] | None = None,
 ) -> dict[str, Any]:
     """Compare explicit activities without depending on conversation state."""
+    requested_metrics = metrics
+    if requested_metrics is not None and (
+        not isinstance(requested_metrics, list)
+        or not requested_metrics
+        or any(not isinstance(item, str) or not item.strip() for item in requested_metrics)
+    ):
+        return {"error": "invalid_comparison_metrics", "message": "metrics 必须是非空指标名称列表。"}
     activities = [activity for activity in activities if isinstance(activity, dict)]
     if len(activities) < 2:
         return {
@@ -25,14 +33,14 @@ def compare_activities(
     loaded: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
     for activity in activities:
-        metrics, source, error = load_activity_metrics(activity)
-        if metrics is None:
+        facts, source, error = load_activity_metrics(activity)
+        if facts is None:
             missing.append({**_compact_missing_summary(activity), "error": error})
             continue
         # Qualitative labels enrich presentation when a report exists, but the
         # comparison remains valid for an imported activity without one.
         summary, _ = read_activity_report(activity)
-        loaded.append(_activity_from_facts(activity, metrics, summary or {}, source=source))
+        loaded.append(_activity_from_facts(activity, facts, summary or {}, source=source))
     if len(loaded) < 2:
         return {
             "error": "not_enough_activity_facts",
@@ -43,6 +51,9 @@ def compare_activities(
     loaded = sorted(loaded, key=lambda item: str(item.get("start_time_local") or ""))
     comparison = _build_comparison(loaded)
     comparison["missing"] = missing
+    if requested_metrics is not None:
+        comparison["requested_metrics"] = list(dict.fromkeys(requested_metrics))
+        comparison["metric_results"] = _requested_values(loaded, comparison["requested_metrics"])
     return {
         "step": name,
         "status": "completed",
@@ -63,6 +74,7 @@ def _activity_from_facts(
     scale = metrics.get("scale") if isinstance(metrics.get("scale"), dict) else {}
     power = metrics.get("power") if isinstance(metrics.get("power"), dict) else {}
     identity = metrics.get("identity") if isinstance(metrics.get("identity"), dict) else {}
+    performance = metrics.get("performance") if isinstance(metrics.get("performance"), dict) else {}
     return {
         "activity_key": metrics.get("activity_key") or activity.get("activity_key"),
         "file_name": activity.get("file_name") or _path_name(str(activity.get("fit_path") or "")),
@@ -86,6 +98,7 @@ def _activity_from_facts(
         "tss": get_tss(metrics),
         "intensity_factor": _number(power.get("intensity_factor")),
         "metrics_source": source,
+        "avg_speed_kmh": _number(performance.get("avg_speed_kmh")),
     }
 
 
@@ -148,9 +161,11 @@ def _training_judgement(
 
 
 def _format_comparison_answer(comparison: dict[str, Any]) -> str:
+    if "requested_metrics" in comparison:
+        return _format_requested_answer(comparison)
     activities = comparison.get("activities") or []
     lines = [
-        f"已基于 {len(activities)} 条导入时结构化事实完成对比,没有重新解析 FIT 或依赖报告文本。",
+        f"已基于 {len(activities)} 条导入时结构化事实完成对比,没有重新解析 FIT；定性标签如有则来自已有分析报告。",
         f"总量: {comparison['totals']['distance_km']} km, {comparison['totals']['duration_min']} 分钟。",
     ]
     for index, activity in enumerate(activities, start=1):
@@ -202,3 +217,48 @@ def _seconds_to_minutes(value: Any) -> float | None:
 def _meters_to_km(value: Any) -> float | None:
     meters = _number(value)
     return round(meters / 1000, 3) if meters is not None else None
+
+
+# Metrics are taken from stored facts; speed is never reconstructed from rounded
+# distance/duration, whose timer/moving/elapsed semantics may differ.
+_COMPARISON_METRICS = {
+    "distance": ("distance_km", "距离", "km"),
+    "duration": ("duration_min", "时长", "分钟"),
+    "average_speed": ("avg_speed_kmh", "平均速度", "km/h"),
+    "tss": ("tss", "TSS", ""),
+    "intensity_factor": ("intensity_factor", "IF", ""),
+}
+
+
+def _requested_values(activities: list[dict[str, Any]], requested: list[str]) -> list[dict[str, Any]]:
+    rows = []
+    for activity in activities:
+        values = {}
+        for metric in requested:
+            definition = _COMPARISON_METRICS.get(metric)
+            value = activity.get(definition[0]) if definition else None
+            values[metric] = {
+                "value": value,
+                "unit": definition[2] if definition else None,
+                "status": "unsupported" if definition is None else "missing" if value is None else "available",
+                "source": activity.get("metrics_source") if value is not None else None,
+            }
+        rows.append({"activity_key": activity["activity_key"], "metrics": values})
+    return rows
+
+
+def _format_requested_answer(comparison: dict[str, Any]) -> str:
+    lines = [f"已按要求比较 {comparison['count']} 条活动；缺失指标不推算。"]
+    for activity, row in zip(comparison["activities"], comparison["metric_results"]):
+        parts = []
+        for metric, result in row["metrics"].items():
+            label = _COMPARISON_METRICS.get(metric, (None, metric, None))[1]
+            value = (f"{result['value']} {result['unit']}".strip() if result["status"] == "available"
+                     else "暂不支持该指标" if result["status"] == "unsupported" else "无数据")
+            parts.append(f"{label}：{value}")
+        lines.append(f"- {activity.get('start_time_local') or activity['activity_key']}：" + "；".join(parts))
+    if "average_speed" in comparison["requested_metrics"]:
+        lines.append("平均速度使用已存结构化指标（km/h），不以距离除以时长替代，不混用移动与总时长。")
+    if comparison.get("missing"):
+        lines.append(f"另有 {len(comparison['missing'])} 条活动缺少可读取事实，未参与比较。")
+    return "\n".join(lines)

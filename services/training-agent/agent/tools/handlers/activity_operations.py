@@ -72,7 +72,20 @@ def _install_synced_activity_selection(result: dict[str, Any], context: AgentCon
 def run_activity_workflow(args: dict[str, Any], context: AgentContext) -> dict[str, Any]:
     from operations.activity.workflow_service import start_local_activity_workflow
 
+    # Old calls with a selection must never silently re-resolve latest.
+    scope = args.get("scope")
+    if not scope:
+        scope = "recent" if not context.selected_activities and "limit" in args else "selected"
+    if scope not in {"selected", "recent"}:
+        return {"status": "failed", "error": "invalid_activity_scope", "message": "请选择当前活动或明确的最近活动范围。"}
+    if scope == "recent" and "limit" not in args:
+        return {"status": "failed", "error": "activity_count_required", "message": "请明确要处理的活动数量；未创建工作流。", "retryable": False}
+    selection = [dict(item) for item in context.selected_activities] if scope == "selected" else None
+    if selection is not None and (not selection or any(not item.get("activity_key") for item in selection)):
+        return {"status": "failed", "error": "activity_selection_required", "message": "请先定位要处理的活动；未创建工作流。", "retryable": False}
+
     result = start_local_activity_workflow(
+        activities=selection,
         limit=int(args.get("limit", 5)),
         order=str(args.get("order") or "latest"),
         sport_type=str(args["sport_type"]) if args.get("sport_type") else None,
