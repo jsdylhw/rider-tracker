@@ -222,6 +222,8 @@ def get_time_intervals_tool(
         "record_count": int(len(df)), "filtered_count": int(len(working)),
         "bucket_count": len(rows),
         "window": {"start_s": _round_float(start_s, 1), "end_s": _round_float(end_s, 1)},
+        "window_summary": _window_summary(working),
+        "bounds": "inclusive",
         "format": "column_arrays", "series": _rows_to_column_arrays(rows),
     }
 
@@ -262,6 +264,8 @@ def get_distance_intervals_tool(
         "record_count": int(len(df)), "filtered_count": int(len(working)),
         "bucket_count": len(rows),
         "window": {"start_d": _round_float(start_d, 1), "end_d": _round_float(end_d, 1)},
+        "window_summary": _window_summary(working),
+        "bounds": "inclusive",
         "format": "column_arrays", "series": _rows_to_column_arrays(rows),
     }
 
@@ -313,12 +317,10 @@ def _build_interval_rows(
     working["bucket_index"] = (working[column].astype(float) // bucket_size).astype(int)
     rows: list[dict[str, Any]] = []
 
-    for bucket_index, group in working.groupby("bucket_index", sort=True):
-        bucket_start = float(bucket_index) * bucket_size
-        bucket_end = bucket_start + bucket_size
+    for _, group in working.groupby("bucket_index", sort=True):
         row: dict[str, Any] = {
-            start_key: _round_float(bucket_start, 1),
-            end_key: _round_float(bucket_end, 1),
+            start_key: _round_float(float(group[column].min()), 3),
+            end_key: _round_float(float(group[column].max()), 3),
             "duration_s": _round_float(_duration_from_group(group), 1),
             "samples": int(len(group)),
         }
@@ -748,3 +750,23 @@ def _build_device_profile(metadata: dict[str, Any]) -> dict[str, Any]:
         "device": device,
         "device_settings": metadata.get("device_settings"),
     }
+
+
+def _window_summary(working: Any) -> dict[str, Any]:
+    """Aggregate raw records, independently of bucket size; zeros are valid."""
+    metrics = {}
+    for column, name, unit in (
+        ("power", "power", "W"), ("heart_rate", "heart_rate", "bpm"),
+        ("cadence", "cadence", "rpm"), ("enhanced_speed", "speed", "m/s"),
+        ("enhanced_altitude", "altitude", "m"),
+    ):
+        values = working[column].dropna().astype(float) if column in working else None
+        valid = len(values) if values is not None else 0
+        metrics[name] = {
+            "mean": _round_float(values.mean(), 3) if valid else None,
+            "valid_samples": valid, "missing_samples": len(working) - valid,
+            "zero_samples": int((values == 0).sum()) if valid else 0,
+            "unit": unit,
+        }
+    return {"record_count": len(working), "method": "sample_mean_including_zeros_excluding_missing",
+            "time_basis": "elapsed_from_first_record", "metrics": metrics}

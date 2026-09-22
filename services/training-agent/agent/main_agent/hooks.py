@@ -15,7 +15,8 @@ class ToolLoopHooks:
 
     def __init__(self, context, allowed_cats, has_resolved_ref, steps_taken, *,
                  allowed_tool_names=None, allowed_tool_provider=None,
-                 terminal_tool_names=None, stop_on_failed_tools=None, verbose=False):
+                 terminal_tool_names=None, stop_on_failed_tools=None, verbose=False, on_progress=None):
+        self.on_progress = on_progress
         self.context = context
         self.allowed_cats = allowed_cats
         self.has_resolved_ref = has_resolved_ref
@@ -32,7 +33,15 @@ class ToolLoopHooks:
         self._tool_call_indices: dict[str, int] = {}
         self._navigation_before: dict[str, dict[str, Any]] = {}
 
+    def _progress(self, stage, status, label, index=0):
+        if self.on_progress:
+            try:
+                self.on_progress({"stage": stage, "status": status, "label": label, "index": index})
+            except Exception:
+                pass  # An observer cannot change the outcome of a business action.
+
     def before_llm_call(self) -> dict[str, str] | None:
+        self._progress("reasoning", "running", "分析需求与下一步")
         reference = getattr(self.context, "pending_skill_reference", None)
         if reference:
             self.context.pending_skill_reference = None
@@ -57,6 +66,7 @@ class ToolLoopHooks:
             "stage": "guard", "retryable": False,
             "message": str(blocked.get("reason") or blocked.get("message") or "工具调用被执行检查拒绝。"),
         }
+        self._progress(str(block.get("name") or ""), "blocked", tool_label(str(block.get("name") or "")), self._tool_call_count)
         self.context.execution_trace.append(ToolExecution(
             index=self._tool_call_count - 1,
             tool=str(block.get("name") or ""),
@@ -77,7 +87,10 @@ class ToolLoopHooks:
         self._navigation_before[call_id] = _navigation_summary(self.context)
         if self.verbose:
             self._log_pre_tool(block, tool_index=self._tool_call_count)
-        return self._guard_tool_call(block)
+        blocked = self._guard_tool_call(block)
+        if not blocked and block.get("name") != "activate_skill":
+            self._progress(str(block.get("name")), "running", tool_label(str(block.get("name"))), self._tool_call_count)
+        return blocked
 
     def post_tool_use(self, block: dict[str, Any], output: Any, *, step_count: int) -> None:
         name = str(block.get("name") or "")
@@ -116,6 +129,8 @@ class ToolLoopHooks:
             navigation_after=_navigation_summary(self.context),
         ).to_dict())
         failed = is_failed_tool_output(output)
+        status = "failed" if failed else str(payload.get("status") or "completed")
+        self._progress(name, status, tool_label(name), tool_index)
         if name == "run_route_agent":
             # A child result is terminal even when it asks a question or fails.
             # Do not replay an entire child loop through saved-action retry.

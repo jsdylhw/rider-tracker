@@ -74,7 +74,7 @@ def test_route_discovery_creates_real_candidates_without_generic_advice_tool():
     tools = set(get_skill("discover-routes").tool_names)
 
     assert "generate_route_advice" not in tools
-    assert tools == {"run_route_agent"}
+    assert tools == {"run_route_agent", "ask_user_clarification"}
     assert "create_popular_loop" not in tools
 
 
@@ -152,7 +152,7 @@ def test_every_business_tool_is_reachable_from_at_least_one_skill():
     route_execution = {"create_route_plan", "create_itinerary_plan", "update_route_plan",
                        "get_route_plan", "explore_route_segments", "search_cycling_routes", "prepare_route_materials"}
     assert not route_execution & reachable
-    assert registered - reachable == {"activate_skill", "casual_chat", "ask_user_clarification"} | route_execution
+    assert registered - reachable == {"activate_skill", "casual_chat"} | route_execution
 
 
 def test_direct_retry_rejects_action_outside_previous_active_skill():

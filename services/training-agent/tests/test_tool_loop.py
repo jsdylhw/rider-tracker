@@ -501,7 +501,7 @@ def test_pure_sync_executes_without_starting_analysis_workflow(monkeypatch):
     first_tools = client.return_value.create_messages.call_args_list[0].kwargs["tools"]
     assert [tool["name"] for tool in first_tools] == ["activate_skill"]
     second_tools = client.return_value.create_messages.call_args_list[1].kwargs["tools"]
-    assert [tool["name"] for tool in second_tools] == ["sync_garmin_activities"]
+    assert {tool["name"] for tool in second_tools} == {"sync_garmin_activities", "ask_user_clarification"}
     assert client.return_value.create_messages.call_args_list[2].kwargs["tools"] == []
 
 
@@ -527,7 +527,7 @@ def test_skill_activation_does_not_authorize_later_calls_in_the_same_response(mo
 
         result = run_tool_loop("同步最近三条活动", context=context)
 
-    assert result["status"] == "completed"
+    assert result["status"] == "action_not_executed"
     assert calls == []
     assert result["steps"] == []
 
@@ -857,3 +857,47 @@ def test_terminal_activity_report_replaces_pre_tool_commentary(monkeypatch):
     assert result["answer"].endswith(report)
     assert "I'll analyze" not in result["answer"]
     assert client.return_value.create_messages.call_count == 2
+
+
+@pytest.mark.parametrize('skill', ['sync-garmin-activities', 'publish-to-strava', 'run-activity-workflow', 'plan-routes'])
+def test_external_skill_cannot_complete_with_only_model_prose(skill):
+    context = AgentContext(session_id='no-execution')
+    context.execution_trace = [{'tool': 'sync_garmin_activities', 'result': {'status': 'completed'}}]
+    with patch('agent.main_agent.loop.AnthropicMessagesClient') as client:
+        client.return_value.create_messages.side_effect = [
+            _activation_response(skill),
+            {'content': [{'type': 'text', 'text': '操作已全部成功完成。'}], 'stop_reason': 'end_turn'},
+        ]
+        result = run_tool_loop('执行刚才的操作', context=context)
+    assert result['status'] == 'action_not_executed'
+    assert '全部成功' not in result['answer']
+    assert '全部成功' not in str(context.messages)
+
+
+def test_external_skill_can_ask_for_target_without_claiming_execution():
+    with patch('agent.main_agent.loop.AnthropicMessagesClient') as client:
+        client.return_value.create_messages.side_effect = [
+            _activation_response('publish-to-strava'),
+            {'content': [{'type': 'tool_use', 'id': 'clarify', 'name': 'ask_user_clarification',
+                          'input': {'question': '要上传哪条活动？'}}], 'stop_reason': 'tool_use'},
+        ]
+        result = run_tool_loop('上传一下', context=AgentContext(session_id='clarify-upload'))
+    assert result['status'] == 'clarification_required'
+    assert result['answer'] == '要上传哪条活动？'
+
+
+def test_progress_reports_real_tool_states_without_arguments(monkeypatch):
+    from agent.tools.registry import TOOL_HANDLERS
+    monkeypatch.setitem(TOOL_HANDLERS, 'sync_garmin_activities', lambda args, ctx: {
+        'status': 'completed', 'answer': '没有新增活动。', 'private_token': 'never-display'})
+    events = []
+    with patch('agent.main_agent.loop.AnthropicMessagesClient') as client:
+        client.return_value.create_messages.side_effect = [
+            _activation_response('sync-garmin-activities'),
+            {'content': [{'type': 'tool_use', 'id': 'sync', 'name': 'sync_garmin_activities',
+                          'input': {'count': 1}}], 'stop_reason': 'tool_use'},
+        ]
+        result = run_tool_loop('同步最新一个', context=AgentContext(session_id='progress'), on_progress=events.append)
+    assert result['status'] == 'completed'
+    assert [e['status'] for e in events if e['stage'] == 'sync_garmin_activities'] == ['running', 'completed']
+    assert 'never-display' not in str(events)

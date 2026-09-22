@@ -611,8 +611,9 @@ def delete_chat_session(session_id: str, http_request: Request):
 def chat_endpoint(request: ChatRequest, http_request: Request):
     _require_api_access(http_request)
     _require_llm_capability("ai_route_planning" if request.request_mode == "route_plan" else None)
-    if request.request_mode == "route_plan" and "application/x-ndjson" in http_request.headers.get("accept", ""):
-        return route_stream_response(lambda callback: _chat_turn(request, http_request, on_progress=callback))
+    if "application/x-ndjson" in http_request.headers.get("accept", ""):
+        return route_stream_response(lambda callback: _chat_turn(request, http_request, on_progress=callback),
+                                     schema_version="route_stream.v1" if request.request_mode == "route_plan" else "agent_stream.v1")
     return _chat_turn(request, http_request)
 
 
@@ -676,6 +677,7 @@ def _chat_turn(request: ChatRequest, http_request: Request, *, on_progress=None)
             else:
                 result = run_tool_loop(
                     request.message, context=session.context, execution_policy=execution_policy,
+                    **({"on_progress": on_progress} if on_progress else {}),
                 )
             response = public_turn_dict(result)
         except HTTPException:

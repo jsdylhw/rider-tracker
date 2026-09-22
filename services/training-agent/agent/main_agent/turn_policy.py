@@ -47,6 +47,8 @@ def activation_note(skill_id: str, message: str) -> str:
 
 def is_terminal_tool_result(name: str, output: object) -> bool:
     """Whether a successful tool result closes the business-tool phase."""
+    if name == "ask_user_clarification":
+        return isinstance(output, dict) and not is_failed_tool_output(output) and bool(output.get("answer"))
     terminal_tools = {
         "analyze_activity", "query_activity_detail", "summarize_activities",
         "compare_activities", "generate_training_advice", "summarize_recent_training_load",

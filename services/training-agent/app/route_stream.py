@@ -7,13 +7,13 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 
-def route_stream_response(run):
+def route_stream_response(run, *, schema_version="route_stream.v1"):
     events = Queue()
     closed = Event()
 
     def emit(event):
         if not closed.is_set():
-            events.put({"schema_version": "route_stream.v1", **event})
+            events.put({"schema_version": schema_version, **event})
 
     def work():
         try:
@@ -22,7 +22,7 @@ def route_stream_response(run):
         except HTTPException as exc:
             emit({"type": "error", "message": str(exc.detail)})
         except Exception:
-            emit({"type": "error", "message": "路线处理异常，请稍后重试。"})
+            emit({"type": "error", "message": "本次处理异常，请稍后重试。"})
         finally:
             events.put(None)
 

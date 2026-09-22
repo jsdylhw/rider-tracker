@@ -256,3 +256,15 @@ def test_successful_same_target_replay_recovers_but_other_target_does_not():
         with patch("agent.main_agent.result_builder.write_main_agent_markdown_log", return_value=""):
             result = build_completed_result("analysis", context, "分析", step_count=2, max_tool_steps=10, steps=[])
         assert result["status"] == expected
+
+
+def test_activity_resolution_is_not_publication_evidence():
+    context = AgentContext(session_id='selection-only', active_skill_id='publish-to-strava',
+                           messages=[{'role': 'user', 'content': '上传这条'},
+                                     {'role': 'assistant', 'content': [{'type': 'text', 'text': '已经上传成功'}]}])
+    context.execution_trace = [{'tool': 'resolve_activities', 'status': 'completed',
+                                'result': {'status': 'completed', 'activities': [{'activity_key': 'a'}]}}]
+    result = build_completed_result('upload', context, '上传这条', step_count=2,
+                                    max_tool_steps=10, steps=[{'tool': 'resolve_activities'}])
+    assert result['status'] == 'action_not_executed'
+    assert '上传成功' not in result['answer']

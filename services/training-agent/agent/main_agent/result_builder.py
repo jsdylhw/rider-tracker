@@ -61,6 +61,31 @@ def build_completed_result(
     if _context_failure(context) is not None:
         return build_policy_unsatisfied_result(context, steps, execution_policy)
 
+    clarification = next((item.get("result") for item in reversed(context.execution_trace)
+                          if item.get("tool") == "ask_user_clarification"
+                          and not is_failed_tool_output(item.get("result"))), None)
+    if isinstance(clarification, dict):
+        return build_turn_result("clarification_required", intent, context, steps,
+                                 str(clarification.get("answer") or "请补充操作目标。"))
+    from agent.skills import get_skill
+    from agent.main_agent.turn_policy import is_terminal_tool_result
+    skill = get_skill(context.active_skill_id)
+    evidence_required = bool(not execution_policy.completion_tool_names and skill
+                             and (skill.allow_side_effects or skill.skill_id == "plan-routes"))
+    if evidence_required and not any(
+        item.get("tool") in skill.tool_names
+        and is_terminal_tool_result(str(item.get("tool") or ""), item.get("result"))
+        for item in context.execution_trace
+    ):
+        answer = "本轮尚未取得操作结果，不能确认下载、发布或路线处理已经完成。请明确操作目标后再试。"
+        # Remove ungrounded completion prose from the durable conversation too.
+        while context.messages and context.messages[-1].get("role") == "assistant":
+            context.messages.pop()
+        context.messages.append({"role": "assistant", "content": [{"type": "text", "text": answer}]})
+        return build_turn_result("action_not_executed", intent, context, steps, answer,
+                                 error={"code": "action_not_executed", "stage": "completion", "retryable": False,
+                                        "message": "本轮没有相应业务工具的执行结果。"})
+
     final_answer = _current_terminal_answer(context)
     if not final_answer:
         for item in context.messages:

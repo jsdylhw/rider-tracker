@@ -1391,3 +1391,21 @@ def test_session_api_requires_same_auth_as_chat(tmp_path, monkeypatch):
     _, client, _ = _prepare_api(tmp_path, monkeypatch, web_api_token="test-secret")
     for method, path in [("get", "/api/chat-sessions"), ("get", "/api/chat-sessions/one"), ("delete", "/api/chat-sessions/one")]:
         assert getattr(client, method)(path).status_code == 401
+
+
+def test_main_chat_stream_preserves_final_result_and_idempotency(tmp_path, monkeypatch):
+    import json
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    calls = []
+    def run(message, *, context, execution_policy, on_progress):
+        calls.append(message)
+        on_progress({'stage': 'reasoning', 'status': 'running', 'label': '分析需求'})
+        return {'status': 'completed', 'answer': '普通回答', 'executions': []}
+    monkeypatch.setattr(api, 'run_tool_loop', run)
+    body = {'session_id': 'main-stream', 'request_id': 'one', 'message': '你好', 'request_mode': 'chat'}
+    response = client.post('/api/chat', json=body, headers={'Accept': 'application/x-ndjson'})
+    events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+    assert all(e['schema_version'] == 'agent_stream.v1' for e in events)
+    assert [e['type'] for e in events] == ['progress', 'result']
+    assert client.post('/api/chat', json=body).json() == events[-1]['result']
+    assert len(calls) == 1

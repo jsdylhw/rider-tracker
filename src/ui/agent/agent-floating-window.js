@@ -1,3 +1,4 @@
+import { createAgentProgress } from "./agent-progress.js";
 import { createAgentSessionControls } from "./agent-session-controls.js";
 import { createAgentApiClient } from "../../adapters/agent/personal-fit-agent-client.js";
 import { createAgentPresentationRenderer } from "./agent-presentation-renderer.js";
@@ -14,6 +15,7 @@ const QUICK_PROMPTS = {
 export function createAgentFloatingWindow({
     root = document,
     schedule = setTimeout,
+    progressClock = globalThis,
     seedConversation = true,
     reportJobOptions = {},
     onOpenRoute,
@@ -48,6 +50,7 @@ export function createAgentFloatingWindow({
         }
         renderWorkspace();
     }
+    const progress = createAgentProgress({ root, container: root.getElementById?.("agentProgress"), clock: progressClock });
     let requestSequence = 0;
     let contextCleared = false;
     let visible = true;
@@ -60,6 +63,7 @@ export function createAgentFloatingWindow({
         onBusy(value) { restoringSession = value; setBusy(value); },
         onLoad(detail) {
             requestSequence += 1;
+            progress.clear();
             elements.messages.replaceChildren();
             present([]);
             for (const turn of detail.turns) {
@@ -133,26 +137,6 @@ export function createAgentFloatingWindow({
         return article;
     }
 
-    function addThinkingMessage(sequence, prompt) {
-        const article = root.createElement("article");
-        article.className = "agent-message is-agent is-thinking";
-        article.dataset.sequence = String(sequence);
-        const label = root.createElement("span");
-        label.textContent = "Agent";
-        const body = root.createElement("div");
-        body.className = "agent-message-body";
-        body.textContent = isBlockingActivityWorkflowPrompt(prompt)
-            ? "正在同步并处理活动。当前工作流会等待请求中的全部步骤完成后一次性返回，可能需要几分钟，请勿重复提交。"
-            : "正在处理你的请求";
-        const dots = root.createElement("i");
-        dots.setAttribute("aria-hidden", "true");
-        body.append(dots);
-        article.append(label, body);
-        elements.messages.append(article);
-        scrollMessages(elements.messages);
-        return article;
-    }
-
     async function sendMessage(text) {
         const normalized = String(text ?? "").trim();
         if (!normalized || busy) return null;
@@ -165,20 +149,21 @@ export function createAgentFloatingWindow({
         addTextMessage("user", normalized);
         elements.input.value = "";
 
-        const thinking = addThinkingMessage(sequence, normalized);
+        progress.start();
         setBusy(true);
         try {
             const sourceSessionId = agentClient.sessionId;
-            const result = await agentClient.chat(normalized, { routeOptions: { include_elevation: false, include_ascent: true } });
+            const result = await agentClient.chat(normalized, { routeOptions: { include_elevation: false, include_ascent: true },
+                onProgress(event) { if (sequence === requestSequence) progress.update(event); } });
             if (sequence !== requestSequence) return null;
-            thinking.remove();
+            progress.finish(result);
             renderResponse(result, sourceSessionId);
             void sessions?.refreshList();
             if (elements.window.hidden) elements.badge.hidden = false;
             return result;
         } catch (error) {
             if (sequence !== requestSequence) return null;
-            thinking.remove();
+            progress.finish({ status: "failed" });
             const message = `请求失败：${error?.message || "无法连接本地 Personal FIT Agent"}`;
             addTextMessage("agent", message, { error: true });
             present([], message);
@@ -220,6 +205,7 @@ export function createAgentFloatingWindow({
     function clearContext() {
         if (sessions) { void sessions.newSession(); return; }
         requestSequence += 1;
+        progress.clear();
         setBusy(false);
         agentClient.resetSession?.();
         contextCleared = true;
@@ -275,6 +261,7 @@ export function createAgentFloatingWindow({
         sendMessage,
         destroy() {
             requestSequence += 1;
+            progress.destroy();
             sessions?.destroy();
             reportJobs.destroy();
             listeners.splice(0).forEach((remove) => remove());

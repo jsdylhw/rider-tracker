@@ -70,6 +70,39 @@ export const suite = {
             }
         },
         {
+            name: "BFF forwards live main chat progress and the final result through both clients",
+            async run() {
+                let release;
+                const gate = new Promise((resolve) => { release = resolve; });
+                const upstream = createPersonalFitAgentClient({ fetchImpl: async (_, options) => {
+                    assertEqual(options.headers.Accept, "application/x-ndjson");
+                    return new Response(new ReadableStream({ async start(controller) {
+                        const emit = (event) => controller.enqueue(new TextEncoder().encode(JSON.stringify({ schema_version: "agent_stream.v1", ...event }) + "\n"));
+                        emit({ type: "progress", stage: "resolve_activities", status: "running" });
+                        await gate;
+                        emit({ type: "result", result: { status: "completed" } });
+                        controller.close();
+                    } }), { headers: { "Content-Type": "application/x-ndjson" } });
+                } });
+                const app = express();
+                app.use(express.json());
+                app.use(createAgentRoutes({ agentClient: upstream }));
+                const server = app.listen(0, "127.0.0.1");
+                await new Promise((resolve) => server.once("listening", resolve));
+                try {
+                    const browser = createAgentApiClient({ baseUrl: `http://127.0.0.1:${server.address().port}`, storage: null });
+                    const result = await browser.chat("查看活动", { requestMode: "chat", onProgress(event) {
+                        assertEqual(event.stage, "resolve_activities");
+                        release();
+                    } });
+                    assertEqual(result.status, "completed");
+                } finally {
+                    release();
+                    await new Promise((resolve) => server.close(resolve));
+                }
+            }
+        },
+        {
             name: "forwards optional get revision and rejects malformed revisions",
             run() {
                 const base = { session_id: "session", request_id: "open", operation: "get", plan_id: "plan" };

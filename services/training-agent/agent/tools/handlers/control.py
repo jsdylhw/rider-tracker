@@ -28,6 +28,8 @@ def activate_skill(args: dict[str, Any], context: AgentContext) -> dict[str, Any
         if isinstance(item, dict) and item.get("role") == "user"
     ), "")
     instructions = load_skill_instructions(skill)
+    if skill.allow_side_effects or skill.skill_id == "plan-routes":
+        instructions += "\n只有本轮业务工具结果能证明操作完成。缺少目标时调用 ask_user_clarification；不能仅用文字宣称完成。"
     note = activation_note(skill.skill_id, latest_message)
     if note:
         instructions = f"{instructions}\n\n{note}"

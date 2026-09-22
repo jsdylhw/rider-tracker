@@ -1122,3 +1122,26 @@
     .agent-session-controls { padding: 9px 10px; gap: 4px; }
     .agent-session-controls .agent-session-new { padding: 0 8px; }
 }
+
+
+.agent-progress {
+    margin: 0 14px 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color, #dce5e1);
+    border-radius: 10px;
+    background: var(--bg-secondary, #f4f8f6);
+    font-size: 12px;
+}
+.agent-progress[hidden] { display: none; }
+.agent-progress-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.agent-progress-heading > strong { font-size: 12px; font-weight: 600; }
+.agent-progress-heading > span { flex-shrink: 0; opacity: .65; font-variant-numeric: tabular-nums; }
+.agent-progress details { margin-top: 6px; }
+.agent-progress summary { cursor: pointer; opacity: .75; }
+.agent-progress ul { list-style: none; padding: 0; margin: 6px 0 0; max-height: 100px; overflow-y: auto; }
+.agent-progress li { padding: 3px 0; overflow-wrap: anywhere; }
+.agent-progress li::before { content: "○ "; }
+.agent-progress li[data-status="completed"]::before { content: "✓ "; color: #278a65; }
+.agent-progress li[data-status="running"] { font-weight: 600; }
+.agent-progress li[data-status="partial"]::before,
+.agent-progress li[data-status="failed"]::before { content: "! "; color: #a56514; }

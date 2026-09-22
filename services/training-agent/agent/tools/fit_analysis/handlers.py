@@ -7,6 +7,7 @@ from typing import Any, Callable
 from fit.analysis.stats import prune_empty_values
 
 from .catalog import FIT_DATA_TOOLS
+from .projection import project_intervals
 from fit.analysis.data import (
     get_activity_overview_tool,
     get_activity_summary_tool,
@@ -62,21 +63,23 @@ def build_tool_handlers(
     def _sprints(max_segments=12):
         return detect_sprints_tool(_parsed(), max_segments=int(max_segments))
 
-    def _time_intervals(bucket_seconds=60, start_s=None, end_s=None):
-        return get_time_intervals_tool(
+    def _time_intervals(bucket_seconds=60, start_s=None, end_s=None, view="intervals", metrics=None):
+        result = get_time_intervals_tool(
             _parsed(),
             bucket_seconds=int(bucket_seconds),
             start_s=start_s,
             end_s=end_s,
         )
+        return project_intervals(result, view=view, metrics=metrics)
 
-    def _distance_intervals(bucket_distance_m=1000, start_d=None, end_d=None):
-        return get_distance_intervals_tool(
+    def _distance_intervals(bucket_distance_m=1000, start_d=None, end_d=None, view="intervals", metrics=None):
+        result = get_distance_intervals_tool(
             _parsed(),
             bucket_distance_m=int(bucket_distance_m),
             start_d=start_d,
             end_d=end_d,
         )
+        return project_intervals(result, view=view, metrics=metrics)
 
     def _running_efficiency():
         return get_running_efficiency_tool(_parsed())

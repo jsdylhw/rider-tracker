@@ -10,12 +10,17 @@ FIT_DATA_TOOLS = (
     # receives tools that inspect a user-requested raw FIT window in more detail.
     ToolDef(
         name="get_time_intervals",
-        description="""Fixed time-window averages. bucket_seconds supports 1-600s. Use start_s/end_s for a focused window. Includes non-zero averages and zero fractions.
+        description="""Fixed time-window averages. bucket_seconds supports 1-600s. Use start_s/end_s for a focused window. Includes whole-window window_summary computed from raw records, and per-bucket non-zero averages and zero fractions. Bounds are inclusive; bucket labels are actual first/last sample positions.
 Use for: time-based averages (every 1min, 5min), inspecting a specific time window (e.g., 100-200s hard effort).
 Prefer 30s/60s/5min for normal analysis. Use very small buckets like 3s only for focused short windows.""",
         input_schema={
             "type": "object",
             "properties": {
+                "view": {"type": "string", "enum": ["summary", "intervals"], "default": "intervals",
+                         "description": "Use summary for whole-window averages/counts only; intervals for trends or explicit per-bucket detail (columns+rows)."},
+                "metrics": {"type": "array", "minItems": 1, "uniqueItems": True,
+                            "items": {"type": "string", "enum": ["power", "heart_rate", "cadence", "speed", "altitude"]},
+                            "description": "Select only requested metrics; associated valid/missing/zero counts are retained. Omit for all."},
                 "bucket_seconds": {"type": "integer", "default": 60},
                 "start_s": {"type": ["integer", "null"], "default": None},
                 "end_s": {"type": ["integer", "null"], "default": None},
@@ -31,6 +36,11 @@ Prefer for climbs and pacing analysis.""",
         input_schema={
             "type": "object",
             "properties": {
+                "view": {"type": "string", "enum": ["summary", "intervals"], "default": "intervals",
+                         "description": "Use summary for whole-window averages/counts only; intervals for trends or explicit per-bucket detail (columns+rows)."},
+                "metrics": {"type": "array", "minItems": 1, "uniqueItems": True,
+                            "items": {"type": "string", "enum": ["power", "heart_rate", "cadence", "speed", "altitude"]},
+                            "description": "Select only requested metrics; associated valid/missing/zero counts are retained. Omit for all."},
                 "bucket_distance_m": {"type": "integer", "default": 1000},
                 "start_d": {"type": ["integer", "null"], "default": None},
                 "end_d": {"type": ["integer", "null"], "default": None},

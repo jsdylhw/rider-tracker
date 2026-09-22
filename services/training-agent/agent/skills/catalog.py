@@ -79,7 +79,7 @@ SKILL_CATALOG: tuple[SkillSpec, ...] = (
             "把近期 Garmin 活动下载到本地活动库后结束。仅用于纯同步或下载请求；"
             "如果同时要求分析、报告、总结或上传 Strava，则不要使用。"
         ),
-        tool_names=("sync_garmin_activities",),
+        tool_names=("sync_garmin_activities", "ask_user_clarification"),
         public_intent="sync",
         allow_side_effects=True,
         library_path="operations/sync-garmin-activities.md",
@@ -90,7 +90,7 @@ SKILL_CATALOG: tuple[SkillSpec, ...] = (
             "将本地活动发布或刷新到 Strava，不从 Garmin 下载。用于上传、重新上传或刷新描述等"
             "针对本地已有活动的请求。"
         ),
-        tool_names=("resolve_activities", "run_activity_workflow"),
+        tool_names=("resolve_activities", "run_activity_workflow", "ask_user_clarification"),
         public_intent="upload",
         allow_side_effects=True,
         library_path="operations/publish-to-strava.md",
@@ -102,6 +102,7 @@ SKILL_CATALOG: tuple[SkillSpec, ...] = (
             "工作流状态查询和工作流恢复等组合目标。"
         ),
         tool_names=(
+            "ask_user_clarification",
             "sync_and_run_activity_workflow",
             "run_activity_workflow",
             "rebuild_activity_reports",
@@ -135,7 +136,7 @@ SKILL_CATALOG: tuple[SkillSpec, ...] = (
             "委派路线 Agent 创建或修改真实单日骑行路线草稿，也支持缺少信息时澄清。"
             "用于明确途经点、开放式路线需求和环线；预览与确认保存由路线页面完成。"
         ),
-        tool_names=("run_route_agent",),
+        tool_names=("run_route_agent", "ask_user_clarification"),
         public_intent="route_advice",
         library_path="route/plan-routes.md",
     ),

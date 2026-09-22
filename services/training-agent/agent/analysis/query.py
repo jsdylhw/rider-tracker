@@ -8,7 +8,6 @@ not spend tokens generating a Strava description or a persistent report view.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -20,34 +19,33 @@ from fit.analysis.features import build_activity_features
 from fit.analysis.metrics import build_activity_metrics
 from services.activity.fit_loader import parse_activity_fit as parse_fit
 from integrations.llm import AnthropicMessagesClient, build_tool_result_block, extract_text
-from settings import get_agent_config
 from project_paths import project_relative_or_absolute, resolve_project_path
 from storage.repositories.activity import ActivityStore, file_content_key
 
 MAX_QUERY_STEPS = 4
-QUERY_MAX_TOKENS = 1200
-
-_NUMBER = r"\d+(?:\.\d+)?"
-_TIME_RANGE_RE = re.compile(
-    rf"(?P<start>{_NUMBER})\s*(?:-|–|—|到|至|~)\s*(?P<end>{_NUMBER})\s*"
-    r"(?P<unit>秒|s\b|分钟|min\b|分\b)",
-    re.IGNORECASE,
-)
-_DISTANCE_RANGE_RE = re.compile(
-    rf"(?P<start>{_NUMBER})\s*(?:-|–|—|到|至|~)\s*(?P<end>{_NUMBER})\s*"
-    r"(?P<unit>公里|km\b|千米|米\b|m\b)",
-    re.IGNORECASE,
-)
+QUERY_MAX_TOKENS = 8192
 
 _QUERY_SYSTEM_PROMPT = """\
 You answer one focused question about one endurance activity.
 Use only the supplied deterministic facts and tool evidence. Do not invent
 unavailable samples, weather, route context, physiology, or causality.
-Zero recorded power with non-zero speed supports coasting or missing power,
-not a downhill claim unless an altitude decrease is present in the evidence.
+Recorded zero power is a valid observation, not a missing sample. Do not infer
+sensor failure from zeros or a downhill without altitude evidence.
+For any time/distance-window question, call the corresponding FIT tool before
+answering. Interpret 前五分钟 and 0–5分钟 as start_s=0,end_s=300. Preserve the
+user's requested bucket_seconds (e.g. 5 or 10); otherwise choose a suitable
+interval and state it. Bounds are inclusive; time is elapsed from the first FIT
+record, including pauses, not moving time.
+Choose view="summary" for whole-window statistics only, view="intervals" when
+trends or per-bucket details are requested. Select requested metrics explicitly:
+power, heart_rate, cadence, speed, altitude. Interval outputs use columns+rows;
+all values within a row belong to the same bucket.
+Use window_summary for whole-window averages, never average the bucket means.
+Report valid/missing/zero counts separately. Null is unavailable, never zero.
+Copy numeric evidence from tool outputs; if unavailable, explain the limitation.
 
 This is not a full activity report. Keep the Chinese Markdown answer concise
-(normally under 700 Chinese characters). Do not write a Strava description and
+for summary questions; explicit per-bucket detail may be longer. Do not write a Strava description and
 do not produce a reusable activity analysis summary. When enough evidence is
 available, call submit_query_answer exactly once with answer, evidence, and
 limitations. Evidence must contain only objective values present in the input.
@@ -93,34 +91,16 @@ def run_activity_query_agent(fit_path: str | Path, *, question: str) -> dict[str
         return parsed_cache
 
     handlers = build_tool_handlers(load_parsed, None)
-    raw_request = parse_explicit_window(str(question))
-    raw_evidence = None
-    if raw_request is not None:
-        # Numeric bounded windows are deterministic. Execute them before the
-        # model call instead of spending a model round choosing obvious bounds.
-        tool_name, arguments = raw_request
-        raw_evidence = {
-            "tool": tool_name,
-            "arguments": arguments,
-            "result": _compact_raw_evidence(
-                handlers[tool_name](**arguments),
-                tool_name=tool_name,
-                question=str(question),
-            ),
-        }
-
     payload = build_query_payload(
         question=str(question),
         activity_key=activity_key,
         fit_summary=fit_summary,
         metrics=metrics,
         features=features,
-        raw_evidence=raw_evidence,
     )
     result = _run_query_loop(
         payload,
         handlers=handlers,
-        exact_window=raw_evidence is not None,
     )
     result.update({
         "kind": "activity_query_answer",
@@ -136,7 +116,6 @@ def run_activity_query_agent(fit_path: str | Path, *, question: str) -> dict[str
             "fit_path": str(path),
             "activity_key": activity_key,
             "question": str(question),
-            "exact_window": raw_request is not None,
             "payload": payload,
             "answer": result,
         },
@@ -152,9 +131,8 @@ def build_query_payload(
     fit_summary: dict[str, Any],
     metrics: dict[str, Any],
     features: dict[str, Any],
-    raw_evidence: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Build a bounded query payload; exact windows do not need candidates."""
+    """Provide stored facts; the model requests raw windows through tools."""
     payload = {
         "question": question.strip(),
         "activity": {
@@ -162,75 +140,21 @@ def build_query_payload(
             "fit_summary": llm_safe_fit_summary(fit_summary),
         },
         "activity_metrics": metrics,
-        "raw_evidence": raw_evidence,
+        "activity_features": features,
         "completion_contract": {
             "tool": "submit_query_answer",
             "fields": ["answer", "evidence", "limitations"],
         },
     }
-    if raw_evidence is None:
-        # Semantic questions may need the import-time sprint/effort/climb
-        # candidates. Exact windows already have stronger local evidence.
-        payload["activity_features"] = features
     return payload
 
 
-def parse_explicit_window(question: str) -> tuple[str, dict[str, Any]] | None:
-    """Parse common numeric bounded windows into deterministic FIT arguments."""
-    time_match = _TIME_RANGE_RE.search(question)
-    if time_match:
-        start = float(time_match.group("start"))
-        end = float(time_match.group("end"))
-        if _is_minute_unit(time_match.group("unit")):
-            start, end = start * 60, end * 60
-        if end <= start:
-            return None
-        width = end - start
-        return "get_time_intervals", {
-            "bucket_seconds": max(1, min(30, round(width / 20))),
-            "start_s": _clean_number(start),
-            "end_s": _clean_number(end),
-        }
-
-    distance_match = _DISTANCE_RANGE_RE.search(question)
-    if distance_match:
-        start = float(distance_match.group("start"))
-        end = float(distance_match.group("end"))
-        if _is_kilometre_unit(distance_match.group("unit")):
-            start, end = start * 1000, end * 1000
-        if end <= start:
-            return None
-        width = end - start
-        allowed = (100, 200, 500, 1000, 3000, 5000, 10000)
-        wanted = max(100, width / 10)
-        bucket = min(allowed, key=lambda value: abs(value - wanted))
-        return "get_distance_intervals", {
-            "bucket_distance_m": bucket,
-            "start_d": _clean_number(start),
-            "end_d": _clean_number(end),
-        }
-    return None
-
-
 def _run_query_loop(
-    payload: dict[str, Any], *, handlers: dict[str, Any], exact_window: bool,
+    payload: dict[str, Any], *, handlers: dict[str, Any],
 ) -> dict[str, Any]:
-    if exact_window:
-        # Bounds and interval aggregates are already deterministic here. The
-        # model only formats a short evidence-backed answer, so hidden chain of
-        # thought adds latency and tokens without improving data retrieval.
-        config = dict(get_agent_config())
-        config["thinking"] = "disabled"
-        config.pop("reasoning_effort", None)
-        client = AnthropicMessagesClient(config=config)
-    else:
-        client = AnthropicMessagesClient()
+    client = AnthropicMessagesClient()
     session_id = new_session_id("fit_query")
-    tools = (
-        (SUBMIT_QUERY_ANSWER_TOOL,)
-        if exact_window
-        else (*tuple(tool for tool in FIT_DATA_TOOLS if tool.name != "get_history"), SUBMIT_QUERY_ANSWER_TOOL)
-    )
+    tools = (*tuple(tool for tool in FIT_DATA_TOOLS if tool.name != "get_history"), SUBMIT_QUERY_ANSWER_TOOL)
     registry = ToolRegistry(tools)
     messages: list[dict[str, Any]] = [{
         "role": "user",
@@ -245,6 +169,8 @@ def _run_query_loop(
             max_tokens=QUERY_MAX_TOKENS,
             tools=registry.to_anthropic(),
         )
+        if response.get("stop_reason") == "max_tokens":
+            raise RuntimeError("FIT 查询回答达到输出上限而被截断；未将不完整内容作为结果。请缩小窗口或增大分桶间隔。")
         last_response = response
         messages.append({"role": "assistant", "content": response.get("content") or []})
 
@@ -319,52 +245,3 @@ def _fit_summary(metrics: dict[str, Any], activity: dict[str, Any] | None) -> di
         "duration_s": float(duration_min) * 60 if duration_min is not None else activity.get("duration_s"),
         "distance_m": float(distance_km) * 1000 if distance_km is not None else activity.get("distance_m"),
     }
-
-
-def _compact_raw_evidence(
-    result: dict[str, Any], *, tool_name: str, question: str,
-) -> dict[str, Any]:
-    """Drop interval columns unrelated to the focused question.
-
-    Column arrays are aligned by index, so this filters whole columns rather
-    than pruning individual null values. Metadata and the requested window are
-    retained for traceability.
-    """
-    if not isinstance(result, dict) or not isinstance(result.get("series"), dict):
-        return result
-    common = {
-        "start_s", "end_s", "duration_s", "distance_start_m", "distance_end_m",
-        "avg_hr_bpm", "max_hr_bpm", "avg_cadence_rpm", "max_cadence_rpm",
-    }
-    text = str(question).lower()
-    if tool_name == "get_time_intervals" or any(token in text for token in ("功率", "冲刺", "爆发", "power")):
-        common.update({
-            "avg_power_w", "avg_nonzero_power_w", "max_power_w", "power_w_zero_fraction",
-            "avg_nonzero_cadence_rpm", "cadence_rpm_zero_fraction",
-            "avg_speed_mps", "avg_nonzero_speed_mps", "max_speed_mps", "speed_mps_zero_fraction",
-        })
-    if tool_name == "get_distance_intervals" or any(token in text for token in ("爬坡", "海拔", "坡", "配速", "pace")):
-        common.update({
-            "distance_delta_m", "avg_speed_mps", "max_speed_mps", "avg_pace_s_per_km",
-            "avg_altitude_m", "max_altitude_m", "avg_power_w", "max_power_w",
-        })
-    series = result["series"]
-    return {
-        key: value
-        for key, value in result.items()
-        if key != "series"
-    } | {
-        "series": {key: value for key, value in series.items() if key in common},
-    }
-
-
-def _is_minute_unit(unit: str) -> bool:
-    return str(unit).lower() in {"分钟", "分", "min"}
-
-
-def _is_kilometre_unit(unit: str) -> bool:
-    return str(unit).lower() in {"公里", "千米", "km"}
-
-
-def _clean_number(value: float) -> int | float:
-    return int(value) if float(value).is_integer() else round(float(value), 3)

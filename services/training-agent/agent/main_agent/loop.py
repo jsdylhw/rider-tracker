@@ -54,6 +54,7 @@ def run_tool_loop(
     verbose: bool = False,
     context: AgentContext | None = None,
     execution_policy: TurnExecutionPolicy | None = None,
+    on_progress=None,
 ) -> dict[str, Any]:
     """组装 intent/context/handlers → agent_loop()."""
     execution_policy = execution_policy or TurnExecutionPolicy.chat()
@@ -110,6 +111,7 @@ def run_tool_loop(
             verbose,
             max_tokens,
             client=client,
+            on_progress=on_progress,
             execution_policy=execution_policy,
         )
     except LLMRequestError as exc:
@@ -170,6 +172,7 @@ def _execute_main_agent_turn(
     *,
     client=None,
     execution_policy: TurnExecutionPolicy | None = None,
+    on_progress=None,
 ):
     """执行 agent_loop 并同步 messages 回 context. 返回 step_count."""
     def allowed_tool_names() -> set[str]:
@@ -224,6 +227,7 @@ def _execute_main_agent_turn(
             if execution_policy.stop_on_required_tool_failure else None
         ),
         verbose=verbose,
+        on_progress=on_progress,
     )
     if verbose:
         _log_hdr(message, "chat", len(initial_names), bool(context.current_fit_file), active_skill=initial_skill)

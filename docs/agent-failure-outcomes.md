@@ -42,3 +42,10 @@
 
 本切片验收：JavaScript 426/426、Python 760/760；正常和后端掉线/恢复双进程集成通过，
 compileall 与 git diff --check 通过。组合回归使用隔离 Context/Provider，不调用真实模型或地图。
+
+
+## 主对话补充边界（2026-09-21）
+
+主对话激活下载、发布、工作流或路线Skill后，不能仅凭模型文字宣称完成。缺少本轮相应终结业务结果（仅定位活动也不够）时返回 `action_not_executed`；正常追问通过 `ask_user_clarification` 返回 `clarification_required`。普通聊天与只读问答不受强制业务执行要求影响。失败恢复仍按遗留问题延期。
+
+主窗口进度使用 `agent_stream.v1`，事件为progress/result/error；progress携带stage/status/label/index，result沿用agent_turn.v1。路线流继续兼容route_stream.v1。进度事件为观测，不作为提交/回滚/重试控制；业务以最终工具结果为准。详细验证见 [能力摸底](agent-capability-audit.md)。

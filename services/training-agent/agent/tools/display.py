@@ -143,6 +143,8 @@ def summarize_tool_output(name: str, output: Any) -> str:
 
 def tool_label(name: str) -> str:
     return {
+        "run_route_agent": "规划路线", "ask_user_clarification": "整理待补充信息",
+        "generate_training_advice": "整理训练建议", "summarize_recent_training_load": "汇总训练负荷",
         "resolve_activities": "定位活动", "lookup_activities": "临时查询活动", "find_segments": "定位活动片段",
         "inspect_selection": "初步检查", "analyze_selection": "分析当前焦点", "navigate_selection": "切换分析焦点",
         "analyze_activity": "查看活动报告", "query_activity_detail": "查询 FIT 细节", "summarize_activities": "汇总活动",

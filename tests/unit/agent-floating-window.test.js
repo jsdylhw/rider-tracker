@@ -1,3 +1,4 @@
+import { createAgentProgress } from "../../src/ui/agent/agent-progress.js";
 import {
     createAgentFloatingWindow,
     isBlockingActivityWorkflowPrompt,
@@ -9,6 +10,25 @@ import { createFakeClassList } from "../helpers/fake-dom.js";
 export const suite = {
     name: "agent-floating-window",
     tests: [
+        {
+            name: "progress keeps queued work pending and ignores late events after finish",
+            run() {
+                const { root } = createAgentTestDom();
+                const container = createElement();
+                const timers = new Set();
+                const clock = { now: () => 3000, setInterval(fn) { timers.add(fn); return fn; }, clearInterval(fn) { timers.delete(fn); } };
+                const progress = createAgentProgress({ root, container, clock });
+                progress.start();
+                progress.update({ stage: "job", label: "生成报告", status: "queued", index: 1 });
+                progress.finish({ status: "completed", executions: [{ status: "queued" }] });
+                assertEqual(container.children[0].children[0].textContent, "请求已提交，等待任务结果");
+                progress.update({ stage: "job", label: "生成报告", status: "completed", index: 1 });
+                assertEqual(container.children[1].children[1].children[0].textContent, "生成报告 · 已排队");
+                assertEqual(timers.size, 0);
+                progress.clear();
+                assertEqual(container.hidden, true);
+            }
+        },
         {
             name: "deleted remembered session opens a fresh ID instead of recreating the tombstone",
             async run() {
@@ -289,7 +309,7 @@ export const suite = {
             }
         },
         {
-            name: "explains that activity workflows block until all requested steps finish",
+            name: "shows streamed processing outside the conversation and keeps partial status",
             async run() {
                 const { root, elements } = createAgentTestDom();
                 let finishRequest;
@@ -298,18 +318,24 @@ export const suite = {
                     root,
                     seedConversation: false,
                     agentClient: {
-                        async chat() { return pendingRequest; }
+                        async chat(text, options) {
+                            options.onProgress({ stage: "run_activity_workflow", index: 1, status: "running", label: "处理本地活动" });
+                            options.onProgress({ stage: "run_activity_workflow", index: 1, status: "partial", label: "处理本地活动" });
+                            return pendingRequest;
+                        }
                     }
                 });
 
                 const request = windowController.sendMessage("同步最新3个活动，分析后上传 Strava");
-                const thinkingBody = elements.agentMessages.children.at(-1).children[1];
-                assertEqual(thinkingBody.textContent.includes("全部步骤完成后一次性返回"), true);
-                assertEqual(thinkingBody.textContent.includes("请勿重复提交"), true);
+                assertEqual(elements.agentMessages.children.length, 1);
+                assertEqual(elements.agentProgress.hidden, false);
+                const steps = elements.agentProgress.children[1].children[1];
+                assertEqual(steps.children[0].textContent, "处理本地活动 · 部分完成");
                 assertEqual(windowController.getState().busy, true);
 
-                finishRequest({ answer: "处理完成。", presentations: [] });
+                finishRequest({ status: "completed", answer: "部分完成。", executions: [{ status: "partial" }], presentations: [] });
                 await request;
+                assertEqual(elements.agentProgress.children[0].children[0].textContent, "部分步骤未完成，请查看结果");
                 assertEqual(windowController.getState().busy, false);
                 windowController.destroy();
             }
@@ -423,6 +449,7 @@ function createAgentTestDom() {
         agentClearContextBtn: createElement(),
         agentMessages: createElement(),
         agentQuickPrompts: createElement(),
+        agentProgress: createElement(),
         agentComposer: createElement(),
         agentMessageInput: createElement(),
         agentSendBtn: createElement(),

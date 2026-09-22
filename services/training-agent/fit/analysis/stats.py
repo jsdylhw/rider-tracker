@@ -114,10 +114,10 @@ def _rows_to_column_arrays(rows: list[dict[str, Any]]) -> dict[str, list[Any]]:
         "avg_pace_s_per_km",
         "avg_altitude_m", "max_altitude_m",
     ]
-    common_keys = set(rows[0])
-    for row in rows[1:]:
-        common_keys &= set(row)
-    return {key: [row[key] for row in rows] for key in ordered_keys if key in common_keys}
+    keys = set().union(*(row.keys() for row in rows))
+    counts = sorted(key for key in keys if key.endswith(("_valid_samples", "_missing_samples")))
+    return {key: [row.get(key) for row in rows] for key in ordered_keys + counts if key in keys}
+
 
 
 def _normalize_bucket_seconds(value: int) -> int:
@@ -194,15 +194,18 @@ def _series_stats(
 
     0 值对功率/踏频/速度有训练含义(滑行,停踩,停车),所以可选保留零值统计.
     """
+    counts = {f"{prefix}_valid_samples": 0, f"{prefix}_missing_samples": int(len(group))}
     if column not in group.columns:
-        return {}
+        return counts
     try:
         values = group[column].dropna().astype(float)
     except (TypeError, ValueError):
         return {}
     if values.empty:
-        return {}
+        return counts
     result: dict[str, float | int | None] = {
+        f"{prefix}_valid_samples": int(len(values)),
+        f"{prefix}_missing_samples": int(len(group) - len(values)),
         f"avg_{prefix}": _round_float(values.mean(), 1),
         f"max_{prefix}": _round_float(values.max(), 1),
     }

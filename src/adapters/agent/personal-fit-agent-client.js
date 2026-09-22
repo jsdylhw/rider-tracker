@@ -84,7 +84,7 @@ export function createAgentApiClient({
                 ...(routeAction ? { route_action: routeAction } : {}),
                 ...(routeReference ? { route_reference: routeReference } : {}),
                 ...(routeOptions ? { route_options: routeOptions } : {})
-            }, requestMode === "route_plan" ? onProgress : null);
+            }, onProgress);
         },
         selectRouteCandidate(planId, candidateId, expectedRevision) {
             return post("/api/agent/route-plans/select", {
