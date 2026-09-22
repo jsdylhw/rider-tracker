@@ -33,7 +33,7 @@ def delegate_route_task(args, context):
     context.route_messages = dialogue
     if action == "create" or result.get("route_task", {}).get("action") == "create":
         context.route_reference = None
-    if result.get("route_task", {}).get("status") == "completed":
+    if result.get("route_task", {}).get("status") == "completed" or (result.get("route_operation") and result.get("route_plan")):
         plan = result["route_plan"]
         context.route_reference = {"plan_id": plan["plan_id"], "revision": plan["revision"]}
     # Parent trace records this delegation, child trace remains inside its result.

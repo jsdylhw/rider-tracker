@@ -28,7 +28,7 @@ export function createAgentRoutePlanner({
     const sessions = createAgentSessionControls({
         container: documentRef?.getElementById?.("aiRouteSessions"), client: agentSessionClient, kind: "route_plan",
         isLocked: () => lastState?.liveRide?.isActive === true,
-        onBusy(value) { restoringSession = value; setBusy(value); },
+        onBusy(value) { restoringSession = value; setBusy(value); renderCandidates(); },
         async onLoad(detail) {
             const draft = await onRestoreAgentRouteSession(detail);
             requestSequence += 1;
@@ -128,7 +128,10 @@ export function createAgentRoutePlanner({
                 progress.finish("本次请求已结束，未更新路线");
                 return;
             }
-            progress.finish(draft.clarificationRequired ? "等待补充信息" : "处理完成");
+            progress.finish(draft.clarificationRequired ? "等待补充信息" : draft.dailyItinerary
+                ? draft.candidates.some(c => c.dayStatus === "failed") ? "行程已保存，请查看当天失败原因"
+                    : draft.candidates.some(c => c.dayStatus === "ready") ? "当天路线已更新，其他天可继续生成" : "多日草案已保存，可按天生成路线"
+                : "处理完成");
             if (draft.clarificationRequired) {
                 addMessage("agent", draft.answer);
                 return;
@@ -163,7 +166,7 @@ export function createAgentRoutePlanner({
             selectedSegmentIds = selectedSegmentIds.filter((id) => (
                 availableSegments().some((segment) => segment.segmentId === id)
             ));
-            addMessage("agent", successText);
+            addMessage("agent", draft.operationError ? `当天生成失败：${draft.operationError.message}` : successText);
             renderDraft();
         } catch (error) {
             pending.remove?.();
@@ -200,7 +203,7 @@ export function createAgentRoutePlanner({
         );
         if (elements.aiRouteResultTitle) {
             elements.aiRouteResultTitle.textContent = candidates.length
-                ? `Agent 路线候选 · ${candidates.length} 条`
+                ? currentDraft.dailyItinerary ? `骑行行程 · ${candidates.length} 天 · 已生成 ${candidates.filter(c => c.dayStatus === "ready").length} 天` : `Agent 路线候选 · ${candidates.length} 条`
                 : "等待生成路线";
         }
         updateResultStatus(selectedId);
@@ -213,11 +216,22 @@ export function createAgentRoutePlanner({
         card.classList.toggle("is-selected", candidate.candidateId === selectedId);
         const copy = documentRef.createElement("div");
         const title = documentRef.createElement("strong");
-        title.textContent = candidate.name;
+        title.textContent = currentDraft?.dailyItinerary ? `第 ${candidate.day} 天 · ${candidate.name}` : candidate.name;
         const metrics = documentRef.createElement("span");
         metrics.textContent = candidateMetrics(candidate);
+        if (currentDraft?.dailyItinerary) {
+            const labels = { pending: "待生成", generating: "生成中", ready: "已生成", failed: "生成失败", needs_regeneration: "待重新生成" };
+            metrics.textContent = `${labels[candidate.dayStatus] || "待生成"} · ${candidate.previousRoute ? `上次成功路线：${candidateMetrics(candidate)}` : candidate.dayStatus === "ready" ? candidateMetrics(candidate) : "地图里程与时间待验证"}`;
+        }
         const description = documentRef.createElement("p");
         description.textContent = candidate.description || "请预览地图，选择适合的路线。";
+        if (currentDraft?.dailyItinerary) {
+            description.textContent = (candidate.previousRoute ? "当前要求：" : "") + candidate.pointNames.join(" → ")
+                + (candidate.previousRoute ? `；上次路线：${candidate.previousPointNames.join(" → ")}（仅供预览）` : "")
+                + (candidate.distanceRangeKm ? `；目标 ${candidate.distanceRangeKm.join("–")} km` : candidate.targetDistanceKm ? `；目标 ${candidate.targetDistanceKm} km` : "；未设距离目标")
+                + (candidate.dayError ? `；${candidate.dayError}` : "")
+                + (candidate.connectionWarning ? `；${candidate.connectionWarning}` : "");
+        }
         copy.append(title, metrics, description);
         if (candidate.warnings?.length) {
             const warnings = documentRef.createElement("p");
@@ -228,12 +242,20 @@ export function createAgentRoutePlanner({
         const actions = documentRef.createElement("div");
         actions.className = "ai-route-candidate-actions";
         const preview = createButton(candidate.candidateId === selectedId ? "正在预览" : "预览", "secondary");
+        if (currentDraft?.dailyItinerary && candidate.dayStatus !== "ready") preview.textContent = candidate.previousRoute ? "预览上次路线" : "选择当天";
         preview.disabled = isLocked();
         preview.addEventListener("click", () => void previewCandidate(candidate));
         const confirm = createButton(candidate.confirmed ? "已确认" : "最终确认", "primary");
-        confirm.disabled = isLocked() || candidate.confirmed;
+        confirm.disabled = isLocked() || candidate.confirmed || !!(currentDraft?.dailyItinerary && (candidate.dayStatus !== "ready" || !!candidate.connectionWarning));
         confirm.addEventListener("click", () => void confirmCandidate(candidate));
         actions.append(preview, confirm);
+        if (currentDraft?.dailyItinerary) {
+            const generate = createButton(candidate.dayStatus === "ready" ? "重新生成当天" : "生成当天路线", "primary");
+            generate.disabled = isLocked();
+            generate.addEventListener("click", () => void runDraftAction(`正在计算第 ${candidate.day} 天的骑行路线…`,
+                () => onPreviewAgentRoute?.(candidate.candidateId, { generate: true }), "当天处理已结束，请查看状态和地图里程。"));
+            actions.append(generate);
+        }
         card.append(copy, actions);
         return card;
     }
@@ -250,7 +272,7 @@ export function createAgentRoutePlanner({
         await runDraftAction(
             `正在切换到“${candidate.name}”……`,
             () => onPreviewAgentRoute?.(candidate.candidateId),
-            `已预览“${candidate.name}”。可以继续用自然语言修改，或点击最终确认。`
+            candidate.previousRoute ? "正在预览上次成功路线，尚未完成本次生成，不能确认。" : currentDraft?.dailyItinerary && candidate.dayStatus !== "ready" ? `已选择第 ${candidate.day} 天，可输入修改建议或生成当天路线。` : `已预览“${candidate.name}”。可以继续用自然语言修改，或点击最终确认。`
         );
     }
 
@@ -333,6 +355,10 @@ export function createAgentRoutePlanner({
             return;
         }
         const candidate = currentDraft?.candidates?.find((item) => item.candidateId === selectedId);
+        if (currentDraft?.dailyItinerary) {
+            elements.aiRouteResultStatus.textContent = candidate ? `当前选中第 ${candidate.day} 天；可生成路线或在左侧修改当天要求。` : "请选择一天";
+            return;
+        }
         elements.aiRouteResultStatus.textContent = !candidate
             ? "等待生成或选择"
             : currentDraft.planningStatus === "confirmed"
@@ -362,6 +388,7 @@ export function createAgentRoutePlanner({
             search_cycling_routes: "搜索骑行地点与线路资料",
             prepare_route_materials: "定位地点、检查可用路段并准备候选线路",
             create_route_plan: "计算道路路线并校验候选",
+            create_itinerary_plan: "保存多日骑行草案",
             update_route_plan: "重新计算并校验修改后的路线",
             request_route_clarification: "整理需要补充的信息",
         };
@@ -388,7 +415,13 @@ export function createAgentRoutePlanner({
         return {
             stop,
             update(event) {
-                if (finished || sequence !== requestSequence || !labels[event.stage]) return;
+                if (finished || sequence !== requestSequence) return;
+                if (event.stage === "map_retry") {
+                    current = event.status === "running" ? "地图服务繁忙，正在等待重试" : "正在重新请求地图服务";
+                    renderProgress();
+                    return;
+                }
+                if (!labels[event.stage]) return;
                 if (!["running", "completed", "failed"].includes(event.status)) return;
                 const label = labels[event.stage];
                 if (event.stage !== "reasoning") stages.set(event.stage, event.status);
@@ -450,11 +483,11 @@ export function createAgentRoutePlanner({
         }
         elements.aiRoutePromptButtons?.forEach((button) => { button.disabled = locked; });
         for (const button of [elements.aiRouteReverseBtn, elements.aiRouteUndoBtn]) {
-            if (button) button.disabled = locked || !currentDraft;
+            if (button) button.disabled = locked || !currentDraft || (currentDraft.dailyItinerary && button === elements.aiRouteReverseBtn);
         }
         if (elements.aiRouteExploreSegmentsBtn) {
             const stravaAvailable = isStravaAvailable();
-            elements.aiRouteExploreSegmentsBtn.disabled = locked || !currentDraft || !stravaAvailable;
+            elements.aiRouteExploreSegmentsBtn.disabled = locked || !currentDraft || currentDraft.dailyItinerary || !stravaAvailable;
             elements.aiRouteExploreSegmentsBtn.title = stravaAvailable
                 ? ""
                 : capabilityMessage(lastState?.agentCapabilities, "strava");
@@ -484,7 +517,7 @@ export function createAgentRoutePlanner({
 function candidateMetrics(candidate) {
     const values = [];
     if (candidate.distanceKm) values.push(`${candidate.distanceKm.toFixed(1)} km`);
-    if (candidate.durationMinutes) values.push(`虚拟骑行约 ${Math.round(candidate.durationMinutes)} 分钟`);
+    if (candidate.durationMinutes) values.push(`${candidate.durationLabel || "虚拟骑行约"} ${Math.round(candidate.durationMinutes)} 分钟`);
     if (candidate.estimatedAscentMeters !== null && candidate.estimatedAscentMeters !== undefined) {
         values.push(`估算爬升 ${Math.round(candidate.estimatedAscentMeters)} m（仅供参考）`);
     }

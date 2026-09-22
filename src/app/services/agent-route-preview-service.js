@@ -22,8 +22,10 @@ export function createAgentRoutePreviewService({
         let draft = null;
         if (detail.route_reference) {
             const response = await agentClient.routePlanCommand("get", {
-                session_id: detail.session_id, plan_id: detail.route_reference.plan_id,
-                expected_revision: detail.route_reference.revision
+                // Restore the latest owned artifact, including a day saved
+                // before an interrupted HTTP response. Old cards still use
+                // exact revisions in openAgentRoute below.
+                session_id: detail.session_id, plan_id: detail.route_reference.plan_id
             });
             draft = parseAgentRouteDraft({ ...response, status: "completed" });
         }
@@ -89,7 +91,7 @@ export function createAgentRoutePreviewService({
                     draft,
                     candidateId,
                     true,
-                    `Agent 已返回 ${draft.candidates.length} 条候选，正在预览首条`
+                    draft.dailyItinerary ? `已恢复 ${draft.candidates.length} 天骑行行程` : `Agent 已返回 ${draft.candidates.length} 条候选，正在预览首条`
                 );
             } else {
                 operations.clearRouteLoading(`Agent 已返回 ${draft.candidates.length} 条路线候选，请先预览再最终确认。`);
@@ -103,9 +105,9 @@ export function createAgentRoutePreviewService({
         }
     }
 
-    async function previewAgentRoute(candidateId) {
+    async function previewAgentRoute(candidateId, { generate = false } = {}) {
         ensureDraft();
-        const draft = await runCommand("select", { candidate_id: candidateId });
+        const draft = await runCommand(generate ? "generate_day" : "select", { candidate_id: candidateId });
         if (!draft) return null;
         commitCandidateRoute(draft, candidateId, true, "正在预览");
         return draft;
@@ -203,9 +205,7 @@ export function createAgentRoutePreviewService({
         if (!operations.isCurrent(requestId)) return null;
         if (operations.discardAfterRideStart("骑行已开始，已忽略未完成的 AI 路线操作。")) return null;
         const draft = saveDraft(parseAgentRouteDraft({
-            answer: response.answer,
-            status: "completed",
-            route_plan: response.route_plan
+            ...response
         }));
         return { draft, response };
     }
@@ -217,13 +217,20 @@ export function createAgentRoutePreviewService({
     }
 
     function commitCandidateRoute(draft, candidateId, isDraft, prefix) {
+        const selected = draft.candidates.find((item) => item.candidateId === candidateId);
+        if (draft.dailyItinerary && ((selected?.dayStatus !== "ready" && !selected?.previousRoute) || selected.coordinates.length < 2)) {
+            operations.invalidateRequests();
+            operations.commitRoute(buildRoute([]), "已选择当天草案，尚无可预览道路路线。");
+            return null;
+        }
+
         const built = buildRiderRouteFromAgentCandidate(draft, candidateId);
-        const route = { ...built, isDraft };
+        const route = { ...built, isDraft: draft.dailyItinerary ? !selected.confirmed : isDraft };
         operations.invalidateRequests();
         operations.commitRoute(
             route,
-            `${prefix} AI 虚拟路线：${route.name}，${formatNumber(route.totalDistanceMeters / 1000, 1)} km。`
-            + (isDraft ? " 最终确认前不能开始骑行。" : " 无海拔，可直接配合 ERG 骑行。")
+            `${selected.previousRoute ? "正在预览上次成功路线（尚未完成本次生成）" : prefix} AI 虚拟路线：${route.name}，${formatNumber(route.totalDistanceMeters / 1000, 1)} km。`
+            + (route.isDraft ? " 最终确认前不能开始骑行。" : " 无海拔，可直接配合 ERG 骑行。")
         );
         return route;
     }
@@ -272,11 +279,13 @@ function activeCandidateId(draft) {
 function buildVirtualRouteRequest(message) {
     return [
         String(message || "").trim(),
-        "这是 Rider Tracker 的虚拟观景路线：如果用户只给区域、距离或偏好等开放需求，应准备 3 条有实质区别的候选骨架，通过一次 create_route_plan 调用验证；使用材料准备时传 use_prepared_candidates=true，不重写 candidates；如果用户已经明确给出完整起终点或途经点顺序，则保持原顺序并可只生成 1 条。不要为每条候选分别调用工具；Google 爬升由服务端独立估算，仅供参考，不计算最大坡度；模拟坡度按 0 处理，配合 ERG 骑行。"
+        "这是 Rider Tracker 的虚拟观景路线：多日骑行先调用 create_itinerary_plan 保存一套逐日草案，之后按天生成，不套用单日默认距离。仅单日规划：如果用户只给区域、距离或偏好等开放需求，应准备 3 条有实质区别的候选骨架，通过一次 create_route_plan 调用验证；使用材料准备时传 use_prepared_candidates=true，不重写 candidates；如果用户已经明确给出完整起终点或途经点顺序，则保持原顺序并可只生成 1 条。不要为每条候选分别调用工具；Google 爬升由服务端独立估算，仅供参考，不计算最大坡度；模拟坡度按 0 处理，配合 ERG 骑行。"
     ].filter(Boolean).join("\n\n");
 }
 
 function buildRouteRefinementRequest(message, draft) {
+    if (draft.dailyItinerary) return [String(message || "").trim(),
+        `当前多日骑行计划 ${draft.planId}，选中 ${draft.activeCandidateId}。只更新明确指定的一天；edit_day 保存修改，generate_day 生成当天路线，保留其他天。`].join("\n\n");
     return [
         String(message || "").trim(),
         `当前路线计划 ${draft.planId}。以当前选中路线为基准，结合修改建议重新准备并生成三条可预览候选，调用 create_route_plan 新建候选组，不要只修改一条。`,

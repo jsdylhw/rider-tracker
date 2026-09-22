@@ -133,7 +133,7 @@ SKILL_CATALOG: tuple[SkillSpec, ...] = (
     SkillSpec(
         skill_id="plan-routes",
         description=(
-            "委派路线 Agent 创建或修改真实单日骑行路线草稿，也支持缺少信息时澄清。"
+            "委派路线 Agent 创建或修改单日骑行路线、多日骑行草案及逐日算路，也支持缺少信息时澄清。"
             "用于明确途经点、开放式路线需求和环线；预览与确认保存由路线页面完成。"
         ),
         tool_names=("run_route_agent", "ask_user_clarification"),

@@ -38,6 +38,10 @@ export function createAgentProgress({ root, container, clock = globalThis }) {
         },
         update(event) {
             if (!active) return;
+            if (event.stage === "map_retry") {
+                title.textContent = event.status === "running" ? "地图服务繁忙，正在等待重试" : "正在重新请求地图服务";
+                return;
+            }
             if (event.stage === "reasoning") { title.textContent = "分析需求与下一步"; return; }
             if (!event.stage || !event.label) return;
             steps.set(`${event.index ?? 0}:${event.stage}`, { label: event.label, status: event.status });

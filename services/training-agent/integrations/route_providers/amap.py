@@ -9,7 +9,6 @@ pairwise bicycle routes and preserves the intermediate point explicitly.
 from __future__ import annotations
 
 import json
-import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -19,6 +18,7 @@ from urllib.request import ProxyHandler, build_opener
 
 from integrations.provider_error import ProviderError, TransientProviderError
 from integrations.route_providers.budget import consume_route_request
+from integrations.route_providers.amap_throttle import pace, retry_wait
 
 
 AMAP_BICYCLING_URL = "https://restapi.amap.com/v5/direction/bicycling"
@@ -108,6 +108,11 @@ def validate_amap_response(payload: dict[str, Any], *, stage: str) -> None:
     errcode = payload.get("errcode")
     if (status is not None and str(status) != "1") or (infocode is not None and str(infocode) != "10000") or (errcode is not None and str(errcode) not in {"0", "10000"}):
         detail = payload.get("errdetail") or payload.get("errmsg") or payload.get("info") or "AMap bicycling request failed"
+        if "QPS" in str(detail).upper() or str(infocode) in {"10014", "10019", "10020", "10021", "10022", "10023"}:
+            raise TransientProviderError(
+                "地图服务请求过于频繁，请稍后重试（高德 QPS 限制）",
+                provider="amap", stage=stage,
+            )
         error_type = TransientProviderError if _is_transient_provider_response(payload) else ProviderError
         raise error_type(str(detail), provider="amap", stage=stage)
 
@@ -117,7 +122,8 @@ def _is_transient_provider_response(payload: dict[str, Any]) -> bool:
         str(payload.get(key) or "")
         for key in ("info", "errmsg", "errdetail")
     ).upper()
-    return any(marker in detail for marker in _TRANSIENT_PROVIDER_MARKERS)
+    return (str(payload.get("infocode")) in {"10014", "10019", "10020", "10021", "10022", "10023"}
+            or any(marker in detail for marker in _TRANSIENT_PROVIDER_MARKERS))
 
 
 def _normalize_step(step: dict[str, Any]) -> dict[str, Any]:
@@ -204,6 +210,7 @@ class AmapCyclingRouter:
         for attempt in range(self.retries + 1):
             try:
                 opener = openers[attempt % len(openers)]
+                pace(request_url)
                 with opener.open(request_url, timeout=consume_route_request(self.timeout_s)) as response:
                     payload = json.load(response)
                 try:
@@ -216,7 +223,7 @@ class AmapCyclingRouter:
                             str(exc), provider="amap", stage="route_calculation",
                         ) from exc
                     last_error = exc
-                    time.sleep(0.8 * (attempt + 1))
+                    retry_wait(attempt)
                     continue
                 return [_normalize_path(path) for path in paths]
             except HTTPError as exc:
@@ -224,7 +231,7 @@ class AmapCyclingRouter:
                 message = f"AMap bicycling returned HTTP {exc.code}"
                 if exc.code in {408, 429} or exc.code >= 500:
                     if attempt < self.retries:
-                        time.sleep(0.4 * (attempt + 1))
+                        retry_wait(attempt)
                         continue
                     raise TransientProviderError(
                         message, provider="amap", stage="route_calculation",
@@ -251,7 +258,7 @@ class AmapCyclingRouter:
                         provider="amap",
                         stage="route_calculation",
                     ) from exc
-                time.sleep(0.4 * (attempt + 1))
+                retry_wait(attempt)
         raise TransientProviderError(
             "AMap bicycling request failed",
             provider="amap",

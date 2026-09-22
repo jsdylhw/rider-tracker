@@ -30,11 +30,14 @@ class RouteHooks(ToolLoopHooks):
     material_corrections = 0
     searched_this_round = False
 
-    on_progress = None
+    route_on_progress = None
 
     def emit_progress(self, stage, status):
-        if self.on_progress:
-            self.on_progress({"stage": stage, "status": status})
+        if self.route_on_progress:
+            try:
+                self.route_on_progress({"stage": stage, "status": status})
+            except Exception:
+                pass
 
     def before_llm_call(self):
         self.emit_progress("reasoning", "running")
@@ -117,6 +120,20 @@ def run_route_agent(task: RouteTaskInput, *, history=None, client=None, on_progr
     context.route_workflow = RouteWorkflow(context)
 
     def project(result):
+        # A failed daily operation may still have committed a newer itinerary.
+        # Only project the exact artifact evidenced by this turn's executed tool.
+        for record in reversed(context.execution_trace):
+            output = record.get('result') or {}
+            operation = output.get('route_operation') if isinstance(output, dict) else None
+            if record.get('tool') != 'update_route_plan' or record.get('status') == 'blocked' or not operation:
+                continue
+            saved = RoutePlanStore().get(operation.get('plan_id'))
+            if (saved and saved.get('workspace_id') == task.workspace_id
+                    and saved.get('revision') == operation.get('revision')):
+                result['route_plan'] = build_route_plan_view(saved)
+                result['route_operation'] = operation
+                result['answer'] = output.get('answer') or result.get('answer')
+            break
         result = project_task_result(result, task)
         result["route_workflow"] = context.route_workflow.close(result)
         return result
@@ -127,12 +144,21 @@ def run_route_agent(task: RouteTaskInput, *, history=None, client=None, on_progr
             "code": "route_reference_conflict", "stage": "route_reference", "retryable": False,
             "message": "路线版本已变化或不属于当前工作区，请刷新。",
         }}), deepcopy(context.messages)
-    regenerate = task.action == "refine" and plan is not None
+    from services.route.daily_itinerary import is_daily
+    daily = bool(plan and is_daily(plan))
+    regenerate = task.action == "refine" and plan is not None and not daily
     if task.action == "refine":
-        policy = TurnExecutionPolicy.route_plan("create")
+        policy = TurnExecutionPolicy.route_plan("update" if daily else "create")
+    if "create_route_plan" in policy.completion_tool_names:
+        policy = replace(policy, required_tool_name=None,
+                         required_tool_names=policy.completion_tool_names | {"create_itinerary_plan"})
     names = set(policy.completion_tool_names) | {CLARIFY, SEARCH, PREPARE}
     tools = deepcopy(render_anthropic_tools([tool for tool in MAIN_AGENT_TOOLS if tool.name in names]))
     for tool in tools:
+        if tool["name"] == "create_itinerary_plan":
+            tool["description"] = "保存一套多日骑行草案，不进行算路；每天一个 full_day stage，保留每日距离范围，随后按天生成。"
+            tool["input_schema"]["properties"]["schedule_type"]["enum"] = ["multi_day"]
+            tool["input_schema"]["properties"]["candidates"]["maxItems"] = 1
         if tool["name"] == "create_route_plan":
             tool["description"] = "创建地图道路路线；开放规划使用 use_prepared_candidates=true。当前不采用 Strava 增强，Google 估算爬升仅作观景比较。"
             tool["input_schema"]["properties"]["segment_strategy"] = {
@@ -170,14 +196,19 @@ def run_route_agent(task: RouteTaskInput, *, history=None, client=None, on_progr
         def create_without_segments(args, ctx):
             return create_handler({**args, "segment_strategy": "ignore"}, ctx)
         handlers["create_route_plan"] = create_without_segments
+    if "create_itinerary_plan" in handlers:
+        def create_daily(args, ctx):
+            return TOOL_HANDLERS["create_itinerary_plan"]({**args, "draft_only": True, "segment_strategy": "ignore"}, ctx)
+        handlers["create_itinerary_plan"] = create_daily
     handlers[CLARIFY] = clarify
     if "update_route_plan" in names:
         handlers["update_route_plan"] = update
     steps = []
     hooks = RouteHooks(context, {tool.category for tool in MAIN_AGENT_TOOLS if tool.name in names},
                        {"value": False}, steps, allowed_tool_names=names, stop_on_failed_tools=policy.completion_tool_names, terminal_tool_names=policy.completion_tool_names)
-    hooks.on_progress = on_progress
+    hooks.route_on_progress = on_progress
     system = load_skill_instructions(replace(get_skill("plan-routes"), library_path="route/execute-routes.md")) + "\n这是独立路线任务。缺少地区时调用 request_route_clarification。不得把模型文字当执行成功。确认由页面命令完成。"
+    system += "\n多日骑行必须先 create_itinerary_plan(draft_only=true)，只建一套行程，每天一个 full_day stage，保存每日 distance_range_km。不得进入单日 prepare_route_materials，也不得套用默认30km。草案不表示已算路。已有 cycling_itinerary.v1 时仅用 update_route_plan：generate_day 计算指定 candidate_id 的一天；edit_day 修改指定一天的途经点/距离。不自动连续计算其他天。自驾需求请说明当前只支持骑行。"
     if plan:
         view = build_route_plan_view(plan)
         if regenerate:
@@ -207,9 +238,10 @@ def run_route_agent(task: RouteTaskInput, *, history=None, client=None, on_progr
         result = build_llm_unavailable_result("route_advice", context, steps=steps, error=exc, execution_policy=policy)
     for record in reversed(context.execution_trace):
         if record.get("tool") in policy.completion_tool_names and record.get("status") != "blocked":
-            result["_route_action"] = "create" if record["tool"] == "create_route_plan" else "update"
+            result["_route_action"] = "create" if record["tool"] in {"create_route_plan", "create_itinerary_plan"} else "update"
             result["_route_action_executed"] = True
             break
+    result = project(result)
     # Persist plain dialogue only: no tool authorization or mutable parent state.
     dialogue = []
     for message in context.messages:
@@ -217,4 +249,4 @@ def run_route_agent(task: RouteTaskInput, *, history=None, client=None, on_progr
         if isinstance(content, str):
             dialogue.append(deepcopy(message))
     dialogue.append({"role": "assistant", "content": str(result.get("answer") or "")})
-    return project(result), dialogue[-24:]
+    return result, dialogue[-24:]

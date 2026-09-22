@@ -3,6 +3,8 @@ import json
 from queue import Queue, Empty
 from threading import Event, Thread
 
+from integrations.route_providers.amap_throttle import map_retry_progress
+
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -17,7 +19,9 @@ def route_stream_response(run, *, schema_version="route_stream.v1"):
 
     def work():
         try:
-            result = run(lambda progress: emit({"type": "progress", **progress}))
+            callback = lambda progress: emit({"type": "progress", **progress})
+            with map_retry_progress(callback):
+                result = run(callback)
             emit({"type": "result", "result": result})
         except HTTPException as exc:
             emit({"type": "error", "message": str(exc.detail)})

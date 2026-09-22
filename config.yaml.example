@@ -88,3 +88,6 @@ web_api_token: ""
 # Route Agent 的网页路线资料搜索；也兼容已有 Tavily: 块。
 tavily:
   api_key: ""
+
+# Route provider experiment: auto (CN uses AMap) or google (all countries).
+route_provider_override: auto

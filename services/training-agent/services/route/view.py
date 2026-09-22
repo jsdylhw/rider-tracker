@@ -20,11 +20,23 @@ def build_route_plan_view(plan: dict[str, Any]) -> dict[str, Any]:
         for projected in [_candidate_view(item)]
         if projected is not None
     ]
+    if plan.get('itinerary_schema_version') == 'cycling_itinerary.v1':
+        days = {day['candidate_id']: day for day in plan.get('candidates') or [] if isinstance(day, dict) and day.get('candidate_id')}
+        for projected in candidates:
+            day = days[projected['candidate_id']]
+            confirmed = bool(day.get('confirmation') and day['confirmation'].get('day_revision') == day.get('day_revision', 0))
+            # Read old global confirmations until the corresponding day changes.
+            confirmed = confirmed or (not day.get('confirmation') and planning.get('confirmed_candidate_id') == day.get('candidate_id'))
+            projected['confirmed'] = confirmed and day.get('day_status') == 'ready' and not day.get('connection_warning')
+        active = next((c for c in candidates if c['candidate_id'] == plan.get('active_candidate_id')), {})
+        planning = {'status': 'confirmed' if active.get('confirmed') else 'awaiting_selection',
+                    'confirmed_candidate_id': active.get('candidate_id') if active.get('confirmed') else None}
     return {
         "schema_version": ROUTE_PLAN_VIEW_V1,
         "plan_id": str(plan.get("plan_id") or ""),
         "revision": int(plan.get("revision") or 0),
         "title": str(plan.get("title") or ""),
+        "itinerary_schema_version": plan.get("itinerary_schema_version"),
         "schedule_type": str(plan.get("schedule_type") or "single_day"),
         "country_code": str(plan.get("country_code") or "") or None,
         "planning_status": str(planning.get("status") or "awaiting_selection"),
@@ -48,6 +60,12 @@ def build_route_plan_view(plan: dict[str, Any]) -> dict[str, Any]:
 
 def _candidate_view(candidate: dict[str, Any]) -> dict[str, Any] | None:
     from services.route.ascent import ascent_view
+    snapshot = candidate.get('last_successful_route') or {}
+    if candidate.get('day_status') != 'ready' and snapshot.get('schema_version') == 'route_day_snapshot.v1':
+        previous = _candidate_view(snapshot['route'])
+        current = _candidate_view({k: v for k, v in candidate.items() if k != 'last_successful_route'})
+        if previous and current:
+            return {**current, 'previous_route': previous}
     candidate_id = str(candidate.get("candidate_id") or "")
     if not candidate_id:
         return None
@@ -59,6 +77,7 @@ def _candidate_view(candidate: dict[str, Any]) -> dict[str, Any] | None:
         if projected is not None
     ]
     return {
+        **{k: candidate.get(k) for k in ("day", "day_status", "distance_range_km", "target_distance_km", "distance_satisfied", "waypoint_queries", "error", "failure", "route_constraints", "route_preferences", "connection_warning")},
         "candidate_id": candidate_id,
         "parent_candidate_id": str(candidate.get("parent_candidate_id") or "") or None,
         "name": _candidate_name(candidate),

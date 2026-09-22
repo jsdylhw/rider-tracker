@@ -70,7 +70,7 @@ def confirm_and_save_route(
 
 def _candidate_view(plan: dict[str, Any], candidate_id: str) -> dict[str, Any]:
     view = build_route_plan_view(plan)
-    if str(view.get("schedule_type") or "single_day") != "single_day":
+    if str(view.get("schedule_type") or "single_day") != "single_day" and view.get("itinerary_schema_version") != "cycling_itinerary.v1":
         raise ValueError("only single-day route candidates can be saved for Rider runtime")
     candidate = next(
         (
@@ -81,6 +81,8 @@ def _candidate_view(plan: dict[str, Any], candidate_id: str) -> dict[str, Any]:
     )
     if not candidate:
         raise ValueError("route candidate does not exist")
+    if candidate.get("day_status") and (candidate["day_status"] != "ready" or candidate.get("connection_warning")):
+        raise ValueError("当天路线未完成或跨日衔接待检查，不能确认")
     if candidate.get("stages"):
         raise ValueError("staged route candidates cannot be saved as one Rider runtime route")
     geometry = candidate.get("geometry") if isinstance(candidate.get("geometry"), dict) else {}
@@ -165,6 +167,18 @@ def _number(value: Any) -> float:
 
 
 def _mark_confirmed(plan: dict[str, Any], candidate_id: str) -> dict[str, Any]:
+    if plan.get('itinerary_schema_version') == 'cycling_itinerary.v1':
+        from copy import deepcopy
+        plan = deepcopy(plan)
+        previous = (plan.get('planning') or {}).get('confirmed_candidate_id')
+        for existing in plan['candidates']:
+            if existing['candidate_id'] == previous and existing.get('day_status') == 'ready':
+                existing.setdefault('confirmation', {'schema_version': 'route_day_confirmation.v1',
+                    'day_revision': existing.get('day_revision', 0), 'plan_revision': plan['revision']})
+        day = next(d for d in plan['candidates'] if d['candidate_id'] == candidate_id)
+        day['confirmation'] = {'schema_version': 'route_day_confirmation.v1',
+                               'day_revision': day.get('day_revision', 0),
+                               'plan_revision': plan['revision'] + 1}
     planning = plan.get("planning") if isinstance(plan.get("planning"), dict) else {}
     return {
         **plan,

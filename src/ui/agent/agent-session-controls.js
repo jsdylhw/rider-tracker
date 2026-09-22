@@ -32,13 +32,14 @@ export function createAgentSessionControls({ container, client, kind, onLoad, on
     let sequence = 0;
     function update() {
         for (const item of [select, create, remove, retry]) item.disabled = loading || blocked || isLocked();
-        remove.disabled ||= !ready;
+        remove.disabled ||= !(select.value || currentDetail?.session_id || client.sessionId);
     }
     async function refreshList() {
         const result = await client.listSessions(kind);
         if (destroyed) return;
         const items = [...result.sessions];
-        if (currentDetail && !items.some((item) => item.session_id === currentDetail.session_id)) items.unshift({ ...currentDetail, title: `${currentDetail.title}（来自主会话）` });
+        if (currentDetail && items.some((item) => item.session_id === currentDetail.session_id)) currentDetail.local_draft = false;
+        if (currentDetail && !items.some((item) => item.session_id === currentDetail.session_id)) items.unshift({ ...currentDetail, title: currentDetail.kind && currentDetail.kind !== kind ? `${currentDetail.title}（来自主会话）` : currentDetail.title });
         select.replaceChildren(...items.map((session) => {
             const option = doc.createElement("option");
             option.value = session.session_id;
@@ -79,21 +80,62 @@ export function createAgentSessionControls({ container, client, kind, onLoad, on
             if (!destroyed) { onBusy(!ready); update(); }
         }
     }
+    const emptySession = () => client.createDraftSession?.(kind) ?? client.createSession(kind);
     async function restore() {
         try { return await client.getSession(); }
         catch (error) {
             if (error.status !== 404) throw error;
-            return client.createSession(kind);
+            return emptySession();
         }
     }
     select.addEventListener("change", () => void run(() => client.getSession(select.value)));
-    create.addEventListener("click", () => void run(() => client.createSession(kind)));
+    create.addEventListener("click", () => void run(() => emptySession()));
     retry.addEventListener("click", () => void run(restore));
+    const dialog = doc.createElement("dialog");
+    dialog.className = "agent-session-dialog";
+    dialog.setAttribute("aria-label", "删除会话确认");
+    const heading = doc.createElement("h3");
+    heading.textContent = "删除这个会话？";
+    const description = doc.createElement("p");
+    description.textContent = "聊天记录将被删除。已保存的路线和活动不受影响。";
+    const actions = doc.createElement("div");
+    const cancel = doc.createElement("button");
+    const confirm = doc.createElement("button");
+    cancel.type = confirm.type = "button";
+    cancel.textContent = "取消";
+    confirm.textContent = "删除会话";
+    confirm.className = "is-danger";
+    actions.append(cancel, confirm);
+    dialog.append(heading, description, actions);
+    container.append(dialog);
+    let deleteTarget = null;
+    function closeDialog() {
+        dialog.close?.();
+        dialog.removeAttribute?.("open");
+        deleteTarget = null;
+        remove.focus?.();
+    }
+    cancel.addEventListener("click", closeDialog);
+    dialog.addEventListener("cancel", () => { deleteTarget = null; });
     remove.addEventListener("click", () => {
-        if (doc.defaultView?.confirm && !doc.defaultView.confirm("删除当前会话及聊天记录？已保存的路线和活动不受影响。")) return;
+        if (loading || blocked || isLocked() || destroyed) return;
+        deleteTarget = select.value || currentDetail?.session_id || client.sessionId;
+        if (!deleteTarget) return;
+        if (dialog.showModal) dialog.showModal();
+        else dialog.setAttribute("open", "");
+        cancel.focus?.();
+    });
+    confirm.addEventListener("click", () => {
+        const id = deleteTarget;
+        closeDialog();
+        if (!id) return;
         void run(async () => {
-            await client.deleteSession();
-            return client.createSession(kind);
+            try { await client.deleteSession(id); }
+            catch (error) { if (error.status !== 404) throw error; }
+            currentDetail = null;
+            const result = await client.listSessions(kind);
+            const next = result.sessions.find((item) => item.session_id !== id);
+            return next ? client.getSession(next.session_id) : emptySession();
         });
     });
     return {
@@ -106,9 +148,9 @@ export function createAgentSessionControls({ container, client, kind, onLoad, on
             void refreshList().catch(() => {});
         },
         restore: () => run(restore),
-        newSession: () => run(() => client.createSession(kind)),
+        newSession: () => run(() => emptySession()),
         refreshList: () => refreshList().catch(() => {}),
         setBlocked(value) { blocked = value; update(); },
-        destroy() { destroyed = true; container.replaceChildren(); }
+        destroy() { destroyed = true; dialog.close?.(); container.replaceChildren(); }
     };
 }

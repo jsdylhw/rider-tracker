@@ -1329,8 +1329,11 @@ def test_route_chat_stream_preserves_final_result_and_idempotency(tmp_path, monk
     import json
     api, client, _ = _prepare_api(tmp_path, monkeypatch, route_configured=True)
     calls = []
+    from integrations.route_providers import amap_throttle
+    monkeypatch.setattr(amap_throttle, "sleep", lambda seconds: None)
     def run(task, *, history, on_progress):
         calls.append(task)
+        amap_throttle.retry_wait(0)
         on_progress({'stage': 'search_cycling_routes', 'status': 'running'})
         on_progress({'stage': 'search_cycling_routes', 'status': 'completed'})
         return {'status': 'clarification_required', 'answer': '从哪里出发？',
@@ -1340,7 +1343,9 @@ def test_route_chat_stream_preserves_final_result_and_idempotency(tmp_path, monk
             'request_mode': 'route_plan', 'route_action': 'create'}
     response = client.post('/api/chat', json=body, headers={'Accept': 'application/x-ndjson'})
     events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
-    assert [e['type'] for e in events] == ['progress', 'progress', 'result']
+    assert [e['type'] for e in events] == ['progress', 'progress', 'progress', 'progress', 'result']
+    assert events[0]['stage'] == 'map_retry'
+    assert events[0]['label'] == '地图服务繁忙，正在等待重试'
     assert all(e['schema_version'] == 'route_stream.v1' for e in events)
     assert events[-1]['result']['status'] == 'clarification_required'
     assert client.post('/api/chat', json=body).json() == events[-1]['result']
@@ -1409,3 +1414,26 @@ def test_main_chat_stream_preserves_final_result_and_idempotency(tmp_path, monke
     assert [e['type'] for e in events] == ['progress', 'result']
     assert client.post('/api/chat', json=body).json() == events[-1]['result']
     assert len(calls) == 1
+
+
+def test_daily_itinerary_command_persists_failure_and_rejects_stale_revision(tmp_path,monkeypatch):
+    from services.route import daily_itinerary as daily
+    from storage.repositories.route import RoutePlanStore
+    api,client,_=_prepare_api(tmp_path,monkeypatch,route_configured=True)
+    p=daily.draft_itinerary(workspace_id='web-chat:daily',title='两日骑行',country_code='CN',candidates=[{'stages':[
+        {'day':1,'waypoints':['A','B']},{'day':2,'waypoints':['B','C']}]}])
+    p=RoutePlanStore().save(p)
+    def fail(*a,**kw): raise RuntimeError('地图限流预算已耗尽')
+    monkeypatch.setattr(daily,'route_candidate',fail)
+    body={'session_id':'daily','request_id':'generate1','plan_id':p['plan_id'],
+          'operation':'generate_day','candidate_id':'day_1','expected_revision':p['revision']}
+    response=client.post('/api/route-plans/command',json=body)
+    assert response.status_code==200,response.text
+    value=response.json()
+    assert value['status']=='failed'
+    assert value['error']['code']=='route_day_failed'
+    assert value['route_operation']['revision']==value['route_plan']['revision']
+    assert value['route_plan']['candidates'][0]['day_status']=='failed'
+    assert value['route_plan']['candidates'][1]['day_status']=='pending'
+    assert client.post('/api/route-plans/command',json=body).json()==value
+    assert client.post('/api/route-plans/command',json={**body,'request_id':'stale'}).status_code==409

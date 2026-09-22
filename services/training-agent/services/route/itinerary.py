@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
 
-from services.route.provider_readiness import ensure_google_route_provider_ready
+from services.route.provider_readiness import ensure_google_route_provider_ready, use_amap_routes
 from services.route.single_day import reverse_waypoint_queries, route_candidate, saved_waypoint_queries
 from settings import load_config
 
@@ -39,7 +39,7 @@ def create_itinerary_plan(
     tolerance = _non_negative_float(handoff_tolerance_km, "handoff_tolerance_km")
     warning_ratio = _non_negative_float(balance_warning_ratio, "balance_warning_ratio")
     config = load_config()
-    if normalized_country != "CN":
+    if not use_amap_routes(normalized_country, config):
         ensure_google_route_provider_ready(config)
     routed_candidates = [
         _route_itinerary_candidate(
@@ -111,7 +111,7 @@ def replace_itinerary_stage(
     }
     country_code = str(plan.get("country_code") or "").strip().upper()
     config = load_config()
-    if country_code != "CN":
+    if not use_amap_routes(country_code, config):
         ensure_google_route_provider_ready(config)
     routed = route_candidate(
         spec,

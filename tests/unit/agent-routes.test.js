@@ -108,6 +108,7 @@ export const suite = {
                 const base = { session_id: "session", request_id: "open", operation: "get", plan_id: "plan" };
                 assertEqual(normalizeCommandRequest({ ...base, expected_revision: 3 }).expected_revision, 3);
                 assertEqual(normalizeCommandRequest(base).expected_revision, undefined);
+                assertEqual(normalizeCommandRequest({ ...base, operation: "generate_day", candidate_id: "day_2", expected_revision: 3 }).operation, "generate_day");
                 let rejected = false;
                 try { normalizeCommandRequest({ ...base, expected_revision: 0 }); } catch { rejected = true; }
                 assertEqual(rejected, true);

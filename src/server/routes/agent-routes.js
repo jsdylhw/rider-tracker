@@ -159,7 +159,7 @@ function normalizeSelectionRequest(body = {}) {
 }
 
 export function normalizeCommandRequest(body = {}) {
-    const allowed = new Set(["get", "select", "confirm", "reverse", "undo", "explore_segments", "compose_segments"]);
+    const allowed = new Set(["get", "generate_day", "select", "confirm", "reverse", "undo", "explore_segments", "compose_segments"]);
     const operation = String(body.operation || "").trim();
     if (!allowed.has(operation)) throw new RequestValidationError("不支持的路线操作。");
     const request = {

@@ -257,14 +257,15 @@ def test_amap_retries_transient_qps_response(monkeypatch) -> None:
             return Response(json.dumps(responses.pop(0)).encode())
 
     monkeypatch.setattr(amap_provider, "build_opener", lambda *args: Opener())
-    monkeypatch.setattr(amap_provider.time, "sleep", sleeps.append)
+    monkeypatch.setattr("integrations.route_providers.amap_throttle.sleep", sleeps.append)
+    monkeypatch.setattr(amap_provider, "pace", lambda url: None)
 
     route = AmapCyclingRouter("test-key", retries=1).route(
         AmapPoint(30.2, 120.1), AmapPoint(30.3, 120.2),
     )
 
     assert route["distance_m"] == 100
-    assert sleeps == [0.8]
+    assert sleeps == [1.0]
 
 
 def test_amap_invalid_geometry_is_a_structured_provider_failure(monkeypatch) -> None:

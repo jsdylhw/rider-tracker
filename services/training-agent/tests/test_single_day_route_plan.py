@@ -591,8 +591,8 @@ def test_amap_route_uses_anchor_search_and_prefers_matching_nearby_place(monkeyp
     assert places[1]["place_id"] == "right"
     assert "/place/text?" in urls[1]
     assert "page_size=25" in urls[1]
-    assert "region=021" in urls[1]
-    assert "city_limit=true" in urls[1]
+    assert "region=" not in urls[1]
+    assert "city_limit=true" not in urls[1]
 
 
 def test_amap_route_ranks_real_alternatives_by_turn_preference(monkeypatch):
@@ -1471,3 +1471,13 @@ def test_get_or_update_rejects_plan_from_another_workspace(monkeypatch):
             AgentContext(session_id="session", workspace_id="workspace"),
             args={"plan_id": "route_foreign", "operation": "select_candidate", "candidate_id": "candidate_1"},
         )
+
+
+@pytest.mark.parametrize('query,expected',[
+    ('四姑娘山 双桥沟','四姑娘山景区双桥沟'),
+    ('四姑娘山双桥沟停车场','四姑娘山双桥沟停车场'),
+])
+def test_amap_scenic_identity_outranks_ancillary_substring(query,expected):
+    pois=[{'name':name,'address':'四姑娘山镇','location':'102.8,31.0'} for name in (
+        '四姑娘山双桥沟停车场','四姑娘山双桥沟布达拉峰观光车上下站','四姑娘山景区双桥沟')]
+    assert _select_amap_poi(query,pois,anchor=None)['name']==expected

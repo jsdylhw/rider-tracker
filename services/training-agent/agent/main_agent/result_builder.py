@@ -40,7 +40,7 @@ def build_completed_result(
             project_route_plan=False, error=delegation.get("error"),
         )
         context.messages.append({"role": "assistant", "content": str(delegation.get("answer") or "")})
-        for key in ("route_task", "route_plan", "route_workflow"):
+        for key in ("route_task", "route_plan", "route_workflow", "route_operation"):
             if key in delegation:
                 result[key] = delegation[key]
         return result

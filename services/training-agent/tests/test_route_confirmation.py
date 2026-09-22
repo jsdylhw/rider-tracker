@@ -121,3 +121,13 @@ def _saved_route() -> dict:
             ],
         },
     }
+
+
+@pytest.mark.parametrize("state,allowed", [("pending",False),("failed",False),("needs_regeneration",False),("ready",True)])
+def test_only_generated_daily_artifact_can_be_confirmed(state,allowed):
+    from services.route.confirmation import _candidate_view
+    plan={"schedule_type":"multi_day","itinerary_schema_version":"cycling_itinerary.v1", "candidates":[{**_candidate(),"day":1,"day_status":state}]}
+    if allowed:
+        assert _candidate_view(plan,"candidate-1")["day_status"]=="ready"
+    else:
+        with pytest.raises(ValueError):_candidate_view(plan,"candidate-1")

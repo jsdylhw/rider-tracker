@@ -55,7 +55,8 @@ def plan_with_feedback(preparation, *, workspace_id, title, include_elevation,
     ascent_evaluations = 0
     constraints = normalize_route_constraints(route_constraints)
     preferences = normalize_route_preferences(route_preferences)
-    if evaluator is None and materials['country_code'] != 'CN':
+    from services.route.provider_readiness import use_amap_routes
+    if evaluator is None and not use_amap_routes(materials['country_code'], cfg):
         from services.route.provider_readiness import ensure_google_route_provider_ready
         ensure_google_route_provider_ready(cfg)
     latitude = points[materials['origin_id']]['coordinate'][1]

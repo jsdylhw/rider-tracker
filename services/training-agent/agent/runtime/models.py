@@ -149,6 +149,7 @@ def public_turn_dict(value: dict[str, Any]) -> dict[str, Any]:
         "executions": executions,
         "presentations": presentations,
         **({"route_plan": value["route_plan"]} if isinstance(value.get("route_plan"), dict) else {}),
+        **({"route_operation": value["route_operation"]} if isinstance(value.get("route_operation"), dict) else {}),
         **({"route_workflow": value["route_workflow"]} if isinstance(value.get("route_workflow"), dict) else {}),
         **({"route_task": {key: value["route_task"].get(key) for key in (
             "schema_version", "request_id", "status", "action", "action_executed", "plan_id", "revision"

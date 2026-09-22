@@ -48,3 +48,14 @@ def route_request_budget(*, max_requests: int = 36, timeout_s: float = 60.0):
 def consume_route_request(timeout_s: float) -> float:
     budget = _active.get()
     return budget.consume(timeout_s) if budget is not None else timeout_s
+
+
+def remaining_route_time():
+    """Check wait budget without counting a non-HTTP wait as a request."""
+    budget = _active.get()
+    if budget is None:
+        return None
+    remaining = budget.deadline - monotonic()
+    if remaining <= 0 or budget.count >= budget.max_requests:
+        raise RouteBudgetExceeded()
+    return remaining

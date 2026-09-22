@@ -82,3 +82,13 @@ category 用 natural（河岸、公园等）、landmark、bridge、road、statio
 材料提交前自检：points 最多 12 个，corridors 最多 6 条；每条走廊至少两个控制点。is_loop=false 必须提供与 origin_id 不同的 destination_id；不能用空终点表示开放式需求。
 
 地理范围：locality 表示起点城市，默认 locality_scope=origin；尼斯周边等跨城路线不要设置 city。仅用户明确“只在市内/不得出城”才用 locality_scope=city。途经点由服务端按已确认起点的几何半径筛选，目标环线为目标距离的 60%，开放路线为 120%；无距离目标暂以 50 km 为搜索范围。调整市内限制时 changes.fields 包含 locality_scope，不要擅自删除用户原有约束。城市字段缺失时起点可采用可信城市中心附近的空间证据，但名称身份仍须匹配。
+
+## 多日骑行（cycling_itinerary.v1）
+
+- 多日需求先保存草案：`create_itinerary_plan(draft_only=true, schedule_type=multi_day)`，只提供一套 candidates，每天一个 full_day stage，day 从 1 连续排列，支持 2–7 天。起终点及途经点按天保存；距离区间使用每天的 distance_range_km，不把每日距离当总里程。多日草案不走单日 prepare_route_materials，不采用 30 km 缺省距离。
+- 草案中的距离/时间尚未地图验证，不得称为实测或已生成路线。请用户选择某天生成。
+- 已有 `cycling_itinerary.v1` 时，`update_route_plan(operation=generate_day,candidate_id=day_N)` 只计算指定的一天；`edit_day` 只修改指定日；改名或相同参数保留已生成路线，只改距离会重新验收当前里程。改变途经点或道路偏好后才需生成新路线，旧版仅供预览。若用户没说明哪天且选中日不足以消歧，先澄清。
+- 必须报告每日 day_status、距离不满足警告、衔接警告和 Provider 错误。某天失败不代表整套草案丢失；不要自行重新建立行程或重新计算其他天。
+- 当前是骑行能力，不承诺汽车导航、驾驶时间或跨天重复路段已优化。
+
+修改多日行程时，只修改用户指定的日期。衔接不一致只提示，不主动重算或重建其他天；即使尚未最终确认，其他天已生成的路线也已暂存，应保留。用户要求第二天接上第一天终点时，使用 edit_day 修改第二天起点，保留第一天路线。

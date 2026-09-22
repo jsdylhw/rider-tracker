@@ -8,7 +8,8 @@ export function parseRoutePlanView(view, { answer = "" } = {}) {
     const revision = positiveInteger(view.revision);
     if (!planId || !revision) throw new Error("路线数据缺少 plan_id 或 revision。");
     const scheduleType = text(view.schedule_type) || "single_day";
-    if (scheduleType !== "single_day") {
+    const daily = scheduleType === "multi_day" && view.itinerary_schema_version === "cycling_itinerary.v1";
+    if (scheduleType !== "single_day" && !daily) {
         throw new Error("Rider 当前只支持单日 AI 路线，不能直接加载多日或分阶段路线。");
     }
     const candidates = (Array.isArray(view.candidates) ? view.candidates : [])
@@ -18,6 +19,7 @@ export function parseRoutePlanView(view, { answer = "" } = {}) {
         planId,
         revision,
         scheduleType,
+        dailyItinerary: daily,
         countryCode: text(view.country_code) || null,
         answer: String(answer || ""),
         researchSources: (Array.isArray(view.research_sources) ? view.research_sources : [])
@@ -38,28 +40,44 @@ function parseCandidate(candidate, view) {
     if (Array.isArray(candidate?.stages) && candidate.stages.length > 0) {
         throw new Error("Rider 当前不能把分阶段路线静默拼成一条路线，请改为单日路线后再加载。");
     }
-    const coordinates = normalizeCoordinates(candidate?.geometry?.coordinates);
-    if (!candidateId || coordinates.length < 2) return null;
-    const distanceKm = positiveNumber(candidate.distance_m) / 1000 || null;
-    const providerMinutes = positiveNumber(candidate.provider_duration_s) / 60 || null;
+    const previousRoute = candidate?.day_status !== "ready" && !!candidate?.previous_route;
+    const measured = previousRoute ? candidate.previous_route : candidate;
+    const coordinates = normalizeCoordinates(measured?.geometry?.coordinates);
+    const daily = view.itinerary_schema_version === "cycling_itinerary.v1";
+    if (!candidateId || (!daily && coordinates.length < 2)) return null;
+    const distanceKm = positiveNumber(measured.distance_m) / 1000 || null;
+    const providerMinutes = positiveNumber(measured.provider_duration_s) / 60 || null;
     return {
         candidateId,
+        day: candidate.day,
+        dayStatus: candidate.day_status,
+        previousRoute,
+        previousPointNames: previousRoute ? measured.waypoint_queries || [] : [],
+        distanceRangeKm: candidate.distance_range_km,
+        targetDistanceKm: candidate.target_distance_km,
+        distanceSatisfied: candidate.distance_satisfied,
+        pointNames: candidate.waypoint_queries || [],
+        dayError: candidate.error,
+        connectionWarning: candidate.connection_warning,
         parentCandidateId: text(candidate.parent_candidate_id) || null,
         name: text(candidate.name) || `路线候选 ${candidateId}`,
         description: text(candidate.description),
-        estimatedAscentMeters: candidate.ascent_preview?.schema_version === "route_ascent.v1"
-            && candidate.ascent_preview?.simulation_usable === false
-            ? finiteNumber(candidate.ascent_preview.ascent_m) : null,
+        estimatedAscentMeters: measured.ascent_preview?.schema_version === "route_ascent.v1"
+            && measured.ascent_preview?.simulation_usable === false
+            ? finiteNumber(measured.ascent_preview.ascent_m) : null,
         distanceKm,
-        durationMinutes: distanceKm ? distanceKm / VIRTUAL_ROUTE_SPEED_KMH * 60 : providerMinutes,
-        provider: text(candidate.provider) || "Personal FIT Agent",
-        travelMode: text(candidate.travel_mode) || "BICYCLE",
-        stravaSegments: (candidate.segment_sequence ?? []).map((item) => item?.segment_id).filter(Boolean).join(", "),
-        confirmed: text(view.confirmed_candidate_id) === candidateId,
+        durationMinutes: daily ? providerMinutes : distanceKm ? distanceKm / VIRTUAL_ROUTE_SPEED_KMH * 60 : providerMinutes,
+        durationLabel: daily
+            ? ({ BICYCLE: "预计骑行", DRIVE: "地图驾车时间（虚拟观景路径）" }[measured.travel_mode] || "地图行程时间")
+            : "虚拟骑行约",
+        provider: text(measured.provider) || "Personal FIT Agent",
+        travelMode: text(measured.travel_mode) || "BICYCLE",
+        stravaSegments: (measured.segment_sequence ?? []).map((item) => item?.segment_id).filter(Boolean).join(", "),
+        confirmed: daily ? candidate.confirmed === true : text(view.confirmed_candidate_id) === candidateId,
         active: text(view.active_candidate_id) === candidateId,
         warnings: (candidate.warnings ?? []).map(text).filter(Boolean),
         coordinates,
-        waypoints: (candidate.waypoints ?? []).map((point) => ({
+        waypoints: (measured.waypoints ?? []).map((point) => ({
             lat: finiteNumber(point?.latitude), lng: finiteNumber(point?.longitude)
         })).filter((point) => point.lat !== null && point.lng !== null)
     };

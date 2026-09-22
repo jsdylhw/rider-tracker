@@ -16,6 +16,7 @@ from services.route.materials import validate_materials
 from services.route.skeleton_search import rank_skeletons
 from services.route.single_day import resolve_google_places, _search_amap_place, RouteCandidateRejected
 from settings import load_config
+from services.route.provider_readiness import use_amap_routes
 
 
 def resolve_material_points(materials, *, config):
@@ -26,21 +27,22 @@ def resolve_material_points(materials, *, config):
     ]]
     resolved, cache, google_cache, anchor = {}, {}, {}, None
     country = materials["country_code"]
+    use_amap = use_amap_routes(country, config)
     scope = materials.get("locality_scope", "origin")
     target = materials.get("target_distance_km")
     point_radius = float(target) * (0.6 if materials["is_loop"] else 1.2) if target else 50.0
     locality_evidence = None
-    if country != "CN" and materials.get("locality"):
+    if not use_amap and materials.get("locality"):
         locality_evidence = resolve_google_locality(materials["locality"], country, config)
     for point in ordered:
         query = point["query"]
         if query not in cache:
-            if country == "CN":
+            if use_amap:
                 key = str((config.get("amap") or {}).get("web_service_key") or "")
                 if not key:
                     raise ValueError("amap.web_service_key is not configured")
                 place = _search_amap_place(query, key, anchor=anchor,
-                                           region=str((anchor or {}).get("citycode") or ""))
+                                           region=str((anchor or {}).get("citycode") or "") if scope == "city" else "")
             else:
                 queries = [query] if anchor is None else [anchor["query"], query]
                 # A call-local cache also avoids resolving the origin repeatedly.
@@ -63,7 +65,7 @@ def resolve_material_points(materials, *, config):
             coordinate = [float(place.get("display_longitude", place["longitude"])),
                           float(place.get("display_latitude", place["latitude"]))]
             _valid_coordinate(coordinate)
-            if country == "CN" and anchor is not None:
+            if use_amap and anchor is not None:
                 anchor_coordinate = [float(anchor.get("display_longitude", anchor["longitude"])),
                                      float(anchor.get("display_latitude", anchor["latitude"]))]
                 if haversine_m(anchor_coordinate, coordinate) > point_radius * 1000:

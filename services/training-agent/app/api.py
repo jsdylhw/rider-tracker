@@ -671,7 +671,7 @@ def _chat_turn(request: ChatRequest, http_request: Request, *, on_progress=None)
                 session.context.route_messages = route_messages
                 if task.action == "create" or result.get("route_task", {}).get("action") == "create":
                     session.context.route_reference = None
-                if result.get("route_task", {}).get("status") == "completed":
+                if result.get("route_task", {}).get("status") == "completed" or (result.get("route_operation") and result.get("route_plan")):
                     plan = result["route_plan"]
                     session.context.route_reference = {"plan_id": plan["plan_id"], "revision": plan["revision"]}
             else:
@@ -917,6 +917,7 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
         })
     else:
         mapped = {
+            "generate_day": "generate_day",
             "select": "select_candidate",
             "reverse": "reverse_candidate",
             "undo": "undo",
@@ -950,6 +951,10 @@ def _run_route_plan_command(context: Any, request: RoutePlanCommandRequest) -> d
     )])
     return {
         "answer": primary.get("answer") or "",
+        "status": primary.get("status", "completed"),
+        **({"route_operation": primary["route_operation"]} if primary.get("route_operation") else {}),
+        **({"error": {key: primary.get(key) for key in ("code", "provider", "stage", "retryable", "message")}}
+           if primary.get("status") == "failed" else {}),
         "result": compact_plan,
         "route_plan": build_route_plan_view(full_plan),
         "presentations": [item.to_dict() for item in presentations],

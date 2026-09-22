@@ -67,6 +67,9 @@ export function createAgentApiClient({
             const detail = await sessionRequest("", "POST", { session_id: id, kind });
             return detail;
         },
+        createDraftSession(kind = "chat") {
+            return { session_id: createSessionId(), kind, title: kind === "route_plan" ? "新规划" : "新对话", turns: [], local_draft: true };
+        },
         deleteSession: (id = sessionId) => sessionRequest(`/${encodeURIComponent(id)}`, "DELETE"),
         get sessionId() { return sessionId; },
         getReportJob: (id) => jobRequest(`/api/jobs/${encodeURIComponent(id)}/report-rebuild`),

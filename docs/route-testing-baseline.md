@@ -105,3 +105,7 @@ PYTHONPATH=services/training-agent python -m pytest -q services/training-agent/t
 状态边界随主流程一起测：旧版本拒绝、相同 request_id 重放、失败不改旧计划、下一轮正确继续。
 HTTP 200 不等于业务成功。当前实测已覆盖的子项和两个未执行问题见
 [HTTP API 验证记录](route-distance-dialogue-validation.md)；本场景集是目标，不代表全部已经通过。
+
+### 多日骑行增量基准
+
+`test_daily_itinerary.py` 负责草案不调用地图、逐日成功/失败隔离、距离范围提示、修改端点只更新邻日衔接提示、未确认/已确认的其他天路线保持暂存及 CAS 拒绝旧版本；`test_route_agent.py` 验证草案工具与多日修订白名单；API、确认和浏览器既有测试文件分别验证 request_id 幂等、仅 ready 日可确认、历史恢复与按天操作。真实多轮样本仍记录到路线验证文档，不作为离线测试替代品。

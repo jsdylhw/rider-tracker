@@ -69,3 +69,62 @@ def test_amap_radius_uses_display_wgs84_coordinates(monkeypatch,longitude,accept
 def test_legacy_city_restriction_is_not_silently_relaxed_on_refine():
     old=materials('city');old.pop('locality_scope')
     assert merge_material_requirements(materials(),old)['locality_scope']=='city'
+
+
+@pytest.mark.parametrize('scope,expected_region',[('origin',''),('city','028')])
+def test_amap_search_city_limit_only_for_explicit_city_scope(monkeypatch,scope,expected_region):
+    m=materials(scope);m.update(country_code='CN',locality='成都市',target_distance_km=1000)
+    calls=[]
+    def search(query,key,**kwargs):
+        calls.append(kwargs)
+        return {'query':query,'name':query,'longitude':104.06 if query=='Start' else 102.8,
+                'latitude':30.65,'citycode':'028','localities':['成都市']}
+    monkeypatch.setattr(preparation,'_search_amap_place',search)
+    preparation.resolve_material_points(m,config={'amap':{'web_service_key':'test'}})
+    assert calls[1]['region']==expected_region
+
+
+def test_direct_amap_route_still_rejects_points_outside_target_radius(monkeypatch):
+    def search(query,*args,**kwargs):
+        return {'name':query,'latitude':30.65,'longitude':104.06 if query=='Start' else 102.8}
+    monkeypatch.setattr(single_day,'_search_amap_place',search)
+    with pytest.raises(RouteCandidateRejected,match='超过起点范围'):
+        single_day._route_amap(['Start','Far'],False,{'amap':{'web_service_key':'test'}},
+                              target_distance_km=10)
+
+
+def test_google_override_resolves_chinese_materials_with_google(monkeypatch):
+    m=materials();m.update(country_code='CN');m.pop('locality')
+    def unexpected(*args,**kwargs):
+        raise AssertionError('AMap must not be called')
+    monkeypatch.setattr(preparation,'_search_amap_place',unexpected)
+    calls=[]
+    def resolve(queries,country,*args,**kwargs):
+        calls.append(country)
+        return [{'query':queries[-1],'name':queries[-1],'longitude':104.06,'latitude':30.65}]
+    monkeypatch.setattr(preparation,'resolve_google_places',resolve)
+    assert len(preparation.resolve_material_points(m,config={'route_provider_override':'google'}))==2
+    assert calls==['CN','CN']
+
+
+def test_google_override_routes_cn_and_converts_cached_amap_coordinates(monkeypatch):
+    from services.route.provider_readiness import use_amap_routes
+    assert use_amap_routes('CN',{})
+    assert not use_amap_routes('CN',{'route_provider_override':'google'})
+    assert not use_amap_routes('FR',{})
+    class Routed(Exception): pass
+    class Client:
+        def __init__(self,key): pass
+        def route(self,points,*,country_code):
+            assert country_code=='CN'
+            assert points[0].lon==104.05
+            assert points[0].lat==30.64
+            raise Routed()
+    monkeypatch.setattr(single_day,'GoogleRoutesClient',Client)
+    monkeypatch.setattr(single_day,'ensure_google_route_provider_ready',lambda config:None)
+    points=[{'query':q,'latitude':30.65,'longitude':104.06,
+             'display_latitude':30.64,'display_longitude':104.05} for q in ['a','b']]
+    with pytest.raises(Routed):
+        single_day.route_candidate({'waypoints':['a','b'],'_resolved_places':points},index=1,
+            country_code='CN',include_elevation=False,config={'route_provider_override':'google'})
+    assert points[0]['longitude']==104.06

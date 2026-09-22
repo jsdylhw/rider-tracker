@@ -211,6 +211,12 @@ def create_itinerary_plan_tool(
     name: str = "create_itinerary_plan",
 ) -> dict[str, Any]:
     args = args or {}
+    if args.get("draft_only"):
+        from services.route.daily_itinerary import draft_itinerary, itinerary_answer
+        plan = draft_itinerary(workspace_id=str(context.workspace_id or context.session_id),
+            title=args.get("title"), country_code=args.get("country_code", ""), candidates=args.get("candidates") or [])
+        stored = RoutePlanStore().save(_with_research(plan, context))
+        return {"step": name, "status": "completed", "answer": itinerary_answer(stored), "result": compact_route_plan(stored)}
     segment_strategy = str(args.get("segment_strategy") or "auto").lower()
     country_code = str(args.get("country_code") or "")
     segment_active = segment_strategy != "ignore"
@@ -258,6 +264,22 @@ def update_route_plan_tool(
         raise ValueError("没有可更新的路线计划，请先创建路线")
     operation = str(args.get("operation") or "replace_waypoints")
     expected_revision = _expected_revision(args)
+    from services.route.daily_itinerary import is_daily, update_day, itinerary_answer
+    if is_daily(plan) and operation in {"generate_day", "edit_day"}:
+        stored = update_day(store, plan, operation=operation,
+            candidate_id=args.get("candidate_id") or plan.get("active_candidate_id"),
+            expected_revision=expected_revision, args=args,
+            include_elevation=bool(args.get("include_elevation", False)))
+        from services.route.daily_itinerary import operation_result
+        day = next(d for d in stored['candidates'] if d['candidate_id'] == stored['active_candidate_id'])
+        failure = day.get('failure') if operation == 'generate_day' and day['day_status'] == 'failed' else None
+        return {"step": name, "status": "failed" if failure else "completed",
+                **({**failure, "error": failure['message']} if failure else {}),
+                "route_operation": operation_result(stored, day['candidate_id'], failed=bool(failure)),
+                "answer": itinerary_answer(stored), "result": compact_route_plan(stored)}
+    if is_daily(plan) and operation not in {"select_candidate", "undo"}:
+        raise ValueError("多日骑行请使用 edit_day 修改某天，或 generate_day 生成某天；确认请使用页面。")
+
     if operation == "undo":
         restored = (
             store.undo(str(plan.get("plan_id") or ""), expected_revision=expected_revision)
@@ -573,6 +595,9 @@ def _load_plan(
 
 
 def _plan_answer(plan: dict[str, Any], *, prefix: str) -> str:
+    from services.route.daily_itinerary import is_daily, itinerary_answer
+    if is_daily(plan):
+        return itinerary_answer(plan)
     candidates = [item for item in plan.get("candidates") or [] if isinstance(item, dict)]
     active_id = plan.get("active_candidate_id")
     active = next((item for item in candidates if item.get("candidate_id") == active_id), candidates[0] if candidates else {})

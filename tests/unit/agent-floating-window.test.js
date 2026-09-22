@@ -19,6 +19,10 @@ export const suite = {
                 const clock = { now: () => 3000, setInterval(fn) { timers.add(fn); return fn; }, clearInterval(fn) { timers.delete(fn); } };
                 const progress = createAgentProgress({ root, container, clock });
                 progress.start();
+                progress.update({ stage: "map_retry", status: "running" });
+                assertEqual(container.children[0].children[0].textContent, "地图服务繁忙，正在等待重试");
+                progress.update({ stage: "map_retry", status: "completed" });
+                assertEqual(container.children[0].children[0].textContent, "正在重新请求地图服务");
                 progress.update({ stage: "job", label: "生成报告", status: "queued", index: 1 });
                 progress.finish({ status: "completed", executions: [{ status: "queued" }] });
                 assertEqual(container.children[0].children[0].textContent, "请求已提交，等待任务结果");

@@ -36,7 +36,7 @@ def test_clarification_has_no_provider_or_old_plan_and_isolated_history():
     assert dialogue[-1]["content"] == "从哪个城市出发？"
     assert len(client.calls) == 1
     names = {tool["name"] for tool in client.calls[0]["tools"]}
-    assert names == {"create_route_plan", "request_route_clarification", "search_cycling_routes", "prepare_route_materials"}
+    assert names == {"create_route_plan", "create_itinerary_plan", "request_route_clarification", "search_cycling_routes", "prepare_route_materials"}
 
 
 def test_create_terminal_has_plan_and_exact_action_without_second_model_call(monkeypatch):
@@ -159,7 +159,7 @@ def test_main_delegates_once_projects_child_outcome_and_isolates_history(monkeyp
     monkeypatch.setattr(loop, "AnthropicMessagesClient", lambda: client)
     result = loop.run_tool_loop("原始路线需求", context=ctx)
     assert len(calls) == 1 and client.create_messages.call_count == 2
-    assert get_skill("plan-routes").tool_names == ("run_route_agent",)
+    assert get_skill("plan-routes").tool_names == ("run_route_agent", "ask_user_clarification")
     assert result["status"] == outcome and result["answer"] == child["answer"]
     assert result.get("error") == child.get("error")
     assert result.get("route_plan") == child.get("route_plan")
@@ -318,3 +318,46 @@ def test_route_only_tools_disable_segments_without_mutating_shared_contract():
     presented = next(t for t in client.calls[0]['tools'] if t['name'] == 'create_route_plan')
     assert presented['input_schema']['properties']['segment_strategy']['enum'] == ['ignore']
     assert shared.input_schema == before
+
+
+def test_daily_draft_and_refinement_use_persisted_plan_without_preparation():
+    from storage.repositories.route import RoutePlanStore
+    arguments = {"title": "三日骑行", "country_code": "CN", "schedule_type": "multi_day",
+        "candidates": [{"name": "行程", "stages": [{"day": n, "period": "full_day", "label": f"第{n}天",
+            "waypoints": [str(n), str(n+1)], "distance_range_km": [50,100]} for n in range(1,4)]}]}
+    result, _ = run_route_agent(task(), client=Client("create_itinerary_plan",arguments))
+    assert result["status"] == "completed", result
+    assert result["route_task"]["action"] == "create"
+    view = result["route_plan"]
+    assert view["itinerary_schema_version"] == "cycling_itinerary.v1"
+    assert len(view["candidates"]) == 3
+    assert all(c["day_status"] == "pending" for c in view["candidates"])
+    client = Client("update_route_plan", {"operation": "edit_day", "candidate_id": "day_2", "waypoints": ["2","lake","3"]})
+    revised, _ = run_route_agent(task(action="refine",plan_id=view["plan_id"],revision=view["revision"]),client=client)
+    assert revised["status"] == "completed", revised
+    assert revised["route_task"]["action"] == "update"
+    names={t['name'] for t in client.calls[0]['tools']}
+    assert "update_route_plan" in names and "create_route_plan" not in names
+    stored=RoutePlanStore().get(view['plan_id'])
+    assert stored['candidates'][1]['waypoint_queries']==["2","lake","3"]
+    assert stored['candidates'][0]['day_status']=="pending"
+
+
+def test_daily_provider_failure_projects_new_revision_without_success(monkeypatch):
+    from services.route import daily_itinerary as daily
+    from storage.repositories.route import RoutePlanStore
+    plan=daily.draft_itinerary(workspace_id='workspace',title='两日',country_code='CN',candidates=[{'stages':[
+        {'day':1,'waypoints':['A','B']},{'day':2,'waypoints':['B','C']}]}])
+    plan=RoutePlanStore().save(plan)
+    failure=TransientProviderError('地图限流',provider='amap',stage='route',code='rate_limit')
+    def fail(*a,**kw):raise failure
+    monkeypatch.setattr(daily,'route_candidate',fail)
+    result,dialogue=run_route_agent(task(action='refine',plan_id=plan['plan_id'],revision=plan['revision']),
+        client=Client('update_route_plan',{'operation':'generate_day','candidate_id':'day_1'}))
+    assert dialogue[-1]['content']==result['answer']
+    assert result['route_task']['status']=='failed',result
+    assert result['error']==failure.to_failure()
+    assert result['route_workflow']['stages']['routing']['state']=='blocked'
+    assert result['route_plan']['revision']>plan['revision']
+    assert result['route_operation']['revision']==result['route_plan']['revision']
+    assert result['route_plan']['candidates'][0]['day_status']=='failed'

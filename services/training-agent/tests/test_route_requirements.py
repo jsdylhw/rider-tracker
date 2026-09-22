@@ -7,6 +7,21 @@ from services.route.requirements import merge_material_requirements, selected_ro
 from services.route.requirements import normalize_planning_requirements
 
 
+@pytest.mark.parametrize("distance", [500, 1000, 4500, 6000])
+def test_long_route_distance_is_preserved_by_schema_and_requirement_merge(distance):
+    value = {**materials(), "distance_mode": "target", "target_distance_km": distance}
+    normalized = normalize_planning_requirements(validate_materials(value))
+    assert normalized["target_distance_km"] == distance
+    updated = merge_material_requirements(normalized, materials(), {"fields": ["target_distance_km"]})
+    assert normalize_planning_requirements(updated)["target_distance_km"] == distance
+
+
+@pytest.mark.parametrize("distance", [0, -1, float("inf"), float("nan")])
+def test_route_distance_still_rejects_nonpositive_and_nonfinite_values(distance):
+    with pytest.raises(MaterialInputError):
+        validate_materials({**materials(), "target_distance_km": distance})
+
+
 @pytest.mark.parametrize("mode,target,expected", [(None, None, 30), ("unrestricted", None, None),
                                                 ("route_length", None, None), ("target", 40, 40)])
 def test_distance_defaults_preserve_explicit_intent(mode, target, expected):

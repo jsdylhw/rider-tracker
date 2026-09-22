@@ -511,6 +511,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
             "type": "object",
             "required": ["title", "country_code", "schedule_type", "candidates"],
             "properties": {
+                "draft_only": {"type": "boolean", "description": "保存多日骑行草案，不调用地图；随后逐日 generate_day。"},
                 "title": {"type": "string"},
                 "country_code": {"type": "string", "description": "ISO 两字母国家代码"},
                 "schedule_type": {"type": "string", "enum": ["multi_day", "day_parts"]},
@@ -547,6 +548,9 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                                                 "明确点位按用户顺序原样保留；只有明确要求闭环时才重复首点。"
                                             ),
                                         },
+                                        "route_constraints": ROUTE_CONSTRAINTS_SCHEMA,
+                                        "route_preferences": ROUTE_PREFERENCES_SCHEMA,
+                                        "distance_range_km": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "exclusiveMinimum": 0}},
                                         "target_distance_km": {"type": "number"},
                                     },
                                 },
@@ -574,7 +578,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                 "operation": {
                     "type": "string",
                     "enum": [
-                        "replace_waypoints", "replace_stage", "replace_waypoint",
+                        "generate_day", "edit_day", "replace_waypoints", "replace_stage", "replace_waypoint",
                         "reverse_candidate", "reverse_stage", "select_candidate",
                         "compose_segments", "confirm_candidate", "undo",
                     ],
@@ -595,6 +599,7 @@ MAIN_AGENT_TOOLS: tuple[ToolDef, ...] = (
                         "首尾不同为单程，只有用户明确要求闭环时才重复首点。"
                     ),
                 },
+                "distance_range_km": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "exclusiveMinimum": 0}},
                 "target_distance_km": {"type": "number"},
                 "include_elevation": {"type": "boolean", "default": True},
                 "route_constraints": ROUTE_CONSTRAINTS_SCHEMA,

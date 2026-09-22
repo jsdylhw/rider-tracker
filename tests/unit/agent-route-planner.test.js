@@ -1,3 +1,4 @@
+import { createAgentSessionControls } from "../../src/ui/agent/agent-session-controls.js";
 import { createAgentRoutePlanner } from "../../src/ui/renderers/agent-route-planner.js";
 import { assert, assertEqual } from "../helpers/test-harness.js";
 import { createFakeClassList } from "../helpers/fake-dom.js";
@@ -6,7 +7,71 @@ export const suite = {
     name: "agent-route-planner",
     tests: [
         {
-            name: "route session selection restores transcript and deletion opens an empty session",
+            name: "previous daily route is labeled separately and cannot be confirmed",
+            run() {
+                const {elements}=createPlannerDom();
+                const draft=buildDraft(); draft.dailyItinerary=true;
+                Object.assign(draft.candidates[0],{day:1,dayStatus:"failed",previousRoute:true,
+                    previousPointNames:["A","B"],pointNames:["A","C"],confirmed:false});
+                const planner=createAgentRoutePlanner({elements});
+                planner.render({agentRouteDraft:draft,route:{},liveRide:{isActive:false}});
+                const card=elements.aiRouteCandidates.children[0];
+                assert(card.children[0].children[1].textContent.includes("上次成功路线"));
+                assert(card.children[0].children[2].textContent.includes("A → B"));
+                assertEqual(card.children[1].children[0].textContent,"预览上次路线");
+                assertEqual(card.children[1].children[1].disabled,true);
+                planner.destroy();
+            }
+        },
+        {
+            name: "daily itinerary displays draft states and generates a day without confirming it",
+            async run() {
+                const {elements}=createPlannerDom();
+                const draft=buildDraft(); draft.dailyItinerary=true;
+                Object.assign(draft.candidates[0],{day:1,dayStatus:"pending",pointNames:["A","B"],coordinates:[],distanceRangeKm:[50,100]});
+                const calls=[];
+                const planner=createAgentRoutePlanner({elements,onPreviewAgentRoute:async(id,options)=>{calls.push({id,options});return draft;}});
+                planner.render({agentRouteDraft:draft,route:{},liveRide:{isActive:false}});
+                const card=elements.aiRouteCandidates.children[0];
+                assert(card.children[0].children[1].textContent.includes("待生成"));
+                assertEqual(card.children[1].children[1].disabled,true);
+                card.children[1].children[2].dispatch("click");
+                await flushPromises();
+                assertEqual(calls[0].options.generate,true);
+                planner.destroy();
+            }
+        },
+        {
+            name: "failed empty session can be deleted without persisting another empty session",
+            async run() {
+                const { documentRef } = createPlannerDom();
+                const toolbar = createElement({ ownerDocument: documentRef });
+                let stored = [{ session_id: "empty", title: "新规划", turns: [] }];
+                let created = 0;
+                const deleted = [];
+                const client = { sessionId: "empty", selectSession(id) { this.sessionId = id; },
+                    async getSession() { return stored[0]; },
+                    async listSessions() { return { sessions: stored }; },
+                    async deleteSession(id) { deleted.push(id); stored = []; },
+                    async createSession() { created++; throw new Error("must not persist an empty replacement"); },
+                    createDraftSession() { return { session_id: "local", title: "新规划", turns: [], local_draft: true }; }
+                };
+                const controls = createAgentSessionControls({ container: toolbar, client, kind: "route_plan",
+                    onLoad(detail) { if (detail.session_id === "empty") throw new Error("草稿恢复失败"); } });
+                await controls.restore();
+                assertEqual(toolbar.children[2].disabled, false);
+                toolbar.children[2].dispatch("click");
+                toolbar.children[5].children[2].children[1].dispatch("click");
+                await flushPromises();
+                assertEqual(deleted[0], "empty");
+                assertEqual(stored.length, 0);
+                assertEqual(created, 0);
+                assertEqual(client.sessionId, "local");
+                controls.destroy();
+            }
+        },
+        {
+            name: "route session restores clickable candidates and confirmed deletion opens another session",
             async run() {
                 const { documentRef, elements } = createPlannerDom();
                 const toolbar = createElement({ ownerDocument: documentRef });
@@ -20,7 +85,7 @@ export const suite = {
                 const client = { sessionId: "one", selectSession(id) { this.sessionId = id; },
                     async getSession(id = this.sessionId) { return details[id]; },
                     async listSessions() { return { sessions: Object.values(details) }; },
-                    async deleteSession() { deleted.push(this.sessionId); },
+                    async deleteSession(id) { deleted.push(id); delete details[id]; },
                     async createSession() { return details.fresh; }
                 };
                 const planner = createAgentRoutePlanner({ elements, agentSessionClient: client,
@@ -33,11 +98,18 @@ export const suite = {
                 await flushPromises();
                 assertEqual(client.sessionId, "two");
                 assertEqual(elements.aiRouteMessages.children[0].messageBody.textContent, "杭州环线");
+                const previewButton = elements.aiRouteCandidates.children[0].children[1].children[0];
+                assertEqual(previewButton.disabled, false);
                 toolbar.children[2].dispatch("click");
+                assertEqual(deleted.length, 0);
+                toolbar.children[5].children[2].children[0].dispatch("click");
+                assertEqual(deleted.length, 0);
+                toolbar.children[2].dispatch("click");
+                toolbar.children[5].children[2].children[1].dispatch("click");
                 await flushPromises();
                 assertEqual(deleted[0], "two");
-                assertEqual(client.sessionId, "fresh");
-                assertEqual(elements.aiRouteCandidates.children.length, 0);
+                assertEqual(client.sessionId, "one");
+                assert(elements.aiRouteCandidates.children.length > 0);
                 assertEqual(elements.aiRouteProgress.hidden, true);
                 planner.destroy();
             }
@@ -50,6 +122,10 @@ export const suite = {
                 const planner = createAgentRoutePlanner({ elements, onPlanAgentRoutes: async (_, options) => {
                     onProgress = options.onProgress;
                     onProgress({ stage: "search_cycling_routes", status: "completed" });
+                    onProgress({ stage: "map_retry", status: "running" });
+                    assertEqual(elements.aiRouteProgressStatus.textContent, "地图服务繁忙，正在等待重试");
+                    onProgress({ stage: "map_retry", status: "completed" });
+                    assertEqual(elements.aiRouteProgressStatus.textContent, "正在重新请求地图服务");
                     onProgress({ stage: "prepare_route_materials", status: "failed" });
                     throw new Error("地图连接失败");
                 } });

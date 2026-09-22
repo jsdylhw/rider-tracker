@@ -29,7 +29,7 @@ from services.route.quality import (
     normalize_route_preferences,
     preference_score,
 )
-from services.route.provider_readiness import ensure_google_route_provider_ready
+from services.route.provider_readiness import ensure_google_route_provider_ready, use_amap_routes
 from services.route.distance import target_distance_error
 from settings import load_config
 
@@ -141,7 +141,7 @@ def create_single_day_plan(
     if len(candidates) > 3:
         raise ValueError("at most three route candidates are supported")
     config = load_config()
-    if normalized_country != "CN":
+    if not use_amap_routes(normalized_country, config):
         ensure_google_route_provider_ready(config)
     normalized_constraints = normalize_route_constraints(route_constraints)
     normalized_preferences = normalize_route_preferences(route_preferences)
@@ -316,7 +316,7 @@ def replace_candidate(
     }
     country_code = str(plan.get("country_code") or "").strip().upper()
     config = load_config()
-    if country_code != "CN":
+    if not use_amap_routes(country_code, config):
         ensure_google_route_provider_ready(config)
     updated = route_candidate(
         spec,
@@ -461,9 +461,12 @@ def compact_route_plan(plan: dict[str, Any]) -> dict[str, Any]:
                 "stages": [_compact_route_segment(stage, id_key="stage_id") for stage in stages],
             })
         else:
-            candidates.append(_compact_route_segment(item, id_key="candidate_id"))
+            candidates.append({**_compact_route_segment(item, id_key="candidate_id"),
+                **{"has_previous_route": bool(item.get("last_successful_route"))},
+                **{k: item.get(k) for k in ("day", "day_status", "distance_range_km", "waypoint_queries", "error", "failure", "connection_warning", "route_constraints", "route_preferences")}})
     return {
         "schema_version": "route_plan.v1",
+        "itinerary_schema_version": plan.get("itinerary_schema_version"),
         "plan_id": plan.get("plan_id"),
         "workspace_id": plan.get("workspace_id"),
         "revision": plan.get("revision"),
@@ -547,6 +550,7 @@ def route_candidate(
     provider_preflight_completed: bool = False,
     google_place_cache: dict[tuple[Any, ...], dict[str, Any]] | None = None,
     measurement_only: bool = False,
+    allow_distance_mismatch: bool = False,
 ) -> dict[str, Any]:
     waypoint_queries, is_closed = normalize_waypoint_queries(candidate.get("waypoints") or [])
     queries = waypoint_queries[:-1] if is_closed else waypoint_queries
@@ -560,7 +564,7 @@ def route_candidate(
         if len(prepared) != len(queries) or any(p.get("query") != q for p, q in zip(prepared, queries)):
             raise ValueError("prepared places do not match candidate waypoints")
         resolved_options = {"resolved_places": prepared}
-    if country_code == "CN":
+    if use_amap_routes(country_code, config):
         places, route = _route_amap(
             queries,
             is_closed,
@@ -587,7 +591,7 @@ def route_candidate(
     if route.get("warning"):
         warnings.append(str(route["warning"]))
     distance_error = target_distance_error(float(route.get("distance_m") or 0), target)
-    if distance_error and not measurement_only:
+    if distance_error and not measurement_only and not allow_distance_mismatch:
         raise RouteCandidateRejected(distance_error)
     elevation = None
     if include_elevation and not measurement_only:
@@ -626,11 +630,13 @@ def route_candidate(
         measured = apply_route_constraints({**resolved, "target_distance_km": None}, None)
         measured["target_distance_km"] = target
         return measured
-    return apply_route_constraints(
-        resolved,
+    accepted = apply_route_constraints(
+        {**resolved, "target_distance_km": None} if allow_distance_mismatch else resolved,
         route_constraints,
         rejection_type=RouteCandidateRejected,
     )
+    accepted["target_distance_km"] = target
+    return accepted
 
 
 def validate_measured_candidate(
@@ -672,10 +678,18 @@ def _route_amap(
     places: list[dict[str, Any]] = deepcopy(resolved_places) if resolved_places is not None else []
     for query in ([] if resolved_places is not None else queries):
         anchor = places[-1] if places else None
-        # Keep later anchors in the same city, not the same district. A route
-        # may legitimately cross district boundaries inside one city.
-        region = str((places[0] if places else {}).get("citycode") or "")
-        places.append(_search_amap_place(query, key, anchor=anchor, region=region))
+        # This entry has no explicit city-only requirement. Cross-city stages
+        # must not silently inherit the origin's administrative boundary.
+        place = _search_amap_place(query, key, anchor=anchor)
+        if places and target_distance_km:
+            radius_km = target_distance_km * (0.6 if is_closed else 1.2)
+            if _haversine_km(places[0]["latitude"], places[0]["longitude"],
+                             place["latitude"], place["longitude"]) > radius_km:
+                raise RouteCandidateRejected(
+                    f"地点 {query} 超过起点范围 {radius_km:.1f} km",
+                    code="place_outside_radius", stage="place_resolution",
+                )
+        places.append(place)
     points = [AmapPoint(place["latitude"], place["longitude"]) for place in places]
     if is_closed:
         points.append(points[0])
@@ -944,6 +958,12 @@ def _route_google(
         queries, country_code, is_closed, config,
         target_distance_km=target_distance_km, place_cache=place_cache,
     )
+    # Cached domestic materials retain native GCJ-02 and WGS84 coordinates.
+    # Google must only receive WGS84 when an explicit provider override is used.
+    for place in places:
+        if "display_latitude" in place and "display_longitude" in place:
+            place["latitude"] = place["display_latitude"]
+            place["longitude"] = place["display_longitude"]
     key = str((config.get("google") or {}).get("api_key") or "")
     points = [WgsPoint(place["latitude"], place["longitude"]) for place in places]
     if is_closed and points[-1] != points[0]:
@@ -1089,7 +1109,15 @@ def _amap_poi_match_score(normalized_query: str, poi: dict[str, Any]) -> float:
     name = _normalize_place_name(str(poi.get("name") or ""))
     address = _normalize_place_name(str(poi.get("address") or ""))
     searchable = name + address
-    if normalized_query and (normalized_query in name or name in normalized_query):
+    # Provider names can insert a scenic-area designation between the parent
+    # attraction and sub-attraction. Full identity outranks ancillary POIs
+    # merely containing the query (parking, ticket offices, shuttle stops).
+    if name and normalized_query and (
+        name == normalized_query
+        or name.replace("景区", "") == normalized_query.replace("景区", "")
+    ):
+        return 5.0
+    if name and normalized_query and (normalized_query in name or name in normalized_query):
         return 4.0
     if normalized_query and normalized_query in searchable:
         return 3.5
@@ -1191,6 +1219,9 @@ def _read_json_url(
     direct_first: bool = False,
 ) -> dict[str, Any]:
     normalized_provider, stage = _provider_identity(provider)
+    if normalized_provider == "amap_places":
+        return _read_amap_places_json(url, direct_first=direct_first)
+
     last_error: Exception | None = None
     proxy_handlers = (
         (ProxyHandler({}), ProxyHandler())
@@ -1306,3 +1337,35 @@ def _optional_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError("target_distance_km must be numeric") from exc
+
+
+def _read_amap_places_json(url, *, direct_first=False):
+    """Bound all Places attempts, including HTTP-200 API-level throttling."""
+    from integrations.route_providers.amap_throttle import pace, retry_wait
+    from integrations.route_providers.budget import consume_route_request
+    handlers = (ProxyHandler({}), ProxyHandler()) if direct_first else (ProxyHandler(), ProxyHandler({}))
+    for attempt in range(3):
+        pace(url)
+        try:
+            with build_opener(handlers[attempt % len(handlers)]).open(
+                url, timeout=consume_route_request(25),
+            ) as response:
+                value = json.load(response)
+            if not isinstance(value, dict):
+                raise ProviderError("AMap Places 返回了无效响应", provider="amap", stage="place_search")
+            validate_amap_response(value, stage="place_search")
+            return value
+        except TransientProviderError:
+            if attempt == 2:
+                raise
+        except HTTPError as exc:
+            if exc.code not in {408, 429} and exc.code < 500:
+                raise ProviderError(f"AMap Places HTTP {exc.code}", provider="amap", stage="place_search") from exc
+            if attempt == 2:
+                raise TransientProviderError(f"AMap Places HTTP {exc.code}", provider="amap", stage="place_search") from exc
+        except (OSError, TimeoutError, URLError) as exc:
+            if attempt == 2:
+                raise TransientProviderError("AMap Places 网络请求失败", provider="amap", stage="place_search") from exc
+        except json.JSONDecodeError as exc:
+            raise ProviderError("AMap Places 返回了非 JSON 响应", provider="amap", stage="place_search") from exc
+        retry_wait(attempt)
