@@ -320,3 +320,22 @@ def test_google_place_photo_fetch_is_bounded_and_keeps_key_in_request_params(mon
         "https://places.googleapis.com/v1/places/place_1/photos/photo_1/media",
         {"params": {"maxWidthPx": 640, "key": "server-key"}, "timeout": 7},
     )]
+
+
+def test_truncated_model_output_is_not_accepted_as_a_complete_plan():
+    import pytest
+    from agent.narration.agent import _extract_submission
+    from domain.contracts.narration_jobs import NarrationOutputTruncated
+    response = _tool('submit_route_narration_plan', 'partial', {'items': []})
+    response['stop_reason'] = 'max_tokens'
+    with pytest.raises(NarrationOutputTruncated):
+        _extract_submission(response)
+
+
+def test_long_narration_has_budget_for_card_text_without_extra_model_calls():
+    client = OneShotLlm()
+    payload = _request()
+    payload['samples'] = [dict(payload['samples'][0], sample_id=f'sample_{i+1}', route_distance_m=i*1000) for i in range(40)]
+    run_route_narration_agent(payload, places_client=CountingPlaces(), client=client)
+    assert len(client.calls) == 1
+    assert 8000 < client.calls[0]['max_tokens'] <= 24000

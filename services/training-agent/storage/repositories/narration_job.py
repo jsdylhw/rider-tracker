@@ -63,7 +63,8 @@ class NarrationJobStore:
             )
 
     def fail(self, claim, payload, code):
-        if code not in {"ai_unavailable", "narration_failed", "input_changed"}:
+        if code not in {"ai_unavailable", "narration_failed", "input_changed",
+                        "narration_output_truncated", "narration_model_unavailable"}:
             raise ValueError("Unknown narration error code.")
         with self.jobs._connection(write=True) as conn:
             job = self.jobs._owned(conn, claim["job_id"], claim["token"])
@@ -134,4 +135,6 @@ def _error_message(code):
         "ai_unavailable": "路线讲解模型当前不可用，请检查配置后重试。",
         "input_changed": "路线已发生变化，请基于当前路线重新生成讲解。",
         "narration_failed": "路线讲解生成失败，请稍后重试。",
+        "narration_output_truncated": "讲解内容超出模型输出上限，未保存完整讲解，请重新生成。",
+        "narration_model_unavailable": "讲解模型请求失败，请检查网络或模型服务后重试。",
     }.get(code, "路线讲解任务失败。")

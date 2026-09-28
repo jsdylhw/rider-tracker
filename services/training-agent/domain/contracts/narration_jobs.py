@@ -11,6 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 ROUTE_NARRATION_JOB = "route_narration.v1"
 
 
+class NarrationOutputTruncated(ValueError):
+    """The provider exhausted its output budget before finishing the plan."""
+
+
 class RouteNarrationSample(BaseModel):
     model_config = ConfigDict(extra="forbid")
     sample_id: str = Field(min_length=1, max_length=64)

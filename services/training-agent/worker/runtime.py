@@ -79,8 +79,10 @@ class Worker:
             logger.info("job_finished job_id=%s", claim["job_id"])
         except JobCancelled:
             self._finish_if_owned(claim)
+            logger.info("job_cancelled job_id=%s", claim["job_id"])
         except JobExecutionFailed as exc:
             self._finish_if_owned(claim, failed=True, result_ref=exc.result_ref)
+            logger.warning("job_failed job_id=%s job_type=%s", claim["job_id"], claim["job_type"])
         except LeaseLost:
             logger.warning("job_lease_lost job_id=%s", claim["job_id"])
         except Exception as exc:

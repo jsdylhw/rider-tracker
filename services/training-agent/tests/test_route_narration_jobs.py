@@ -196,3 +196,28 @@ def test_schema_eleven_upgrade_preserves_existing_jobs_and_adds_narration_result
         ).fetchone()[0] == "route_narration_results"
     with sqlite3.connect(upgraded["backup_path"]) as conn:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == 11
+
+
+@pytest.mark.parametrize('exception,code', [
+    ('truncated', 'narration_output_truncated'),
+    ('model', 'narration_model_unavailable'),
+    ('unexpected', 'narration_failed'),
+])
+def test_composition_failure_is_diagnosable_without_leaking_provider_text(tmp_path, caplog, exception, code):
+    from domain.contracts.narration_jobs import NarrationOutputTruncated
+    from integrations.llm import LLMRequestError
+    errors = {'truncated': NarrationOutputTruncated, 'model': LLMRequestError, 'unexpected': ValueError}
+    store = JobStore(tmp_path / 'jobs.db')
+    submitted = submit_route_narration(request(), store=store)
+    def fail(*args):
+        raise errors[exception]('private provider response and credentials')
+    worker(store, compose=fail).run_once()
+    result = get_route_narration_job(submitted['job_id'], store=store)
+    assert result['status'] == 'failed'
+    assert result['error']['code'] == code
+    assert result['progress']['stage'] == 'composing_cards'
+    assert 'plan' not in result
+    assert 'stage=composing_cards' in caplog.text
+    assert 'job_failed job_id=' in caplog.text
+    assert 'private provider' not in caplog.text + json.dumps(result)
+    assert all(record.exc_info is None for record in caplog.records)

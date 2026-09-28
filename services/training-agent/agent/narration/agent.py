@@ -16,6 +16,7 @@ from agent.narration.catalog import ROUTE_NARRATION_TOOLS
 from agent.narration.prompts import ROUTE_NARRATION_SYSTEM_PROMPT
 from agent.tools.spec import ToolRegistry
 from domain.contracts.schemas import ROUTE_NARRATION_PLAN_V1
+from domain.contracts.narration_jobs import NarrationOutputTruncated
 from integrations.google_places import GooglePlacesClient
 from integrations.llm import AnthropicMessagesClient, extract_text
 from services.narration.density import narration_density, narration_research_policy
@@ -81,7 +82,9 @@ def compose_route_narration(
                 "research_warnings": research["warnings"],
             }, ensure_ascii=False),
         }],
-        max_tokens=8000,
+        # Each card includes separate screen and speech text plus tool JSON.
+        # A fixed 8k budget is too small for the longer 24-44 card plans.
+        max_tokens=max(8000, min(24000, 1000 + 450 * min(len(samples), density["maximum"]))),
         temperature=0.2,
         tools=ToolRegistry(ROUTE_NARRATION_TOOLS).to_anthropic(),
         tool_choice={"type": "tool", "name": "submit_route_narration_plan"},
@@ -168,6 +171,8 @@ def _source_for_model(source: dict[str, Any]) -> dict[str, Any]:
 
 
 def _extract_submission(response: dict[str, Any]) -> dict[str, Any]:
+    if response.get("stop_reason") == "max_tokens":
+        raise NarrationOutputTruncated("Route narration output reached its token limit.")
     """Read the single structured submission, with a JSON-text fallback."""
     for block in response.get("content") or []:
         if (
