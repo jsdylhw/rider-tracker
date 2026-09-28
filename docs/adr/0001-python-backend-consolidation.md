@@ -644,3 +644,145 @@ Python。Node 仍是正式入口，Python 新路径只通过同一份 Browser HT
 - 修正内存 TTL 删除持久会话的问题，恢复失败时禁止继续发送，防止空界面隐式沿用旧上下文。
 - 保留主对话路线卡片的会话归属；路线会话切换恢复草稿，新建后不再修改旧草稿。
 - 不改变同步 Agent / Worker 边界，也不调整子 Agent 工具选择策略。协议、兼容旧记录及验证范围见 [`../agent-sessions.md`](../agent-sessions.md)。
+
+
+## 2026-09-28：补记路线切片及阶段 7B 可选静态入口
+
+`0545ba5` 已落地多日骑行草案、逐日生成/确认、独立失败结果和最后成功路线暂存，以及高德限流、会话删除与恢复修正。这些仍由 Python service/repository 持有，不代表主 Agent 或多日算路已经迁入 Worker；断网后的旧版本自动重试继续延期。
+
+本轮新增 `docs/python-browser-entry-checklist.md`，按既有 Browser HTTP surface 的 48 项逐项记录 Python 同路径实现及缺失适配，不以路由存在代替响应级等价验收。
+
+新增独立 `app.browser:app`，复用正式 `app.api` 路由、中间件与异常处理，仅将该可选入口的 `/` 换成仓库同一份 Rider HTML，提供受限的前端 JS/CSS 和 FIT SDK JS。默认 `app.api:app` 根路径仍为后端元数据，`npm start` 仍启动 Node BFF。预览命令 `npm run start:browser-preview` 复用统一配置、数据库预检和 Worker 编排，默认访问 Python :8000，不启动 Node server；启动器与依赖安装仍使用 Node/npm。
+
+静态资源不挂载整个仓库，排除服务端代码、配置、用户数据、隐藏路径、符号链接和路径穿越；缺 SDK 返回 404。页面和资源用 no-cache 配合 ETag/Last-Modified/HEAD，不为未知路径回退 HTML。API Host/Origin/token 规则沿用阶段 7A。
+
+本切片没有迁移 multipart 上传、OAuth state/callback 或补齐 Agent Browser URL。预览页面上的这些功能尚不完整，不作为日常 Node 入口的替代品，也不进入阶段 8 的端口切换。
+
+验证：Python 静态入口/API/架构定向 83 项、JavaScript 453 项通过；正常集成新增 Node 与 Python 首页/CSS/启动模块/FIT SDK 字节级对照及缓存/私有路径检查，降级集成通过。Python compileall、Node syntax 和 git diff --check 通过。没有真实浏览器视觉、硬件或外部账号验收；未提交代码。
+
+
+## 2026-09-28：阶段 7 multipart FIT 上传归属迁移
+
+在可选静态入口之后，迁移现有 FIT import、attachment 和 beacon 三个 POST URL。Python 新增受限 multipart 边缘及 upload service；Node 保留 multipart 接收/转发，移除文件写入、活动 ID 生成和会话归档编排。默认 `npm start` 不变，不切换端口，不扩展 Worker 或 OAuth。
+
+复用 ingestion 的单事务保存 FIT 事实、产物、路线关联，并允许原子合并 Rider 会话材料。独立不可变文件避免失败补传覆盖原文件；beacon 不再先归档半条活动。顺序重复上传复用当前同内容文件与稳定活动 ID；孤立旧文件自动回收不在本切片。
+
+Python `rider_view.py` 统一页面活动投影；Node 详情读取改为请求 `view=rider`，原 canonical detail 默认契约不变。旧 JS 投影移为测试夹具，用真实 FIT HTTP 集成检查兼容性。
+
+新增 python-multipart 依赖，单 FIT 32 MiB / Python 请求体 33 MiB 上限，包含无 Content-Length 的请求。缺文件、非法 session、坏 FIT、未知活动、数据库忙和权限拒绝均独立验证。详细范围和残余边界见 `../python-browser-entry-checklist.md`。
+
+验证：Python 上传/ingestion/API/静态入口/架构/会话归档 106 项、JavaScript 454 项通过；真实 FIT 编码解析的 Node/Python HTTP 集成通过，后端离线上传返回 503 的降级集成通过。降级检查曾一次触发既有 health 的 3 秒阈值，未调整阈值，随后重新运行通过；不据此宣称压力下的时延保证。compileall、Node syntax、git diff --check 通过。测试使用临时数据库和生成文件，未操作外部账号；改动未提交。
+
+## 2026-09-28：修复官方初始化的 multipart 安装缺口
+
+上传迁移最初只更新 requirements.txt，官方 `setup:agent` 使用的 `pip install -e . pytest` 未声明 python-multipart，已有开发环境掩盖了缺包问题。现将同一运行时依赖加入 pyproject.toml，并用架构测试约束两份运行时依赖清单一致。
+
+实际在新虚拟环境运行官方安装还复现了 setuptools 的多顶层包发现失败。补充明确的构建后端、源码包白名单及顶层模块，避免依赖自动发现本地 data/log 目录。忽略安装生成的 egg-info 元数据。
+
+新增独立的 `npm run test:agent-setup`：官方脚本允许 `--venv` 指定测试环境，默认仍为原 .venv；冒烟脚本创建全新临时环境，执行官方安装、pip check、三个上传入口的 multipart 合约测试，结束后清理。该检查需要包下载网络，不纳入确定性 test:all。上传合约测试隔离 FIT 解析，不访问用户文件、地图、模型或账号。
+
+验证完成：现有环境上传/架构定向 26 项、JavaScript 454 项通过；`npm run test:agent-setup` 在全新虚拟环境中实际执行官方 editable 安装成功，自动安装 python-multipart 0.0.32，pip check 无依赖冲突，三个上传入口的 14 项测试通过。安装期间包源出现过 SSL 重试，安装后的 pip 版本检查也因 SSL 跳过；均未阻止安装或测试完成。新 Starlette 的 TestClient 发出一条 httpx 弃用警告，未影响本次验证。临时测试环境已清理，原 Conda/.venv 未修改；语法检查和 git diff --check 通过，未提交。
+
+
+## 2026-09-28：限定非 Agent 范围，补齐 Python 预览的 Strava 边缘
+
+用户明确暂不处理 Agent 部分。阶段 6 剩余长任务、Agent Browser URL、会话执行与恢复、工具调用保持现状；本轮不迁入 Worker，不宣称流式进度已经提供持久恢复。
+
+新增 app/strava_browser.py，仅在可选 browser 入口挂载，复用现有 StravaSink 与活动上传业务。补授权开始/回调/结果页面、浏览器字段与上传兼容 URL；不改变默认 Node 入口或内部 API 的既有调用契约。state 使用十分钟有效期、一次性消费、浏览器 Cookie 绑定，重启后过期；不是新增持久化任务。跨入口回调明确拒绝。Node OAuth owner 的删除/切换仍待完整等价验收。
+
+验证：Python 定向 109 项、JavaScript 454 项及现有真实 HTTP 集成通过，新增两入口的 409/410、无效回调和登录页面对照；成功授权和发布参数使用隔离 Provider 验证，未执行真实授权或发布。compileall、语法和 diff 检查通过。真实浏览器视觉、Token 启用时的浏览器认证、其他响应适配和真实账号验收仍待处理，默认 npm start 与 :8787 不变。
+
+
+## 2026-09-28：以产品融合为目标推进 Browser 适配与独立启动
+
+用户明确核心目标是把 services/training-agent 融合进 Rider，而非扩大 Agent 工程重构。建立 `../backend-unification-goal.md` 作为本轮交付记录。允许 HTTP 边缘适配；模型循环、工具、路线算法及长任务恢复保持原状。没有改写冻结架构门槛。
+
+新增 Agent 的八个 Browser URL，以及活动、路线、讲解和 Strava 目录/GPX 的参数与响应适配。仅在 app.browser 挂载；app.api 的既有内部契约保持。活动 FIT 详情使用 Python rider_view。基线 48 个 Browser 路径全部存在，但不将路径存在等同于全表分支验收。
+
+Python 页面新增本机 HttpOnly 会话：Host/Origin 通过且客户端为本机才签发，配置中的服务 Token 不进入页面。内部 API 不接受此会话。验证伪造、跨站、远程来源、重启失效及显式 Token 访问边界。OAuth 保持单次 state 与独立 Cookie，不用此会话替代回调校验。
+
+新增 `python scripts/start-rider.py`，使用当前 Python/Conda 环境，读取统一配置，执行既有数据库预检，管理 API 与 Worker 生命周期；支持独立 Worker 与指定端口/资源目录。自定义端口同步进入 Origin 校验。Node 旧配置适配过渡保留，使用合成配置对照测试；不声称配置兼容实现已经删除。新增 python-dotenv 并同步两份依赖声明。
+
+新增 `scripts/build-browser-assets.py` 导出公开静态文件及 FIT SDK，拒绝覆盖既有输出或复制符号链接；manifest 记录哈希。Python 可从 RIDER_BROWSER_ASSET_ROOT/--assets 托管产物，运行不再要求源码 node_modules。当前仍是源码后端与独立前端产物组合，不是完整 wheel/容器发布。
+
+验证：Python 定向 134 项通过，涵盖 API、上传、静态、会话、安全、Strava、架构、资源产物与启动。修正自定义端口后启动定向 5 项重新通过，实际临时数据库验证页面、带 Cookie 的 API 请求、Worker 注册、SIGTERM 退出及端口释放。前序双入口 HTTP 集成和 JavaScript 454 项通过，未改对应 JS 业务；compileall 与 diff 检查通过。外部服务采用隔离 Provider，未调用真实模型、地图或账号。
+
+剩余：锁定依赖、完整发布/回退及 Windows 验收、真实浏览器/OAuth、全表异常与流式分支验收。冻结架构中的 Agent/Web 故障隔离未完成，不能据此删除 Node 或宣称完成阶段 8/9。默认 npm start 和 :8787 保留。本轮未提交、未推送。
+
+
+## 2026-09-28：发布资源、依赖约束与回退补验
+
+实际 wheel 打包发现 Skill Markdown 未声明为 package data；补声明后，在临时构建目录离线生成 wheel，再搬离源码加载全部 Skill 正文/参考资料通过。未修改 Agent 业务或提示词。
+
+新增完整源码发布导出：前端公开资源、FIT SDK、Python 包、Skill 资源、启动/数据库预检脚本和示例配置组成同一 Rider 发布目录。明确排除实际配置、凭据、数据、Node server 和 node_modules。使用搬离仓库的产物真实启动 Web/Worker，页面/SDK、会话 API、Worker 注册及退出清理通过。产物仍需要已安装的 Python 依赖，不宣称独立可执行文件或 Windows 安装包完成。
+
+依赖约束记录当前 Linux x86_64 / Python 3.13 的运行/构建/测试闭包；生成器不下载包、不读取配置、不冻结其他 Conda 包。约束一致性和 pip 离线 dry-run 通过，原环境未修改。约束不带制品哈希，未验证 Windows/其他 Python 版本。
+
+独立启动器原先会因 Worker 退出而关闭 Web；按既有降级边界修正为提示任务不可用、保留 Web，仅 worker-only 模式将其视为致命错误。Linux 子进程故障注入已验证。集成测试配置进一步隔离 YAML、.env、凭据及工作流目录，Node 入口新增 RIDER_ENV_PATH 选择，默认行为不变。
+
+实际同端口 Python→Node→Python 回退通过，共用临时 SQLite，无 schema 回退，活动/路线/会话读取以及回退期间档案写入保持。运行说明见 ../python-release-runbook.md。
+
+本切片最终 Python 定向 137 项通过；正常 HTTP 集成（含同端口回退）与降级集成通过；compileall、Node syntax、diff 检查通过。未调用真实模型、地图、账号；没有进行 GUI 浏览器、设备、Windows 或兼容周期验收。目标仍为 active，冻结架构中的隔离等未通过门槛继续保留，不切换默认入口、不提交或推送。
+
+
+## 2026-09-28：Browser 失败边界及真实 Edge 冒烟
+
+继续核对两个入口失败语义：补 16 组实际 HTTP 错误状态与 JSON 封装对照，覆盖活动/路线/会话缺失与参数无效、缺模型能力、讲解参数和任务缺失；另验证两入口 NDJSON 能力拒绝只产生一个终止 error 事件。比较状态和公开响应形态，不宣称 Pydantic 与 Node 的错误文案逐字相同。
+
+修正讲解适配把缺少 latitude/longitude/route_distance_m 当成零的问题，缺字段现在在任务提交前拒绝。catalog/narration 未预期异常保留 JSON 错误封装；Agent 预流式异常返回终止事件，非流式异常返回 500，公开响应不泄露内部异常文本。浏览器会话在响应期间可能被其他请求淘汰，签发 Cookie 时重新在锁内核对，避免旧缓存引用异常。
+
+新增可选 scripts/test-python-browser-ui.py，使用已有 Chromium/Edge，不安装浏览器。实际 Windows Edge + WSL Python 测试通过：页面初始化、Cookie 授权、持久会话选择、删除弹窗取消/确认、新建草稿、FIT SDK 模块导入和缺地图配置降级。测试使用临时配置/SQLite/资源副本/浏览器 profile，结束清理；没有操作真实账号或设备。浏览器结果不代表 Windows Python 运行环境验证通过。
+
+Python 定向 144 项通过，增强后的双入口 HTTP 集成与同端口回退通过；compileall、Node syntax、diff 检查通过。真实 OAuth、完整浏览器业务、Windows 后端和兼容观察仍未完成。下一步评估仅通过进程及 HTTP 编排补齐 Web/Agent 隔离；不改模型循环、工具选择、路线算法或新增任务恢复，不降低冻结门槛。未提交、未推送。
+
+
+## 2026-09-28：通过运行边界隔离 Web 与同步 Agent
+
+独立 Python 启动器现在管理 Web、私有 Agent HTTP 进程与既有 Worker。没有改模型循环、工具、路线算法，也没有新增 job/recovery 协议。私有 Agent 复用现有八个 Browser handler，拥有会话缓存和同步执行；Web 通过异步 HTTP 转发，基础活动/路线库/上传仍直接使用 Python 业务层。
+
+私有服务只监听 loopback 临时端口，每次启动生成独立内部令牌。浏览器 Cookie、服务 Token 不向私有进程透传；经入口验证后用内部令牌认证。Web 的 /api/chat、/api/chat-sessions、/api/route-plans 原始别名在隔离模式下关闭，避免绕过边界。内部 app.api 契约和 Node 兼容启动方式保留。
+
+API 的模型循环与路线 Tool 导入推迟到真正执行时；离开源码的 wheel 测试验证 Web 启动不加载这些执行模块。共享数据契约和上下文类型仍可被 Web 引用，不声称物理 namespace 整理完成。
+
+代理不自动重试或重放。普通连接失败返回 agent_unavailable；NDJSON 校验终止事件，连接断开或流提前结束生成一次终止错误。原有业务在客户端断开后的行为不变，也不宣称进程崩溃后的同步任务可以自动恢复。Agent/Worker 退出时 Web 保留；Web 退出则启动器清理自己拥有的子进程。
+
+真实浏览器首次重测暴露页面先于 Agent 就绪的启动窗口。增加最多约五秒的私有健康等待，Agent 故障仍允许 Web 启动；修正后 Windows Edge 的会话操作、SDK 和降级测试通过。
+
+验证：Python 定向 151 项通过；修正就绪顺序后，启动/故障/私有边界 14 项再次通过。真实子进程终止 Agent 后，会话 API 为 503，而活动、路线库、档案为 200，内部别名为 404。增强 HTTP 集成已使用隔离的 Python Agent，并通过错误语义、流式终止和同端口回退对照。真实 Edge 冒烟通过，未调用实际模型/地图/第三方账号。
+
+默认 npm start 和 :8787 未切换。阶段 6 的同步业务任务化仍未完成；完整 OAuth/浏览器业务、Windows 后端运行及兼容观察仍待验收。该切片证明执行进程隔离，不把它等同于 Worker 任务化、幂等发布或恢复。未提交、未推送。
+
+
+## 2026-09-28：Windows 原生验证、框架兼容与请求边界
+
+在 Windows Conda Python 3.13.9 上运行独立发布目录，未调用 Node。原环境缺少 multipart，使用临时 PYTHONPATH 中的纯 Python 包补齐测试条件，不安装或修改原 Conda；未下载包。原生环境使用 FastAPI 0.138.1 / Starlette 1.3.1，与 Linux 的 0.136.1 / 1.0.0 不同。
+
+真实复现并修复两处跨环境问题：较新 FastAPI 以嵌套路由保存 include_router，原先挂载后筛选 app.routes 无效，首页误返回后端元数据；现改为挂载前筛选 canonical router，也避免私有执行别名重新出现。Starlette 在 Windows 返回内部反斜杠静态路径，原防穿越规则误拒绝 SDK；现先拒绝 URL 输入的反斜杠，再规范化框架内部路径，保持原私有文件/符号链接限制。
+
+Windows 原生验收通过：HTML、Cookie、活动/路线/会话 API、SDK、非法 FIT 的 multipart 解析拒绝、Worker 注册。启动器响应 SIGBREAK；CTRL_BREAK 后 Web/Agent/Worker 三个自有子进程全部退出、端口释放。测试发布目录/配置/数据库/临时依赖均已清理。最后新增请求限额后，当前发布产物的 Windows 原生基础烟测再次通过。该验证不等同于 Windows 干净环境安装或真实账号测试。
+
+开发安装新增 test extra，显式声明 pytest、setuptools、wheel、packaging，避免干净官方环境无法运行实际 wheel 构建测试；setup:agent 安装 .[test]，旧 requirements 路径保持同等依赖。当前 Linux 版本约束和 pyproject 指纹同步，离线 pip dry-run 通过，未更改当前环境。
+
+补齐 Node 已有的普通 API 10 MiB 请求上限，包括缺少 Content-Length 的分块请求；只有真实 FIT multipart 路径交给既有 33 MiB 请求/32 MiB 文件限额。进一步统一 RIDER_DATA_ROOT 的相对环境变量：按项目根目录解析，不能因启动 cwd 改变而将派生数据库与文件目录分离；Node 兼容映射和 Python 映射对照通过。
+
+验证：完整 test:all 的 JavaScript 454 项、Python 1067 项及正常/降级 HTTP 集成通过。此后请求限额定向 60 项、收紧 multipart 例外后的 9 项、配置/安装/启动 22 项及 JavaScript 454 项通过，增强 HTTP 集成再次通过。compileall、diff 检查通过。未执行真实 OAuth、地图、模型或账号操作。
+
+切换门槛逐项记录于 ../backend-unification-goal.md。真实 OAuth 已询问用户配合时间；兼容使用观察尚未完成。目标仍为 active，不降低门槛，不自动切换默认入口、不提交或推送。
+
+## 2026-09-28：Windows 干净安装补验
+
+原生 Windows Python 3.13.9 的临时 venv 按独立发布说明安装成功，pip check 无损坏依赖；未继承已有 site-packages、未注入 multipart。首页/Cookie、活动/路线目录、私有 Agent 会话、SDK 与停止释放端口通过。临时目录已清理，未修改原 Conda 或业务数据。详细版本及限制见 python-release-runbook；FIT 导入和真实业务验收仍未完成。默认入口、Agent 业务逻辑未改，未提交或推送。
+
+## 2026-09-28：Windows FIT 补验与外部验收边界
+
+再次建立独立 Windows venv 并安装发布产物，pip check 通过。使用项目 FIT 导出器生成测试文件，经原生 Windows Python HTTP 验证导入、重复导入 identity/path、补传、beacon、详情 records 和坏文件 400 后原记录保留，全部通过。启动/停止检查亦通过，临时环境已清理；未读取用户 FIT 或账号数据。
+
+剩余真实 OAuth、设备骑行和兼容观察需要用户参与，连续审计仍未取得证据。目标标为 blocked，不声明完成、不切换默认入口、不提交或推送。恢复后先取得对应验收结果，再对照冻结架构复核。
+
+## 2026-09-28：按用户决定切换 npm 默认启动入口
+
+用户明确要求现在直接切换，并保留回退。npm start 改为 start-python.js 薄包装，调用 Python 统一启动器的 --public-entry，沿用 Rider HOST/PORT 或 rider.host/port（默认本机 8787）；Python 管理 Web、私有 Agent 和 Worker。Node 不处理浏览器请求，旧 start-local.js 通过 npm run start:legacy 保留。控制管道 EOF 用于 Node 退出时通知 Python 正常清理，避免 Windows 强制结束父进程遗漏子进程。自动打开浏览器保留 APP_BASE_URL 或 localhost 公共地址习惯。
+
+这次切换由用户明确决定，不声明冻结架构的所有删除门槛通过。Strava 登录收到用户通过反馈，但当时具体入口未核实；真实骑行及兼容观察仍待完成。未修改业务算法/模型循环、未删除 Node 服务、未提交或推送。
+
+验证：启动/配置与进程生命周期测试 10 项通过，其中真实 Node 包装启动使用隔离配置和数据库，确认 Python 启动器及 Web/Agent/Worker 四个进程，停止后全部退出并释放端口。架构与 wheel 分发测试 13 项、JavaScript 455 项通过；语法检查和 git diff --check 通过。本轮未在真实账号/设备上运行新默认入口，未重新验证 Windows Node 包装路径。

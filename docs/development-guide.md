@@ -32,19 +32,15 @@ npm test
 
 ## 2. 当前进程和 owner
 
-迁移期间使用三个运行进程：
+默认 `npm start` 由 Node 包装 Python 统一启动器：
 
 ```text
-Browser
-  |
-  v
-Node BFF :8787 ----------------------> static files / Browser security / multipart / OAuth
-  |
-  v
-Python Web API :8000 ----------------> application services / synchronous Agent paths
-  |                                  repositories / SQLite / FIT files
-  +---- persisted jobs -------------> Python Worker -> selected Agent/provider workloads
+Browser -> Python Web :8787 -> services / repositories / SQLite / FIT
+                  |-> private Agent process (synchronous execution)
+                  +-> persisted jobs -> Python Worker
 ```
+
+`npm run start:legacy` 保留旧 Node BFF :8787 → Python API :8000 回退路径；两套入口不要同时运行。
 
 当前职责原则：
 
@@ -52,7 +48,7 @@ Python Web API :8000 ----------------> application services / synchronous Agent 
 | --- | --- | --- |
 | DOM、地图/街景、Web Bluetooth | Browser JS | 不迁入 Python |
 | 实时物理、readiness、控制命令 | `src/domain` / `src/app/realtime` | UI 不复制判断 |
-| Browser 同源入口 | Node BFF | Python 正在分切片实现等价入口，尚未整体切换 `:8787` |
+| Browser 同源入口 | Python Web | Node 仅作默认启动包装；旧 BFF 以 start:legacy 保留 |
 | 活动、路线和用户档案数据 | Python repository | Node 不应重新引入 SQLite DDL 或业务事务 |
 | Agent、路线规划、讲解 | Python | Tool 保持薄，确定性规则进入 service/domain |
 | Garmin、Strava、AMap、Google、LLM | Python integrations | 网络失败与业务校验失败分开处理 |
@@ -68,8 +64,16 @@ Python Web API :8000 ----------------> application services / synchronous Agent 
 - 阶段 6 已完成正式 Provider 与 `demos/` 解耦，并把报告重建、路线讲解接入持久化任务；其余同步
   工作流暂不为追求形式统一而强制迁移。
 - 当前重构方向是阶段 7：让 Python 分批实现 Browser API、安全、上传、OAuth 和静态资源等价能力。
-  默认浏览器入口仍是 Node `:8787`，阶段 7 的接口兼容不等于已经切换入口。
-- 阶段 8 以后才切换端口、观察兼容并删除生产 Node；阶段 10 才进行 Python namespace 和大规模目录整理。
+  默认入口已按用户决定切到 Python `:8787`，真实骑行与兼容观察仍待完成。
+- 阶段 7B 提供可选 `npm run start:browser-preview` 静态入口，默认 Python :8000；复用同一 Rider 页面，
+  这是早期同进程预览入口；当前默认使用独立 Agent 进程。48 项 Browser API 清单和未接通功能见 [入口迁移清单](python-browser-entry-checklist.md)。
+- FIT multipart 三入口已由 Python 接收并保存，Node 仅转发；单文件 32 MiB，需安装 `python-multipart`。
+  默认启动包装已切换，完整浏览器业务验收仍在推进。
+- `python scripts/start-rider.py` 提供无 Node 启动器的隔离预览：Browser Web 处理基础业务，
+  `app.agent_process` 复用原同步 Agent HTTP 执行，Worker 继续处理已有任务。`app.agent_proxy` 只转发，
+  不重试或重放；内部端口/令牌由启动器生成。Agent 退出时基础 API 保持可用；这不是新增持久恢复。
+  发布和回退见 [运行说明](python-release-runbook.md)。不要同时运行两套入口处理同一会话。
+- 默认端口已切换，先观察兼容，旧 Node 继续保留；阶段 10 才进行 Python namespace 和大规模目录整理。
 
 本节只提供导航，不替代实时状态。开始任务时必须查看 `git status` 和 ADR 尾部；工作区中的实现可能尚未
 形成提交，不能直接当成已交付能力。
@@ -190,7 +194,7 @@ service 的拒绝/排序，最后检查前端是否因 stale revision 或路线 
 3. 同一 fixture 分别请求 Node 与 Python，比较契约而不是只比较 200 状态。
 4. 验证 Host、Origin、loopback/token、路径穿越和敏感错误脱敏。
 5. 切换 owner 后删除 Node 的业务实现，只保留必要代理。
-6. 直到静态资源、multipart、OAuth 和完整 `/api/*` 等价前，都不要切换默认 `:8787`。
+6. 当前默认已切到 Python :8787；完成剩余验收前保留 `start:legacy`，不要删除旧 Node。
 
 ## 7. 排障方法
 
@@ -210,6 +214,12 @@ service 的拒绝/排序，最后检查前端是否因 stale revision 或路线 
 
 诊断请求默认只做只读检查。先用 `rg` 找入口、调用方和测试，再运行最小复现；不要在原因未确认时同时
 重构多个层级。
+
+启动日志中的 `worker_started` 是正常就绪信息。缺少 `xdg-open` 时按提示手动打开页面即可，
+也可用 `RIDER_OPEN_BROWSER=false` 关闭自动打开。Strava 授权交换、上传或状态查询的网络异常
+会记录 `strava_request_failed operation=... error=...`，接口返回简短的 502/504 说明；
+`SSLError` 只证明 HTTPS 连接失败，不能据此断言一定是代理问题。发布请求不会自动重放，
+应先检查已有活动或上传状态，再决定重试。
 
 ## 8. 测试与验收
 

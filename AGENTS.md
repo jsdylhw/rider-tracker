@@ -22,17 +22,17 @@ git log -5 --oneline
 
 ## 当前运行边界
 
-迁移期间的正式入口仍是：
+按用户决定，默认 `npm start` 仅用 Node 包装 Python 启动器，正式试用入口为：
 
 ```text
-Browser -> Node BFF :8787 -> Python Web API :8000 -> SQLite / files / synchronous paths
-                                      |
-                                      +-> persisted jobs -> Python Worker
+Browser -> Python Web :8787 -> SQLite / files / synchronous services
+                         |-> private Agent process
+                         +-> persisted jobs -> Python Worker
 ```
 
 - 浏览器 UI、Web Bluetooth、实时骑行、物理计算和 trainer command 保留在 JavaScript。
 - Python 是活动、路线、数据库、Agent、Provider 和后台任务的业务 owner。
-- Node 正在变为薄 BFF；在 Browser API、安全、上传、OAuth 和静态资源完成等价迁移前，不要提前删除。
+- `npm run start:legacy` 保留旧 Node BFF :8787 → Python API :8000 回退入口；在 Browser API、安全、上传、OAuth 和静态资源完成等价迁移前，不要提前删除。
 - Worker 当前承接报告重建和路线讲解；不要假设主 Agent、AI 路线和同步工作流都已经任务化。
 - 正式生产代码不得 import `demos/`。
 

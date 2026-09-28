@@ -9,6 +9,7 @@ export function openBrowser(url, {
     platform = process.platform,
     env = process.env,
     spawnImpl = spawn,
+    warn = console.warn,
 } = {}) {
     const target = String(url || "").trim();
     if (!target) return { opened: false, reason: "missing_url" };
@@ -22,7 +23,8 @@ export function openBrowser(url, {
         : [target];
     const child = spawnImpl(command, args, { detached: true, stdio: "ignore", windowsHide: true });
     child.once?.("error", (error) => {
-        console.warn(`[rider-tracker] unable to open browser automatically: ${error.message}`);
+        const reason = error.code === "ENOENT" ? `未找到 ${command}` : "自动打开浏览器失败";
+        warn(`[rider-tracker] ${reason}；服务不受影响，请手动打开 ${target}`);
     });
     child.unref?.();
     return { opened: true, command, args };

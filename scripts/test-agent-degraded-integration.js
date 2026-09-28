@@ -14,6 +14,22 @@ const agentUrl = `http://127.0.0.1:${agentPort}`;
 const riderUrl = `http://127.0.0.1:${riderPort}`;
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "rider-agent-degraded-"));
 const databasePath = path.join(tempRoot, "rider-tracker.db");
+const testEnv = {
+    ...process.env,
+    RIDER_CONFIG_PATH: path.join(tempRoot, "absent-config.yaml"),
+    TRAINING_AGENT_CONFIG_PATH: path.join(tempRoot, "absent-config.yaml"),
+    RIDER_ENV_PATH: path.join(tempRoot, "absent.env"),
+    RIDER_DATA_ROOT: path.join(tempRoot, "data"),
+    RIDER_CREDENTIALS_DIR: path.join(tempRoot, "credentials"),
+    STRAVA_TOKEN_STORE: path.join(tempRoot, "credentials", "strava.json"),
+    RIDER_WORKFLOW_DIR: path.join(tempRoot, "workflows"),
+    RIDER_WORKFLOW_JOURNAL_DIR: path.join(tempRoot, "workflows", "journals"),
+    RIDER_ACTIVITY_WORKFLOW_DIR: path.join(tempRoot, "workflows", "activity-runs"),
+    RIDER_LOG_DIR: path.join(tempRoot, "logs"),
+    RIDER_CACHE_DIR: path.join(tempRoot, "cache"),
+    RIDER_EVALUATION_ARTIFACT_DIR: path.join(tempRoot, "artifacts"),
+    RIDER_MIGRATION_DIR: path.join(tempRoot, "migrations")
+};
 let launcher = null;
 let fakeAgent = null;
 
@@ -26,7 +42,7 @@ try {
         cwd: projectRoot,
         stdio: "pipe",
         env: {
-            ...process.env,
+            ...testEnv,
             HOST: "127.0.0.1",
             PORT: riderPort,
             RIDER_OPEN_BROWSER: "false",
@@ -44,6 +60,7 @@ try {
     await expectRouteLibraryUnavailable();
     await expectActivityLibraryUnavailable();
     await expectActivityArchiveUnavailable();
+    await expectFitUploadUnavailable();
 
     fakeAgent = createServer((request, response) => {
         response.setHeader("Content-Type", "application/json");
@@ -85,6 +102,7 @@ try {
     await expectRouteLibraryUnavailable();
     await expectActivityLibraryUnavailable();
     await expectActivityArchiveUnavailable();
+    await expectFitUploadUnavailable();
     await assertBaseRiderApis();
     console.log("[degraded-integration] Rider core survived backend loss; Python-owned route, activity library, and session archive degraded explicitly.");
 } finally {
@@ -195,7 +213,7 @@ function initializeDatabase() {
         cwd: projectRoot,
         encoding: "utf8",
         env: {
-            ...process.env,
+            ...testEnv,
             RIDER_TRACKER_DB_PATH: databasePath,
             TRAINING_AGENT_DB_PATH: databasePath,
             TRAINING_AGENT_MANAGED_DATABASE: "1"
@@ -203,5 +221,15 @@ function initializeDatabase() {
     });
     if (result.status !== 0) {
         throw new Error(`Failed to initialize degraded-test database: ${result.stderr || result.stdout}`);
+    }
+}
+
+async function expectFitUploadUnavailable() {
+    const body = new FormData();
+    body.append("file", new Blob([new Uint8Array([1, 2, 3])]), "test.fit");
+    const response = await fetch(`${riderUrl}/api/activities/fit-import`, { method: "POST", body });
+    const result = await response.json();
+    if (response.status !== 503 || result.code !== "agent_unavailable" || result.capability !== "fit_ingestion") {
+        throw new Error(`FIT upload did not explicitly degrade: ${JSON.stringify(result)}`);
     }
 }

@@ -10,3 +10,8 @@ pyyaml>=6.0
 requests>=2.31.0
 jsonschema>=4.18.0
 pytest>=8.0
+python-multipart>=0.0.20,<1
+python-dotenv>=1.0,<2
+setuptools>=68
+wheel
+packaging

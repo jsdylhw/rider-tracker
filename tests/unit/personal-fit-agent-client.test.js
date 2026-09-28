@@ -1,12 +1,34 @@
 import { createPersonalFitAgentClient } from "../../src/server/personal-fit-agent-client.js";
 import { isAgentUnavailableError } from "../../src/server/agent-unavailable.js";
 import { createAgentApiClient } from "../../src/adapters/agent/personal-fit-agent-client.js";
-import { canonicalDetailToRiderActivity } from "../../src/server/routes/activity-routes.js";
+import { canonicalDetailToRiderActivity } from "../fixtures/legacy-rider-projection.js";
 import { assertEqual } from "../helpers/test-harness.js";
 
 export const suite = {
     name: "personal-fit-agent-client",
     tests: [
+        {
+            name: "forwards FIT bytes as multipart with token and no fabricated content type",
+            async run() {
+                let request;
+                const client = createPersonalFitAgentClient({
+                    apiToken: "upload-test-token",
+                    fetchImpl: async (url, options) => {
+                        request = { url, options };
+                        return fakeResponse({ ok: true, activity: { id: "fit-upload" } });
+                    }
+                });
+                const result = await client.uploadFit("/api/activities/fit-import", {
+                    buffer: Buffer.from([0, 1, 255]), originalname: "骑行.fit", mimetype: "application/octet-stream"
+                }, { name: "Ride", session: '{"activityId":"ride"}' });
+                assertEqual(result.activity.id, "fit-upload");
+                assertEqual(request.options.headers["X-API-Token"], "upload-test-token");
+                assertEqual(request.options.headers["Content-Type"], undefined);
+                assertEqual(request.options.body.get("name"), "Ride");
+                assertEqual(request.options.body.get("file").name, "骑行.fit");
+                assertEqual(Array.from(new Uint8Array(await request.options.body.get("file").arrayBuffer())).join(","), "0,1,255");
+            }
+        },
         {
             name: "route stream delivers progress before the final result across split UTF8 chunks",
             async run() {

@@ -60,16 +60,20 @@ export function createPersonalFitAgentClient({
     }
 
     async function sendJson(method, pathname, body, requestTimeoutMs = timeoutMs) {
+        return sendBody(method, pathname, JSON.stringify(body), { "Content-Type": "application/json" }, requestTimeoutMs);
+    }
+
+    async function sendBody(method, pathname, body, headers, requestTimeoutMs = timeoutMs) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
         try {
             const response = await fetchImpl(`${normalizedBaseUrl}${pathname}`, {
                 method,
                 headers: {
-                    "Content-Type": "application/json",
+                    ...headers,
                     ...(apiToken ? { "X-API-Token": apiToken } : {})
                 },
-                body: JSON.stringify(body),
+                body,
                 signal: controller.signal
             });
             const payload = await readJson(response);
@@ -146,14 +150,22 @@ export function createPersonalFitAgentClient({
         createSession: (request) => post("/api/chat-sessions", request),
         deleteSession: (id) => remove(`/api/chat-sessions/${encodeURIComponent(id)}`),
         chat: (request) => post("/api/chat", request),
+        uploadFit: (pathname, file, fields = {}) => {
+            const form = new FormData();
+            if (file) form.append("file", new Blob([file.buffer], { type: file.mimetype || "application/octet-stream" }), file.originalname || "activity.fit");
+            for (const key of ["session", "name", "sportType"]) {
+                if (fields[key] !== undefined) form.append(key, String(fields[key]));
+            }
+            return sendBody("POST", pathname, form, {});
+        },
         ingestFit: (request) => post("/api/activities/ingest-fit", request),
         archiveRiderSession: (request) => post(
             "/api/activities/rider-session",
             request,
             DEFAULT_ACTIVITY_LIBRARY_TIMEOUT_MS
         ),
-        activityDetail: (activityId, { maxPoints = 700, requestTimeoutMs = timeoutMs } = {}) => get(
-            `/api/activities/${encodeURIComponent(activityId)}/detail?max_points=${encodeURIComponent(maxPoints)}`,
+        activityDetail: (activityId, { maxPoints = 700, requestTimeoutMs = timeoutMs, view = "canonical" } = {}) => get(
+            `/api/activities/${encodeURIComponent(activityId)}/detail?max_points=${encodeURIComponent(maxPoints)}${view === "rider" ? "&view=rider" : ""}`,
             requestTimeoutMs
         ),
         listActivities: ({ limit = 50, offset = 0, sportType = "", source = "" } = {}) => {

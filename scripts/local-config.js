@@ -42,7 +42,8 @@ export function buildRuntimeEnv(projectRoot, unifiedConfig, baseEnv = process.en
     setDefault(env, "STRAVA_SCOPES", rider.strava_scopes || DEFAULT_STRAVA_SCOPES);
     env.STRAVA_SCOPES = withRequiredStravaScopes(env.STRAVA_SCOPES);
     setPathDefault(env, "RIDER_DATA_ROOT", projectRoot, rider.data_root || "data");
-    const dataRoot = path.resolve(env.RIDER_DATA_ROOT);
+    const dataRoot = path.resolve(projectRoot, env.RIDER_DATA_ROOT);
+    env.RIDER_DATA_ROOT = dataRoot;
     setPathDefault(env, "RIDER_TRACKER_DB_PATH", projectRoot, rider.database_path || path.join(dataRoot, "rider-tracker.db"));
     setPathDefault(env, "FIT_FILE_DIR", projectRoot, rider.fit_file_dir || path.join(dataRoot, "files", "fit"));
     setPathDefault(env, "GARMIN_FIT_DIR", projectRoot, rider.garmin_fit_dir || path.join(dataRoot, "files", "fit", "garmin"));

@@ -5,6 +5,24 @@ export const suite = {
     name: "browser-launcher",
     tests: [
         {
+            name: "missing browser opener gives a manual URL without raw spawn errors",
+            run() {
+                let onError;
+                let message;
+                openBrowser("http://localhost:8787", {
+                    platform: "linux", env: { DISPLAY: ":0" },
+                    warn(value) { message = value; },
+                    spawnImpl() {
+                        return { once(event, callback) { if (event === "error") onError = callback; }, unref() {} };
+                    }
+                });
+                onError(Object.assign(new Error("spawn xdg-open ENOENT"), { code: "ENOENT" }));
+                assertEqual(message.includes("http://localhost:8787"), true);
+                assertEqual(message.includes("服务不受影响"), true);
+                assertEqual(message.includes("ENOENT"), false);
+            }
+        },
+        {
             name: "opens only the Rider public URL on a desktop session",
             run() {
                 let invocation = null;

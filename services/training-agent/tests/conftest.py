@@ -18,6 +18,8 @@ def isolate_runtime_data(tmp_path, monkeypatch):
     monkeypatch.setenv("RIDER_TRACKER_DB_PATH", str(database))
     monkeypatch.setenv("TRAINING_AGENT_DB_PATH", str(database))
     monkeypatch.delenv("TRAINING_AGENT_MANAGED_DATABASE", raising=False)
+    monkeypatch.delenv("RIDER_AGENT_PROCESS_URL", raising=False)
+    monkeypatch.delenv("RIDER_AGENT_PROCESS_TOKEN", raising=False)
 
 
 @pytest.fixture

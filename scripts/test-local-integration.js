@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolvePythonExecutable, trainingAgentRoot } from "./python-runtime.js";
+import { canonicalDetailToRiderActivity } from "../tests/fixtures/legacy-rider-projection.js";
+import assert from "node:assert/strict";
 import { exportSessionAsFit } from "../src/adapters/export/fit-exporter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -15,8 +17,31 @@ const agentPort = String(18100 + Math.floor(Math.random() * 300));
 const riderPort = String(18400 + Math.floor(Math.random() * 300));
 const agentUrl = `http://127.0.0.1:${agentPort}`;
 const riderUrl = `http://127.0.0.1:${riderPort}`;
+const browserPort = String(Number(agentPort) + 1000);
+const browserUrl = `http://127.0.0.1:${browserPort}`;
+const isolatedAgentPort = String(Number(browserPort) + 1000);
+const isolatedAgentEnv = {
+    RIDER_AGENT_PROCESS_URL: `http://127.0.0.1:${isolatedAgentPort}`,
+    RIDER_AGENT_PROCESS_TOKEN: 'isolated-integration-token'
+};
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "rider-agent-integration-"));
 const databasePath = path.join(tempRoot, "rider-tracker.db");
+const testEnv = {
+    ...process.env,
+    RIDER_CONFIG_PATH: path.join(tempRoot, "absent-config.yaml"),
+    TRAINING_AGENT_CONFIG_PATH: path.join(tempRoot, "absent-config.yaml"),
+    RIDER_ENV_PATH: path.join(tempRoot, "absent.env"),
+    RIDER_DATA_ROOT: path.join(tempRoot, "data"),
+    RIDER_CREDENTIALS_DIR: path.join(tempRoot, "credentials"),
+    STRAVA_TOKEN_STORE: path.join(tempRoot, "credentials", "strava.json"),
+    RIDER_WORKFLOW_DIR: path.join(tempRoot, "workflows"),
+    RIDER_WORKFLOW_JOURNAL_DIR: path.join(tempRoot, "workflows", "journals"),
+    RIDER_ACTIVITY_WORKFLOW_DIR: path.join(tempRoot, "workflows", "activity-runs"),
+    RIDER_LOG_DIR: path.join(tempRoot, "logs"),
+    RIDER_CACHE_DIR: path.join(tempRoot, "cache"),
+    RIDER_EVALUATION_ARTIFACT_DIR: path.join(tempRoot, "artifacts"),
+    RIDER_MIGRATION_DIR: path.join(tempRoot, "migrations")
+};
 const fitRoot = path.join(tempRoot, "fit");
 const children = [];
 
@@ -28,7 +53,7 @@ try {
         cwd: agentRoot,
         stdio: "pipe",
         env: {
-            ...process.env,
+            ...testEnv,
             PYTHONPATH: agentRoot,
             PYTHONUNBUFFERED: "1",
             RIDER_PROJECT_ROOT: projectRoot,
@@ -70,7 +95,7 @@ try {
         cwd: tempRoot,
         stdio: "pipe",
         env: {
-            ...process.env,
+            ...testEnv,
             PORT: riderPort,
             HOST: "127.0.0.1",
             PERSONAL_FIT_AGENT_URL: agentUrl,
@@ -80,6 +105,61 @@ try {
         }
     }));
     await waitForJson(`${riderUrl}/healthz`, (value) => value.ok === true);
+    children.push(spawn(python, ["-m", "uvicorn", "app.browser:app", "--host", "127.0.0.1", "--port", browserPort], {
+        cwd: agentRoot, stdio: "pipe", env: {
+            ...testEnv, ...isolatedAgentEnv, PYTHONPATH: agentRoot, RIDER_TRACKER_DB_PATH: databasePath,
+            TRAINING_AGENT_DB_PATH: databasePath, TRAINING_AGENT_MANAGED_DATABASE: "1",
+            FIT_FILE_DIR: fitRoot, PERSONAL_FIT_AGENT_PORT: browserPort
+        }
+    }));
+    children.push(spawn(python, ['-m', 'uvicorn', 'app.agent_process:create_agent_process_app', '--factory',
+        '--host', '127.0.0.1', '--port', isolatedAgentPort], {
+        cwd: agentRoot, stdio: 'pipe', env: {
+            ...testEnv, ...isolatedAgentEnv, RIDER_TRACKER_DB_PATH: databasePath,
+            TRAINING_AGENT_DB_PATH: databasePath, TRAINING_AGENT_MANAGED_DATABASE: '1', FIT_FILE_DIR: fitRoot
+        }
+    }));
+    await waitForJson(`${browserUrl}/healthz`, value => value.ok === true);
+    await waitForJson(`${browserUrl}/api/agent/health`, value => value.ok === true);
+    const previewSession = await requestJson(`${browserUrl}/api/agent/sessions`, {
+        method: "POST", body: { session_id: "preview-session-contract", kind: "chat" }
+    });
+    assert.equal(previewSession.result.session_id, "preview-session-contract");
+    assert.deepEqual(await readJson(`${browserUrl}/api/agent/sessions/preview-session-contract`),
+                     await readJson(`${riderUrl}/api/agent/sessions/preview-session-contract`));
+    await requestJson(`${browserUrl}/api/agent/sessions/preview-session-contract`, { method: "DELETE" });
+    await expectStatus(`${browserUrl}/api/agent/sessions/preview-session-contract`, 404);
+
+    for (const asset of ["/", "/src/style.css", "/src/app/bootstrap.js", "/vendor/@garmin/fitsdk/src/index.js"]) {
+        const [nodeAsset, pythonAsset] = await Promise.all([fetch(riderUrl + asset), fetch(browserUrl + asset)]);
+        if (nodeAsset.status !== 200 || pythonAsset.status !== 200
+            || await nodeAsset.text() !== await pythonAsset.text()) throw new Error(`Static entry mismatch: ${asset}`);
+        const cached = await fetch(browserUrl + asset, {headers: {"If-None-Match": pythonAsset.headers.get("etag")}});
+        if (cached.status !== 304 || pythonAsset.headers.get("cache-control") !== "no-cache") {
+            throw new Error(`Static cache contract failed: ${asset}`);
+        }
+    }
+    for (const asset of ["/src/server/index.js", "/config.yaml", "/data/credentials/token.json", "/static/app.js", "/missing-page"]) {
+        await expectStatus(browserUrl + asset, 404);
+    }
+    console.log("[integration] Optional Python browser entry serves identical Rider/SDK assets with revalidation and private-path denial.");
+    for (const endpoint of ["/api/strava/config", "/api/strava/upload-fit"]) {
+        const responses = await Promise.all([riderUrl, browserUrl].map(base => fetch(base + endpoint, { method: "POST" })));
+        assert.equal(responses[0].status, endpoint.endsWith("config") ? 409 : 410);
+        assert.equal(responses[1].status, responses[0].status);
+        assert.deepEqual(await responses[0].json(), await responses[1].json());
+    }
+    for (const base of [riderUrl, browserUrl]) {
+        const response = await fetch(base + "/api/strava/auth/callback?state=invalid&code=not-exchanged");
+        assert.equal(response.status, 400);
+        assert.match(await response.text(), /Strava authorization expired/);
+        const login = await fetch(base + "/strava/login");
+        assert.equal(login.status, 200);
+        assert.match(await login.text(), /连接 Strava/);
+    }
+    console.log("[integration] Strava browser refusal contracts, login and invalid OAuth callback agree across entries.");
+
+
     const riderPage = await readText(`${riderUrl}/`);
     if (!riderPage.includes("Rider Tracker") || !riderPage.includes("Training Agent")) {
         throw new Error("Rider root did not return the unified product page.");
@@ -121,6 +201,8 @@ try {
         throw new Error(`Unexpected Agent proxy health payload: ${JSON.stringify(proxyHealth)}`);
     }
     await assertNarrationJobSubmission();
+    await assertBrowserFailureParity();
+    await assertEntryRollback();
     console.log("[integration] Unified Rider page, Python edge parity, activity/route stores, atomic FIT/session/route persistence, Agent proxy, and removed legacy UI checks passed.");
 } finally {
     await Promise.all(children.map(async (child) => {
@@ -130,6 +212,91 @@ try {
         await closed;
     }));
     await rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}
+
+async function assertBrowserFailureParity() {
+    const cases = [
+        ['GET', '/api/activities/absent-activity'],
+        ['PATCH', '/api/activities/absent-activity', { name: 'Renamed' }],
+        ['POST', '/api/activities/rider-session', {}],
+        ['GET', '/api/routes/absent-route'],
+        ['POST', '/api/routes', {}],
+        ['PATCH', '/api/routes/absent-route', { name: 'Renamed' }],
+        ['PUT', '/api/routes/absent-route/progress', {}],
+        ['GET', '/api/agent/sessions/absent-session'],
+        ['GET', '/api/agent/sessions?kind=invalid'],
+        ['POST', '/api/agent/sessions', { session_id: 'bad id' }],
+        ['POST', '/api/agent/chat', { session_id: 's', request_id: 'r', message: '' }],
+        ['POST', '/api/agent/chat', { session_id: 's', request_id: 'r', message: 'test' }],
+        ['POST', '/api/agent/route-plans/command', { session_id: 's', request_id: 'r', operation: 'invalid' }],
+        ['POST', '/api/route-narrations/prepare', {}],
+        ['GET', '/api/route-narrations/jobs/absent-job'],
+        ['GET', '/api/route-narrations/photo?name=invalid'],
+    ];
+    for (const [method, endpoint, body] of cases) {
+        const results = await Promise.all([riderUrl, browserUrl].map(async (base) => {
+            const response = await fetch(base + endpoint, {
+                method, headers: { 'Content-Type': 'application/json', Origin: base },
+                ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(5000)
+            });
+            return { status: response.status, payload: await response.json() };
+        }));
+        assert.equal(results[1].status, results[0].status, `${method} ${endpoint}`);
+        assert.ok(results[0].status >= 400, `${method} ${endpoint} must fail`);
+        for (const result of results) {
+            assert.equal(result.payload.ok, false, endpoint);
+            assert.equal(typeof result.payload.error, 'string', endpoint);
+        }
+    }
+    for (const base of [riderUrl, browserUrl]) {
+        const response = await fetch(base + '/api/agent/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson', Origin: base },
+            body: JSON.stringify({ session_id: 's', request_id: 'stream-refusal', message: 'test' }),
+            signal: AbortSignal.timeout(5000)
+        });
+        assert.equal(response.status, 200);
+        assert.ok(response.headers.get('content-type').includes('application/x-ndjson'));
+        const events = (await response.text()).split('\n').filter((line) => line.trim()).map(JSON.parse);
+        assert.equal(events.length, 1);
+        assert.equal(events[0].type, 'error');
+        assert.equal(events[0].schema_version, 'agent_stream.v1');
+    }
+    console.log('[integration] Browser error envelopes/status and terminal NDJSON capability refusal agree across entries.');
+}
+
+async function assertEntryRollback() {
+    const paths = ["/api/activities", "/api/routes", "/api/user-profile", "/api/agent/sessions"];
+    const before = await Promise.all(paths.map((endpoint) => readJson(browserUrl + endpoint)));
+    const closed = once(children[2], "close");
+    children[2].kill();
+    await closed;
+    const compatibility = spawn(process.execPath, [
+        "--disable-warning=ExperimentalWarning", path.join(projectRoot, "src/server/index.js")
+    ], {
+        cwd: tempRoot, stdio: "pipe", env: {
+            ...testEnv, PORT: browserPort, HOST: "127.0.0.1", APP_BASE_URL: browserUrl,
+            PERSONAL_FIT_AGENT_URL: agentUrl, RIDER_TRACKER_DB_PATH: databasePath,
+            FIT_FILE_DIR: fitRoot
+        }
+    });
+    children.push(compatibility);
+    await waitForJson(`${browserUrl}/healthz`, (value) => value.ok === true);
+    assert.deepEqual(await Promise.all(paths.map((endpoint) => readJson(browserUrl + endpoint))), before);
+    await requestJson(`${browserUrl}/api/user-profile`, { method: "PUT", body: { mass: 74, ftp: 265 } });
+    const restoredProfile = await readJson(`${browserUrl}/api/user-profile`);
+    const compatibilityClosed = once(compatibility, "close");
+    compatibility.kill();
+    await compatibilityClosed;
+    children.push(spawn(python, ["-m", "uvicorn", "app.browser:app", "--host", "127.0.0.1", "--port", browserPort], {
+        cwd: agentRoot, stdio: "pipe", env: {
+            ...testEnv, ...isolatedAgentEnv, RIDER_TRACKER_DB_PATH: databasePath, TRAINING_AGENT_DB_PATH: databasePath,
+            TRAINING_AGENT_MANAGED_DATABASE: "1", FIT_FILE_DIR: fitRoot,
+            PERSONAL_FIT_AGENT_PORT: browserPort
+        }
+    }));
+    await waitForJson(`${browserUrl}/healthz`, (value) => value.ok === true);
+    assert.deepEqual(await readJson(`${browserUrl}/api/user-profile`), restoredProfile);
+    console.log("[integration] Same-port Python -> Node -> Python rollback preserved catalogue, sessions and profile writes without data conversion.");
 }
 
 async function assertNarrationJobSubmission() {
@@ -148,6 +315,8 @@ async function assertNarrationJobSubmission() {
         }
     });
     const job = submitted.result;
+    assert.deepEqual(await readJson(`${browserUrl}/api/route-narrations/jobs/${encodeURIComponent(job.job_id)}`),
+                     await readJson(`${riderUrl}/api/route-narrations/jobs/${encodeURIComponent(job.job_id)}`));
     if (!submitted.ok || !job?.job_id || job.status !== "queued") {
         throw new Error(`Narration submission was not queued: ${JSON.stringify(submitted)}`);
     }
@@ -253,6 +422,48 @@ async function assertRouteLibraryRoundTrip() {
         || fitActivity.activity?.routeEndDistanceMeters !== 4250) {
         throw new Error(`FIT ingestion and route preservation failed: ${JSON.stringify(fitActivity)}`);
     }
+
+    const canonical = await readJson(`${agentUrl}/api/activities/${encodeURIComponent(archivedSession.id)}/detail`);
+    const stored = await readJson(`${agentUrl}/api/activities/${encodeURIComponent(archivedSession.id)}`);
+    const projection = await readJson(`${agentUrl}/api/activities/${encodeURIComponent(archivedSession.id)}/detail?view=rider`);
+    assert.deepEqual(projection, canonicalDetailToRiderActivity(canonical, stored.activity));
+    assert.deepEqual(await readJson(`${browserUrl}/api/activities/${archivedSession.id}`),
+                     await readJson(`${riderUrl}/api/activities/${archivedSession.id}`));
+    assert.deepEqual(await readJson(`${browserUrl}/api/routes/${routeId}`),
+                     await readJson(`${riderUrl}/api/routes/${routeId}`));
+    assert.deepEqual(await readJson(`${browserUrl}/api/activities?sportType=cycling`),
+                     await readJson(`${riderUrl}/api/activities?sportType=cycling`));
+
+    async function multipart(base, endpoint, fields = {}, bytes = fitBytes) {
+        const body = new FormData();
+        body.append("file", new Blob([bytes]), "../../integration.fit");
+        for (const [key, value] of Object.entries(fields)) body.append(key, value);
+        const response = await fetch(base + endpoint, { method: "POST", body });
+        return { status: response.status, payload: await response.json() };
+    }
+    const direct = await multipart(browserUrl, "/api/activities/fit-import", { name: "Direct import" });
+    const proxied = await multipart(riderUrl, "/api/activities/fit-import", { name: "Direct import" });
+    assert.equal(direct.status, 200);
+    assert.equal(proxied.status, 200);
+    assert.equal(direct.payload.activity.id, proxied.payload.activity.id);
+    assert.equal(direct.payload.activity.fitFilePath, proxied.payload.activity.fitFilePath);
+    assert.deepEqual(direct.payload.activity.rawSession.records, proxied.payload.activity.rawSession.records);
+    const beaconSession = JSON.stringify({ ...archivedSession, id: "integration-beacon", activityId: "integration-beacon" });
+    const beacon = await multipart(browserUrl, "/api/activities/fit-beacon", { session: beaconSession });
+    assert.equal(beacon.status, 200);
+    assert.equal(beacon.payload.activity.savedRouteId, routeId);
+    const beaconAgain = await multipart(riderUrl, "/api/activities/fit-beacon", { session: beaconSession });
+    assert.equal(beaconAgain.status, 200);
+    assert.equal(beaconAgain.payload.activity.fitFilePath, beacon.payload.activity.fitFilePath);
+    for (const base of [browserUrl, riderUrl]) {
+        const invalid = await multipart(base, `/api/activities/${archivedSession.id}/fit`, {}, new Uint8Array([1, 2, 3]));
+        assert.equal(invalid.status, 400);
+        const preserved = await readJson(`${agentUrl}/api/activities/${archivedSession.id}`);
+        assert.equal(preserved.activity.fitFilePath, fitActivity.activity.fitFilePath);
+        const malformed = await multipart(base, "/api/activities/fit-beacon", { session: "[]" });
+        assert.equal(malformed.status, 400);
+    }
+    console.log("[integration] Python/Node multipart import, attachment, beacon, duplicate identity, legacy view parity and invalid FIT preservation passed.");
 
     const renamed = await requestJson(`${riderUrl}/api/routes/${encodeURIComponent(routeId)}`, {
         method: "PATCH", body: { name: "Renamed integration route" }
@@ -374,7 +585,7 @@ function seedRoutePlan(plan) {
         cwd: agentRoot,
         encoding: "utf8",
         env: {
-            ...process.env,
+            ...testEnv,
             PYTHONPATH: agentRoot,
             RIDER_PROJECT_ROOT: projectRoot,
             RIDER_TRACKER_DB_PATH: databasePath,
@@ -397,7 +608,7 @@ function seedActivity(activity) {
         cwd: agentRoot,
         encoding: "utf8",
         env: {
-            ...process.env,
+            ...testEnv,
             PYTHONPATH: agentRoot,
             RIDER_PROJECT_ROOT: projectRoot,
             RIDER_TRACKER_DB_PATH: databasePath,
@@ -418,7 +629,7 @@ function initializeDatabase() {
         cwd: projectRoot,
         encoding: "utf8",
         env: {
-            ...process.env,
+            ...testEnv,
             RIDER_PROJECT_ROOT: projectRoot,
             RIDER_TRACKER_DB_PATH: databasePath,
             TRAINING_AGENT_DB_PATH: databasePath

@@ -18,10 +18,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 
-dotenv.config({ path: path.join(PROJECT_ROOT, ".env"), quiet: true });
+dotenv.config({ path: process.env.RIDER_ENV_PATH || path.join(PROJECT_ROOT, ".env"), quiet: true });
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 32 * 1024 * 1024, files: 1, fields: 3, fieldSize: 1024 * 1024 } });
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -32,7 +32,6 @@ const APP_BASE_URL = process.env.APP_BASE_URL || buildLocalBaseUrl({
 });
 const REDIRECT_URI = process.env.STRAVA_REDIRECT_URI || `${APP_BASE_URL}/api/strava/auth/callback`;
 const FRONTEND_REDIRECT_URL = process.env.FRONTEND_REDIRECT_URL || "";
-const FIT_FILE_DIR = process.env.FIT_FILE_DIR || path.join(PROJECT_ROOT, "data", "files", "fit");
 const PERSONAL_FIT_AGENT_URL = process.env.PERSONAL_FIT_AGENT_URL || "http://127.0.0.1:8000";
 const PERSONAL_FIT_AGENT_TOKEN = process.env.PERSONAL_FIT_AGENT_TOKEN || "";
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
@@ -54,9 +53,7 @@ app.use("/src", express.static(path.join(PROJECT_ROOT, "src")));
 app.use("/vendor/@garmin/fitsdk", express.static(path.join(PROJECT_ROOT, "node_modules", "@garmin", "fitsdk")));
 app.use(createActivityRoutes({
     agentClient: personalFitAgentClient,
-    upload,
-    fitFileDir: FIT_FILE_DIR,
-    projectRoot: PROJECT_ROOT
+    upload
 }));
 app.use(createRouteLibraryRoutes({ agentClient: personalFitAgentClient }));
 app.use(createStravaRoutes({

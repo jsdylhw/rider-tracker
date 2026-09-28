@@ -217,6 +217,7 @@ class ActivityStore:
         artifact_input_hash: str,
         artifact_payload: dict[str, Any],
         route_link: dict[str, Any] | None = None,
+        raw_session: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Atomically persist one parsed FIT and all deterministic derivatives.
 
@@ -234,7 +235,7 @@ class ActivityStore:
             ) as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 raw, rider_activity = _upsert_fit_activity_row(
-                    connection, entry, route_link=route_link,
+                    connection, entry, route_link=route_link, raw_session=raw_session,
                 )
                 facts = _upsert_facts_row(
                     connection,
@@ -682,6 +683,7 @@ def _upsert_fit_activity_row(
     entry: dict[str, Any],
     *,
     route_link: dict[str, Any] | None,
+    raw_session: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     activity_id = str(entry["activity_key"]).strip()
     fit_path = portable_path_text(entry["fit_path"]).strip()
@@ -697,6 +699,8 @@ def _upsert_fit_activity_row(
         (activity_id,),
     ).fetchone()
     raw = _json_object(existing["raw_json"] if existing else None)
+    if raw_session is not None:
+        raw.update(raw_session)
     raw.update({key: value for key, value in entry.items() if value is not None})
     raw["fit_path"] = fit_path
     for obsolete in ("summary_path", "training_load"):
@@ -774,7 +778,7 @@ def _upsert_fit_activity_row(
     ).fetchone()
     if row is None:
         raise RuntimeError("Ingested FIT activity was not found.")
-    return raw, _rider_activity(row)
+    return raw, _rider_activity(row, include_raw_session=True)
 
 
 def _upsert_facts_row(

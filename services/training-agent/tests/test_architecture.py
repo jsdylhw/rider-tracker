@@ -5,11 +5,22 @@ from __future__ import annotations
 import ast
 import json
 import re
+import tomllib
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = ROOT.parents[1]
+
+
+def test_official_and_requirements_installations_have_same_runtime_dependencies() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    requirements = {
+        line.strip() for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    expected = set(project["project"]["dependencies"]) | set(project["project"]["optional-dependencies"]["test"])
+    assert expected == requirements
 
 def test_non_agent_layers_do_not_depend_on_agent() -> None:
     """Keep reusable business and infrastructure code callable without a chat Agent."""

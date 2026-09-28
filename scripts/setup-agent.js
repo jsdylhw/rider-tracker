@@ -2,12 +2,15 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { trainingAgentRoot } from "./python-runtime.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const agentRoot = trainingAgentRoot(projectRoot);
-const venvRoot = path.join(agentRoot, ".venv");
+const { values } = parseArgs({ options: { venv: { type: "string" } } });
+// A separate destination lets the installation smoke test exercise this exact flow.
+const venvRoot = values.venv ? path.resolve(values.venv) : path.join(agentRoot, ".venv");
 const bootstrapPython = process.env.PYTHON_EXECUTABLE || (process.platform === "win32" ? "python" : "python3");
 
 if (!existsSync(venvRoot)) {
@@ -17,7 +20,7 @@ if (!existsSync(venvRoot)) {
 const python = process.platform === "win32"
     ? path.join(venvRoot, "Scripts", "python.exe")
     : path.join(venvRoot, "bin", "python");
-run(python, ["-m", "pip", "install", "-e", ".", "pytest"], agentRoot);
+run(python, ["-m", "pip", "install", "-e", ".[test]"], agentRoot);
 console.log("[rider-tracker] Training Agent Python environment is ready.");
 
 function run(command, args, cwd) {

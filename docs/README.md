@@ -48,6 +48,9 @@ Python Training Backend 内部开发还应阅读：
 | 街景讲解、卡片和异步任务 | [`route-narration.md`](route-narration.md) |
 | Strava 路线缓存和导入 | [`strava-route-import.md`](strava-route-import.md) |
 | UI、View、renderer 和 CSS | [`frontend-architecture.md`](frontend-architecture.md) |
+| 本轮 Rider 后端融合目标与执行范围 | [`backend-unification-goal.md`](backend-unification-goal.md) |
+| Python 浏览器入口逐项迁移与预览启动 | [`python-browser-entry-checklist.md`](python-browser-entry-checklist.md) |
+| Python 预览发布产物、依赖约束与回退 | [`python-release-runbook.md`](python-release-runbook.md) |
 | 迁移阶段和 Node 删除条件 | [`rider-final-architecture-and-python-migration.md`](rider-final-architecture-and-python-migration.md) |
 
 ## 更新规则

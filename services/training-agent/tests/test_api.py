@@ -212,6 +212,9 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/jobs/{job_id}/report-rebuild",
         "/api/activities",
         "/api/activities/ingest-fit",
+        "/api/activities/fit-import",
+        "/api/activities/fit-beacon",
+        "/api/activities/{activity_id}/fit",
         "/api/activities/rider-session",
         "/api/activities/{activity_id}",
         "/api/activities/{activity_id}/detail",
@@ -1437,3 +1440,51 @@ def test_daily_itinerary_command_persists_failure_and_rejects_stale_revision(tmp
     assert value['route_plan']['candidates'][1]['day_status']=='pending'
     assert client.post('/api/route-plans/command',json=body).json()==value
     assert client.post('/api/route-plans/command',json={**body,'request_id':'stale'}).status_code==409
+
+
+def test_strava_refresh_tls_failure_is_bounded_and_does_not_publish(tmp_path, monkeypatch, caplog):
+    import requests
+    from integrations.strava import StravaSink
+
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    calls = []
+    def post(url, **kwargs):
+        calls.append(url)
+        raise requests.exceptions.SSLError('private-refresh-token must never appear')
+    monkeypatch.setattr(requests, 'post', post)
+    def upload(*args, **kwargs):
+        return StravaSink(config={'strava': {
+            'client_id': 'test', 'client_secret': 'test-secret',
+            'refresh_token': 'test-refresh', 'expires_at': 1,
+            'token_store': str(tmp_path / 'isolated-token.json'),
+        }}).upload_fit(str(tmp_path / 'unused.fit'))
+    monkeypatch.setattr(api, 'upload_stored_activity_fit', upload)
+
+    response = client.post('/api/strava/upload-activity', json={'activity_key': 'test'})
+
+    assert response.status_code == 502
+    assert 'HTTPS' in response.json()['detail']
+    assert '未确认发布成功' in response.json()['detail']
+    assert calls == ['https://www.strava.com/oauth/token']
+    assert 'operation=upload error=SSLError' in caplog.text
+    assert 'private-refresh-token' not in caplog.text + response.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_strava_status_timeout_and_exchange_connection_failure(tmp_path, monkeypatch):
+    import requests
+    api, client, _ = _prepare_api(tmp_path, monkeypatch)
+    def timeout(*args, **kwargs):
+        raise requests.exceptions.Timeout('sensitive timeout')
+    monkeypatch.setattr(api, 'get_strava_upload_status', timeout)
+    response = client.get('/api/strava/upload-status/123')
+    assert response.status_code == 504
+    assert '超时' in response.json()['detail']
+    class Sink:
+        def __init__(self, **kwargs): pass
+        def exchange_authorization_code(self, code):
+            raise requests.exceptions.ConnectionError('secret-code')
+    monkeypatch.setattr(api, 'StravaSink', Sink)
+    response = client.post('/api/strava/exchange-code', json={'code': 'test-code'})
+    assert response.status_code == 502
+    assert 'secret-code' not in response.text

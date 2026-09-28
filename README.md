@@ -132,10 +132,12 @@ Rider Tracker 默认把个人数据保存在项目的 `data/` 目录，包括：
 ## 常用命令
 
 ```bash
-npm start                 # 启动 Rider Tracker
+npm start                 # Node 启动包装 → Python Web/Agent/Worker，默认 :8787
+npm run start:legacy      # 回退旧 Node BFF → Python API 入口
 npm test                  # 运行前端与 Node 测试
 npm run test:agent        # 运行 Training Agent 测试
 npm run test:integration  # 运行本地服务集成测试
+npm run test:agent-setup  # 联网创建临时 Python 环境，验证官方安装和 FIT 上传
 npm run test:all          # 运行完整测试
 ```
 
@@ -144,3 +146,18 @@ npm run test:all          # 运行完整测试
 文档权威层级。
 
 Rider Tracker 仍在持续开发中，功能和界面可能随版本更新而调整。
+
+
+### Python 统一入口
+
+`npm start` 现在只通过 Node 启动 Python 统一后端，浏览器直接访问 Python。沿用 `rider.host/port`（默认本机 :8787）；配置和数据位置不变。Python 选择沿用 `PYTHON_EXECUTABLE` / `training_agent.python_executable`、项目 .venv、系统 Python 的优先级。需要回退时先退出当前入口，再运行 `npm run start:legacy`。
+
+已准备好依赖的 Conda/虚拟环境也可绕过 Node，使用相同公共端口配置：
+
+```bash
+python scripts/start-rider.py --public-entry
+```
+
+此命令使用当前 Python，默认在 `http://127.0.0.1:8787/` 提供同一 Rider 页面，并管理独立 Agent 进程与 Worker；不需要 Node 启动器，不会自动安装环境。不要与占用同一端口的默认入口同时运行。迁移验收和静态发布方式见 [Python 入口清单](docs/python-browser-entry-checklist.md)，剩余工作见 [后端融合目标](docs/backend-unification-goal.md)。
+
+可通过 `python scripts/build-rider-release.py --output dist/rider-python-preview` 导出不包含本地数据、凭据和 node_modules 的预览发布目录。安装、平台约束和回退步骤见 [发布说明](docs/python-release-runbook.md)。

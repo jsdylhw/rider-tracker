@@ -28,6 +28,7 @@ def ingest_fit_activity(
     max_points: int = 700,
     route_link: dict[str, Any] | None = None,
     path: str | Path | None = None,
+    raw_session: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Parse one immutable FIT and atomically persist its deterministic bundle."""
     resolved = resolve_project_path(fit_path)
@@ -58,6 +59,7 @@ def ingest_fit_activity(
         artifact_input_hash=input_hash,
         artifact_payload=detail,
         route_link=route_link,
+        raw_session=raw_session,
     )
     presented_detail = _attach_activity_report(detail, store=store, activity_key=stable_key)
     return {

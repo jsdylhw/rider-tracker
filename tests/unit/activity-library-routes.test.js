@@ -1,9 +1,8 @@
+import { canonicalDetailToRiderActivity, routeLinkFromSession } from "../fixtures/legacy-rider-projection.js";
 import { createAgentUnavailableError } from "../../src/server/agent-unavailable.js";
 import {
-    canonicalDetailToRiderActivity,
     createActivityLibraryHandlers,
     createRiderSessionArchiveHandler,
-    routeLinkFromSession,
     sendActivityWriteError
 } from "../../src/server/routes/activity-routes.js";
 import { assertEqual } from "../helpers/test-harness.js";
@@ -273,7 +272,7 @@ function fakeAgentClient(calls) {
         },
         activityDetail(value, options = {}) {
             calls.push({ name: "detail", value, options });
-            return Promise.resolve({
+            return Promise.resolve(canonicalDetailToRiderActivity({
                 activity: { activity_key: value, name: "Ride", sport_type: "cycling" },
                 metrics: {
                     scale: { duration_s: 60, distance_km: 1, calories: 169 },
@@ -281,7 +280,7 @@ function fakeAgentClient(calls) {
                 },
                 series: { records: [{ elapsed_seconds: 0, distance_km: 0 }] },
                 report: null
-            });
+            }));
         },
         renameActivity(id, name) {
             calls.push({ name: "rename", value: { id, name } });

@@ -8,28 +8,25 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import math
 import os
 from pathlib import Path
 from typing import Any, Literal
 
+from requests.exceptions import RequestException, SSLError, Timeout
+
 from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from app.route_stream import route_stream_response
 from app.job_api import create_job_router
+from app.uploads import create_upload_router
 from app.browser_security import reject_untrusted_browser_request
 from pydantic import BaseModel, Field
 
-from agent.main_agent.loop import run_tool_loop
-from agent.route.agent import run_route_agent
 from agent.runtime.models import public_turn_dict
 from agent.runtime.models import ToolExecution
 from agent.runtime.presentation_projector import project_presentations
-from agent.tools.handlers.route import (
-    explore_route_segments_tool,
-    get_route_plan_tool,
-    update_route_plan_tool,
-)
 from app.chat_sessions import ChatSessionStore, SessionUnavailable
 from settings import cfg_get, load_config
 from storage.repositories.route import RoutePlanStore, RouteRevisionConflict
@@ -61,6 +58,49 @@ from storage.repositories.job import JobConflict
 
 app = FastAPI(title="Personal FIT Agent API")
 chat_sessions = ChatSessionStore()
+
+
+def _strava_network_error(operation: str, exc: RequestException) -> HTTPException:
+    # Do not log request bodies, credentials or raw provider exception strings.
+    logging.getLogger(__name__).warning(
+        "strava_request_failed operation=%s error=%s", operation, type(exc).__name__
+    )
+    if isinstance(exc, SSLError):
+        message = "Strava HTTPS 连接中断，请检查网络或代理连接。"
+    elif isinstance(exc, Timeout):
+        message = "Strava 请求超时，请检查网络连接。"
+    else:
+        message = "Strava 请求失败，请检查网络连接及服务状态。"
+    if operation == "upload":
+        message += "未确认发布成功，请先检查 Strava 活动或上传状态，再决定是否重试。"
+    return HTTPException(status_code=504 if isinstance(exc, Timeout) else 502, detail=message)
+
+
+# Load execution engines only when their owning process executes a request.
+# Browser-only startup must not import the model loop or tool dispatcher.
+def run_tool_loop(*args, **kwargs):
+    from agent.main_agent.loop import run_tool_loop as execute
+    return execute(*args, **kwargs)
+
+
+def run_route_agent(*args, **kwargs):
+    from agent.route.agent import run_route_agent as execute
+    return execute(*args, **kwargs)
+
+
+def explore_route_segments_tool(*args, **kwargs):
+    from agent.tools.handlers.route import explore_route_segments_tool as execute
+    return execute(*args, **kwargs)
+
+
+def get_route_plan_tool(*args, **kwargs):
+    from agent.tools.handlers.route import get_route_plan_tool as execute
+    return execute(*args, **kwargs)
+
+
+def update_route_plan_tool(*args, **kwargs):
+    from agent.tools.handlers.route import update_route_plan_tool as execute
+    return execute(*args, **kwargs)
 
 
 @app.middleware("http")
@@ -345,7 +385,7 @@ def delete_activity_endpoint(activity_id: str, request: Request) -> dict[str, An
 
 
 @app.get("/api/activities/{activity_id}/detail")
-def activity_detail_endpoint(activity_id: str, request: Request, max_points: int = 700) -> dict[str, Any]:
+def activity_detail_endpoint(activity_id: str, request: Request, max_points: int = 700, view: Literal["canonical", "rider"] = "canonical") -> dict[str, Any]:
     """Return cached canonical series, rebuilding from the immutable FIT when stale."""
     _require_api_access(request)
     if max_points < 2 or max_points > 2000:
@@ -353,6 +393,12 @@ def activity_detail_endpoint(activity_id: str, request: Request, max_points: int
     detail = get_activity_detail(activity_id, max_points=max_points)
     if detail is None:
         raise HTTPException(status_code=404, detail="Activity does not exist.")
+    if view == "rider":
+        from services.activity.rider_view import canonical_detail_to_rider_activity
+        stored = ActivityStore().get_rider_activity(activity_id, include_raw_session=True)
+        if stored is None:
+            raise HTTPException(status_code=404, detail="Activity does not exist.")
+        return canonical_detail_to_rider_activity(detail, stored)
     return detail
 
 
@@ -481,7 +527,10 @@ def strava_exchange_code_endpoint(
     http_request: Request,
 ) -> dict[str, Any]:
     _require_api_access(http_request)
-    result = StravaSink(require_access_token=False).exchange_authorization_code(request.code)
+    try:
+        result = StravaSink(require_access_token=False).exchange_authorization_code(request.code)
+    except RequestException as exc:
+        raise _strava_network_error("exchange_code", exc) from exc
     return {
         "connected": bool(result.get("access_token")),
         "athlete": result.get("athlete"),
@@ -508,12 +557,17 @@ def strava_upload_activity_endpoint(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RequestException as exc:
+        raise _strava_network_error("upload", exc) from exc
 
 
 @app.get("/api/strava/upload-status/{upload_id}")
 def strava_upload_status_endpoint(upload_id: str, request: Request) -> dict[str, Any]:
     _require_api_access(request)
-    return get_strava_upload_status(upload_id)
+    try:
+        return get_strava_upload_status(upload_id)
+    except RequestException as exc:
+        raise _strava_network_error("upload_status", exc) from exc
 
 
 @app.get("/api/strava/routes")
@@ -997,6 +1051,9 @@ def _require_api_access(request: Request) -> None:
     loopback client may call `/api/*`; this prevents an accidental `--host
     0.0.0.0` deployment from exposing Garmin, LLM, and Strava capabilities.
     """
+    # Markers are set only by trusted browser-session/private-process middleware.
+    if getattr(request.state, "local_browser_authenticated", False) or getattr(request.state, "agent_process_authenticated", False):
+        return
     configured_token = str(cfg_get(load_config(), "web_api_token", "") or "")
     supplied_token = request.headers.get("X-API-Token", "")
     if configured_token:
@@ -1087,3 +1144,5 @@ def _delete_managed_activity_fit(activity: dict[str, Any]) -> None:
 
 
 app.include_router(create_job_router(_require_api_access))
+
+app.include_router(create_upload_router(_require_api_access))

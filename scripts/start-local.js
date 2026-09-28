@@ -10,10 +10,11 @@ import { ensureManagedDatabase } from "./database-preflight.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const agentRoot = trainingAgentRoot(projectRoot);
-dotenv.config({ path: path.join(projectRoot, ".env"), quiet: true });
+dotenv.config({ path: process.env.RIDER_ENV_PATH || path.join(projectRoot, ".env"), quiet: true });
 const unifiedConfig = loadUnifiedConfig(projectRoot);
 const runtimeEnv = buildRuntimeEnv(projectRoot, unifiedConfig, process.env);
-const agentOnly = process.argv.includes("--agent-only");
+const browserPreview = process.argv.includes("--browser-preview");
+const agentOnly = browserPreview || process.argv.includes("--agent-only");
 const workerOnly = process.argv.includes("--worker-only");
 const agentUrl = runtimeEnv.PERSONAL_FIT_AGENT_URL || "http://127.0.0.1:8000";
 const parsedAgentUrl = new URL(agentUrl);
@@ -58,7 +59,7 @@ if (!agentOnly && !workerOnly) {
 
 if (!workerOnly) {
     const agent = launch("training-agent", python, [
-        "-m", "uvicorn", "app.api:app",
+        "-m", "uvicorn", browserPreview ? "app.browser:app" : "app.api:app",
         "--host", agentHost,
         "--port", String(agentPort),
         "--log-level", "warning",
@@ -71,7 +72,9 @@ if (!workerOnly) {
     if (agentOnly) {
         try {
             await waitForHealth(`${agentUrl.replace(/\/+$/, "")}/health`, agent, "Training Agent");
-            console.log(`[rider-tracker] training agent ready at ${agentUrl}`);
+            console.log(browserPreview
+                ? `[rider-tracker] Python browser preview: ${agentUrl} (in-process compatibility mode; npm start uses the isolated entry)`
+                : `[rider-tracker] training agent ready at ${agentUrl}`);
         } catch (error) {
             console.error(`[rider-tracker] startup failed: ${error.message}`);
             stopAll(1);
