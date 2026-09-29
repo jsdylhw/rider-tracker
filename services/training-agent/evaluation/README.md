@@ -50,3 +50,7 @@ python -m evaluation.cli run \
 Skill 和真实模型评测具有波动性；建议重要回归使用 `--repeats 3`。
 
 Skill 与 live 套件需要本地 `config.yaml`。所有领域工具都在 Sandbox 或未暴露状态下运行，不产生 Garmin、SQLite 或 Strava 副作用。
+
+## 多业务对话基准
+
+可复用的多轮输入、固定材料、业务判定与失败边界见 [对话回归语料](../../../docs/agent-dialogue-regression-corpus.md)。新增 `cases/dialogue-baseline-skills.jsonl` 可直接用现有 CLI 运行，只验证 Skill 选择。现有 runner 不支持有状态多轮，且 live 模式是模型加替身工具，不能用来证明真实 FIT、数据库或外部发布结果正确。旧 live 路线用例仍含历史主工具契约，不作为当前路线委派的验收基准。

@@ -243,3 +243,26 @@ FIT查询后续已接入按需summary/二维表投影，输出预算8192且拒�
 验证层次：真实模型/API验证正常路径；故障注入验证无执行、仅定位、跨轮旧证据及正常澄清；JS测试验证进度面板、排队/部分完成、迟到事件、BFF和两端客户端流传递。没有运行真实浏览器截图验收。
 
 本轮检查：JavaScript 447/447；Python受影响集合138项通过，补充“仅定位不能证明发布”用例后结果构建13项通过；compileall、git diff --check通过。未提交本轮改动。
+
+## 2026-09-28：Python 默认入口切换后的对话一致性复核
+
+代码基线 `develop / 1f9e74b`。独立子 Agent 只读审计并执行定向隔离测试；没有读取真实配置/FIT/账号，没有调用真实模型、地图、Garmin 或 Strava。本轮不修改生产调用逻辑。
+
+| 历史验收项 | 当前复核 |
+| --- | --- |
+| 选择旧活动后操作该活动 | selected 快照与显式 recent 分支仍有实现和回归，缺目标拒绝 |
+| 指定距离/时长/均速比较 | metrics 传递、均速缺失、unsupported 提示仍有覆盖，不用推算替代缺失 |
+| 自然语言 FIT 窗口 | 模型选工具后统一 handler；整窗汇总独立于分桶，零值/缺失分开，summary/table 投影及截断拒绝仍在 |
+| 外部操作成功证据 | 已激活 Skill 的纯文本成功、仅定位和旧轮证据被拒；普通聊天不强制领域工具 |
+| 会话与新 HTTP 入口 | 消息/选择持久化与删除有覆盖；/api/agent/chat 经私有 Agent 代理到原业务，断连不自动重放 |
+| 短“重试” | 延期限制仍可隔离复现，未因入口迁移自动解决 |
+
+定向集合 114 项通过（19.77 秒）：test_tool_loop、test_activity_query_agent、test_activity_comparison、test_activity_workflow_service、test_activity_workflow_factory、test_result_builder、test_chat_sessions、test_agent_browser、test_agent_process_boundary、test_tool_result、test_workflow_executor。
+
+额外隔离探针确认：工作流 partial 且内部上传失败时 last_failed_action 为空，短“重试”返回 no_retryable_action；序列化恢复后 active_skill_id 为空，重试可能 retry_rejected 并清除失败动作；“重试。”和“请重试”不走短重试控制。这与此前延期记录一致，不是本轮发现的入口迁移回归。
+
+旧评测设施存在契约漂移：evaluation/cases/live.jsonl 的路线用例仍检查主工具 create_route_plan 和旧参数，当前应使用 run_route_agent 委派。evaluation/runner.py 的 live 模式直接运行 agent_loop 加 Sandbox，自行生成 completed，未走正式 run_tool_loop/build_completed_result；Sandbox 的 FIT 结果还是固定窗口答案。因此它不能验证生产执行证据、跨轮恢复或真实数值，也不能等同于此前九轮真实模型/API验收。
+
+可复用输入已保存至 [对话回归语料](agent-dialogue-regression-corpus.md)，包括 12 组多轮业务脚本、4 组故障注入、固定合成 FIT 数据约定，以及 10 条可由既有 CLI 读取的 Skill 选择 JSONL。保留历史失败记录，没有将旧临时目录中的个人回答复制入仓库。
+
+结论：已检查的生产修复与历史后期验收一致；评测用例及 runner 的覆盖范围需要单独辨认。本轮没有在新默认入口重跑真实模型九轮对话，不能宣称那项验收已重新通过。旧 live 套件未在本轮重构，文档已标明限制。
