@@ -198,6 +198,16 @@ service 的拒绝/排序，最后检查前端是否因 stale revision 或路线 
 
 ## 7. 排障方法
 
+如果 Windows 上 `npm start` 打印命令后立即返回 PowerShell，先检查 `python --version` 和
+`Get-Command python`。退出码 `9009` 且路径位于 `WindowsApps` 时，通常命中了应用别名，
+实际 Python 尚不可用。使用有效的 Python 3.12+
+解释器设置当前终端的 `PYTHON_EXECUTABLE`，执行 `npm run setup:agent` 建立项目环境；之后清除临时
+覆盖，让启动器使用 `services/training-agent/.venv`。启动包装器会显示异常退出码和所选解释器。
+
+`WinError 10048` / `Address already in use` 表示端口已被其他进程占用，无需重新安装 Python。
+先确认占用进程；需要临时换端口时可运行 `npm start -- --port 8788`，浏览器使用对应端口。
+如果配置了固定 `app_base_url` 或 Strava OAuth 回调地址，也需要与实际使用的入口一致。
+
 先定位失败属于哪一层：
 
 | 现象 | 首先检查 |

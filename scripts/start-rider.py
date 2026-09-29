@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unified Python entry. Uses the active Python environment, not Node."""
 import argparse
+import os
 from pathlib import Path
 import signal
 import secrets
@@ -64,7 +65,10 @@ def main():
         signal.signal(signal.SIGBREAK, stop)
     if args.parent_stdin:
         def watch_parent():
-            sys.stdin.buffer.read()
+            # Node's Windows pipe also needs to stay out of Python's buffered
+            # stdin lock (used by subprocess startup and interpreter shutdown).
+            while os.read(sys.stdin.fileno(), 1):
+                pass
             stop()
         threading.Thread(target=watch_parent, daemon=True).start()
     try:
@@ -79,9 +83,11 @@ def main():
             env['RIDER_AGENT_PROCESS_URL'] = f'http://127.0.0.1:{agent_port}'
             env['RIDER_AGENT_PROCESS_TOKEN'] = secrets.token_urlsafe(32)
             try:
+                # The parent's stdin is a lifecycle channel, not child input.
                 agent = subprocess.Popen([sys.executable, '-m', 'uvicorn',
                     'app.agent_process:create_agent_process_app', '--factory', '--host', '127.0.0.1',
-                    '--port', str(agent_port), '--log-level', 'warning', '--no-access-log'], cwd=BACKEND, env=env)
+                    '--port', str(agent_port), '--log-level', 'warning', '--no-access-log'], cwd=BACKEND, env=env,
+                    stdin=subprocess.DEVNULL)
                 children.append(agent)
             except OSError:
                 print('[rider] Agent process could not start; ordinary Rider features remain available.', file=sys.stderr, flush=True)
@@ -106,7 +112,8 @@ def main():
             if stopping:
                 return
             web = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'app.browser:app',
-                '--host', host, '--port', str(port), '--log-level', 'warning', '--no-access-log'], cwd=BACKEND, env=env)
+                '--host', host, '--port', str(port), '--log-level', 'warning', '--no-access-log'], cwd=BACKEND, env=env,
+                stdin=subprocess.DEVNULL)
             children.append(web)
             url_host = '127.0.0.1' if host == '0.0.0.0' else ('[::1]' if host == '::' else host)
             if ':' in url_host and not url_host.startswith('['):
@@ -127,7 +134,8 @@ def main():
                 print(f'[rider] Python browser entry: {url}', flush=True)
         if not stopping and not args.without_worker:
             try:
-                worker = subprocess.Popen([sys.executable, '-m', 'worker.main'], cwd=BACKEND, env=env)
+                worker = subprocess.Popen([sys.executable, '-m', 'worker.main'], cwd=BACKEND, env=env,
+                    stdin=subprocess.DEVNULL)
                 children.append(worker)
             except OSError:
                 if args.worker_only:

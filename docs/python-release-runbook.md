@@ -92,3 +92,5 @@ HTTP 集成测试使用临时数据执行同端口 Python → Node → Python，
 `npm start` → `scripts/start-python.js` → `scripts/start-rider.py --public-entry`，Node 仅负责选择 Python、转发输出和打开浏览器。Python 管理 Web、私有 Agent 和 Worker，读取统一配置。公共入口遵循 `HOST`/`PORT` 或 `rider.host/port`，默认 127.0.0.1:8787；`npm start -- --port 9000` 可临时覆盖。直接 Python 使用 `--public-entry` 得到相同行为，不带该选项仍保留原预览端口选择。
 
 Ctrl+C 关闭启动器；Node 退出时控制管道 EOF 通知 Python 清理伴随进程，不在 Windows 上用强制终止代替正常退出。切换前退出旧进程，不同时占用公共端口。Strava 登录已由用户反馈通过，但当时具体入口未经确认，仍不能据此声明新默认入口的所有账号及骑行链路验收完成。
+
+Windows 启动器的控制管道使用无缓冲读取，Web、Agent 和 Worker 不继承该标准输入，避免父线程持有标准输入缓冲锁时阻塞子进程启动或导致退出崩溃。Node 包装同时处理 Ctrl+Break，按同一管道关闭流程清理进程。`Agent is not ready` 只表示首次健康检查超时；应继续确认是否出现 `Python browser entry`，不能仅凭该提示认定缺少模型配置或依赖。
