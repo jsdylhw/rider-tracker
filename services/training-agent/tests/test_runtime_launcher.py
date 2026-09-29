@@ -52,8 +52,12 @@ def test_dotenv_and_environment_precedence(tmp_path):
     assert env['RIDER_TRACKER_DB_PATH'] == str(tmp_path / 'data/rider-tracker.db')
 
 
-@pytest.mark.parametrize('stop_process,release,npm_entry', [(None, False, False), ('worker.main', False, False), ('app.agent_process', False, False), (None, True, False), (None, False, True)])
-def test_python_launcher_serves_and_stops_without_node(tmp_path, stop_process, release, npm_entry):
+@pytest.mark.parametrize('stop_process,release,npm_entry,parent_eof', [
+    (None, False, False, False), ('worker.main', False, False, False),
+    ('app.agent_process', False, False, False), (None, True, False, False),
+    (None, False, True, False), (None, False, False, True),
+])
+def test_python_launcher_serves_and_stops_without_node(tmp_path, stop_process, release, npm_entry, parent_eof):
     if stop_process and sys.platform != 'linux':
         pytest.skip('Linux child-process fault injection; normal lifecycle is cross-platform')
     launch_root = ROOT
@@ -87,7 +91,10 @@ def test_python_launcher_serves_and_stops_without_node(tmp_path, stop_process, r
         assert 'scripts/start-local.js' in scripts['start:legacy']
         env.update(PYTHON_EXECUTABLE=sys.executable, HOST='127.0.0.1', PORT=str(port))
         command = ['node', str(ROOT / 'scripts/start-python.js')]
+    if parent_eof:
+        command.append('--parent-stdin')
     process = subprocess.Popen(command, env=env,
+                               stdin=subprocess.PIPE if parent_eof else None,
                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0)
     owned_pids = []
@@ -152,7 +159,10 @@ def test_python_launcher_serves_and_stops_without_node(tmp_path, stop_process, r
                 with opener.open(request, timeout=3) as response:
                     assert response.status == 200
     finally:
-        if sys.platform == 'win32':
+        if parent_eof:
+            # The supervisor must close its children when the wrapper goes away.
+            process.stdin.close()
+        elif sys.platform == 'win32':
             process.send_signal(signal.CTRL_BREAK_EVENT)
         else:
             process.terminate()

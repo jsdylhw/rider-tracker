@@ -22,6 +22,7 @@ const child = spawn(resolvePythonExecutable(root, env), [
 const stop = () => child.stdin.end();
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
+if (process.platform === 'win32') process.on('SIGBREAK', stop);
 child.stdin.on('error', () => {}); // Child exit may close the control pipe first.
 child.once('error', (error) => {
     console.error(`[rider] Python 启动失败（${error.code || 'unknown'}）；请检查 Python 环境或 PYTHON_EXECUTABLE。`);
