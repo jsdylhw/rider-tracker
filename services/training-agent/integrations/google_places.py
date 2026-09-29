@@ -7,6 +7,11 @@ from integrations.provider_error import network_failure_reason
 import json
 import re
 import time
+import random
+import hashlib
+from copy import deepcopy
+from contextlib import contextmanager
+from contextvars import ContextVar
 from collections.abc import Callable
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -29,6 +34,27 @@ NARRATION_FIELD_MASK = ",".join((
 ))
 GOOGLE_PLACES_FIELD_MASK = ROUTE_FIELD_MASK
 JsonTransport = Callable[[Request, float], dict[str, Any]]
+_request_scope = ContextVar('google_places_request_scope', default=None)
+
+
+@contextmanager
+def places_request_scope(on_progress=None):
+    """Reuse successful reads only within one route turn, with a shared retry cap."""
+    token = _request_scope.set({'cache': {}, 'retries_left': 12, 'progress': on_progress})
+    try:
+        yield
+    finally:
+        _request_scope.reset(token)
+
+
+def _retry_progress(scope, status, attempt):
+    callback = scope.get('progress') if scope else None
+    if callback:
+        try:
+            callback({'stage': 'map_retry', 'status': status, 'attempt': attempt,
+                      'label': '地图服务繁忙，正在等待重试' if status == 'running' else '正在重新请求地图服务'})
+        except Exception:
+            pass
 
 
 class GooglePlacesClient:
@@ -39,8 +65,9 @@ class GooglePlacesClient:
         timeout_seconds: float = 20,
         timeout_s: float | None = None,
         base_url: str = SEARCH_URL,
-        retries: int = 2,
+        retries: int = 4,
         retry_delay_s: float = 0.4,
+        retry_budget_s: float = 45,
         transport: JsonTransport | None = None,
     ) -> None:
         if not str(api_key or "").strip() or str(api_key).startswith("replace-with-"):
@@ -50,6 +77,7 @@ class GooglePlacesClient:
         self.base_url = base_url
         self.retries = max(0, int(retries))
         self.retry_delay_s = max(0.0, float(retry_delay_s))
+        self.retry_budget_s = max(0.1, float(retry_budget_s))
         self.transport = transport or _read_json
 
     def search(
@@ -115,6 +143,12 @@ class GooglePlacesClient:
         return [_normalize_place(item) for item in data.get("places") or [] if isinstance(item, dict)]
 
     def _send(self, payload: dict[str, Any], *, field_mask: str) -> dict[str, Any]:
+        scope = _request_scope.get()
+        # Include all request inputs and credential identity; never cache a failure.
+        cache_key = hashlib.sha256(json.dumps([self.base_url, self.api_key, field_mask, payload],
+                                              sort_keys=True).encode()).hexdigest()
+        if scope is not None and cache_key in scope['cache']:
+            return deepcopy(scope['cache'][cache_key])
         request = Request(
             self.base_url,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -125,13 +159,23 @@ class GooglePlacesClient:
             },
             method="POST",
         )
+        deadline = time.monotonic() + self.retry_budget_s
         for attempt in range(self.retries + 1):
             try:
-                return self.transport(request, self.timeout_seconds)
+                result = self.transport(request, min(self.timeout_seconds, max(0.1, deadline - time.monotonic())))
+                if scope is not None:
+                    scope['cache'][cache_key] = deepcopy(result)
+                return result
             except TransientProviderError:
-                if attempt >= self.retries:
+                delay = min(4.0, self.retry_delay_s * 2 ** attempt) * random.uniform(0.8, 1.2)
+                if (attempt >= self.retries or time.monotonic() + delay >= deadline
+                        or (scope is not None and scope['retries_left'] <= 0)):
                     raise
-                time.sleep(self.retry_delay_s * (attempt + 1))
+                if scope is not None:
+                    scope['retries_left'] -= 1
+                _retry_progress(scope, 'running', attempt + 1)
+                time.sleep(delay)
+                _retry_progress(scope, 'completed', attempt + 1)
         raise RuntimeError("Google Places retry loop ended unexpectedly")  # pragma: no cover
 
     def get_photo(self, *, photo_name: str, max_width: int = 720) -> tuple[bytes, str]:

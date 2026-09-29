@@ -149,6 +149,12 @@ export const suite = {
                 elements.aiRoutePanel.ownerDocument = documentRef;
                 const draft = { ...buildDraft(), researchSources: [{ title: "隐藏参考", url: "https://example.org" }] };
                 draft.candidates[0].description = "从京都站出发，经鸭川返回。";
+                draft.candidates[0].warnings.push(
+                    "该路线使用避开高速的驾车路径，仅用于虚拟街景，不是户外骑行导航。",
+                    "Google 估算爬升仅供观景参考，不代表最大坡度。",
+                    "本次未使用 Strava。 未能确定的可选地点及受影响走廊已移除：山科川",
+                    "当前材料缺少可用的沿河、城区走廊，保留该偏好但不能确认本次候选满足。"
+                );
                 const planner = createAgentRoutePlanner({ elements, onPlanAgentRoutes: async () => draft });
                 planner.bindEvents();
                 planner.render({ route: {}, liveRide: { isActive: false } });
@@ -157,7 +163,20 @@ export const suite = {
                 assert(text.includes("路线提示：距离偏离目标"));
                 assert(text.includes("无效候选（地点没有结果）"));
                 const copy = elements.aiRouteCandidates.children[0].children[0];
-                assert(copy.children.some((node) => node.textContent.includes("从京都站出发")));
+                const details = copy.children.find((node) => node.className === "ai-route-candidate-details");
+                assert(details);
+                assert(!details.open);
+                assertEqual(details.children[0].textContent, "路线详情");
+                assert(details.children.some((node) => node.textContent.includes("从京都站出发")));
+                assert(!copy.children.some((node) => node.textContent.includes("从京都站出发")));
+                const visible = copy.children.map((node) => node.textContent).join(" ");
+                assert(visible.includes("沿河、城区偏好尚未确认满足"));
+                assert(visible.includes("仅供虚拟骑行"));
+                assert(visible.includes("距离偏离目标"));
+                assert(!visible.includes("山科川"));
+                assert(!visible.includes("最大坡度"));
+                assert(details.children.some((node) => node.textContent.includes("山科川")));
+                assert(details.children.some((node) => node.textContent.includes("最大坡度")));
                 assert(!copy.children.some((node) => node.textContent.includes("参考资料")));
                 planner.destroy();
             }

@@ -81,7 +81,7 @@ def test_translated_alias_requires_same_city_place_id(monkeypatch):
     client = Mock()
     monkeypatch.setattr(preparation, "GooglePlacesClient", lambda key: client)
     for city_id, accepted in [("city", True), ("different", False)]:
-        client.search.side_effect = [{"places": [city]}, {"places": [{**city, "id": city_id, "localities": ["Kyoto"]}]}]
+        client.search.side_effect = [{"places": [city]}, {"places": [{**city, "id": city_id, "localities": ["Kyoto"]}]}, {"places": [city]}]
         evidence = preparation.resolve_google_locality("京都市", "JP", {"google": {"api_key": "test"}})
         assert ("Kyoto" in evidence["names"]) is accepted
 
@@ -407,3 +407,38 @@ def test_current_agent_preparation_skips_strava_even_when_model_requests_it(monk
     result = prepare_route_materials_tool({'materials': materials(), 'use_strava': True}, context)
     assert observed == [False]
     assert result['segments'] == []
+
+
+@pytest.mark.parametrize('required', [False, True])
+def test_failed_origin_keeps_identity_evidence_and_recovery_context(monkeypatch, required):
+    from services.route import preparation
+    from services.route.single_day import RouteCandidateRejected
+    value = materials()
+    origin = next(p for p in value['points'] if p['id'] == value['origin_id'])
+    origin['required'] = required
+    def reject(*args, **kwargs):
+        error = RouteCandidateRejected('origin ambiguous', code='place_ambiguous')
+        error.place_resolution = {'reason': 'ambiguous_candidates', 'candidates': [{'place_id': 'one'}]}
+        raise error
+    monkeypatch.setattr(preparation, 'resolve_google_places', reject)
+    with pytest.raises(RouteCandidateRejected) as caught:
+        preparation.resolve_material_points(value, config={})
+    evidence = caught.value.to_tool_result()['place_resolution']
+    assert evidence['is_origin'] is True
+    assert evidence['required'] is required
+    assert evidence['point_id'] == value['origin_id']
+    assert evidence['candidates'] == [{'place_id': 'one'}]
+    assert '用户明确指定的地点不得替换' in evidence['recovery']
+
+
+def test_rome_city_alias_includes_italian_only_for_same_provider_id(monkeypatch):
+    from services.route import preparation
+    city = {'id': 'rome-city', 'country_code': 'IT', 'types': ['locality'], 'localities': ['罗马']}
+    client = Mock()
+    client.search.side_effect = [{'places': [city]}, {'places': [{**city, 'localities': ['Rome']}]},
+        {'places': [{**city, 'localities': ['Roma']}, {**city, 'id': 'other', 'localities': ['Unrelated']}]}]
+    monkeypatch.setattr(preparation, 'GooglePlacesClient', lambda key: client)
+    evidence = preparation.resolve_google_locality('罗马', 'IT', {})
+    assert evidence['names'] == ['罗马', 'Rome', 'Roma']
+    preparation.check_locality({'country_code': 'IT', 'localities': ['Roma']}, '罗马', evidence=evidence)
+    assert client.search.call_args.kwargs['language_code'] == 'it'

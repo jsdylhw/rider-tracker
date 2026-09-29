@@ -62,6 +62,7 @@ class RouteCandidateRejected(ValueError):
             "status": "failed", "error": self.code, "code": self.code,
             "stage": self.stage, "retryable": self.retryable,
             "message": str(self),
+            **({"place_resolution": self.place_resolution} if hasattr(self, "place_resolution") else {}),
             **({"route_search": {
                 **self.search_diagnostics,
                 "measurements": [{k: v for k, v in row.items() if k != "geometry"}

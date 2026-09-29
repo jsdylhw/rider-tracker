@@ -252,6 +252,21 @@
     transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
+.ai-route-candidate-details summary {
+    cursor: pointer;
+    color: var(--text-secondary, #64748b);
+    font-size: 0.85rem;
+    padding: 6px 0;
+}
+
+.ai-route-candidate-details[open] summary {
+    margin-bottom: 6px;
+}
+
+.ai-route-candidate-details p {
+    overflow-wrap: anywhere;
+}
+
 .ai-route-candidate.is-selected {
     border-color: #3e9a82;
     box-shadow: 0 0 0 3px rgba(62, 154, 130, 0.12);

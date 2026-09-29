@@ -13,6 +13,10 @@ CATEGORIES = {
     'unknown': set(),
 }
 BUSINESS = {'event_venue', 'lodging', 'hotel', 'restaurant', 'cafe', 'store', 'shopping_mall'}
+# Weak compatibility requires name evidence; it cannot identify a place alone.
+COMPATIBLE = {'bridge': {'route', 'tourist_attraction', 'historical_landmark'},
+              'station': {'train_ticket_office', 'transportation_service'}}
+LOCAL_LANGUAGES = {'JP': 'ja', 'FR': 'fr', 'DE': 'de', 'AT': 'de', 'IT': 'it'}
 
 
 def normalized(value):
@@ -25,8 +29,12 @@ def choose_place(results, *, query, country, intent, locality_names=(), anchor=N
     category = intent.get('category', 'unknown')
     expected = CATEGORIES.get(category, set())
     names = [normalized(s) for s in [intent.get('name', ''), intent.get('local_name', ''), query] if s]
-    rows, rejected = [], []
+    rows, rejected, candidates = [], [], []
+    seen_ids = set()
     for index, item in enumerate(results):
+        if item.get('id') and item['id'] in seen_ids:
+            continue
+        seen_ids.add(item.get('id'))
         reason = None
         spatial_origin = False
         types = set(item.get('types') or [])
@@ -49,25 +57,36 @@ def choose_place(results, *, query, country, intent, locality_names=(), anchor=N
             reason = 'outside_radius'
         if not reason and category not in {'business', 'unknown'} and types & BUSINESS and not types & expected:
             reason = 'category_conflict'
+        name = normalized(item.get('name', ''))
+        identity = 2 if name and name in names else int(bool(name) and any(n and (n in name or name in n) for n in names))
+        semantic = 2 if types & expected else int(bool(identity and types & COMPATIBLE.get(category, set())))
+        candidates.append({'place_id': item.get('id'), 'name': item.get('name'),
+                           'address': item.get('address'), 'country_code': item.get('country_code'),
+                           'localities': item.get('localities', []), 'types': sorted(types),
+                           'identity_match': identity, 'category_score': semantic, 'rejection': reason})
         if reason:
             rejected.append({'place_id': item.get('id'), 'reason': reason})
             continue
-        name = normalized(item.get('name', ''))
-        identity = 2 if name and name in names else int(bool(name) and any(n and (n in name or name in n) for n in names))
-        semantic = int(bool(types & expected))
         rows.append((identity, semantic, index, item, spatial_origin))
     rows.sort(key=lambda r: (-r[0], -r[1], r[2]))
+    def reject(message, code, reason):
+        error = RouteCandidateRejected(message, code=code, stage='place_resolution')
+        error.place_resolution = {'query': query, 'category': category, 'reason': reason,
+                                  'candidates': candidates[:5]}
+        raise error
     if not rows:
-        raise RouteCandidateRejected(f'地点 {query} 没有符合城市、范围和用途的候选', code='place_not_found', stage='place_resolution')
+        reject(f'地点 {query} 没有符合城市、范围和用途的候选', 'place_not_found', 'no_eligible_candidates')
     best = rows[0]
     # No substring bonus for sharing two arbitrary characters. A unique typed
     # candidate can bridge languages, but multiple equally plausible IDs cannot.
     selected_name = best[3].get('name', '')
     cjk = r'[\u3040-\u30ff\u3400-\u9fff]'
     cross_script = bool(re.search(cjk, query)) != bool(re.search(cjk, selected_name))
-    typed_provider_match = best[1] and best[2] == 0 and cross_script
-    if (not best[0] and not typed_provider_match) or (len(rows) > 1 and rows[1][:2] == best[:2] and rows[1][3].get('id') != best[3].get('id')):
-        raise RouteCandidateRejected(f'地点 {query} 身份不明确，请补充当地名称或地点用途', code='place_ambiguous', stage='place_resolution')
+    typed_provider_match = best[1] == 2 and best[2] == 0 and cross_script
+    if not best[0] and not typed_provider_match:
+        reject(f'地点 {query} 身份不明确：候选名称缺少匹配依据', 'place_ambiguous', 'insufficient_identity')
+    if len(rows) > 1 and rows[1][:2] == best[:2] and rows[1][3].get('id') != best[3].get('id'):
+        reject(f'地点 {query} 身份不明确：多个候选同分，需核对地址与具体入口', 'place_ambiguous', 'ambiguous_candidates')
     result = deepcopy(best[3])
     result['resolution_evidence'] = {'status': 'resolved', 'category': category,
         'identity_match': best[0], 'category_match': bool(best[1]),
@@ -85,7 +104,7 @@ def resolve_place(client, query, *, country, intent, locality_names=(), anchor=N
         text = query if attempt == 0 else ' '.join(dict.fromkeys(filter(None, [
             intent.get('local_name') or intent.get('name') or query,
             intent.get('description'), locality_names[0] if locality_names else country])))
-        language = {'JP': 'ja', 'FR': 'fr', 'DE': 'de'}.get(country, 'en')
+        language = LOCAL_LANGUAGES.get(country, 'en')
         rows = client.search(text, **options, **({'language_code': language} if attempt else {})).get('places') or []
         attempts.append({'query': text, 'candidate_ids': [r.get('id') for r in rows]})
         try:
@@ -94,5 +113,8 @@ def resolve_place(client, query, *, country, intent, locality_names=(), anchor=N
                                     origin_locality_evidence=origin_locality_evidence)
             selected['resolution_evidence']['attempts'] = attempts
             return selected
-        except RouteCandidateRejected:
-            if attempt: raise
+        except RouteCandidateRejected as exc:
+            attempts[-1]['diagnosis'] = deepcopy(getattr(exc, 'place_resolution', {}))
+            if attempt:
+                exc.place_resolution['attempts'] = attempts
+                raise

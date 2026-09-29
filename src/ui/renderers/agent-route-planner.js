@@ -1,5 +1,6 @@
 import { createAgentSessionControls } from "../agent/agent-session-controls.js";
 import { capabilityMessage } from "../../domain/agent/agent-capabilities.js";
+import { routeCardPresentation } from "../../domain/route/route-card-presentation.js";
 
 export function createAgentRoutePlanner({
     elements,
@@ -224,7 +225,8 @@ export function createAgentRoutePlanner({
             metrics.textContent = `${labels[candidate.dayStatus] || "待生成"} · ${candidate.previousRoute ? `上次成功路线：${candidateMetrics(candidate)}` : candidate.dayStatus === "ready" ? candidateMetrics(candidate) : "地图里程与时间待验证"}`;
         }
         const description = documentRef.createElement("p");
-        description.textContent = candidate.description || "请预览地图，选择适合的路线。";
+        const presentation = routeCardPresentation(candidate);
+        description.textContent = presentation.description;
         if (currentDraft?.dailyItinerary) {
             description.textContent = (candidate.previousRoute ? "当前要求：" : "") + candidate.pointNames.join(" → ")
                 + (candidate.previousRoute ? `；上次路线：${candidate.previousPointNames.join(" → ")}（仅供预览）` : "")
@@ -233,11 +235,22 @@ export function createAgentRoutePlanner({
                 + (candidate.connectionWarning ? `；${candidate.connectionWarning}` : "");
         }
         copy.append(title, metrics, description);
-        if (candidate.warnings?.length) {
+        if (presentation.notices.length) {
             const warnings = documentRef.createElement("p");
-            warnings.textContent = `提示：${candidate.warnings.join("；")}`;
+            warnings.textContent = presentation.notices.join(" ");
             copy.append(warnings);
         }
+        const details = documentRef.createElement("details");
+        details.className = "ai-route-candidate-details";
+        const summary = documentRef.createElement("summary");
+        summary.textContent = "路线详情";
+        details.append(summary);
+        for (const text of presentation.details) {
+            const paragraph = documentRef.createElement("p");
+            paragraph.textContent = text;
+            details.append(paragraph);
+        }
+        copy.append(details);
 
         const actions = documentRef.createElement("div");
         actions.className = "ai-route-candidate-actions";

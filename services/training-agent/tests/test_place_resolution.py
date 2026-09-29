@@ -64,3 +64,40 @@ def test_same_language_unrelated_park_is_not_resolved_by_type_alone():
     with pytest.raises(RouteCandidateRejected):
         choose_place([place('Unrelated Park', ['park'])], query='Kyoto Gardens', country='JP',
                      intent={'category':'natural'}, locality_names=['Kyoto'])
+
+
+def test_named_bridge_compatible_road_beats_untyped_result():
+    rows = [place('Ponte Milvio', ['point_of_interest'], 'other'),
+            place('Ponte Milvio', ['route'], 'bridge')]
+    result = choose_place(rows, query='Ponte Milvio, Kyoto', country='JP',
+                          intent={'name': 'Ponte Milvio', 'category': 'bridge'})
+    assert result['id'] == 'bridge'
+    with pytest.raises(RouteCandidateRejected):
+        choose_place([place('Unrelated Road', ['route'])], query='Ponte Milvio', country='JP',
+                     intent={'category': 'bridge'})
+
+
+def test_duplicate_provider_id_is_not_ambiguity_but_distinct_ids_are():
+    row = place('鴨川デルタ', ['park'])
+    assert choose([row, dict(row)])['id'] == 'a'
+    with pytest.raises(RouteCandidateRejected) as caught:
+        choose([row, {**row, 'id': 'b', 'address': 'another entrance'}])
+    evidence = caught.value.to_tool_result()['place_resolution']
+    assert evidence['reason'] == 'ambiguous_candidates'
+    assert evidence['candidates'][1]['address'] == 'another entrance'
+
+
+def test_failure_preserves_both_queries_and_rejection_reasons():
+    class Client:
+        calls = []
+        def search(self, query, **kwargs):
+            self.calls.append(kwargs)
+            return {'places': [place('Ponte Milvio', ['route'])]}
+    client = Client()
+    with pytest.raises(RouteCandidateRejected) as caught:
+        resolve_place(client, 'Ponte Milvio, Roma', country='IT',
+                      intent={'name': 'Ponte Milvio', 'category': 'bridge'})
+    evidence = caught.value.to_tool_result()['place_resolution']
+    assert client.calls[1]['language_code'] == 'it'
+    assert len(evidence['attempts']) == 2
+    assert evidence['candidates'][0]['rejection'] == 'country_mismatch'

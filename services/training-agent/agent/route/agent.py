@@ -226,9 +226,11 @@ def run_route_agent(task: RouteTaskInput, *, history=None, client=None, on_progr
     except (RuntimeError, ValueError) as exc:
         return project(build_activation_unavailable_result(context, error=exc, execution_policy=policy)), deepcopy(context.messages)
     try:
-        count = execute_tool_loop(context.messages, tools=(lambda: [t for t in tools if not (regenerate and not context.route_preparation and t["name"] == "create_route_plan")]), handlers=handlers, runtime=hooks,
-                                  system=system, max_tokens=4096, max_steps=MAX_ROUTE_STEPS,
-                                  client=client, tool_choice={"type": "any"})
+        from integrations.google_places import places_request_scope
+        with places_request_scope(on_progress):
+            count = execute_tool_loop(context.messages, tools=(lambda: [t for t in tools if not (regenerate and not context.route_preparation and t["name"] == "create_route_plan")]), handlers=handlers, runtime=hooks,
+                                      system=system, max_tokens=4096, max_steps=MAX_ROUTE_STEPS,
+                                      client=client, tool_choice={"type": "any"})
         if context.execution_trace and context.execution_trace[-1].get("tool") == CLARIFY and context.execution_trace[-1].get("status") != "blocked":
             result = {"status": "clarification_required", "answer": context.execution_trace[-1]["result"]["answer"]}
         else:

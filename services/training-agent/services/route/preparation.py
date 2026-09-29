@@ -60,6 +60,12 @@ def resolve_material_points(materials, *, config):
                         materials["origin_id"], materials.get("destination_id"), *materials.get("ordered_point_ids", [])}
                         or any(c.get("required") and point["id"] in c["point_ids"] for c in materials.get("corridors", [])))
                     if mandatory or exc.code not in {"place_ambiguous", "place_not_found"}:
+                        if exc.code in {"place_ambiguous", "place_not_found"}:
+                            evidence = getattr(exc, 'place_resolution', {})
+                            evidence.update(point_id=point['id'], is_origin=point['id'] == materials['origin_id'],
+                                            required=bool(point.get('required')),
+                                            recovery='核对本轮用户要求。用户明确指定的地点不得替换；模型自选起点可从已有来源选择替代地点，重新提交完整材料并同步调整起终点与走廊。不要只重复扩写原查询。')
+                            exc.place_resolution = evidence
                         raise
                     continue
             coordinate = [float(place.get("display_longitude", place["longitude"])),
@@ -98,7 +104,10 @@ def resolve_google_locality(locality, country, config):
     city = next(iter(cities.values()))
     # Retrieve another language for the same Place ID, not an unverified alias
     # table. Places may return English components even for a Chinese request.
-    translated = client.search(f"{locality}, {country}", language_code="en", limit=5).get("places") or []
+    from services.route.place_resolution import LOCAL_LANGUAGES
+    translated = []
+    for language in dict.fromkeys(['en', LOCAL_LANGUAGES.get(country, 'en')]):
+        translated.extend(client.search(f"{locality}, {country}", language_code=language, limit=5).get("places") or [])
     same_city = [p for p in translated if p.get("id") == city["id"]
                  and p.get("country_code") == country and "locality" in (p.get("types") or [])]
     names = [*city["localities"], *[name for p in same_city for name in p.get("localities") or []]]
