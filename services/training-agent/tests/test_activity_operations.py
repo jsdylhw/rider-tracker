@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from agent.main_agent.context import AgentContext
 from agent.tools.handlers.activity_operations import _install_synced_activity_selection
 from operations.activity.reporting import ensure_summary
@@ -164,3 +166,54 @@ def test_embedded_operations_resolve_persisted_paths_from_rider_root(monkeypatch
     assert analyzed_paths == [str(fit.resolve())]
     assert upload["error"] == "network_error"
     assert uploaded_paths == [str(fit.resolve())]
+
+
+@pytest.mark.parametrize("retryable", [True, False])
+def test_all_downloads_failed_exposes_error_and_retryability(monkeypatch, retryable):
+    from agent.main_agent.tool_result import remember_failed_action, is_failed_tool_output
+    failures = [{"activity_id": i, "error": "garmin_network_error", "retryable": retryable} for i in (1, 2)]
+    monkeypatch.setattr("operations.activity.sync.sync_garmin_activities_tool", lambda **_: {
+        "downloaded": 0, "skipped": 0, "failed": 2, "failed_items": failures,
+    })
+    result = sync_recent(count=2)
+    assert result["status"] == "failed"
+    assert result["error"] == "garmin_network_error"
+    assert result["failed_items"] == failures
+    assert result["retryable"] is retryable
+    assert is_failed_tool_output(result)
+    ctx = AgentContext(session_id="all-downloads-failed")
+    remember_failed_action(ctx, "sync_garmin_activities", {"count": 2}, result)
+    assert bool(ctx.last_failed_action) is retryable
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ({"downloaded": 0, "skipped": 0, "failed": 0}, "completed"),
+    ({"downloaded": 0, "skipped": 2, "failed": 0}, "completed"),
+    ({"downloaded": 0, "skipped": 1, "failed": 1}, "partial"),
+])
+def test_empty_and_already_downloaded_are_not_all_failed(monkeypatch, raw, expected):
+    monkeypatch.setattr("operations.activity.sync.sync_garmin_activities_tool", lambda **_: raw)
+    result = sync_recent(count=2)
+    assert result["status"] == expected
+    assert "error" not in result
+
+
+def test_all_downloads_failed_can_retry_through_control_turn(monkeypatch):
+    from agent.main_agent.tool_result import remember_failed_action
+    from agent.main_agent.turn_control import handle_control_turn
+    from agent.tools.handlers.activity_operations import sync_garmin_activities
+    calls = []
+    def sync(**kwargs):
+        calls.append(kwargs)
+        return ({"failed": 2, "failed_items": [{"error": "garmin_network_error", "retryable": True}]}
+                if len(calls) == 1 else {"failed": 0, "skipped": 2})
+    monkeypatch.setattr("operations.activity.sync.sync_garmin_activities_tool", sync)
+    ctx = AgentContext(session_id="download-retry", active_skill_id="sync-garmin-activities",
+                       selected_activities=[{"activity_key": "old", "fit_path": "old.fit"}])
+    result = sync_garmin_activities({"count": 2}, ctx)
+    assert ctx.selected_activities == []
+    remember_failed_action(ctx, "sync_garmin_activities", {"count": 2}, result)
+    retried = handle_control_turn("重试", ctx)
+    assert retried["status"] == "completed"
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert ctx.last_failed_action is None

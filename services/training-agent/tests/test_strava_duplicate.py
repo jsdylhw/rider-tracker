@@ -91,13 +91,14 @@ def test_normal_upload_persists_remote_id(tmp_path, monkeypatch):
     assert store.get_activity(key)["strava_activity_id"] == "98765"
 
 
-def test_upload_status_failure_preserves_pending_upload_id(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure", [requests.ConnectionError("TLS EOF"), RuntimeError("HTTP 429"), ValueError("invalid response")])
+def test_upload_status_failure_preserves_pending_upload_id(tmp_path, monkeypatch, failure):
     monkeypatch.chdir(tmp_path)
     _, key = _stored_activity(tmp_path)
     with patch("operations.activity.strava.StravaSink") as sink_class:
         sink = sink_class.return_value
         sink.upload_fit.return_value = {"id": 12345}
-        sink.wait_for_upload.side_effect = requests.ConnectionError("TLS EOF")
+        sink.wait_for_upload.side_effect = failure
 
         with pytest.raises(StravaUploadStatusError) as exc_info:
             upload_activity_to_strava(key)
@@ -147,3 +148,40 @@ def test_stored_activity_upload_does_not_require_report_generation(tmp_path, mon
         external_id="rider-1",
         sport_type="VirtualRide",
     )
+
+
+@pytest.mark.parametrize("http_status", [429, 503])
+def test_workflow_http_poll_failure_retries_without_reposting(tmp_path, monkeypatch, http_status):
+    from integrations.strava import StravaSink
+    from operations.activity.workflow_factory import create_activity_run_from_activities, TASK_UPLOAD_STRAVA
+    from operations.activity.workflow_executor import execute_activity_run
+    from operations.activity.workflow_service import retry_activity_workflow
+
+    monkeypatch.chdir(tmp_path)
+    store, key = _stored_activity(tmp_path)
+    run = create_activity_run_from_activities(
+        [store.get_activity(key)],
+        request={"source": "test", "goals": [TASK_UPLOAD_STRAVA], "force": False},
+        directory=tmp_path,
+    )["run"]
+    response = requests.Response()
+    response.status_code = http_status
+    response._content = b'{"message":"upstream unavailable"}'
+    parse_response = StravaSink._json_or_raise
+    with patch("operations.activity.strava.StravaSink") as sink_class:
+        sink = sink_class.return_value
+        sink.upload_fit.return_value = {"id": 12345}
+        sink.wait_for_upload.side_effect = lambda *_: parse_response(response)
+        execute_activity_run(run, directory=tmp_path)
+        task = next(t for t in run["tasks"] if t["kind"] == TASK_UPLOAD_STRAVA)
+        assert task["status"] == "failed"
+        assert task["pending_upload_id"] == "12345"
+
+        sink.wait_for_upload.side_effect = None
+        sink.wait_for_upload.return_value = {"activity_id": 98765}
+        resumed = retry_activity_workflow(run["workflow_id"], directory=tmp_path)
+
+        assert resumed["status"] == "completed"
+        sink.upload_fit.assert_called_once()
+        sink.wait_for_upload.assert_called_with("12345")
+        assert store.get_activity(key)["strava_activity_id"] == "98765"

@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-import requests
 
 from storage.repositories.activity import ActivityStore
 from project_paths import resolve_project_path
@@ -129,7 +128,8 @@ def upload_activity_to_strava(
     if wait and upload_id is not None:
         try:
             result["upload_status"] = sink.wait_for_upload(upload_id)
-        except (requests.RequestException, TimeoutError) as exc:
+        except Exception as exc:
+            # HTTP errors and malformed responses also occur after acceptance.
             # Preserve the remote upload identity. Retrying may poll this ID,
             # but must not submit the FIT again.
             raise StravaUploadStatusError(upload_id, exc) from exc

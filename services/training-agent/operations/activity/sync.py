@@ -24,7 +24,7 @@ def sync_recent(*, count: int = 5, force_download: bool = False) -> dict[str, An
 
     failed = int(result.get("failed") or 0)
     index_errors = [item for item in result.get("index_errors") or [] if isinstance(item, dict)]
-    return {
+    response = {
         "operation": "sync_recent",
         "status": "partial" if failed or index_errors else "completed",
         "activities": result.get("indexed_items") or [],
@@ -37,3 +37,16 @@ def sync_recent(*, count: int = 5, force_download: bool = False) -> dict[str, An
         "force_download": bool(force_download),
         "raw_result": result,
     }
+
+    # A batch with no successful or already-present files is not partial success.
+    # Keep per-item diagnostics and expose a top-level failure to the Agent.
+    if failed and not response["downloaded"] and not response["skipped"] and not response["activities"]:
+        failures = [item for item in response["failed_items"] if isinstance(item, dict)]
+        codes = {item.get("error") for item in failures if item.get("error")}
+        response.update({
+            "status": "failed",
+            "error": next(iter(codes)) if len(codes) == 1 else "garmin_sync_failed",
+            "message": f"Garmin 活动下载全部失败（{failed} 条）；未取得可用活动。",
+            "retryable": any(item.get("retryable") is True for item in failures),
+        })
+    return response

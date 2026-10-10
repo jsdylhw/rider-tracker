@@ -60,7 +60,11 @@ def _install_activity_selection(
             "type": scope_type,
             "workflow_id": result.get("workflow_id"),
         })
-    elif status in {"completed", "partial", "no_activities"} or result.get("error") == "activity_index_failed":
+    elif (
+        status in {"completed", "partial", "no_activities"}
+        or result.get("error") == "activity_index_failed"
+        or (status == "failed" and result.get("operation") == "sync_recent" and result.get("failed"))
+    ):
         context.clear_activities()
 
 
