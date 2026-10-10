@@ -20,6 +20,37 @@ from app.runtime_config import build_runtime_environment, load_runtime_environme
 ROOT = Path(__file__).resolve().parents[3]
 
 
+@pytest.mark.parametrize('stderr', ['', 'Address already in use'])
+def test_npm_entry_reports_python_exit_without_misdiagnosing_runtime_errors(tmp_path, stderr):
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node is required for the npm convenience entry')
+    # Use Node as a synthetic interpreter that exits before loading Python code.
+    # This reproduces the silent Windows application-alias failure without
+    # depending on an installed alias or touching the user's configuration.
+    code = 1 if stderr else (9009 if sys.platform == 'win32' else 23)
+    preload = tmp_path / 'silent-interpreter.cjs'
+    preload.write_text("if (process.argv[1]?.endsWith('start-rider.py')) {"
+                       f"process.stderr.write({json.dumps(stderr)}); process.exit({code});" + "}")
+    env = {**os.environ, 'PYTHON_EXECUTABLE': node,
+           'NODE_OPTIONS': '--require ' + json.dumps(preload.as_posix()),
+           'RIDER_CONFIG_PATH': str(tmp_path / 'absent.yaml'),
+           'RIDER_ENV_PATH': str(tmp_path / 'absent.env'),
+           'RIDER_OPEN_BROWSER': 'false', 'PYTHONIOENCODING': 'utf-8'}
+    result = subprocess.run([node, str(ROOT / 'scripts/start-python.js')],
+                            cwd=ROOT, env=env, capture_output=True, encoding='utf-8', timeout=10)
+    assert result.returncode != 0
+    assert str(code) in result.stderr
+    if stderr:
+        assert stderr in result.stderr
+        assert 'npm run setup:agent' not in result.stderr
+    else:
+        assert 'npm run setup:agent' in result.stderr
+        assert 'PYTHON_EXECUTABLE' in result.stderr
+    if sys.platform == 'win32' and not stderr:
+        assert 'Microsoft Store' in result.stderr
+
+
 @pytest.mark.parametrize('values,environment', [
     ({}, {}),
     ({}, {'RIDER_DATA_ROOT': 'relative-data'}),
