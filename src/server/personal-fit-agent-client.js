@@ -251,7 +251,7 @@ function responseError(response, payload) {
     const detail = payload?.detail;
     const message = typeof detail === "string"
         ? detail
-        : detail?.message || payload?.message || payload?.error || `Personal FIT Agent 请求失败（HTTP ${response.status}）`;
+        : detail?.message || payload?.message || payload?.error || `骑行助手请求失败（HTTP ${response.status}）`;
     const error = new Error(message);
     error.statusCode = response.status;
     error.detail = detail;

@@ -63,7 +63,7 @@ export function createAgentRoutePreviewService({
         if (!operations.ensureRouteEditingAllowed()) return null;
         invalidateExploration?.();
         const { requestId, route: loadingRoute } = operations.beginRouteRequest(
-            currentDraft ? "正在基于所选路线重新生成候选..." : "正在请求 Personal FIT Agent 生成路线候选..."
+            currentDraft ? "正在基于所选路线重新生成候选..." : "正在生成路线候选..."
         );
         try {
             const request = currentDraft
@@ -91,10 +91,10 @@ export function createAgentRoutePreviewService({
                     draft,
                     candidateId,
                     true,
-                    draft.dailyItinerary ? `已恢复 ${draft.candidates.length} 天骑行行程` : `Agent 已返回 ${draft.candidates.length} 条候选，正在预览首条`
+                    draft.dailyItinerary ? `已恢复 ${draft.candidates.length} 天骑行行程` : `已生成 ${draft.candidates.length} 条候选，正在预览首条`
                 );
             } else {
-                operations.clearRouteLoading(`Agent 已返回 ${draft.candidates.length} 条路线候选，请先预览再最终确认。`);
+                operations.clearRouteLoading(`已生成 ${draft.candidates.length} 条路线候选，请先预览再最终确认。`);
             }
             return draft;
         } catch (error) {

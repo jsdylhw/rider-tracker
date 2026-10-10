@@ -70,7 +70,7 @@ function parseCandidate(candidate, view) {
         durationLabel: daily
             ? ({ BICYCLE: "预计骑行", DRIVE: "地图驾车时间（虚拟观景路径）" }[measured.travel_mode] || "地图行程时间")
             : "虚拟骑行约",
-        provider: text(measured.provider) || "Personal FIT Agent",
+        provider: text(measured.provider) || "AI 路线规划",
         travelMode: text(measured.travel_mode) || "BICYCLE",
         stravaSegments: (measured.segment_sequence ?? []).map((item) => item?.segment_id).filter(Boolean).join(", "),
         confirmed: daily ? candidate.confirmed === true : text(view.confirmed_candidate_id) === candidateId,

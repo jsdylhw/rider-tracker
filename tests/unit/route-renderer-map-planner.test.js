@@ -100,7 +100,7 @@ export const suite = {
                 const latestSelection = plannerSelections.at(-1);
                 assertEqual(latestSelection, null);
                 assertEqual(elements.setupElevationChartShell.hidden, true);
-                assertEqual(elements.mapRouteSelectionStatus.textContent, "起步路线已生成，可开始骑行或重新选点");
+                assertEqual(elements.mapRouteSelectionStatus.textContent, "探索路线已生成，可开始骑行或重新选点");
                 assertEqual(elements.planMapRouteBtn.hidden, true);
                 assertEqual(elements.clearMapRouteSelectionBtn.textContent, "重选路线");
 

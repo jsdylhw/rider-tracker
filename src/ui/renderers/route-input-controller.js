@@ -301,12 +301,12 @@ export function createRouteInputController({
                 : routeLoading
                     ? "正在处理路线，完成前不能开始骑行"
                     : hasGeneratedRoute
-                        ? "起步路线已生成，可开始骑行或重新选点"
+                        ? "探索路线已生成，可开始骑行或重新选点"
                         : isPlanningMapRoute
-                            ? "正在请求路网并生成起步路线..."
+                            ? "正在生成探索路线..."
                             : mapRouteSelection.start && mapRouteSelection.destination
-                                ? "起点和起步目标已选择，可生成起步路线"
-                                : mapRouteSelection.start ? "已选择起点，点击地图选择起步目标" : "点击地图选择起点";
+                                ? "已选起点和探索方向，可以生成路线"
+                                : mapRouteSelection.start ? "已选起点，点击地图确定探索方向" : "点击地图选择起点";
         }
         if (elements.mapRouteStartText) elements.mapRouteStartText.textContent = formatPoint(mapRouteSelection.start);
         if (elements.mapRouteDestinationText) elements.mapRouteDestinationText.textContent = formatPoint(mapRouteSelection.destination);
@@ -369,7 +369,7 @@ export function createRouteInputController({
         if (elements.requestMapDrawElevationBtn) {
             elements.requestMapDrawElevationBtn.hidden = !hasGeneratedRoute || route?.hasElevationData === true;
             elements.requestMapDrawElevationBtn.disabled = routeEditingLocked || routeLoading || isRequestingMapDrawElevation;
-            elements.requestMapDrawElevationBtn.textContent = isRequestingMapDrawElevation ? "正在请求参考海拔" : "请求参考海拔";
+            elements.requestMapDrawElevationBtn.textContent = isRequestingMapDrawElevation ? "正在获取参考海拔" : "获取参考海拔";
         }
         if (elements.mapDrawRoutePlanStatus) {
             const statusText = mapDrawFeedback || (hasGeneratedRoute ? (lastRenderedState?.statusText ?? "") : "");

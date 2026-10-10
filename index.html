@@ -82,16 +82,16 @@
                     <div id="routeCardContainer">
                         <div id="routeCard" class="card">
                             <div class="section-title-row">
-                                <div><h2>路线轨迹设置</h2></div>
+                                <div><h2>骑行路线</h2></div>
                             </div>
                             <div class="import-panel">
                                 <div class="route-source-toolbar">
                                     <div class="route-mode-tabs" role="tablist" aria-label="路线来源">
-                                        <button id="routeModeAiBtn" class="route-mode-tab route-mode-tab-ai" type="button" data-route-mode="ai">AI 路线</button>
+                                        <button id="routeModeAiBtn" class="route-mode-tab route-mode-tab-ai" type="button" data-route-mode="ai">AI 规划</button>
                                         <button id="routeModeLibraryBtn" class="route-mode-tab" type="button" data-route-mode="library">我的路线</button>
-                                        <button id="routeModeManualBtn" class="route-mode-tab" type="button" data-route-mode="manual">自定义线路</button>
-                                        <button id="routeModeDrawBtn" class="route-mode-tab" type="button" data-route-mode="draw">地图选择路线</button>
-                                        <button id="routeModeMapBtn" class="route-mode-tab" type="button" data-route-mode="map">地图探索</button>
+                                        <button id="routeModeManualBtn" class="route-mode-tab" type="button" data-route-mode="manual">分段编辑</button>
+                                        <button id="routeModeDrawBtn" class="route-mode-tab" type="button" data-route-mode="draw">地图选点</button>
+                                        <button id="routeModeMapBtn" class="route-mode-tab" type="button" data-route-mode="map">自由探索</button>
                                     </div>
                                 </div>
 
@@ -99,14 +99,14 @@
                                     <div class="route-library-source-tabs" role="tablist" aria-label="我的路线来源">
                                         <button id="routeLibraryLocalTabBtn" class="route-library-source-tab active" type="button">本地路线库</button>
                                         <button id="routeLibraryStravaTabBtn" class="route-library-source-tab" type="button">Strava 路线</button>
-                                        <button id="routeLibraryGpxTabBtn" class="route-library-source-tab" type="button">GPX 文件导入</button>
+                                        <button id="routeLibraryGpxTabBtn" class="route-library-source-tab" type="button">导入 GPX</button>
                                     </div>
                                     <section id="routeLibraryLocalPanel" class="route-library-source-panel">
                                         <div class="route-library-source-heading">
                                             <div class="route-library-source-copy">
-                                                <span class="route-library-kicker">LOCAL ROUTES</span>
+                                                <span class="route-library-kicker">本地保存</span>
                                                 <strong>本地路线库</strong>
-                                                <p>选择已经保存的路线，可以从起点重新开始或继续上次进度。</p>
+                                                <p>选择已保存的路线，从起点加载或继续上次进度。</p>
                                             </div>
                                             <button id="refreshSavedRoutesBtn" class="btn ghost route-library-header-action" type="button" aria-label="刷新本地路线库">刷新列表</button>
                                         </div>
@@ -115,15 +115,15 @@
                                                 <option value="">暂无已保存路线</option>
                                             </select>
                                             <div class="route-library-primary-actions">
-                                                <button id="loadSavedRouteBtn" class="btn secondary" type="button">从起点使用</button>
-                                                <button id="continueSavedRouteBtn" class="btn primary" type="button">从进度继续</button>
+                                                <button id="loadSavedRouteBtn" class="btn secondary" type="button">从起点加载</button>
+                                                <button id="continueSavedRouteBtn" class="btn primary" type="button">继续上次路线</button>
                                             </div>
                                         </div>
                                         <div class="route-library-footer-row">
-                                            <div id="savedRouteLibraryStatus" class="route-library-status" aria-live="polite">进入本地路线库后读取已保存路线。</div>
+                                            <div id="savedRouteLibraryStatus" class="route-library-status" aria-live="polite">选择一条路线，开始准备骑行。</div>
                                             <div class="route-library-secondary-actions">
                                                 <button id="saveCurrentRouteBtn" class="route-library-text-action" type="button">保存当前路线</button>
-                                                <button id="deleteSavedRouteBtn" class="route-library-text-action danger" type="button">删除所选</button>
+                                                <button id="deleteSavedRouteBtn" class="route-library-text-action danger" type="button">删除所选路线</button>
                                             </div>
                                         </div>
                                     </section>
@@ -131,29 +131,29 @@
                                     <section id="routeLibraryStravaPanel" class="route-library-source-panel" hidden>
                                         <div class="route-library-source-heading">
                                             <div class="route-library-source-copy">
-                                                <span class="route-library-kicker strava">STRAVA ROUTES</span>
+                                                <span class="route-library-kicker strava">账号路线</span>
                                                 <strong>Strava 路线</strong>
-                                                <p>优先读取本地目录缓存，需要最新内容时再连接 Strava 刷新。</p>
+                                                <p>选择 Strava 路线导入；找不到最新路线时，点击刷新。</p>
                                             </div>
-                                            <button id="refreshStravaRoutesBtn" class="btn ghost route-library-header-action strava" type="button">刷新最新路线</button>
+                                            <button id="refreshStravaRoutesBtn" class="btn ghost route-library-header-action strava" type="button">刷新路线</button>
                                         </div>
                                         <div class="route-library-control-row">
                                             <select id="stravaRouteSelect" aria-label="选择 Strava 路线" disabled>
-                                                <option value="">尚未缓存 Strava 路线</option>
+                                                <option value="">暂无 Strava 路线</option>
                                             </select>
                                             <button id="importStravaRouteBtn" class="btn primary" type="button" disabled>导入并使用</button>
                                         </div>
                                         <div id="stravaRouteImportStatus" class="route-import-status" aria-live="polite">
-                                            点击“刷新最新路线”建立本地目录缓存。
+                                            点击“刷新路线”获取你的 Strava 路线。
                                         </div>
                                     </section>
 
                                     <section id="routeLibraryGpxPanel" class="route-library-source-panel" hidden>
                                         <div class="route-library-source-heading">
                                             <div class="route-library-source-copy">
-                                                <span class="route-library-kicker">LOCAL FILE</span>
-                                                <strong>GPX 文件导入</strong>
-                                                <p>读取坐标与海拔，保存到本地路线库并立即设为当前路线。</p>
+                                                <span class="route-library-kicker">文件导入</span>
+                                                <strong>导入 GPX</strong>
+                                                <p>导入轨迹和海拔，保存到路线库并在地图中预览。</p>
                                             </div>
                                         </div>
                                         <label class="route-file-picker">
@@ -167,11 +167,11 @@
                                 <div id="aiRoutePanel" class="route-mode-panel ai-route-panel" hidden>
                                     <div class="ai-route-panel-heading">
                                         <div>
-                                            <span class="ai-route-kicker">AI Route Studio</span>
-                                            <strong>用对话生成和修改路线</strong>
-                                            <p>路线对话固定保留在此页面；候选选择后在下方唯一地图中预览。</p>
+                                            <span class="ai-route-kicker">AI 路线规划</span>
+                                            <strong>描述需求，生成路线</strong>
+                                            <p>选择候选查看地图，继续对话调整路线。</p>
                                         </div>
-                                        <span class="ai-route-prototype-badge">Personal FIT Agent</span>
+                                        <span class="ai-route-prototype-badge">虚拟骑行</span>
                                     </div>
 
                                     <div class="ai-route-planner-grid">
@@ -199,21 +199,21 @@
                                         <section class="ai-route-results" aria-label="AI 路线候选">
                                             <div class="ai-route-results-heading">
                                                 <div>
-                                                    <span>本轮候选</span>
-                                                    <strong id="aiRouteResultTitle">等待生成路线</strong>
+                                                    <span>候选路线</span>
+                                                    <strong id="aiRouteResultTitle">还没有候选路线</strong>
                                                 </div>
-                                                <span id="aiRouteResultStatus">等待生成或选择</span>
+                                                <span id="aiRouteResultStatus">输入需求，开始规划</span>
                                             </div>
                                             <div class="ai-route-draft-actions">
                                                 <button id="aiRouteExploreSegmentsBtn" class="btn secondary" type="button">查找附近 Strava 路段</button>
-                                                <button id="aiRouteReverseBtn" class="btn ghost" type="button">反转当前路线</button>
+                                                <button id="aiRouteReverseBtn" class="btn ghost" type="button">反向骑行</button>
                                                 <button id="aiRouteUndoBtn" class="btn ghost" type="button">撤销修改</button>
                                             </div>
                                             <div id="aiRouteCandidates" class="ai-route-candidates"></div>
                                             <section id="aiRouteSegmentPanel" class="ai-route-segment-panel" hidden>
                                                 <div class="ai-route-segment-heading">
                                                     <div>
-                                                        <span>Strava 路段池</span>
+                                                        <span>可选 Strava 路段</span>
                                                         <strong>按点击顺序选择 1–3 个路段</strong>
                                                     </div>
                                                     <button id="aiRouteClearSegmentsBtn" class="btn ghost" type="button">清空选择</button>
@@ -221,20 +221,20 @@
                                                 <div id="aiRouteSegmentList" class="ai-route-segment-list"></div>
                                                 <div class="ai-route-segment-compose">
                                                     <span id="aiRouteSegmentSelection">尚未选择路段</span>
-                                                    <button id="aiRouteComposeSegmentsBtn" class="btn primary" type="button" disabled>按顺序拼接路线</button>
+                                                    <button id="aiRouteComposeSegmentsBtn" class="btn primary" type="button" disabled>生成组合路线</button>
                                                 </div>
                                             </section>
                                         </section>
                                     </div>
                                     <div id="aiRoutePrototypeNotice" class="ai-route-prototype-notice">
-                                        AI 虚拟路线不请求海拔，坡度按 0 处理，适合配合 ERG 课表骑行；坡度模拟请继续使用带海拔的 GPX 或 Strava 路线。
+                                        AI 路线按平坡骑行，适合 ERG 训练；爬升估算仅供参考。坡度模拟请使用带海拔的 GPX 或 Strava 路线。
                                     </div>
                                 </div>
 
                                 <div id="manualRoutePanel" class="route-mode-panel">
                                     <div class="route-panel-head">
                                         <div>
-                                            <strong>自定义距离线路</strong>
+                                            <strong>编辑路线分段</strong>
                                             <span>手动编辑距离和参考坡度；坡度模拟请使用 GPX 或 Strava 路线。</span>
                                         </div>
                                         <div class="inline-actions">
@@ -244,7 +244,7 @@
                                     </div>
                                     <div id="routeTableShell" class="table-shell">
                                         <table class="route-table">
-                                            <thead><tr><th>名称</th><th>距离 km</th><th>参考坡度 %</th><th>操作</th></tr></thead>
+                                            <thead><tr><th>名称</th><th>距离（km）</th><th>参考坡度（%）</th><th>操作</th></tr></thead>
                                             <tbody id="routeTableBody"></tbody>
                                         </table>
                                     </div>
@@ -253,18 +253,18 @@
                                 <div id="mapDrawRoutePanel" class="route-mode-panel map-route-planner" hidden>
                                     <div class="map-route-planner-head">
                                         <div>
-                                            <span>地图选择路线</span>
+                                            <span>地图选点</span>
                                             <strong id="mapDrawRouteStatus">点击地图依次添加起点、途经点和终点</strong>
                                         </div>
                                         <div class="map-route-actions">
-                                            <button id="undoMapDrawWaypointBtn" class="btn ghost" type="button">撤销上一个点</button>
+                                            <button id="undoMapDrawWaypointBtn" class="btn ghost" type="button">撤销选点</button>
                                             <button id="clearMapDrawRouteBtn" class="btn ghost" type="button">清空</button>
                                             <button id="createMapDrawRouteBtn" class="btn primary" type="button">生成路线</button>
-                                            <button id="requestMapDrawElevationBtn" class="btn secondary" type="button" hidden>请求参考海拔</button>
+                                            <button id="requestMapDrawElevationBtn" class="btn secondary" type="button" hidden>获取参考海拔</button>
                                         </div>
                                     </div>
                                     <div class="map-route-selection-card start">
-                                        <span>已选点位</span>
+                                        <span>途经点</span>
                                         <strong id="mapDrawWaypointSummary">尚未选择</strong>
                                     </div>
                                     <div id="mapDrawRoutePlanStatus" class="map-route-plan-status" hidden aria-live="polite"></div>
@@ -273,12 +273,12 @@
                                 <div id="mapRoutePanel" class="route-mode-panel map-route-planner">
                                     <div class="map-route-planner-head">
                                         <div>
-                                            <span>街景探索选点</span>
+                                            <span>自由探索</span>
                                             <strong id="mapRouteSelectionStatus">点击地图选择起点</strong>
                                         </div>
                                         <div class="map-route-actions">
                                             <button id="clearMapRouteSelectionBtn" class="btn ghost" type="button">清空</button>
-                                            <button id="planMapRouteBtn" class="btn primary" type="button">生成起步路线</button>
+                                            <button id="planMapRouteBtn" class="btn primary" type="button">生成探索路线</button>
                                         </div>
                                     </div>
                                     <div class="map-route-selection-grid">
@@ -287,7 +287,7 @@
                                             <strong id="mapRouteStartText">未选择</strong>
                                         </div>
                                         <div class="map-route-selection-card destination">
-                                            <span>起步目标</span>
+                                            <span>探索方向</span>
                                             <strong id="mapRouteDestinationText">未选择</strong>
                                         </div>
                                     </div>
@@ -295,19 +295,19 @@
                                 </div>
 
                             </div>
-                            <section class="current-route-preview" aria-label="当前路线预览">
+                            <section class="current-route-preview" aria-label="当前路线">
                                 <div class="current-route-preview-heading">
                                     <div>
-                                        <span class="route-library-kicker">CURRENT ROUTE</span>
-                                        <h3>当前路线预览</h3>
+                                        <span class="route-library-kicker">地图预览</span>
+                                        <h3>当前路线</h3>
                                     </div>
                                     <button id="exportCurrentRouteGpxBtn" class="btn route-export-gpx" type="button" disabled>
                                         导出 GPX
                                     </button>
                                 </div>
-                                <div id="routeSummary" class="route-summary">尚未选择当前路线。</div>
+                                <div id="routeSummary" class="route-summary">选择或生成路线后，在这里查看地图。</div>
                                 <div id="routeCurrentSourceRow" class="route-source-row" hidden>
-                                    <span>当前路线来源</span>
+                                    <span>路线来源</span>
                                     <strong id="routeSourceLabel">尚未选择</strong>
                                 </div>
                                 <div id="routeMapShell" class="chart-shell route-map-shell route-map-exploration-shell" hidden>
@@ -857,7 +857,7 @@
                     <textarea id="agentMessageInput" rows="1" placeholder="询问活动或当前骑行……" aria-label="输入给 Training Agent 的消息"></textarea>
                     <button id="agentSendBtn" type="submit">发送</button>
                 </form>
-                <p class="agent-prototype-note">回答来自本地 Personal FIT Agent；不会自动修改骑行设置。</p>
+                <p class="agent-prototype-note">可查询活动、分析训练和规划路线；骑行设置由你确认。</p>
             </div>
 
             <aside id="agentWorkspace" class="agent-workspace" aria-label="结构化结果预览">

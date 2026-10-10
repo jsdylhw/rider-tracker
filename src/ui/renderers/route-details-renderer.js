@@ -177,7 +177,7 @@ export function createRouteDetailsRenderer({
         }
 
         const usedDrivingFallback = isMapDrawn && route.travelMode === "DRIVE";
-        const sourceText = isAgentPlanned ? "Personal FIT Agent 虚拟路线" : isExploration ? "OSM 地图探索" : isMapDrawn ? usedDrivingFallback ? "Google 道路路线（驾车回退）" : "Google 骑行路线" : isStrava ? "Strava 路线" : isGpx ? "GPX 导入" : "手工输入";
+        const sourceText = isAgentPlanned ? "AI 规划 · 虚拟路线" : isExploration ? "OSM 地图探索" : isMapDrawn ? usedDrivingFallback ? "Google 道路路线（驾车回退）" : "Google 骑行路线" : isStrava ? "Strava 路线" : isGpx ? "GPX 导入" : "手工输入";
         const segmentsText = isGpx || isStrava ? "" : `，共 ${route.segments.length} 段`;
         const elevationSource = resolveElevationSource(route);
         const hasGoogleReferenceElevation = elevationSource === ROUTE_ELEVATION_SOURCES.GOOGLE_ESTIMATED;

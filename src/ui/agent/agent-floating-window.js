@@ -164,7 +164,7 @@ export function createAgentFloatingWindow({
         } catch (error) {
             if (sequence !== requestSequence) return null;
             progress.finish({ status: "failed" });
-            const message = `请求失败：${error?.message || "无法连接本地 Personal FIT Agent"}`;
+            const message = `请求失败：${error?.message || "暂时无法连接骑行助手"}`;
             addTextMessage("agent", message, { error: true });
             present([], message);
             updateContext("连接失败");

@@ -20,7 +20,7 @@ export function parseAgentRouteDraft(turnResult) {
     }
     if (!turnResult?.route_plan) {
         if (turnResult?.status === "llm_unavailable") {
-            throw new Error("Personal FIT Agent 当前不可用，请稍后重试。");
+            throw new Error("路线规划服务暂时不可用，请稍后重试。");
         }
         throw new Error(String(
             turnResult?.answer

@@ -62,7 +62,7 @@ export function createAgentRoutePlanner({
         listen(elements.aiRouteExploreSegmentsBtn, "click", () => void runDraftAction(
             "正在查询当前路线附近的 Strava 热门路段……",
             () => onExploreAgentRouteSegments?.(activeCandidateId()),
-            "已更新 Strava 路段池，可以按顺序选择路段。"
+            "已更新 可选 Strava 路段，可以按顺序选择路段。"
         ));
         listen(elements.aiRouteReverseBtn, "click", () => void runDraftAction(
             "正在反转当前路线……", onReverseAgentRoute, "已反转当前路线，请检查地图后确认。"
@@ -99,7 +99,7 @@ export function createAgentRoutePlanner({
         if (!initialized && elements.aiRouteMessages && elements.aiRouteCandidates) {
             initialized = true;
             if (!lastHandoff) void sessions?.restore();
-            addMessage("agent", "告诉我起点、距离和偏好，我会生成真实路线候选。先预览，再继续修改或最终确认；无海拔虚拟路线适合配合 ERG 骑行。");
+            addMessage("agent", "告诉我起点、距离和偏好，我会生成路线候选。选择候选查看地图，也可以继续告诉我修改要求。");
             renderDraft();
         } else {
             updateCandidateSelection(state?.route?.agentCandidateId);
@@ -144,7 +144,7 @@ export function createAgentRoutePlanner({
         } catch (error) {
             if (sequence !== requestSequence) return;
             progress.finish("本次处理未完成");
-            addMessage("agent", `路线处理失败：${error?.message || "请确认 Personal FIT Agent 已启动后重试。"}`);
+            addMessage("agent", `路线处理失败：${error?.message || "路线规划服务暂时不可用，请稍后重试。"}`);
         } finally {
             progress.stop();
             stopActiveProgress = null;
@@ -204,8 +204,8 @@ export function createAgentRoutePlanner({
         );
         if (elements.aiRouteResultTitle) {
             elements.aiRouteResultTitle.textContent = candidates.length
-                ? currentDraft.dailyItinerary ? `骑行行程 · ${candidates.length} 天 · 已生成 ${candidates.filter(c => c.dayStatus === "ready").length} 天` : `Agent 路线候选 · ${candidates.length} 条`
-                : "等待生成路线";
+                ? currentDraft.dailyItinerary ? `骑行行程 · ${candidates.length} 天 · 已生成 ${candidates.filter(c => c.dayStatus === "ready").length} 天` : `候选路线 · ${candidates.length} 条`
+                : "还没有候选路线";
         }
         updateResultStatus(selectedId);
     }
@@ -369,11 +369,11 @@ export function createAgentRoutePlanner({
         }
         const candidate = currentDraft?.candidates?.find((item) => item.candidateId === selectedId);
         if (currentDraft?.dailyItinerary) {
-            elements.aiRouteResultStatus.textContent = candidate ? `当前选中第 ${candidate.day} 天；可生成路线或在左侧修改当天要求。` : "请选择一天";
+            elements.aiRouteResultStatus.textContent = candidate ? `已选第 ${candidate.day} 天，可生成路线或继续对话修改。` : "请选择一天";
             return;
         }
         elements.aiRouteResultStatus.textContent = !candidate
-            ? "等待生成或选择"
+            ? "输入需求，开始规划"
             : currentDraft.planningStatus === "confirmed"
                 ? `已确认：${candidate.name}`
                 : `正在预览：${candidate.name}`;
@@ -383,7 +383,7 @@ export function createAgentRoutePlanner({
         const article = documentRef.createElement("article");
         article.className = `ai-route-message is-${role}${pending ? " is-pending" : ""}`;
         const label = documentRef.createElement("span");
-        label.textContent = role === "user" ? "你" : "Agent";
+        label.textContent = role === "user" ? "你" : "路线助手";
         const body = documentRef.createElement("p");
         body.textContent = text;
         article.messageBody = body;
