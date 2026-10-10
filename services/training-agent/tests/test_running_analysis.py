@@ -116,8 +116,8 @@ def test_running_efficiency_rejects_non_running_activity():
 
 
 def test_running_prompt_includes_sport_specific_guidance():
-    assert "Running analysis mode" in build_fit_analysis_system_prompt("running")
-    assert "Running analysis mode" not in build_fit_analysis_system_prompt("cycling")
+    assert "# 跑步证据与判断" in build_fit_analysis_system_prompt("running")
+    assert "# 跑步证据与判断" not in build_fit_analysis_system_prompt("cycling")
 
 
 def test_running_ignores_fit_ftp_and_cycling_load_metrics():

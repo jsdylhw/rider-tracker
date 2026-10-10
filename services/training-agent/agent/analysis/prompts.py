@@ -34,15 +34,6 @@ Analysis strategy:
 - Request get_history only when the user asked to reference history or when longitudinal comparison materially improves the answer.
 """
 
-FIT_ANALYSIS_RUNNING_GUIDANCE = """\
-Running analysis mode:
-- Prefer pace (min/km), kilometre splits, heart-rate response, elevation and cadence (spm) over cycling power concepts.
-- For a full running report, use the stored metrics/features first. Treat missing running-dynamics fields as unavailable data, not as a performance fault.
-- Use a focused time or distance interval when a stored fast-running candidate needs verification. Do not call an effort a sprint solely from high heart rate or downhill speed.
-- Use get_running_efficiency when the user asks about late-run pacing, heart-rate drift, cadence stability, or form change. It is descriptive only: do not attribute a change to fatigue without considering terrain and conditions.
-- Running power is optional. Do not calculate cycling FTP/IF/TSS conclusions when the FIT file has no valid running-power threshold data.
-"""
-
 # -- 输出格式约定 -------------------------------------------------------
 
 FIT_ANALYSIS_OUTPUT_CONTRACT = """\
@@ -72,8 +63,11 @@ _FIT_ANALYSIS_SECTIONS = (
 def build_fit_analysis_system_prompt(sport_type: str | None = None) -> str:
     """组装完整 FIT analysis system prompt，并按运动类型注入专项规则。"""
     sections = list(_FIT_ANALYSIS_SECTIONS)
-    if "run" in str(sport_type or "").lower():
-        sections.insert(2, FIT_ANALYSIS_RUNNING_GUIDANCE)
+    # Main Agent and FIT worker share the same sport evidence rules.
+    from agent.skills import get_skill, load_sport_references
+
+    skill = get_skill("analyze-activity")
+    sections[2:2] = load_sport_references(skill, sport_types=[sport_type or ""])
     return "\n\n".join(section.strip() for section in sections)
 
 

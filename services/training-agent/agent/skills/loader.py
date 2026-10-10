@@ -73,7 +73,7 @@ def _sport_reference_names(sport_types: Iterable[str]) -> tuple[str, ...]:
             name = "running"
         elif any(token in value for token in ("ride", "cycl", "bike", "骑")):
             name = "cycling"
-        elif any(token in value for token in ("walk", "hike", "徒步", "步行")):
+        elif any(token in value for token in ("walk", "hike", "hiking", "徒步", "步行")):
             name = "walking"
         if name and name not in names:
             names.append(name)
