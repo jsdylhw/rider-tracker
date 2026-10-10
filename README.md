@@ -108,7 +108,7 @@ http://localhost:8787
 - `athlete`：FTP、体重以及最大/静息心率。
 
 真实配置、OAuth Token、FIT 文件和活动数据库不会提交到 Git。
-详细依赖关系见 [本地配置与功能能力矩阵](docs/feature-capability-matrix.md)。
+详细依赖关系见 [本地配置与功能能力矩阵](docs/architecture/feature-capability-matrix.md)。
 
 ## 基本使用流程
 
@@ -142,7 +142,7 @@ npm run test:all          # 运行完整测试
 ```
 
 参与开发或使用编码 Agent 修改项目时，请从 [开发文档导航](docs/README.md) 和
-[开发与排障指南](docs/development-guide.md) 开始；它们说明当前代码 owner、主要业务时序、测试边界和
+[开发与排障指南](docs/architecture/development-guide.md) 开始；它们说明当前代码 owner、主要业务时序、测试边界和
 文档权威层级。
 
 Rider Tracker 仍在持续开发中，功能和界面可能随版本更新而调整。
@@ -158,6 +158,6 @@ Rider Tracker 仍在持续开发中，功能和界面可能随版本更新而调
 python scripts/start-rider.py --public-entry
 ```
 
-此命令使用当前 Python，默认在 `http://127.0.0.1:8787/` 提供同一 Rider 页面，并管理独立 Agent 进程与 Worker；不需要 Node 启动器，不会自动安装环境。不要与占用同一端口的默认入口同时运行。迁移验收和静态发布方式见 [Python 入口清单](docs/python-browser-entry-checklist.md)，剩余工作见 [后端融合目标](docs/backend-unification-goal.md)。
+此命令使用当前 Python，默认在 `http://127.0.0.1:8787/` 提供同一 Rider 页面，并管理独立 Agent 进程与 Worker；不需要 Node 启动器，不会自动安装环境。不要与占用同一端口的默认入口同时运行。迁移验收和静态发布方式见 [Python 入口清单](docs/plans/python-browser-entry-checklist.md)，剩余工作见 [后端融合目标](docs/plans/backend-unification-goal.md)。
 
-可通过 `python scripts/build-rider-release.py --output dist/rider-python-preview` 导出不包含本地数据、凭据和 node_modules 的预览发布目录。安装、平台约束和回退步骤见 [发布说明](docs/python-release-runbook.md)。
+可通过 `python scripts/build-rider-release.py --output dist/rider-python-preview` 导出不包含本地数据、凭据和 node_modules 的预览发布目录。安装、平台约束和回退步骤见 [发布说明](docs/architecture/python-release-runbook.md)。

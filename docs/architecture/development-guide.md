@@ -3,7 +3,7 @@
 本文面向第一次接手仓库的开发者和编码 Agent，目标是让一次问题定位或功能修改可以从稳定入口开始，
 而不需要先通读全部历史。最终架构和阶段完成门槛以
 [`rider-final-architecture-and-python-migration.md`](rider-final-architecture-and-python-migration.md) 为准；
-迁移的实际落地状态以 [`adr/0001-python-backend-consolidation.md`](adr/0001-python-backend-consolidation.md)
+迁移的实际落地状态以 [`adr/0001-python-backend-consolidation.md`](../changelog/adr/0001-python-backend-consolidation.md)
 和当前 Git 工作区为准。
 
 ## 1. 五分钟建立上下文
@@ -20,7 +20,7 @@ npm test
 
 然后按任务选择阅读路径：
 
-- 浏览器交互或样式：`index.html`、`src/ui`、`src/styles`、`docs/frontend-architecture.md`。
+- 浏览器交互或样式：`index.html`、`src/ui`、`src/styles`、`docs/architecture/frontend-architecture.md`。
 - 骑行状态、readiness 或设备控制：`src/domain/ride`、`src/domain/workout`、`src/app/realtime`。
 - 路线导入、编辑或开始骑行：`src/domain/route`、`src/app/services`、`src/adapters`。
 - Node Browser API：`src/server/index.js`、`src/server/routes`、`tests/contracts/rider-browser-http-api.v1.json`。
@@ -66,7 +66,7 @@ Browser -> Python Web :8787 -> services / repositories / SQLite / FIT
 - 当前重构方向是阶段 7：让 Python 分批实现 Browser API、安全、上传、OAuth 和静态资源等价能力。
   默认入口已按用户决定切到 Python `:8787`，真实骑行与兼容观察仍待完成。
 - 阶段 7B 提供可选 `npm run start:browser-preview` 静态入口，默认 Python :8000；复用同一 Rider 页面，
-  这是早期同进程预览入口；当前默认使用独立 Agent 进程。48 项 Browser API 清单和未接通功能见 [入口迁移清单](python-browser-entry-checklist.md)。
+  这是早期同进程预览入口；当前默认使用独立 Agent 进程。48 项 Browser API 清单和未接通功能见 [入口迁移清单](../plans/python-browser-entry-checklist.md)。
 - FIT multipart 三入口已由 Python 接收并保存，Node 仅转发；单文件 32 MiB，需安装 `python-multipart`。
   默认启动包装已切换，完整浏览器业务验收仍在推进。
 - `python scripts/start-rider.py` 提供无 Node 启动器的隔离预览：Browser Web 处理基础业务，
@@ -138,7 +138,7 @@ service 的拒绝/排序，最后检查前端是否因 stale revision 或路线 
 主对话先由模型激活 plan-routes Skill，再委派同一个 Route Agent；成功结果可通过“打开路线草稿”
 进入 AI 路线页面。打开使用原会话的 get command 和显式 plan/revision，不重新规划。
 父级 Skill 指导位于 route/plan-routes.md，子级业务指导位于 route/execute-routes.md。
-实现与剩余边界见 [Route Agent 实施记录](route-agent-implementation.md)。
+实现与剩余边界见 [Route Agent 实施记录](../changelog/route-agent-implementation.md)。
 
 ### 5.2 开始、结束和续骑
 
@@ -252,9 +252,11 @@ git diff --check
 
 - 用户能力或配置：根 README 和 `feature-capability-matrix.md`。
 - 业务契约：对应专题文档。
-- 架构切片：ADR，包含解决的问题、明确未做的范围和验证。
-- 延后问题：`known-issues-and-technical-debt.md`。
+- 架构切片：ADR，简要记录已落地决策、行为变化与兼容影响。
+- 延后问题：[已知问题与技术债](../plans/known-issues-and-technical-debt.md)。
 - 模块/命令/owner 变化：本指南和 `docs/README.md`。
 
 提交前只暂存本次文件，检查 staged diff，并按 `commit-convention.md` 写清 Root cause、Changes 和实际
 Validation。除非用户明确要求，不执行 push、merge、分支删除或历史改写。
+
+评测结果直接在对话中汇报，不在专题文档末尾追加测试报告。可复用语料与运行说明放在 `services/training-agent/evaluation/`。文档分类与维护规则以 [文档入口](../README.md) 为准。

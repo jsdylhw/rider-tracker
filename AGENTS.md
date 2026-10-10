@@ -16,9 +16,12 @@ git log -5 --oneline
 
 - 保护工作区中已有的未提交修改；只暂存本次任务明确涉及的文件。
 - `config.yaml`、`data/`、FIT、Token 和日志属于本地数据，不读取、不打印、不提交，除非任务明确要求。
-- 当前权威架构是 `docs/rider-final-architecture-and-python-migration.md`，实现进展记录在 ADR；不要把计划状态
+- 当前权威架构是 `docs/architecture/rider-final-architecture-and-python-migration.md`，实现进展记录在 ADR；不要把计划状态
   反向写入权威架构文档。
 - 先阅读 `docs/README.md`，再根据任务进入对应专题文档。
+- 文档按 `docs/architecture/`（结构）、`docs/plans/`（规划）、`docs/changelog/`（改动日志）维护。
+- 单次评测结果直接在对话中汇报，不新增评测报告、不追加进文档或改动日志。可复用语料和运行说明放在
+  `services/training-agent/evaluation/`；只有明确要跟踪的后续工作才进入规划。
 
 ## 当前运行边界
 
@@ -36,7 +39,7 @@ Browser -> Python Web :8787 -> SQLite / files / synchronous services
 - Worker 当前承接报告重建和路线讲解；不要假设主 Agent、AI 路线和同步工作流都已经任务化。
 - 正式生产代码不得 import `demos/`。
 
-详细边界和常见改动入口见 `docs/development-guide.md`。
+详细边界和常见改动入口见 `docs/architecture/development-guide.md`。
 
 ## 修改原则
 

@@ -7,7 +7,7 @@ This file provides guidance when working in this repository.
 This directory is Rider Tracker's embedded Python Training Backend, not a second standalone product or browser UI. It owns activity and route persistence, FIT analysis, Agent/Skill execution, external-provider workflows, HTTP APIs and selected durable jobs. The repository root `config.yaml` is the only manual configuration source.
 
 Before changing cross-process behavior, read the root `AGENTS.md`, `docs/README.md` and
-`docs/development-guide.md`. The frozen target architecture is documented separately; completed migration work and current
+`docs/architecture/development-guide.md`. The frozen target architecture is documented separately; completed migration work and current
 implementation decisions belong in the ADR.
 
 ## Commands

@@ -1,7 +1,7 @@
 # Rider 前端视图边界
 
 本文重点说明 View、renderer 和页面 DOM 的边界。`src/domain`、`src/app`、`src/adapters`
-与 `src/ui` 的整体依赖方向和代码归属规则见 [`source-architecture.md`](./source-architecture.md)。
+与 `src/ui` 的整体依赖方向和代码归属规则见 [`source-architecture.md`](source-architecture.md)。
 
 ## 目标
 
@@ -43,7 +43,7 @@ Key。街景和参考海拔首次使用时才真正加载 Google Maps JavaScript
 配置存在且加载成功时直接进入；未配置时对应入口保持禁用，加载失败时提示检查根配置和 API 状态，
 不再打开浏览器本地备用 Key 输入框。调试模式同样不会绕过统一配置来源。
 它只在用户点击“加载讲解”后请求独立 RouteNarrationAgent，并复用实时骑行的 `distanceKm`；它不写入 `street-view-controller.js`，也不进入 FTMS 控制循环。
-详细契约与后续地点检索/TTS 边界见 [`route-narration.md`](./route-narration.md)。
+详细契约与后续地点检索/TTS 边界见 [`route-narration.md`](route-narration.md)。
 
 ## 首页 Agent
 

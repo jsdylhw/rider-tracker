@@ -5,7 +5,7 @@
 
 ## 主 Agent 短重试与持久化活动工作流衔接
 
-- 状态：明确延期（2026-09-21，用户要求先不处理）；证据见 [能力摸底](agent-capability-audit.md)。
+- 状态：明确延期（2026-09-21，用户要求先不处理）；证据见 [能力摸底](../changelog/archive/agent-capability-audit.md)。
 - 已复现：工作流上传失败返回 `partial`，失败留在 `tasks` 中；主 Agent 未登记恢复目标，下一句“重试”返回 `no_retryable_action`。显式调用原工作流的 `retry_activity_workflow` 可以恢复失败上传。
 - 已复现：普通工具失败后插入闲聊，或序列化恢复会话，短重试因缺少当前有效 Skill 被拒，并删除失败记录。
 - 入口：`agent/main_agent/tool_result.py`、`turn_control.py`、`loop.py`、`app/chat_sessions.py`；现有恢复服务为 `operations/activity/workflow_service.py:retry_activity_workflow`。
@@ -143,3 +143,13 @@
 - 骑行中的周期 checkpoint；
 - 一条路线多次骑行的 `route_attempts` 历史；
 - 跨设备同步进度。
+
+
+## 训练指导的取证、建议生成与多轮目标
+
+- 状态：待处理，先保留轻量建议能力，不引入独立课表引擎或 Worker 重构。
+- 缺口：`generate_training_advice` 复用活动汇总，尚不是专门的训练安排工具；Skill 期望取证后生成建议，但概览、负荷等工具可能被当成终结结果，导致未落实训练时长等要求。
+- 修改范围：明确训练指导中“证据已取得”与“最终建议完成”的不同语义。工具提供确定性证据，主 Agent 结合目标、可用时间和偏好生成建议；不可用的恢复、效率、阈值保持未知。
+- 多轮规则：仅修改时长、强度或训练目标时保留已选活动和分析范围；明确换活动或刷新历史时才重新定位。此项是否需要额外状态约束，待完成条件修正后复测。
+- 完成条件：下一次训练与简短周计划能够落实用户约束；“改成 30 分钟”得到调整后的建议；缺数据时明确限制；只修改计划不触发下载、发布或改变活动目标。
+- 代码入口：`agent/tools/handlers/activity_summary.py`、`agent/main_agent/turn_policy.py`、`hooks.py`、`result_builder.py` 及 `agent/skills/library/coaching/coach-training.md`（均位于 `services/training-agent/`）。

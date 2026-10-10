@@ -1,6 +1,6 @@
 # Agent 失败出口收敛
 
-实施日期：2026-09-16。对应 [Agent 流程检视报告](agent-flow-inspection-report.md) 第一切片。
+实施日期：2026-09-16。对应 [Agent 流程检视报告](../changelog/archive/agent-flow-inspection-report.md) 第一切片。
 本记录独立于 Python 后端迁移 ADR，不修改最终架构文档。
 
 ## 范围和结果
@@ -38,7 +38,7 @@
 嵌套 result.error 和上传失败；没有稳定错误码时补 tool_failed，不否认工具已经执行。
 只有同一工具、同一参数目标的后续成功重放才消除之前失败；不同活动的成功不代表失败活动已恢复。
 
-后续已在 [Route Agent 实施记录](route-agent-implementation.md) 中定义共用任务输入、澄清、父子结果契约与跨入口草稿接续；本页保留失败出口切片的验收记录。
+后续已在 [Route Agent 实施记录](../changelog/route-agent-implementation.md) 中定义共用任务输入、澄清、父子结果契约与跨入口草稿接续；本页保留失败出口切片的验收记录。
 
 本切片验收：JavaScript 426/426、Python 760/760；正常和后端掉线/恢复双进程集成通过，
 compileall 与 git diff --check 通过。组合回归使用隔离 Context/Provider，不调用真实模型或地图。
@@ -48,4 +48,4 @@ compileall 与 git diff --check 通过。组合回归使用隔离 Context/Provid
 
 主对话激活下载、发布、工作流或路线Skill后，不能仅凭模型文字宣称完成。缺少本轮相应终结业务结果（仅定位活动也不够）时返回 `action_not_executed`；正常追问通过 `ask_user_clarification` 返回 `clarification_required`。普通聊天与只读问答不受强制业务执行要求影响。失败恢复仍按遗留问题延期。
 
-主窗口进度使用 `agent_stream.v1`，事件为progress/result/error；progress携带stage/status/label/index，result沿用agent_turn.v1。路线流继续兼容route_stream.v1。进度事件为观测，不作为提交/回滚/重试控制；业务以最终工具结果为准。详细验证见 [能力摸底](agent-capability-audit.md)。
+主窗口进度使用 `agent_stream.v1`，事件为progress/result/error；progress携带stage/status/label/index，result沿用agent_turn.v1。路线流继续兼容route_stream.v1。进度事件为观测，不作为提交/回滚/重试控制；业务以最终工具结果为准。详细验证见 [能力摸底](../changelog/archive/agent-capability-audit.md)。

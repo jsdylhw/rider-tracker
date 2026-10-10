@@ -1,13 +1,13 @@
 # Agent 多业务对话回归语料
 
-基线：`develop / 1f9e74b`。来源：[历史能力验收](agent-capability-audit.md)、[FIT 格式验证](fit-query-format-validation.md)以及当前工具契约。以下是可复用输入和验收条件，不是本轮真实模型测试结果。部分历史记录只保留了请求简写，这里按原业务意图整理，不宣称逐字复原。
+基线：`develop / 1f9e74b`。来源：[历史能力验收](../../../docs/changelog/archive/agent-capability-audit.md)、[FIT 格式验证](../../../docs/changelog/archive/fit-query-format-validation.md)以及当前工具契约。以下是可复用输入和验收条件，不是本轮真实模型测试结果。部分历史记录只保留了请求简写，这里按原业务意图整理，不宣称逐字复原。
 
 ## 使用方式与证据范围
 
 - 每组从独立空会话开始，组内按顺序发送；不要把“这条”“这些”“刚才”拆成独立单轮。
 - 默认用独立测试数据库、生成的 FIT 和 Provider 替身；真实账号下载/上传必须单独确认目标与执行范围，不能由语料文件自动授权。
 - 页面入口为 `/api/agent/chat`（可请求 NDJSON）；这是当前 Python Web → 私有 Agent 进程入口。旧记录直接使用 `/api/chat`，不等于已验证现在的完整入口。
-- 保存每轮 request/session ID、状态、工具名与关键参数、业务目标 ID、结构化结果、终态事件、耗时及 token。公开报告用别名，原始回答只留本地隔离产物，避免提交 FIT、位置轨迹、账号和 Token。
+- 保存每轮 request/session ID、状态、工具名与关键参数、业务目标 ID、结构化结果、终态事件、耗时及 token。对话汇报用别名，原始回答只留本地隔离产物，避免提交 FIT、位置轨迹、账号和 Token。
 - 对比业务事实及参数，允许合理的定位/澄清步骤和措辞变化。不得仅凭顶层 completed 或模型“已成功”判通过。
 - 每个结果标记：隔离通过 / 真实模型与替身工具通过 / 真实业务通过 / 失败 / 未执行。重要自然语言场景建议重复 3 次，逐次保留失败，不能以最后一次成功覆盖。
 
@@ -45,7 +45,7 @@ FIT 数值基准使用生成数据：elapsed_s 为 0、5、10、300、305；powe
 
 ## 可直接运行的单轮入口语料
 
-[`dialogue-baseline-skills.jsonl`](../services/training-agent/evaluation/cases/dialogue-baseline-skills.jsonl) 复用既有 agent_eval_case.v1，共 10 条。只评估首轮 Skill 选择，不执行领域工具、不验证数据库/FIT/上传，也不替代上面的多轮脚本。
+[`dialogue-baseline-skills.jsonl`](cases/dialogue-baseline-skills.jsonl) 复用既有 agent_eval_case.v1，共 10 条。只评估首轮 Skill 选择，不执行领域工具、不验证数据库/FIT/上传，也不替代上面的多轮脚本。
 
 从 `services/training-agent` 执行：
 
@@ -56,3 +56,7 @@ python -m evaluation.cli run --cases evaluation/cases/dialogue-baseline-skills.j
 ```
 
 现有 runner 每个 case 新建上下文，不支持把本文件多轮脚本当作有状态套件直接跑。旧 live 模式也使用 Sandbox，名称不代表真实 Provider；其默认固定问答不能用于 FIT 数值验收。后续若补自动多轮执行器，应保留本文的会话连续性、任务目标、外部副作用与结果证据检查，不只拼接提示词。
+
+## 自动化入口
+
+单轮与多轮验证集、测试集及执行命令见 [评测说明](README.md)。本文件仅维护可复用场景和判定标准，单次评测结果直接在对话中汇报，不追加到本文。

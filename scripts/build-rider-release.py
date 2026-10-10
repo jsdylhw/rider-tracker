@@ -19,7 +19,7 @@ def build(destination: Path):
     assets.build(ROOT, destination)  # Fails before writing if destination already exists.
     backend = ROOT / 'services/training-agent'
     definition = tomllib.loads((backend / 'pyproject.toml').read_text())
-    paths = [ROOT / 'config.yaml.example', ROOT / 'docs/python-release-runbook.md',
+    paths = [ROOT / 'config.yaml.example', ROOT / 'docs/architecture/python-release-runbook.md',
              ROOT / 'scripts/start-rider.py', ROOT / 'scripts/database-tool.py',
              backend / 'pyproject.toml', backend / 'requirements.txt']
     paths.extend(backend / f'{name}.py' for name in definition['tool']['setuptools']['py-modules'])

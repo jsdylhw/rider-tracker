@@ -2,12 +2,14 @@
 
 ## 当前边界
 
-Rider Tracker 是唯一面向浏览器的产品入口。Node 服务负责页面、Web Bluetooth、FTMS、实时骑行、活动文件和确定性安全控制；内置 Python Training Agent 负责对话、历史活动分析、Garmin/Strava 工作流以及路线规划。
+Rider Tracker 是统一产品入口。浏览器 JavaScript 负责 UI、Web Bluetooth、FTMS 和实时骑行控制；Python 后端负责活动文件、数据库、Agent、Provider 和后台任务。`npm start` 仅通过 Node 包装 Python 启动器。
 
-两个运行时位于同一 Git 仓，HTTP 请求经过独立服务进程：
+默认运行结构：
 
 ```text
-Browser -> Rider Node -> Training Agent Python
+Browser -> Python Web :8787 -> SQLite / files / services
+                         |-> private Agent process
+                         +-> persisted jobs -> Python Worker
 ```
 
 阶段 6B-1 增加独立 Python Worker，共用 SQLite 任务表，由统一启动器管理。阶段 6B-2 将批量报告
@@ -18,8 +20,8 @@ Browser -> Rider Node -> Training Agent Python
 专用结果表，浏览器通过短请求轮询。Agent 对话、AI 路线规划与 Garmin/Strava 工作流尚未迁入 Worker。
 具体执行边界与恢复约束见 ADR 的阶段 6B-1 至 6B-4 实施记录。
 
-Rider 是唯一浏览器入口。Python Backend 的 `/` 只返回服务元信息，`/health` 用于启动检查；
-它不再提供独立 HTML、CSS 或浏览器 JavaScript。
+Python Web 提供同一套 Rider 静态页面和 Browser API；私有 Agent 进程不提供另一个产品页面。
+旧 Node BFF 仅由 `npm run start:legacy` 启动，作为兼容回退，不是默认入口。
 
 这一边界可以避免慢速模型或地图请求阻塞实时骑行控制，也允许 Python 分析代码继续使用现有库。
 
@@ -37,7 +39,7 @@ Presentation 投影采用“更完整结果覆盖定位预览”的规则：存�
 ### Schema 与内部结果边界
 
 稳定契约统一登记在
-[`domain/contracts/schemas.py`](../services/training-agent/domain/contracts/schemas.py)。只有跨进程、
+[`domain/contracts/schemas.py`](../../services/training-agent/domain/contracts/schemas.py)。只有跨进程、
 持久化、缓存恢复或重放的数据才使用 `schema_version`。普通 Python 函数和 Agent 工具的临时结果
 使用 `kind` 或 `operation`，不再为每个函数创建独立版本协议。
 
@@ -53,7 +55,7 @@ SQLite 与可恢复状态暂时保留现有格式，包括 `activity_metrics.v2`
 不强制依赖功率计实时数据；地点介绍从 GPX/当前路线抽取少量代表坐标，查询地点资料后交给模型
 整理成短播报稿，最后由本地 TTS 合成。地点查询、文案生成和 TTS 都不得进入实时 FTMS 控制循环。
 
-路线讲解的前端契约和本地时间线已按 [`route_narration_plan.v1`](./route-narration.md)
+路线讲解的前端契约和本地时间线已按 [`route_narration_plan.v1`](route-narration.md)
 建立。进入街景后由用户决定是否准备讲解；Python Worker 在 4-8 个代表点并发查询 Google Places，
 再通过单次模型调用生成有来源的结构化卡片，不运行开放式搜索工具循环。浏览器缓存本次骑行，SQLite
 按完整输入哈希复用持久化任务和计划，同一路线返回街景不会重复请求。当前尚未接入通用网页搜索和本地 TTS。
@@ -66,7 +68,7 @@ Python 服务层确定性淘汰并记录原因，不能依赖模型或前端隐�
 同一批路线候选相互隔离：单条候选的地图检索、算路或范围校验失败只会进入
 `rejected_candidates`，不得丢弃已经成功的候选并触发整批重算。路线计划顶层的统一目标距离约束
 所有候选，候选不能自行缩小目标来迁就实际结果；仅未设置统一目标时使用各候选自己的目标。
-多轮模拟与验收范围见 [距离对话验证记录](route-distance-dialogue-validation.md)。
+多轮模拟与验收范围见 [距离对话验证记录](../changelog/archive/route-distance-dialogue-validation.md)。
 
 Rider 的 AI 路线请求通过 `/api/chat` 显式传递 `request_mode=route_plan` 和
 `route_action=create|update`；`route_options` 只承载 `include_elevation=false` 等业务参数，不再用于
@@ -128,7 +130,7 @@ FIT 历史解析也只有一个生产入口：`services/activity/fit_loader.py` 
 ## 后续整理
 
 最终目标、阶段编号与执行顺序见
-[`rider-final-architecture-and-python-migration.md`](./rider-final-architecture-and-python-migration.md)。
+[`rider-final-architecture-and-python-migration.md`](rider-final-architecture-and-python-migration.md)。
 
 实时骑行的准备规则、debug 边界、FTMS capability 和模式切换见
-[`ride-readiness-and-control.md`](./ride-readiness-and-control.md)。
+[`ride-readiness-and-control.md`](ride-readiness-and-control.md)。

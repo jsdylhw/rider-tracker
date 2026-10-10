@@ -802,8 +802,8 @@ Python Worker               SQLite / Files
 
 ## 18. 与现有文档的关系
 
-- [`training-agent-integration.md`](./training-agent-integration.md)：当前 Node/Python 集成和数据边界；
-- [`remove-training-agent-legacy-web-ui-plan.md`](./remove-training-agent-legacy-web-ui-plan.md)：旧 Python Web UI 删除实施记录。
+- [`training-agent-integration.md`](training-agent-integration.md)：当前 Node/Python 集成和数据边界；
+- [`remove-training-agent-legacy-web-ui-plan.md`](../changelog/archive/remove-training-agent-legacy-web-ui-plan.md)：旧 Python Web UI 删除实施记录。
 
 本文件是最终目标、目录结构、阶段编号、执行顺序和完成标准的唯一来源。其他文档只记录当前集成
 状态或单项实施细节，不得再维护另一套迁移阶段。权威的两段式定义为：

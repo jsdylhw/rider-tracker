@@ -1,6 +1,6 @@
 # Route Agent 结构整改交付记录
 
-测试职责、运行范围和清理准则见 [路线测试基准](route-testing-baseline.md)。
+测试职责、运行范围和清理准则见 [路线测试基准](../architecture/route-testing-baseline.md)。
 
 本项收敛 Agent 调用、任务状态和跨入口草稿接续，不属于 Python 目录迁移，不修改冻结架构或迁移 ADR。
 
@@ -89,8 +89,8 @@ Tavily 配置使用 `tavily.api_key`，兼容 `Tavily.api_key`。Tool 只适配�
   尚不能定位具体断开的网络节点；非 JSON 400 不直接归因为网关，原有有界重试保留。
 - 模型的控制点语义提取仍可能有误，搜索接入不是路线质量保证。
 
-距离和真实网络结果见 [真实对话验证](route-distance-dialogue-validation.md)；
-成功地点缓存及后续恢复边界见 [错误恢复](route-planning-recovery.md)。
+距离和真实网络结果见 [真实对话验证](archive/route-distance-dialogue-validation.md)；
+成功地点缓存及后续恢复边界见 [错误恢复](../plans/route-planning-recovery.md)。
 
 ## 验收记录
 

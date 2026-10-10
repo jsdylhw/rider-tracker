@@ -2,11 +2,11 @@
 
 检查日期：2026-09-15。分支：`develop`。基线提交：`a0f862f`。
 
-检查对象为该提交之上的当前未提交实现，包含新增的 `execution_policy.py`、`provider_error.py` 及初次检查时已存在的重试修正。本报告评估用户提供的架构分析，不修改业务代码，也不替代冻结的[最终架构文档](rider-final-architecture-and-python-migration.md)。
+检查对象为该提交之上的当前未提交实现，包含新增的 `execution_policy.py`、`provider_error.py` 及初次检查时已存在的重试修正。本报告评估用户提供的架构分析，不修改业务代码，也不替代冻结的[最终架构文档](../../architecture/rider-final-architecture-and-python-migration.md)。
 
 本次文档修订纳入用户明确的产品目标：**主对话识别路线意图后委派路线子 Agent；AI 路线页面直接进入同一个路线子 Agent。** 第 3—5 节记录已检查实现，第 7 节保留初次检查的验证记录，第 8—11 节比较候选结构并给出设计建议；设计建议尚未实施。
 
-2026-09-18 进展：本文下述流程与问题是检查时点快照；失败出口、独立 Route Agent、主对话委派和草稿接续的当前状态见 [实施记录](route-agent-implementation.md)。deadline、取消和持久化失败候选恢复仍属于后续切片。
+2026-09-18 进展：本文下述流程与问题是检查时点快照；失败出口、独立 Route Agent、主对话委派和草稿接续的当前状态见 [实施记录](../route-agent-implementation.md)。deadline、取消和持久化失败候选恢复仍属于后续切片。
 
 ## 1. 结论
 
@@ -72,12 +72,12 @@ flowchart TD
 
 源码入口：
 
-- [主对话浮窗](../src/ui/agent/agent-floating-window.js)：`inferPromptKind()` 用关键词分类，`sendMessage()` 对 `route` 直接返回引导文案；正常返回路径主要消费 `answer` 和 `presentations`。
-- [浏览器路线请求](../src/app/services/agent-route-preview-service.js)：根据是否存在草稿传递 `request_mode=route_plan` 和 `route_action=create/update`。
-- [Node 请求规范化](../src/server/routes/agent-routes.js)：校验并传递显式模式。
-- [Python chat_endpoint](../services/training-agent/app/api.py)：建立策略，将模式和动作加入幂等指纹。
-- [run_tool_loop](../services/training-agent/agent/main_agent/loop.py)：初始化回合、处理控制命令、选择能力并运行循环。
-- [execute_tool_loop](../services/training-agent/agent/runtime/loop_engine.py)：执行模型/工具轮次，维护工具调用与结果的消息配对。
+- [主对话浮窗](../../../src/ui/agent/agent-floating-window.js)：`inferPromptKind()` 用关键词分类，`sendMessage()` 对 `route` 直接返回引导文案；正常返回路径主要消费 `answer` 和 `presentations`。
+- [浏览器路线请求](../../../src/app/services/agent-route-preview-service.js)：根据是否存在草稿传递 `request_mode=route_plan` 和 `route_action=create/update`。
+- [Node 请求规范化](../../../src/server/routes/agent-routes.js)：校验并传递显式模式。
+- [Python chat_endpoint](../../../services/training-agent/app/api.py)：建立策略，将模式和动作加入幂等指纹。
+- [run_tool_loop](../../../services/training-agent/agent/main_agent/loop.py)：初始化回合、处理控制命令、选择能力并运行循环。
+- [execute_tool_loop](../../../services/training-agent/agent/runtime/loop_engine.py)：执行模型/工具轮次，维护工具调用与结果的消息配对。
 
 ### 3.2 需要区分三种请求
 
@@ -97,7 +97,7 @@ flowchart TD
 
 ### 4.1 Policy、Skill 和 Guard
 
-[TurnExecutionPolicy](../services/training-agent/agent/main_agent/execution_policy.py) 当前使用以下字段：
+[TurnExecutionPolicy](../../../services/training-agent/agent/main_agent/execution_policy.py) 当前使用以下字段：
 
 ```python
 request_mode
@@ -115,11 +115,11 @@ stop_on_required_tool_failure
 
 指定 Skill 不能豁免 Guard；工具名正确也不代表参数、目标计划或 revision 正确。后者仍应由业务层校验。
 
-[guard.py](../services/training-agent/agent/main_agent/guard.py) 没有读取用户文本来判断路线或活动意图。它通过 `TOOL_DEPENDENCIES` 和传入的 `has_resolved` 检查活动依赖，并不在此函数内直接验证 `selected_activities` 的内容。因此还要保证 `has_resolved` 的维护与实际选择状态一致；不能把这层检查当作活动对象有效性的完整证明。
+[guard.py](../../../services/training-agent/agent/main_agent/guard.py) 没有读取用户文本来判断路线或活动意图。它通过 `TOOL_DEPENDENCIES` 和传入的 `has_resolved` 检查活动依赖，并不在此函数内直接验证 `selected_activities` 的内容。因此还要保证 `has_resolved` 的维护与实际选择状态一致；不能把这层检查当作活动对象有效性的完整证明。
 
 ### 4.2 历史 Skill 自动复用才是当前显式的意图捷径
 
-[should_continue_route_skill](../services/training-agent/agent/main_agent/turn_policy.py) 同时读取最近 Skill、中文动作/路线关键词及数据库中的最新计划。即使使用默认 `chat()`，命中后仍会跳过 `activate_skill`。
+[should_continue_route_skill](../../../services/training-agent/agent/main_agent/turn_policy.py) 同时读取最近 Skill、中文动作/路线关键词及数据库中的最新计划。即使使用默认 `chat()`，命中后仍会跳过 `activate_skill`。
 
 这与“普通请求都回到模型选择 Skill”的目标不一致。若采纳该目标，应优先调整这条捷径，例如将历史 Skill 降为提示上下文。不要为了统一开放对话而移除专用入口合理的强制策略。
 
@@ -134,7 +134,7 @@ stop_on_required_tool_failure
 
 本轮开始前清空 `execution_trace` 已落实，可以避免模型初始化失败时混入旧回合结果。
 
-正常业务工具由 [Hooks](../services/training-agent/agent/main_agent/hooks.py) 记录结果；[保存动作重试](../services/training-agent/agent/main_agent/saved_action.py) 自行构建 `ToolExecution`，没有经过 `post_tool_use()`，但开始共用失败记录和结果构建逻辑。
+正常业务工具由 [Hooks](../../../services/training-agent/agent/main_agent/hooks.py) 记录结果；[保存动作重试](../../../services/training-agent/agent/main_agent/saved_action.py) 自行构建 `ToolExecution`，没有经过 `post_tool_use()`，但开始共用失败记录和结果构建逻辑。
 
 两个边界需要明确：
 
@@ -179,7 +179,7 @@ Runtime 会把 guarded 错误交回模型，但 `on_blocked()` 只设置停止�
 
 **D. 错误字段到达 API，并不等于 UI 已经正确展示。**
 
-[public_turn_dict](../services/training-agent/agent/runtime/models.py) 已保留执行记录中的 `code/provider/stage/retryable/message`，但 [parseAgentRouteDraft](../src/domain/route/agent-route-contract.js) 在缺少路线时主要把 `answer` 包装为普通 Error。
+[public_turn_dict](../../../services/training-agent/agent/runtime/models.py) 已保留执行记录中的 `code/provider/stage/retryable/message`，但 [parseAgentRouteDraft](../../../src/domain/route/agent-route-contract.js) 在缺少路线时主要把 `answer` 包装为普通 Error。
 
 聚合路线 Provider 失败又使用统一的“路线服务暂时不可用，请稍后重试”。因此用户未必能区分 Google 地点检索连接失败、上游凭据错误或其他失败。应投影经过筛选的用户可见错误信息；不要把原始请求、密钥、完整工具参数作为错误详情下发。
 
@@ -255,7 +255,7 @@ QPS_HAS_EXCEEDED_THE_LIMIT: TransientProviderError provider_unavailable True
 - **子 Agent**：独立的任务上下文、模型消息、工具边界和执行预算。可以复用同一 Runtime、同一模型配置，甚至在同一进程运行，不要求新增微服务。
 - **Job / Worker**：任务持久化、调度、恢复和进程隔离。是否采用子 Agent，与是否采用 Worker 是两个独立决定；包一层子 Agent 不会自动消除 HTTP 阻塞。
 
-目前 `plan-routes` 属于第一种。项目已有[活动分析子 Agent](../services/training-agent/agent/analysis/agent.py) 作为独立会话的参考，但不应机械复制其专用循环或报告存储逻辑。
+目前 `plan-routes` 属于第一种。项目已有[活动分析子 Agent](../../../services/training-agent/agent/analysis/agent.py) 作为独立会话的参考，但不应机械复制其专用循环或报告存储逻辑。
 
 ### 8.2 方案比较
 
@@ -327,7 +327,7 @@ flowchart TD
 | `plan_id` / `revision` | 已生成路线及其版本，是跨入口打开、修改和并发校验的业务依据。 |
 | `workspace_id` | 由服务端校验的业务归属，不能因为知道一个 plan ID 就绕过归属检查。 |
 
-当前[路线 Handler](../services/training-agent/agent/tools/handlers/route.py) 用 `context.workspace_id or context.session_id` 确定归属，并检查计划所属 workspace。跨入口接续必须显式解决这一映射，不能只在页面 URL 中加 `plan_id`，也不能删除现有归属检查。
+当前[路线 Handler](../../../services/training-agent/agent/tools/handlers/route.py) 用 `context.workspace_id or context.session_id` 确定归属，并检查计划所属 workspace。跨入口接续必须显式解决这一映射，不能只在页面 URL 中加 `plan_id`，也不能删除现有归属检查。
 
 主对话中的“继续少左转”应携带已选路线任务引用；若有多个计划且指代不明确，先澄清。打开 AI 路线页面时通过应用层读取指定计划、初始化当前草稿，不重新发起 create。另一个入口已经更新时，用 revision 冲突结果要求刷新，不能把旧草稿无条件覆盖回去。
 

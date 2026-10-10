@@ -4,7 +4,7 @@
 - 日期：2026-08-26
 
 具体目录、阶段编号、执行顺序和完成标准统一见
-[`../rider-final-architecture-and-python-migration.md`](../rider-final-architecture-and-python-migration.md)；
+[`../rider-final-architecture-and-python-migration.md`](../../architecture/rider-final-architecture-and-python-migration.md)；
 本 ADR 只固定不可轻易改变的架构决策。
 
 ## 背景
@@ -592,7 +592,7 @@ Strava、Garmin 和运动员档案状态。基础 FIT、活动详情、导入路
 
 浏览器只从根 `config.yaml` 的统一运行时配置读取 Google Key，删除浏览器弹窗和 localStorage Key。
 在线地图入口根据 capability 显示禁用原因；配置或请求失败时不再要求输入第二份 Key。完整功能关系见
-[本地配置与功能能力矩阵](../feature-capability-matrix.md)。
+[本地配置与功能能力矩阵](../../architecture/feature-capability-matrix.md)。
 
 路线增加 `elevationSource` 业务字段，将“有海拔可展示”与“海拔可信到可以控制骑行台”分离。
 坡度模拟只接受 `gpx_embedded` 和 `strava_route`；Google 估算海拔标记为 `google_estimated`，仅用于
@@ -643,14 +643,14 @@ Python。Node 仍是正式入口，Python 新路径只通过同一份 Browser HT
 - 主 Agent 与 AI 路线页面增加分类会话列表、恢复、切换、新建和删除；公开聊天记录独立于模型上下文和请求去重缓存。
 - 修正内存 TTL 删除持久会话的问题，恢复失败时禁止继续发送，防止空界面隐式沿用旧上下文。
 - 保留主对话路线卡片的会话归属；路线会话切换恢复草稿，新建后不再修改旧草稿。
-- 不改变同步 Agent / Worker 边界，也不调整子 Agent 工具选择策略。协议、兼容旧记录及验证范围见 [`../agent-sessions.md`](../agent-sessions.md)。
+- 不改变同步 Agent / Worker 边界，也不调整子 Agent 工具选择策略。协议、兼容旧记录及验证范围见 [`../agent-sessions.md`](../../architecture/agent-sessions.md)。
 
 
 ## 2026-09-28：补记路线切片及阶段 7B 可选静态入口
 
 `0545ba5` 已落地多日骑行草案、逐日生成/确认、独立失败结果和最后成功路线暂存，以及高德限流、会话删除与恢复修正。这些仍由 Python service/repository 持有，不代表主 Agent 或多日算路已经迁入 Worker；断网后的旧版本自动重试继续延期。
 
-本轮新增 `docs/python-browser-entry-checklist.md`，按既有 Browser HTTP surface 的 48 项逐项记录 Python 同路径实现及缺失适配，不以路由存在代替响应级等价验收。
+本轮新增 `docs/plans/python-browser-entry-checklist.md`，按既有 Browser HTTP surface 的 48 项逐项记录 Python 同路径实现及缺失适配，不以路由存在代替响应级等价验收。
 
 新增独立 `app.browser:app`，复用正式 `app.api` 路由、中间件与异常处理，仅将该可选入口的 `/` 换成仓库同一份 Rider HTML，提供受限的前端 JS/CSS 和 FIT SDK JS。默认 `app.api:app` 根路径仍为后端元数据，`npm start` 仍启动 Node BFF。预览命令 `npm run start:browser-preview` 复用统一配置、数据库预检和 Worker 编排，默认访问 Python :8000，不启动 Node server；启动器与依赖安装仍使用 Node/npm。
 

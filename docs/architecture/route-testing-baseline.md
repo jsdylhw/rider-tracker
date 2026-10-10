@@ -1,8 +1,8 @@
 # 路线模块测试基准
 
 此文规定测试职责与运行范围，不以测试数量作为交付目标。真实运行证据记录在
-[路线验证记录](route-distance-dialogue-validation.md)，实现状态见
-[Route Agent 实施记录](route-agent-implementation.md)。本基准不代表以下所有真实场景已经验收通过。
+[路线验证记录](../changelog/archive/route-distance-dialogue-validation.md)，实现状态见
+[Route Agent 实施记录](../changelog/route-agent-implementation.md)。本基准不代表以下所有真实场景已经验收通过。
 
 ## 各层负责什么
 
@@ -104,7 +104,7 @@ PYTHONPATH=services/training-agent python -m pytest -q services/training-agent/t
 
 状态边界随主流程一起测：旧版本拒绝、相同 request_id 重放、失败不改旧计划、下一轮正确继续。
 HTTP 200 不等于业务成功。当前实测已覆盖的子项和两个未执行问题见
-[HTTP API 验证记录](route-distance-dialogue-validation.md)；本场景集是目标，不代表全部已经通过。
+[HTTP API 验证记录](../changelog/archive/route-distance-dialogue-validation.md)；本场景集是目标，不代表全部已经通过。
 
 ### 多日骑行增量基准
 

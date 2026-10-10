@@ -141,7 +141,7 @@
 
 ## 发布与回退补验
 
-增加完整源码发布导出和运行说明，见 [发布与回退](python-release-runbook.md)。实际将产物放到临时目录后，以产物自己的启动器启动 Web/Worker，验证页面、SDK、带会话的 API、Worker 注册和端口释放；产物没有 Node server 或 node_modules。wheel 在离开源码目录后加载全部 Skill Markdown 的测试通过。
+增加完整源码发布导出和运行说明，见 [发布与回退](../architecture/python-release-runbook.md)。实际将产物放到临时目录后，以产物自己的启动器启动 Web/Worker，验证页面、SDK、带会话的 API、Worker 注册和端口释放；产物没有 Node server 或 node_modules。wheel 在离开源码目录后加载全部 Skill Markdown 的测试通过。
 
 版本约束只覆盖当前 Linux x86_64 / Python 3.13 环境；闭包校验和 pip 离线 dry-run 通过，没有改动 Conda 或下载包。不能外推到 Windows 或另一 Python 小版本。
 

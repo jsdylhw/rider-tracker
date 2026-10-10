@@ -316,8 +316,8 @@ path = Rider data/files/fit 外部文件
 
 需要同步：
 
-- `docs/training-agent-integration.md`：明确 Python `/` 不再提供 UI；
-- `docs/rider-final-architecture-and-python-migration.md`：记录该清理在完整迁移中的阶段位置；
+- `docs/architecture/training-agent-integration.md`：明确 Python `/` 不再提供 UI；
+- `docs/architecture/rider-final-architecture-and-python-migration.md`：记录该清理在完整迁移中的阶段位置；
 - 根 `README.md`：一般无需改功能描述，只需确认没有引导访问 Python 端口。
 
 ## 7. 推荐提交拆分
