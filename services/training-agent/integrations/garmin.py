@@ -9,6 +9,8 @@ from __future__ import annotations
 import io
 import os
 import re
+import shutil
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -138,6 +140,10 @@ def _http_status(exc: BaseException) -> int | None:
     value = getattr(getattr(exc, "response", None), "status_code", None)
     if value is None:
         value = getattr(exc, "status_code", None)
+    if value is None:
+        # garminconnect 0.3.3 discards response metadata in _run_request.
+        match = re.match(r"^API Error ([45]\d{2})\b", str(exc))
+        value = match.group(1) if match else None
     try:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
@@ -250,7 +256,39 @@ class GarminChinaDownloader:
         try:
             self.client.login(self.tokenstore)
         except Exception as exc:
+            chain = _exception_chain(exc)
+            token_path = Path(self.tokenstore).expanduser()
+            if token_path.is_dir() or token_path.suffix != ".json":
+                token_path = token_path / "garmin_tokens.json"
+            profile_failure = any(
+                "failed to retrieve social profile" in str(item).lower()
+                or "failed to retrieve user settings" in str(item).lower()
+                for item in chain
+            )
+            if (token_path.is_file() and profile_failure
+                    and any(_http_status(item) == 401 for item in chain)
+                    and not any(_http_status(item) == 429 for item in chain)):
+                try:
+                    self._recover_cached_login(token_path)
+                    return
+                except Exception as recovery_error:
+                    raise normalize_garmin_error(recovery_error, operation="login") from recovery_error
             raise normalize_garmin_error(exc, operation="login") from exc
+
+    def _recover_cached_login(self, token_path: Path) -> None:
+        """Try credentials once; promote tokens only after profile/settings succeed."""
+        with tempfile.TemporaryDirectory(prefix="rider-garmin-login-") as temporary:
+            fresh = self.Garmin(self.username, self.password, is_cn=True)
+            fresh.login(temporary)
+            # Explicit dump avoids relying on the library's suppressed write errors.
+            fresh.client.dump(temporary)
+            content = (Path(temporary) / "garmin_tokens.json").read_bytes()
+            backup = token_path.with_name(f"{token_path.name}.{uuid4().hex}.bak")
+            shutil.copy2(token_path, backup)
+            _atomic_write_bytes(token_path, content)
+            # Future refreshes must persist to the real store, not the temp directory.
+            fresh.client._tokenstore_path = str(token_path)
+            self.client = fresh
 
     def list_activities(self, count: int) -> list[dict[str, Any]]:
         if self.client is None:

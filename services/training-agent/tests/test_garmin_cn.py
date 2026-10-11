@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
+
 from integrations.garmin import (
+    GarminChinaDownloader,
+    GarminServiceError,
     activity_base_name,
     existing_fit_paths,
     garmin_error_payload,
@@ -94,3 +101,70 @@ def test_rate_limit_failure_has_specific_retryable_message():
     assert result["error"] == "garmin_rate_limited"
     assert result["retryable"] is True
     assert "请求过于频繁" in result["message"]
+
+
+@pytest.mark.parametrize("status,code", [(401, "garmin_auth_failed"), (429, "garmin_rate_limited")])
+def test_library_text_status_is_preserved(status, code):
+    wrapped = GarminConnectAuthenticationError("Failed to retrieve social profile")
+    wrapped.__cause__ = RuntimeError(f"API Error {status} - rejected")
+    assert garmin_error_payload(wrapped)["error"] == code
+
+
+def _cached_failure(status):
+    error = GarminConnectAuthenticationError("Failed to retrieve social profile")
+    error.__cause__ = RuntimeError(f"API Error {status} - rejected")
+    return error
+
+
+def test_cached_401_recovers_and_persists_validated_tokens(tmp_path, monkeypatch):
+    token = tmp_path / "garmin_tokens.json"
+    token.write_bytes(b"old-token")
+    old, fresh = Mock(), Mock()
+    old.login.side_effect = _cached_failure(401)
+
+    def dump(directory):
+        (Path(directory) / "garmin_tokens.json").write_bytes(b"new-token")
+
+    fresh.client.dump.side_effect = dump
+    factory = Mock(side_effect=[old, fresh])
+    monkeypatch.setattr("garminconnect.Garmin", factory)
+    downloader = GarminChinaDownloader(username="user", password="password", tokenstore=tmp_path)
+    downloader.login()
+    assert downloader.client is fresh
+    assert token.read_bytes() == b"new-token"
+    assert [p.read_bytes() for p in tmp_path.glob("*.bak")] == [b"old-token"]
+    assert fresh.client._tokenstore_path == str(token)
+    temporary = Path(fresh.login.call_args.args[0])
+    assert temporary != tmp_path
+    assert not temporary.exists()
+    assert factory.call_count == 2
+
+
+def test_failed_fresh_login_preserves_cached_tokens(tmp_path, monkeypatch):
+    token = tmp_path / "garmin_tokens.json"
+    token.write_bytes(b"old-token")
+    old, fresh = Mock(), Mock()
+    old.login.side_effect = _cached_failure(401)
+    fresh.login.side_effect = RuntimeError("API Error 401 - rejected")
+    factory = Mock(side_effect=[old, fresh])
+    monkeypatch.setattr("garminconnect.Garmin", factory)
+    downloader = GarminChinaDownloader(username="user", password="password", tokenstore=tmp_path)
+    with pytest.raises(GarminServiceError) as error:
+        downloader.login()
+    assert error.value.code == "garmin_auth_failed"
+    assert token.read_bytes() == b"old-token"
+    assert not list(tmp_path.glob("*.bak"))
+    fresh.client.dump.assert_not_called()
+    assert factory.call_count == 2
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_other_profile_errors_do_not_trigger_fresh_login(tmp_path, monkeypatch, status):
+    (tmp_path / "garmin_tokens.json").write_bytes(b"old-token")
+    old = Mock()
+    old.login.side_effect = _cached_failure(status)
+    factory = Mock(return_value=old)
+    monkeypatch.setattr("garminconnect.Garmin", factory)
+    with pytest.raises(GarminServiceError):
+        GarminChinaDownloader(username="user", password="password", tokenstore=tmp_path).login()
+    assert factory.call_count == 1
