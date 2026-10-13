@@ -30,6 +30,7 @@ import { suite as ergSuite } from "./unit/erg-mode.test.js";
 import { suite as resistanceSuite } from "./unit/resistance-mode.test.js";
 import { suite as trainerCommandSuite } from "./unit/trainer-command.test.js";
 import { suite as rideReadinessSuite } from "./unit/ride-readiness.test.js";
+import { suite as trainerFtmsSuite } from "./unit/trainer-ftms.test.js";
 import { suite as workoutServiceSuite } from "./unit/workout-service.test.js";
 import { suite as customWorkoutTargetSuite } from "./unit/custom-workout-target.test.js";
 import { suite as customWorkoutTargetRendererSuite } from "./unit/custom-workout-target-renderer.test.js";
@@ -115,6 +116,7 @@ const suites = [
     resistanceSuite,
     trainerCommandSuite,
     rideReadinessSuite,
+    trainerFtmsSuite,
     workoutServiceSuite,
     customWorkoutTargetSuite,
     customWorkoutTargetRendererSuite,

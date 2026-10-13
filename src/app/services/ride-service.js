@@ -165,6 +165,8 @@ export function createRideService({ store, deviceService, exportService, routeSe
                 session: initialRideState.session,
                 records: initialRideState.records,
                 summary: initialRideState.summary,
+                trainerConnectionEpoch: 0,
+                appliedTrainerConnectionEpoch: 0,
                 commandDispatch: createInitialCommandDispatchState(),
                 statusMeta: initialStatusMeta
             },
@@ -172,6 +174,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
                 ? `已开始街景调试骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。${routeSaveWarning ? ` ${routeSaveWarning}` : ""}`
                 : `已开始骑行，当前训练模式：${getWorkoutModeLabel(currentState.workout.mode)}。${routeSaveWarning ? ` ${routeSaveWarning}` : ""}`
         }));
+        deviceService?.setTrainerAutoReconnectEnabled?.(true);
 
         restartLiveRideLoop(resolveAdaptivePhysicsTickMs(sampledSensors));
 
@@ -254,6 +257,7 @@ export function createRideService({ store, deviceService, exportService, routeSe
         }
 
         stopLiveRideLoop();
+        deviceService?.setTrainerAutoReconnectEnabled?.(false);
 
         const completedSession = state.liveRide.session
             ? {
@@ -297,6 +301,8 @@ export function createRideService({ store, deviceService, exportService, routeSe
                 session: null,
                 records: [],
                 summary: null,
+                trainerConnectionEpoch: 0,
+                appliedTrainerConnectionEpoch: 0,
                 commandDispatch: createInitialCommandDispatchState(),
                 lastCompletedAt: new Date().toISOString(),
                 statusMeta: stoppedStatusMeta
@@ -391,6 +397,10 @@ export function createRideService({ store, deviceService, exportService, routeSe
         });
 
         const now = Date.now();
+        const forcedTrainerConnectionEpoch = (state.liveRide.trainerConnectionEpoch ?? 0)
+            > (state.liveRide.appliedTrainerConnectionEpoch ?? 0)
+            ? state.liveRide.trainerConnectionEpoch
+            : null;
         let dispatchedCommand = null;
         const canSendTrainerCommand = state.rideInput?.powerSource !== "virtual" || state.ble.trainer?.isConnected === true;
         const shouldDispatchTrainerCommand = canSendTrainerCommand && canDispatchTrainerCommand({
@@ -426,6 +436,10 @@ export function createRideService({ store, deviceService, exportService, routeSe
                                 ...currentState,
                                 liveRide: {
                                     ...currentState.liveRide,
+                                    appliedTrainerConnectionEpoch: markTrainerConnectionEpochApplied({
+                                        currentState,
+                                        forcedTrainerConnectionEpoch
+                                    }),
                                     commandDispatch: buildNextCommandDispatchState({
                                         dispatchState: currentState.liveRide.commandDispatch,
                                         command: cmd,
@@ -450,9 +464,25 @@ export function createRideService({ store, deviceService, exportService, routeSe
                             : currentState);
                     });
             } else {
-                void dispatchPromise.catch((error) => {
-                    console.error(`[RideService] 下发 trainer ${controlMode} 命令失败:`, error);
-                });
+                void dispatchPromise
+                    .then(() => {
+                        if (forcedTrainerConnectionEpoch === null) return;
+                        store.setState((currentState) => isCurrentRideCommand(currentState, cmd)
+                            ? {
+                                ...currentState,
+                                liveRide: {
+                                    ...currentState.liveRide,
+                                    appliedTrainerConnectionEpoch: markTrainerConnectionEpochApplied({
+                                        currentState,
+                                        forcedTrainerConnectionEpoch
+                                    })
+                                }
+                            }
+                            : currentState);
+                    })
+                    .catch((error) => {
+                        console.error(`[RideService] 下发 trainer ${controlMode} 命令失败:`, error);
+                    });
                 rideState.session.workoutRuntime.pendingTrainerCommand = null;
                 rideState.session.pendingTrainerCommand = null;
             }
@@ -865,6 +895,16 @@ function buildTrainerCommandKey(command) {
 function isCurrentRideCommand(state, command) {
     return state.liveRide?.isActive === true
         && state.liveRide.session?.startedAt === command.rideId;
+}
+
+function markTrainerConnectionEpochApplied({ currentState, forcedTrainerConnectionEpoch }) {
+    if (forcedTrainerConnectionEpoch === null) {
+        return currentState.liveRide.appliedTrainerConnectionEpoch ?? 0;
+    }
+    return Math.max(
+        currentState.liveRide.appliedTrainerConnectionEpoch ?? 0,
+        forcedTrainerConnectionEpoch
+    );
 }
 
 async function dispatchTrainerCommand({

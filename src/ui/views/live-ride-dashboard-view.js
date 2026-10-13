@@ -2,7 +2,8 @@ import { collectElements, collectNamedElements } from "./view-elements.js";
 
 const DASHBOARD_ELEMENT_IDS = [
     "rideDashboard", "rideDashboardTitle", "rideDashboardMap", "rideRouteContext",
-    "startRideDashboardBtn",
+    "startRideDashboardBtn", "rideDeviceStatusBtn", "rideDeviceStatusOverlay",
+    "closeRideDeviceStatusBtn", "rideConnectHrBtn", "rideConnectPowerBtn", "rideConnectTrainerBtn",
     "closeRideDashboardBtn", "immersiveBackBtn", "immersiveUiToggleBtn", "stopRideDashboardBtn",
     "dashboardMetricsGrid", "immersiveMetricsGrid", "customizeMetricsBtn", "pipLayoutSelect",
     "metricsCustomizer", "metricAddSelect", "addMetricBtn", "selectedMetricsList",

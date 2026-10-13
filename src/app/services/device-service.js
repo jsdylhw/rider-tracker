@@ -16,6 +16,9 @@ function mapStatusLabel(type) {
     if (type === "connecting") {
         return "连接中";
     }
+    if (type === "reconnecting") {
+        return "自动重连中";
+    }
     return "未连接";
 }
 
@@ -76,7 +79,11 @@ export function createDeviceService({ store }) {
                     ...state.ble,
                     trainer: {
                         ...state.ble.trainer,
-                        isConnecting: status.type === "connecting",
+                        isConnecting: status.type === "connecting" || status.type === "reconnecting",
+                        isReconnecting: status.type === "reconnecting",
+                        reconnectEligible: status.reconnectEligible === true,
+                        reconnectAttempt: status.reconnectAttempt ?? 0,
+                        reconnectRetryInMs: status.retryInMs ?? null,
                         isConnected: status.type === "connected",
                         controlActivating: status.phase === "control-activating",
                         controlReady: status.controlReady === true,
@@ -98,6 +105,10 @@ export function createDeviceService({ store }) {
                 },
                 liveRide: {
                     ...state.liveRide,
+                    trainerConnectionEpoch: status.type === "connected" && state.liveRide.isActive
+                        && state.ble.trainer.isConnected !== true
+                        ? (state.liveRide.trainerConnectionEpoch ?? 0) + 1
+                        : state.liveRide.trainerConnectionEpoch ?? 0,
                     statusMeta: status.message
                 },
                 statusText: status.message
@@ -362,10 +373,15 @@ export function createDeviceService({ store }) {
         return controllableTrainer.stopTrainingSession();
     }
 
+    function setTrainerAutoReconnectEnabled(enabled) {
+        controllableTrainer.setAutoReconnectEnabled?.(enabled);
+    }
+
     return {
         toggleHeartRate,
         togglePowerMeter,
         toggleTrainer,
+        setTrainerAutoReconnectEnabled,
         prepareTrainerControlForWorkoutMode,
         releaseTrainerControl,
         setTrainerGrade,
@@ -452,6 +468,9 @@ function mapPowerSourceStatusLabel(sourceType) {
 function mapTrainerStatusLabel(status) {
     if (status.type === "connecting") {
         return "连接中";
+    }
+    if (status.type === "reconnecting") {
+        return "自动重连中";
     }
     if (status.type !== "connected") {
         return "未连接";

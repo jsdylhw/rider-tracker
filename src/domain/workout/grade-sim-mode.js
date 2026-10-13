@@ -14,6 +14,7 @@ export function buildGradeSimulationState({
     previousTargetGradePercent = 0,
     config,
     active = false,
+    forceCommand = false,
     rideId = null,
     commandSequence = 0
 }) {
@@ -48,7 +49,7 @@ export function buildGradeSimulationState({
         targetTrainerGradePercent,
         targetErgPowerWatts: null,
         targetResistanceLevel: null,
-        pendingTrainerCommand: active && Math.abs(targetTrainerGradePercent - previousTargetGradePercent) >= 0.05
+        pendingTrainerCommand: active && (forceCommand || Math.abs(targetTrainerGradePercent - previousTargetGradePercent) >= 0.05)
             ? createTrainerCommand({
                 controlMode: TRAINER_CONTROL_MODES.SIM,
                 type: TRAINER_COMMAND_TYPES.SET_SIM_GRADE,
