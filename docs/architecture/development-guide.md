@@ -277,3 +277,14 @@ git diff --check
 Validation。除非用户明确要求，不执行 push、merge、分支删除或历史改写。
 
 评测结果直接在对话中汇报，不在专题文档末尾追加测试报告。可复用语料与运行说明放在 `services/training-agent/evaluation/`。文档分类与维护规则以 [文档入口](../README.md) 为准。
+
+## 启动环境自检
+
+运行 `npm run doctor`，或 `npm run doctor -- --json` 获取 `schemaVersion: 1` 报告。
+解释器选择沿用启动器：`PYTHON_EXECUTABLE` / 配置指定路径 → 项目 `.venv` → 当前 PATH。
+诊断打印实际 Python 路径，按 `pyproject.toml` 检查已安装版本（含 Garmin 0.3.6），
+复用 Python 配置与路径规则检查数据库路径一致性、目录权限及公共端口。版本检查需要 `packaging`（项目 setup 安装）。
+配置解析错误不会附带 YAML 原文，账号、密码、API key、Token 内容不会输出。
+不存在的目录不创建；权限检测仅在最近存在的父目录中创建并删除空临时文件。
+退出码 1 表示存在必需项错误，0 表示检查通过（可能仍有警告）；端口占用不自动终止已有进程。
+此命令不证明 Garmin 在线登录、Agent 在线 readiness 或蓝牙硬件正常，这些须单独验证。

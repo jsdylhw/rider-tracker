@@ -1,3 +1,4 @@
+import { suite as runtimeDoctorSuite } from "./unit/runtime-doctor.test.js";
 import { runSuites, renderResults } from "./helpers/test-harness.js";
 import { installDomParserPolyfill } from "./helpers/dom-parser-polyfill.js";
 import { suite as routeSuite } from "./unit/route-builder.test.js";
@@ -117,6 +118,7 @@ const suites = [
     trainerCommandSuite,
     rideReadinessSuite,
     trainerFtmsSuite,
+    runtimeDoctorSuite,
     workoutServiceSuite,
     customWorkoutTargetSuite,
     customWorkoutTargetRendererSuite,

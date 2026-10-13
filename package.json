@@ -7,6 +7,7 @@
   },
   "scripts": {
     "start": "node scripts/start-python.js",
+    "doctor": "node scripts/doctor.js",
     "start:legacy": "node --disable-warning=ExperimentalWarning scripts/start-local.js",
     "start:rider": "node --disable-warning=ExperimentalWarning scripts/start-rider.js",
     "start:agent": "node scripts/start-local.js --agent-only",
