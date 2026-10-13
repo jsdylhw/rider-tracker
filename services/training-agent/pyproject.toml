@@ -5,7 +5,7 @@ description = "Local FIT download, LLM analysis, guided chat, and Strava upload"
 requires-python = ">=3.12"
 dependencies = [
   "fitdecode>=0.11.0",
-  "garminconnect>=0.2.25",
+  "garminconnect==0.3.6",
   "fastapi>=0.110.0",
   "python-multipart>=0.0.20,<1",
   "python-dotenv>=1.0,<2",

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
@@ -110,61 +109,134 @@ def test_library_text_status_is_preserved(status, code):
     assert garmin_error_payload(wrapped)["error"] == code
 
 
-def _cached_failure(status):
-    error = GarminConnectAuthenticationError("Failed to retrieve social profile")
-    error.__cause__ = RuntimeError(f"API Error {status} - rejected")
-    return error
+
+@pytest.fixture
+def native_login(monkeypatch):
+    """Exercise real Garmin.login; replace only network/storage boundary calls."""
+    from types import SimpleNamespace
+    from garminconnect.client import Client
+    state = SimpleNamespace(status=None, stage="profile", fresh_rejected=False,
+                            refresh_before_profile=False, logins=0, writes=[], clients=[])
+    phases = {}
+
+    def load(client, path):
+        token = Path(path) / "garmin_tokens.json"
+        if not token.is_file():
+            raise FileNotFoundError()
+        client._tokenstore_path = str(token)
+        client.di_refresh_token = None
+        phases[id(client)] = "cached"
+        if state.refresh_before_profile:
+            token.write_bytes(b"refreshed-before-validation")
+
+    def login(client, *args, **kwargs):
+        state.logins += 1
+        phases[id(client)] = "fresh"
+        return None, None
+
+    def dump(client, path):
+        token = Path(path)
+        if token.is_dir():
+            token /= "garmin_tokens.json"
+        token.write_bytes(b"new-token")
+        state.writes.append(token)
+
+    def connectapi(client, path, **kwargs):
+        state.clients.append(client)
+        stage = "profile" if "socialProfile" in path else "settings"
+        if stage == state.stage and state.status is not None:
+            if phases.get(id(client)) == "cached" or state.fresh_rejected:
+                if state.status == "timeout":
+                    raise TimeoutError("timed out")
+                raise RuntimeError(f"API Error {state.status} - rejected")
+        return {"displayName": "test"} if stage == "profile" else {"userData": {"measurementSystem": "metric"}}
+
+    monkeypatch.setattr(Client, "load", load)
+    monkeypatch.setattr(Client, "login", login)
+    monkeypatch.setattr(Client, "dump", dump)
+    monkeypatch.setattr(Client, "connectapi", connectapi)
+    monkeypatch.setattr(Client, "_token_expires_soon", lambda _: False)
+    monkeypatch.setattr("garminconnect.time.sleep", lambda _: None)
+    return state
 
 
-def test_cached_401_recovers_and_persists_validated_tokens(tmp_path, monkeypatch):
+@pytest.mark.parametrize("file_path", [False, True])
+@pytest.mark.parametrize("cached", [False, True])
+def test_login_validates_before_promoting_private_tokens(tmp_path, native_login, file_path, cached):
+    import os
+    import stat
     token = tmp_path / "garmin_tokens.json"
-    token.write_bytes(b"old-token")
-    old, fresh = Mock(), Mock()
-    old.login.side_effect = _cached_failure(401)
-
-    def dump(directory):
-        (Path(directory) / "garmin_tokens.json").write_bytes(b"new-token")
-
-    fresh.client.dump.side_effect = dump
-    factory = Mock(side_effect=[old, fresh])
-    monkeypatch.setattr("garminconnect.Garmin", factory)
-    downloader = GarminChinaDownloader(username="user", password="password", tokenstore=tmp_path)
+    if cached:
+        token.write_bytes(b"old-token")
+        token.chmod(0o600)
+        native_login.status = 401
+    downloader = GarminChinaDownloader(username="test", password="test", tokenstore=token if file_path else tmp_path)
     downloader.login()
-    assert downloader.client is fresh
+    assert native_login.logins == 1
     assert token.read_bytes() == b"new-token"
-    assert [p.read_bytes() for p in tmp_path.glob("*.bak")] == [b"old-token"]
-    assert fresh.client._tokenstore_path == str(token)
-    temporary = Path(fresh.login.call_args.args[0])
-    assert temporary != tmp_path
-    assert not temporary.exists()
-    assert factory.call_count == 2
+    backups = list(tmp_path.glob("*.bak"))
+    assert [p.read_bytes() for p in backups] == ([b"old-token"] if cached else [])
+    assert downloader.client.client._tokenstore_path == str(token)
+    assert all(p.parent != tmp_path and not p.exists() for p in native_login.writes)
+    if os.name != "nt":
+        assert stat.S_IMODE(token.stat().st_mode) == 0o600
+        assert all(stat.S_IMODE(p.stat().st_mode) == 0o600 for p in backups)
+    # Subsequent library writes go to the promoted store, not a deleted temp path.
+    downloader.client.client.dump(downloader.client.client._tokenstore_path)
+    assert native_login.writes[-1] == token
 
 
-def test_failed_fresh_login_preserves_cached_tokens(tmp_path, monkeypatch):
+@pytest.mark.parametrize("stage", ["profile", "settings"])
+@pytest.mark.parametrize("status,code", [(429, "garmin_rate_limited"), (503, None), ("timeout", None)])
+def test_non_auth_failure_does_not_relogin_or_modify_cache(tmp_path, native_login, stage, status, code):
     token = tmp_path / "garmin_tokens.json"
     token.write_bytes(b"old-token")
-    old, fresh = Mock(), Mock()
-    old.login.side_effect = _cached_failure(401)
-    fresh.login.side_effect = RuntimeError("API Error 401 - rejected")
-    factory = Mock(side_effect=[old, fresh])
-    monkeypatch.setattr("garminconnect.Garmin", factory)
-    downloader = GarminChinaDownloader(username="user", password="password", tokenstore=tmp_path)
-    with pytest.raises(GarminServiceError) as error:
+    native_login.status, native_login.stage = status, stage
+    native_login.refresh_before_profile = True
+    downloader = GarminChinaDownloader(username="test", password="test", tokenstore=tmp_path)
+    with pytest.raises(GarminServiceError) as failure:
         downloader.login()
-    assert error.value.code == "garmin_auth_failed"
+    assert failure.value.code == (code or f"garmin_{stage}_unavailable")
+    assert native_login.logins == 0
     assert token.read_bytes() == b"old-token"
     assert not list(tmp_path.glob("*.bak"))
-    fresh.client.dump.assert_not_called()
-    assert factory.call_count == 2
+    assert downloader.client is None
 
 
-@pytest.mark.parametrize("status", [429, 503])
-def test_other_profile_errors_do_not_trigger_fresh_login(tmp_path, monkeypatch, status):
+@pytest.mark.parametrize("stage", ["profile", "settings"])
+def test_rejected_relogin_is_not_repeated_and_keeps_original(tmp_path, native_login, stage):
+    token = tmp_path / "garmin_tokens.json"
+    token.write_bytes(b"old-token")
+    native_login.status, native_login.stage = 401, stage
+    native_login.fresh_rejected = native_login.refresh_before_profile = True
+    downloader = GarminChinaDownloader(username="test", password="test", tokenstore=tmp_path)
+    with pytest.raises(GarminServiceError) as failure:
+        downloader.login()
+    assert failure.value.code == "garmin_auth_failed"
+    assert native_login.logins == 1
+    assert token.read_bytes() == b"old-token"
+    assert downloader.client is None
+    assert not list(tmp_path.glob("*.bak"))
+
+
+def test_cached_login_needs_no_credentials_retry(tmp_path, native_login):
     (tmp_path / "garmin_tokens.json").write_bytes(b"old-token")
-    old = Mock()
-    old.login.side_effect = _cached_failure(status)
-    factory = Mock(return_value=old)
-    monkeypatch.setattr("garminconnect.Garmin", factory)
+    GarminChinaDownloader(username="test", password="test", tokenstore=tmp_path).login()
+    assert native_login.logins == 0
+
+
+def test_failed_promotion_preserves_original(tmp_path, native_login, monkeypatch):
+    token = tmp_path / "garmin_tokens.json"
+    token.write_bytes(b"old-token")
+    replace = Path.replace
+    def fail_token_replace(source, target):
+        if target == token:
+            raise OSError("simulated write failure")
+        return replace(source, target)
+    monkeypatch.setattr(Path, "replace", fail_token_replace)
+    downloader = GarminChinaDownloader(username="test", password="test", tokenstore=tmp_path)
     with pytest.raises(GarminServiceError):
-        GarminChinaDownloader(username="user", password="password", tokenstore=tmp_path).login()
-    assert factory.call_count == 1
+        downloader.login()
+    assert token.read_bytes() == b"old-token"
+    assert downloader.client is None
+    assert not list(tmp_path.glob("*.part"))

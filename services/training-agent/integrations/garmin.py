@@ -9,7 +9,6 @@ from __future__ import annotations
 import io
 import os
 import re
-import shutil
 import tempfile
 import zipfile
 from pathlib import Path
@@ -44,6 +43,9 @@ def normalize_garmin_error(exc: Exception, *, operation: str = "sync") -> Garmin
         return exc
 
     chain = _exception_chain(exc)
+    for cause in chain:
+        if isinstance(cause, GarminServiceError):
+            return cause
     text = " | ".join(str(item) for item in chain).lower()
     type_names = " ".join(type(item).__name__.lower() for item in chain)
     statuses = {
@@ -212,6 +214,40 @@ def _atomic_write_bytes(target: Path, content: bytes) -> None:
             temporary.unlink()
 
 
+def _validated_login_type(garmin_type):
+    """Narrow garminconnect 0.3.6's profile recovery to explicit HTTP 401.
+
+    Keep the library's login/refresh implementation. It otherwise treats every
+    profile/settings failure as authentication failure and repeats login on 429
+    and transport errors as well. This hook is covered against the pinned library.
+    """
+    class ValidatedGarmin(garmin_type):
+        def _load_profile_and_settings(self):
+            try:
+                return super()._load_profile_and_settings()
+            except Exception as exc:
+                statuses = {_http_status(item) for item in _exception_chain(exc)}
+                if 401 in statuses and 429 not in statuses:
+                    raise
+                raise normalize_garmin_error(exc, operation="login") from exc
+
+    return ValidatedGarmin
+
+
+def _write_private_tokens(target: Path, content: bytes) -> None:
+    """Create private staging files before atomic replacement, never chmod later."""
+    fd, name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".part", dir=target.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 class GarminChinaDownloader:
     """Garmin 中国区登录与活动下载.
 
@@ -252,43 +288,30 @@ class GarminChinaDownloader:
             garmin_client.HAS_CFFI = False
 
         self.Garmin = Garmin
-        self.client = Garmin(self.username, self.password, is_cn=True)
+        self.client = None
+        token_path = Path(self.tokenstore).expanduser().resolve()
+        if token_path.is_dir() or token_path.suffix != ".json":
+            token_path = token_path / "garmin_tokens.json"
         try:
-            self.client.login(self.tokenstore)
+            # All library writes (including refreshes before profile validation)
+            # stay in this private workspace until the entire login succeeds.
+            with tempfile.TemporaryDirectory(prefix="rider-garmin-login-") as temporary:
+                original = token_path.read_bytes() if token_path.is_file() else None
+                if original is not None:
+                    _write_private_tokens(Path(temporary) / "garmin_tokens.json", original)
+                fresh = _validated_login_type(Garmin)(self.username, self.password, is_cn=True)
+                fresh.login(temporary)
+                fresh.client.dump(temporary)
+                content = (Path(temporary) / "garmin_tokens.json").read_bytes()
+                token_path.parent.mkdir(parents=True, exist_ok=True)
+                if original is not None and original != content:
+                    backup = token_path.with_name(f"{token_path.name}.{uuid4().hex}.bak")
+                    _write_private_tokens(backup, original)
+                _write_private_tokens(token_path, content)
+                fresh.client._tokenstore_path = str(token_path)
+                self.client = fresh
         except Exception as exc:
-            chain = _exception_chain(exc)
-            token_path = Path(self.tokenstore).expanduser()
-            if token_path.is_dir() or token_path.suffix != ".json":
-                token_path = token_path / "garmin_tokens.json"
-            profile_failure = any(
-                "failed to retrieve social profile" in str(item).lower()
-                or "failed to retrieve user settings" in str(item).lower()
-                for item in chain
-            )
-            if (token_path.is_file() and profile_failure
-                    and any(_http_status(item) == 401 for item in chain)
-                    and not any(_http_status(item) == 429 for item in chain)):
-                try:
-                    self._recover_cached_login(token_path)
-                    return
-                except Exception as recovery_error:
-                    raise normalize_garmin_error(recovery_error, operation="login") from recovery_error
             raise normalize_garmin_error(exc, operation="login") from exc
-
-    def _recover_cached_login(self, token_path: Path) -> None:
-        """Try credentials once; promote tokens only after profile/settings succeed."""
-        with tempfile.TemporaryDirectory(prefix="rider-garmin-login-") as temporary:
-            fresh = self.Garmin(self.username, self.password, is_cn=True)
-            fresh.login(temporary)
-            # Explicit dump avoids relying on the library's suppressed write errors.
-            fresh.client.dump(temporary)
-            content = (Path(temporary) / "garmin_tokens.json").read_bytes()
-            backup = token_path.with_name(f"{token_path.name}.{uuid4().hex}.bak")
-            shutil.copy2(token_path, backup)
-            _atomic_write_bytes(token_path, content)
-            # Future refreshes must persist to the real store, not the temp directory.
-            fresh.client._tokenstore_path = str(token_path)
-            self.client = fresh
 
     def list_activities(self, count: int) -> list[dict[str, Any]]:
         if self.client is None:

@@ -1,6 +1,6 @@
 # Rider tested environment constraints; do not edit by hand.
 # Target: linux-x86_64-py313
-# pyproject-sha256: 8b118b65cf705ab610bbbb75b9022d5e4d4fbee82dd7d77f8c22f7d73eb1f74c
+# pyproject-sha256: 7295321379b20b31983e880f02ea892d44099a2a6d4518e8c029cf8fe0c4123e
 # Includes runtime, build and test dependencies; excludes unrelated environment packages.
 # No artifact hashes: this pins versions, not package-index content.
 annotated-doc==0.0.4
@@ -14,7 +14,7 @@ click==8.2.1
 curl-cffi==0.15.0
 fastapi==0.136.1
 fitdecode==0.11.0
-garminconnect==0.3.3
+garminconnect==0.3.6
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1

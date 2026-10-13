@@ -1,5 +1,5 @@
 fitdecode>=0.11.0
-garminconnect>=0.2.25
+garminconnect==0.3.6
 fastapi>=0.110.0
 httpx>=0.27.0,<1.0.0
 osmium>=3.7.0
