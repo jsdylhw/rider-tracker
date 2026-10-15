@@ -48,6 +48,7 @@ def build_activity_features(
         "extractor_version": FEATURE_EXTRACTOR_VERSION,
         "activity_key": activity_key,
         "fit_path": fit_path or parsed.get("path"),
+        **({"stair_climbing": scan_result["stair_summary"]} if "stair_summary" in scan_result else {}),
         "sprint_candidates": {
             "available": bool(sprint_result.get("available")),
             "detector": sprint_result.get("detector"),

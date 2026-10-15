@@ -35,6 +35,7 @@ from fit.analysis.profiles import is_running, supports_cycling_power_metrics
 from fit.analysis.running import analyze_running_efficiency, build_running_dynamics, cadence_to_spm
 from fit.analysis.segments import scan_activity_segments
 from fit.analysis.sprints import detect_sprints
+from fit.analysis.stairs import is_stair_climbing, stair_summary
 
 # get_activity_summary 支持的全部 section
 SUMMARY_SECTIONS = [
@@ -116,6 +117,7 @@ def get_activity_overview_tool(parsed: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "kind": "activity_overview",
+        **({"stair_climbing": stair_summary(parsed)} if is_stair_climbing(parsed) else {}),
         "activity_identity": {
             "sport_type": summary.get("sport_type"),
             "sub_sport": summary.get("sub_sport"),
@@ -179,6 +181,8 @@ def get_activity_summary_tool(parsed: dict[str, Any], *, sections: Any = None) -
     }
 
     result: dict[str, Any] = {"kind": "activity_summary", "sections": requested}
+    if is_stair_climbing(parsed):
+        result["stair_climbing"] = stair_summary(parsed)
     for section in requested:
         builder = section_builders.get(section)
         if builder:
@@ -288,7 +292,7 @@ def scan_activity_segments_tool(
     step_seconds: Any = 10,
     max_segments: Any = 12,
 ) -> dict[str, Any]:
-    """全程扫描活动 records,返回连续高功率区间和数据质量提示."""
+    """按专项扫描功率、跑步配速或爬楼心率做组，返回候选和证据边界。"""
     return scan_activity_segments(
         parsed,
         window_seconds=int(window_seconds or 30),

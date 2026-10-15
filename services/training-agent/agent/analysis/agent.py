@@ -118,7 +118,11 @@ def analyze_fit_file(
     activity = store.get_activity(activity_key)
     parsed: dict[str, Any] | None = None
     facts_were_ephemeral = False
-    if facts is None:
+    stale_stairs = (
+        (activity or {}).get("sport_type") == "floor_climbing"
+        and (((facts or {}).get("features") or {}).get("stair_climbing") or {}).get("analysis_basis_version") != "stairs.v2"
+    )
+    if facts is None or stale_stairs:
         # Focused read-only analysis can be requested for an unimported FIT.
         # Build equivalent facts in memory; persistent calls save them below.
         from fit.analysis.features import build_activity_features

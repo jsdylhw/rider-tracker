@@ -23,6 +23,9 @@ def scan_activity_segments(
     max_segments: int = 12,
 ) -> dict[str, Any]:
     """全程扫描活动数据，按 sport_type 选择功率或配速基线。"""
+    from fit.analysis.stairs import is_stair_climbing, detect_stair_sets
+    if is_stair_climbing(parsed):
+        return detect_stair_sets(parsed, max_segments=max_segments)
     df = records_dataframe(parsed.get("records", []))
     if df.empty or "elapsed_s" not in df.columns:
         return {

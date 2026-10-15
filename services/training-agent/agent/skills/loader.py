@@ -69,7 +69,9 @@ def _sport_reference_names(sport_types: Iterable[str]) -> tuple[str, ...]:
     for raw in sport_types:
         value = str(raw or "").lower()
         name = None
-        if any(token in value for token in ("run", "跑")):
+        if value == "floor_climbing":
+            name = "stairs"
+        elif any(token in value for token in ("run", "跑")):
             name = "running"
         elif any(token in value for token in ("ride", "cycl", "bike", "骑")):
             name = "cycling"

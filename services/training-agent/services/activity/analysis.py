@@ -36,7 +36,9 @@ def discover_activity_segments(activity_id: str, arguments: dict[str, Any]) -> d
         return {"error": "activity_not_found", "message": f"activity not found: {activity_id}"}
     facts = ActivityStore().get_facts(activity_id)
     features = facts.get("features") if isinstance(facts, dict) else None
-    if isinstance(features, dict) and features.get("schema_version") == "activity_features.v1":
+    stale_stairs = (activity.get("sport_type") == "floor_climbing"
+                    and _section(_section(features or {}, "effort_candidates"), "baselines").get("scan_basis") != "heart_rate")
+    if isinstance(features, dict) and features.get("schema_version") == "activity_features.v1" and not stale_stairs:
         scan = _scan_from_stored_features(features, segment_type=segment_type)
     else:
         fit_path = _fit_path(activity)
@@ -357,8 +359,11 @@ def _segment_candidates(
             "max_hr_bpm": item.get("max_hr_bpm"),
             "avg_cadence_rpm": item.get("avg_cadence_rpm"),
             "avg_speed_kmh": item.get("avg_speed_kmh"),
-            "detector": "cycling_power_sprint_v1" if requested_type == "sprint" else "activity_scan.v1",
+            "detector": item.get("detector") or ("cycling_power_sprint_v1" if requested_type == "sprint" else "activity_scan.v1"),
             "confidence": item.get("score"),
+            **{key: item[key] for key in ("estimated", "recovery_end_s", "recovery_duration_s",
+                "recovery_low_hr_bpm", "hr_drop_bpm", "recovery_complete", "boundary",
+                "start_hr_bpm", "smoothed_peak_hr_bpm") if key in item},
         })
     return candidates
 
