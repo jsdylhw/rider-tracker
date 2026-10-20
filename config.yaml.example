@@ -21,7 +21,9 @@ rider:
 training_agent:
   host: "127.0.0.1"
   port: 8000
-  # Usually leave blank. The launcher prefers services/training-agent/.venv.
+  # Usually leave blank: setup creates services/training-agent/.venv for this OS.
+  # An explicit interpreter is used by start/tests/doctor AND receives setup installs.
+  # PYTHON_EXECUTABLE overrides this field; relative paths use the repository root.
   python_executable: ""
 
 # Number used only when a request does not explicitly specify activity count.

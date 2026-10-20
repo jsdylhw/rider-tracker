@@ -3,19 +3,15 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import dotenv from 'dotenv';
-import { loadUnifiedConfig } from './local-config.js';
-import { resolvePythonExecutable } from './python-runtime.js';
+import { loadPythonRuntime, validatePython, reportPython } from './python-runtime.js';
 import { openBrowser, shouldOpenBrowser } from './browser-launcher.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-dotenv.config({ path: process.env.RIDER_ENV_PATH || path.join(root, '.env'), quiet: true });
-const { values } = loadUnifiedConfig(root);
-const env = { ...process.env };
-if (!env.PYTHON_EXECUTABLE && values.training_agent?.python_executable) {
-    env.PYTHON_EXECUTABLE = String(values.training_agent.python_executable);
-}
-const python = resolvePythonExecutable(root, env);
+let runtime;
+try { runtime = validatePython(loadPythonRuntime(root), root); }
+catch (error) { console.error(`[rider] ${error.message}`); process.exit(1); }
+reportPython(runtime);
+const { env, values, executable: python } = runtime;
 const child = spawn(python, [
     path.join(root, 'scripts/start-rider.py'), '--public-entry', '--parent-stdin', ...process.argv.slice(2)
 ], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });

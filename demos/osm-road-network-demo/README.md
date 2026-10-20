@@ -26,14 +26,20 @@
 
 ```bash
 cd /home/liuhaowen/codes/rider-tracker
-python -m http.server 8080
+python -m http.server 8081 --bind 127.0.0.1 --directory demos/osm-road-network-demo
 ```
 
 浏览器访问：
 
 ```text
-http://localhost:8080/demos/osm-road-network-demo/index.html
+http://localhost:8081/index.html
 ```
+
+启动后保持终端运行；按 `Ctrl+C` 停止服务。这里直接以 demo 目录作为 HTTP 根目录。
+
+如果报 `OSError: [Errno 98] Address already in use`，说明端口已被其他服务占用，不是 demo 依赖缺失。
+可用 `ss -ltnp sport = :8081` 查看占用，或把命令和浏览器地址中的 `8081` 同时改成另一个空闲端口（如 `8082`）。
+不要直接终止不明服务。
 
 ## Demo 测试
 

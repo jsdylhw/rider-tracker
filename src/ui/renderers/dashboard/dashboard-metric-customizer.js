@@ -1,12 +1,11 @@
+import { createLiveMetricPreferences } from "../../../adapters/storage/live-metric-preferences.js";
 import {
-    DEFAULT_METRIC_SELECTION,
     METRIC_LABELS,
-    METRIC_OPTIONS,
-    normalizeMetricSelection
+    METRIC_OPTIONS
 } from "../../../shared/live-metrics.js";
 
-export function createDashboardMetricCustomizer({ elements, onChange = () => {} }) {
-    const selection = normalizeMetricSelection(DEFAULT_METRIC_SELECTION);
+export function createDashboardMetricCustomizer({ elements, onChange = () => {}, preferences = createLiveMetricPreferences() }) {
+    const selection = preferences.load();
 
     function bindEvents() {
         elements.customizeMetricsBtn?.addEventListener("click", () => {
@@ -21,6 +20,7 @@ export function createDashboardMetricCustomizer({ elements, onChange = () => {} 
             selection[key] = true;
             if (elements.metricAddSelect) elements.metricAddSelect.value = "";
             renderControls();
+            preferences.save(selection);
             onChange(selection);
         });
 
@@ -31,6 +31,7 @@ export function createDashboardMetricCustomizer({ elements, onChange = () => {} 
             if (!key || !Object.hasOwn(selection, key)) return;
             selection[key] = false;
             renderControls();
+            preferences.save(selection);
             onChange(selection);
         });
 

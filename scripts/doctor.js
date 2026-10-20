@@ -2,9 +2,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import dotenv from 'dotenv';
-import { loadUnifiedConfig } from './local-config.js';
-import { resolvePythonExecutable } from './python-runtime.js';
+import { loadPythonRuntime, validatePython } from './python-runtime.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const json = process.argv.includes('--json');
@@ -14,14 +12,14 @@ function fail(id, message) {
     process.exitCode = 1;
 }
 try {
-    dotenv.config({ path: process.env.RIDER_ENV_PATH || path.join(root, '.env'), quiet: true });
-    const { values } = loadUnifiedConfig(root);
-    const env = { ...process.env };
-    if (!env.PYTHON_EXECUTABLE && values.training_agent?.python_executable) {
-        env.PYTHON_EXECUTABLE = String(values.training_agent.python_executable);
-    }
+    const selected = loadPythonRuntime(root);
+    let runtime;
+    try { runtime = validatePython(selected, root); }
+    catch (error) { fail('python', error.message); process.exit(1); }
+    const { env } = runtime;
+    env.RIDER_DOCTOR_PYTHON_SOURCE = runtime.source;
     env.RIDER_DOCTOR_NODE_VERSION = process.versions.node;
-    const child = spawn(resolvePythonExecutable(root, env), [path.join(root, 'scripts/doctor.py'), ...process.argv.slice(2)], {
+    const child = spawn(runtime.executable, [path.join(root, 'scripts/doctor.py'), ...process.argv.slice(2)], {
         cwd: root, env, stdio: ['ignore', 'pipe', 'pipe']
     });
     let failed = false;

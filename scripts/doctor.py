@@ -109,6 +109,7 @@ def diagnose(root=ROOT, environ=None):
             add("node", "error", "Cannot validate Node version against package.json.")
     else:
         add("node", "warning", "Run npm run doctor to check the Node launcher as well.")
+    add("python-source", "info", supplied.get("RIDER_DOCTOR_PYTHON_SOURCE", "direct Python invocation"))
     check_dependencies(root, add)
     try:
         from app.runtime_config import load_runtime_environment

@@ -288,3 +288,15 @@ Validation。除非用户明确要求，不执行 push、merge、分支删除或
 不存在的目录不创建；权限检测仅在最近存在的父目录中创建并删除空临时文件。
 退出码 1 表示存在必需项错误，0 表示检查通过（可能仍有警告）；端口占用不自动终止已有进程。
 此命令不证明 Garmin 在线登录、Agent 在线 readiness 或蓝牙硬件正常，这些须单独验证。
+
+### Python 环境选择与安装
+
+`npm start`、`npm run test:agent`、`npm run doctor` 和 `npm run setup:agent` 共用解释器选择：
+`PYTHON_EXECUTABLE`（shell 优先于 `.env`）→ `training_agent.python_executable` → 项目 `.venv` → PATH。
+配置路径相对仓库根目录解析；Windows 与 WSL 各自创建环境，不共享 `.venv`。
+启动前验证解释器能运行且版本为 Python 3.12+，显式路径无效时直接失败，不自动切换环境。
+启动和测试打印实际路径、版本及来源，doctor JSON 包含 `python-source`。
+
+默认 `npm run setup:agent` 创建并安装到 `services/training-agent/.venv`。
+若已通过环境变量或配置明确指定解释器，则安装到该解释器对应的环境，安装前打印目标路径。
+`npm run setup:agent -- --venv <目录>` 可显式指定独立安装目录；它不会自动修改后续启动配置。

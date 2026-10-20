@@ -166,3 +166,15 @@ python scripts/start-rider.py --public-entry
 此命令使用当前 Python，默认在 `http://127.0.0.1:8787/` 提供同一 Rider 页面，并管理独立 Agent 进程与 Worker；不需要 Node 启动器，不会自动安装环境。不要与占用同一端口的默认入口同时运行。迁移验收和静态发布方式见 [Python 入口清单](docs/plans/python-browser-entry-checklist.md)，剩余工作见 [后端融合目标](docs/plans/backend-unification-goal.md)。
 
 可通过 `python scripts/build-rider-release.py --output dist/rider-python-preview` 导出不包含本地数据、凭据和 node_modules 的预览发布目录。安装、平台约束和回退步骤见 [发布说明](docs/architecture/python-release-runbook.md)。
+
+### Python 环境选择与安装
+
+`npm start`、`npm run test:agent`、`npm run doctor` 和 `npm run setup:agent` 共用解释器选择：
+`PYTHON_EXECUTABLE`（shell 优先于 `.env`）→ `training_agent.python_executable` → 项目 `.venv` → PATH。
+配置路径相对仓库根目录解析；Windows 与 WSL 各自创建环境，不共享 `.venv`。
+启动前验证解释器能运行且版本为 Python 3.12+，显式路径无效时直接失败，不自动切换环境。
+启动和测试打印实际路径、版本及来源，doctor JSON 包含 `python-source`。
+
+默认 `npm run setup:agent` 创建并安装到 `services/training-agent/.venv`。
+若已通过环境变量或配置明确指定解释器，则安装到该解释器对应的环境，安装前打印目标路径。
+`npm run setup:agent -- --venv <目录>` 可显式指定独立安装目录；它不会自动修改后续启动配置。

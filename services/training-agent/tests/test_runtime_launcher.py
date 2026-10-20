@@ -30,7 +30,9 @@ def test_npm_entry_reports_python_exit_without_misdiagnosing_runtime_errors(tmp_
     # depending on an installed alias or touching the user's configuration.
     code = 1 if stderr else (9009 if sys.platform == 'win32' else 23)
     preload = tmp_path / 'silent-interpreter.cjs'
-    preload.write_text("if (process.argv[1]?.endsWith('start-rider.py')) {"
+    preload.write_text("if (process.execArgv.includes('-c')) {"
+                       "process.stdout.write(JSON.stringify({executable:process.execPath,version:[3,13,9]})); process.exit(0); }"
+                       "if (process.argv[1]?.endsWith('start-rider.py')) {"
                        f"process.stderr.write({json.dumps(stderr)}); process.exit({code});" + "}")
     env = {**os.environ, 'PYTHON_EXECUTABLE': node,
            'NODE_OPTIONS': '--require ' + json.dumps(preload.as_posix()),

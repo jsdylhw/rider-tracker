@@ -490,6 +490,7 @@ export function createDashboardRenderer({
             label: "骑行台",
             isConnected: trainer.isConnected,
             isConnecting: trainer.isConnecting,
+            isReconnecting: trainer.isReconnecting,
             canReconnect: trainer.reconnectEligible === true,
             deviceName: trainer.deviceName,
             bluetoothSupported
@@ -591,6 +592,7 @@ function renderConnectionButton(button, {
     label,
     isConnected,
     isConnecting,
+    isReconnecting = false,
     canReconnect = false,
     deviceName,
     bluetoothSupported
@@ -601,12 +603,13 @@ function renderConnectionButton(button, {
         label,
         isConnected,
         isConnecting,
+        isReconnecting,
         canReconnect,
         deviceName
     });
     button.title = isConnected
         ? `点击断开${label}`
-        : canReconnect ? `点击立即重连${label}` : "";
+        : !isConnecting && canReconnect ? `点击立即重连${label}` : "";
 }
 
 function formatRoutePosition(route, currentRecord) {

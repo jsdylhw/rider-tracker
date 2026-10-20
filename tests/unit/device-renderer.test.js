@@ -57,6 +57,13 @@ function createState() {
 export const suite = {
     name: "device-renderer",
     tests: [
+        { name: "首次选中设备不显示重连，真正重连显示重连", run() {
+            const state = {label:"骑行台",isConnected:false,isConnecting:true,canReconnect:true};
+            assertEqual(resolveDeviceButtonLabel(state), "连接中骑行台...");
+            assertEqual(resolveDeviceButtonLabel({...state,isReconnecting:true}), "正在重连骑行台...");
+            assertEqual(resolveDeviceButtonLabel({...state,isConnecting:false}), "重连骑行台");
+            assertEqual(resolveDeviceButtonLabel({...state,isConnecting:false,canReconnect:false}), "连接骑行台");
+        } },
         {
             name: "街景调试模拟功率会显示骑行准备状态",
             run() {
