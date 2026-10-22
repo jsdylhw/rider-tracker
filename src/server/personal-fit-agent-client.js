@@ -235,6 +235,7 @@ export function createPersonalFitAgentClient({
         ),
         selectRouteCandidate: (request) => post("/api/route-plans/select", request),
         routePlanCommand: (request) => post("/api/route-plans/command", request),
+        refreshRouteNarrationHint: (request) => post("/api/route-narrations/ride-hint", request, 10_000),
         prepareRouteNarration: (request) => post("/api/route-narrations/prepare", request, 2_000),
         routeNarrationJob: (jobId) => get(
             `/api/route-narrations/jobs/${encodeURIComponent(jobId)}`,

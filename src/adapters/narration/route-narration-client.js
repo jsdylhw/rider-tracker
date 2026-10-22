@@ -56,7 +56,16 @@ export function createRouteNarrationClient({
         return payload.result;
     }
 
-    return { prepare };
+    async function refreshHint(request, { signal } = {}) {
+        const response = await fetchImpl(`${baseUrl}/api/route-narrations/ride-hint`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(request), signal
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok !== true) throw new Error("骑行提示暂不可用");
+        return payload.result;
+    }
+    return { prepare, refreshHint };
 }
 
 export function buildRouteNarrationRequest(route, routeFingerprint, rideSettings) {

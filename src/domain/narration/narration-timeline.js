@@ -1,5 +1,7 @@
 export function createNarrationTimeline() {
     const MANUAL_BROWSE_HOLD_SECONDS = 10;
+    let automaticTrigger = null;
+    let triggerSequence = 0;
     let plan = null;
     let activeIndex = -1;
     let lastAutomaticAtSeconds = Number.NEGATIVE_INFINITY;
@@ -41,6 +43,7 @@ export function createNarrationTimeline() {
             activeIndex = candidateIndex;
             const item = plan.items[candidateIndex];
             announcedIds.add(item.item_id);
+            automaticTrigger = { sequence: ++triggerSequence, itemId: item.item_id };
             lastAutomaticAtSeconds = elapsedSeconds;
         } else if (activeIndex < 0) {
             activeIndex = findUpcomingIndex(distanceMeters);
@@ -68,6 +71,8 @@ export function createNarrationTimeline() {
         manualBrowseUntilSeconds = Number.NEGATIVE_INFINITY;
         currentElapsedSeconds = 0;
         announcedIds.clear();
+        automaticTrigger = null;
+        triggerSequence = 0;
     }
 
     function findUpcomingIndex(distanceMeters) {
@@ -80,6 +85,7 @@ export function createNarrationTimeline() {
         return {
             plan,
             item,
+            automaticTrigger,
             itemIndex: activeIndex,
             itemCount: plan?.items?.length ?? 0,
             distanceToItemMeters: item ? item.route_distance_m - distanceMeters : null,

@@ -128,6 +128,18 @@
     scrollbar-width: thin;
 }
 
+.route-narration-card .route-narration-ride-hint {
+    flex: 0 0 auto;
+    max-height: 7em;
+    padding: 10px 12px;
+    margin-top: 12px;
+    border-left: 3px solid #67e8f9;
+    border-radius: 4px;
+    background: rgba(8, 145, 178, 0.12);
+    color: #cffafe;
+    font-size: 13px;
+}
+
 .route-narration-actions {
     justify-content: flex-end;
     margin-top: 14px;

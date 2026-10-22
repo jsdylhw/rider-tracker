@@ -101,3 +101,21 @@ def test_unexpected_failure_keeps_json_envelope_without_private_details(browser,
     response = client.get(endpoint)
     assert response.status_code == 500
     assert response.json() == {'ok': False, 'error': 'Backend request failed.'}
+
+
+def test_ride_hint_browser_envelope_validation_and_access(browser, monkeypatch):
+    from tests.test_narration_ride_hint import payload
+    from fastapi import HTTPException
+    api, client = browser
+    calls = []
+    monkeypatch.setattr(api, 'route_narration_ride_hint_endpoint', lambda body, request: calls.append(body) or {'status': 'ready', 'text': '提示'})
+    response = client.post('/api/route-narrations/ride-hint', json=payload())
+    assert response.status_code == 200 and response.json()['result']['text'] == '提示'
+    assert response.headers['cache-control'] == 'no-store'
+    assert len(calls) == 1
+    assert client.post('/api/route-narrations/ride-hint', json={'snapshot': []}).status_code == 422
+    def deny(request):
+        raise HTTPException(status_code=403, detail='denied')
+    monkeypatch.setattr(api, '_require_api_access', deny)
+    assert client.post('/api/route-narrations/ride-hint', json=payload()).status_code == 403
+    assert len(calls) == 1

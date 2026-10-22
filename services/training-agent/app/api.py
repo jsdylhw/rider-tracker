@@ -764,6 +764,19 @@ def _normalized_route_options(value: dict[str, Any] | None) -> dict[str, Any]:
     return result
 
 
+from services.narration.ride_hint import RideHintRequest, generate_ride_hint
+from agent.narration.ride_hint import compose_ride_hint
+
+
+@app.post("/api/route-narrations/ride-hint")
+def route_narration_ride_hint_endpoint(body: RideHintRequest, http_request: Request):
+    _require_api_access(http_request)
+    try:
+        return generate_ride_hint(body, compose=compose_ride_hint)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(status_code=422, detail="Invalid ride hint snapshot.") from None
+
+
 @app.post("/api/route-narrations/prepare", status_code=202)
 def prepare_route_narration_endpoint(
     request: RouteNarrationPrepareRequest,

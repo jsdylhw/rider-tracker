@@ -1,3 +1,4 @@
+import { buildRideHintSnapshot, buildRideHintRevision } from "../../domain/narration/ride-hint-snapshot.js";
 import { isStreetViewDebugEnabled } from "../../shared/debug-flags.js";
 import { buildStreetViewTargetFromRoute } from "../map/street-view-controller.js";
 import { buildDashboardViewModel } from "../../app/view-models/live-ride-view-model.js";
@@ -101,6 +102,9 @@ export function createDashboardRenderer({
     });
     const routeNarrationClient = createRouteNarrationClient();
     const routeNarrationService = createRouteNarrationService({
+        refreshHint: (request, options) => routeNarrationClient.refreshHint(request, options),
+        buildHintSnapshot: (options) => buildRideHintSnapshot(boundStore?.getState?.() ?? {}, options),
+        onChange: () => renderNarrationState(),
         preparePlan: (route, options) => routeNarrationClient.prepare(route, {
             ...options,
             rideSettings: boundStore?.getState?.().settings
@@ -301,7 +305,12 @@ export function createDashboardRenderer({
         }
         const narrationState = routeNarrationService.update({
             distanceMeters: (currentRecord?.distanceKm ?? 0) * 1000,
-            elapsedSeconds: currentRecord?.elapsedSeconds ?? 0
+            elapsedSeconds: currentRecord?.elapsedSeconds ?? 0,
+            rideContext: {
+                active: ride.isActive && immersiveStreetViewMode && ride.dashboardOpen,
+                sessionId: String(session?.startedAt ?? ""),
+                revision: buildRideHintRevision(state, { active: ride.isActive && immersiveStreetViewMode && ride.dashboardOpen, now })
+            }
         });
         routeNarrationRenderer.render(narrationState, {
             visible: immersiveStreetViewMode && ride.dashboardOpen,

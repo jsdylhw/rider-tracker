@@ -28,6 +28,7 @@ class RouteNarrationSample(BaseModel):
 
 class RouteNarrationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    generation_profile: str = Field(default="scenic_only.v2", pattern=r"^scenic_only\.v2$")
     route_fingerprint: str = Field(pattern=r"^route_[a-f0-9]{8}$")
     route_name: str = Field(min_length=1, max_length=200)
     total_distance_m: float = Field(gt=0, le=1_000_000)

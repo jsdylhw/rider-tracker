@@ -6,6 +6,12 @@ export function createRouteNarrationRenderer({
     onNext,
     onRetry
 } = {}) {
+    const hintElement = elements.routeNarrationSummary?.ownerDocument?.createElement("p");
+    if (hintElement) {
+        hintElement.className = "route-narration-ride-hint";
+        hintElement.setAttribute("aria-live", "polite");
+        elements.routeNarrationSummary.after(hintElement);
+    }
     const failedPhotoNames = new Set();
     let activePhotoName = "";
     elements.routeNarrationLoadBtn?.addEventListener("click", () => onLoad?.());
@@ -26,6 +32,13 @@ export function createRouteNarrationRenderer({
         panel.hidden = !visible || ["idle", "closed"].includes(status);
         if (panel.hidden) return;
 
+        if (hintElement) {
+            const hint = state?.rideHint;
+            hintElement.hidden = status !== "ready" || !hint?.text
+                || (agentCapabilities !== null && agentCapabilities?.capabilities?.route_narration !== true);
+            hintElement.textContent = hint?.text
+                ? `骑行提示 · 第${Math.floor((hint.elapsed_s ?? 0) / 60)}分钟\n${hint.text}` : "";
+        }
         resetActions(elements);
         if (agentCapabilities !== null && agentCapabilities?.capabilities?.route_narration !== true) {
             hideMedia(elements);

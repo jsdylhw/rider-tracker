@@ -201,6 +201,7 @@ try {
         throw new Error(`Unexpected Agent proxy health payload: ${JSON.stringify(proxyHealth)}`);
     }
     await assertNarrationJobSubmission();
+    await assertNarrationHintFallback();
     await assertBrowserFailureParity();
     await assertEntryRollback();
     console.log("[integration] Unified Rider page, Python edge parity, activity/route stores, atomic FIT/session/route persistence, Agent proxy, and removed legacy UI checks passed.");
@@ -230,6 +231,7 @@ async function assertBrowserFailureParity() {
         ['POST', '/api/agent/chat', { session_id: 's', request_id: 'r', message: 'test' }],
         ['POST', '/api/agent/route-plans/command', { session_id: 's', request_id: 'r', operation: 'invalid' }],
         ['POST', '/api/route-narrations/prepare', {}],
+        ['POST', '/api/route-narrations/ride-hint', {}],
         ['GET', '/api/route-narrations/jobs/absent-job'],
         ['GET', '/api/route-narrations/photo?name=invalid'],
     ];
@@ -297,6 +299,27 @@ async function assertEntryRollback() {
     await waitForJson(`${browserUrl}/healthz`, (value) => value.ok === true);
     assert.deepEqual(await readJson(`${browserUrl}/api/user-profile`), restoredProfile);
     console.log("[integration] Same-port Python -> Node -> Python rollback preserved catalogue, sessions and profile writes without data conversion.");
+}
+
+async function assertNarrationHintFallback() {
+    const window = (seconds) => ({ requested_s: seconds, actual_s: 0,
+        means: { power: null, heartRate: null, cadence: null }, coverage_s: { power: 0, heartRate: 0, cadence: 0 } });
+    const emptySensor = { valid: false, value: null };
+    const body = { schema_version: "route_narration_ride_hint.v1", session_id: "integration_ride", route_fingerprint: "route_1234abcd",
+        plan_id: "plan", item_id: "item", context_revision: "erg_1", snapshot: {
+            captured_at_ms: Date.now(), elapsed_s: 0, distance_m: 0, mode: "erg",
+            trainer: { connected: false, control_ready: false }, target: { erg_power_w: 150 },
+            route: { name: "Integration", total_distance_m: 1000, nearby: [] },
+            card: { title: "Scenery", summary: "Geography", category: "geography", distance_m: 0 },
+            athlete: {}, sensors: { power_source: "none", measured_power: false, power: emptySensor,
+                heart_rate: emptySensor, cadence: emptySensor, historical_provenance: "unknown" },
+            windows: [30, 300, 600].map(window), whole_ride: window(0), workout: { current: null, next: null }
+        } };
+    const results = await Promise.all([riderUrl, browserUrl].map((base) => requestJson(`${base}/api/route-narrations/ride-hint`, { method: "POST", body })));
+    assert.deepEqual(results[0], results[1]);
+    assert.equal(results[0].ok, true);
+    assert.equal(results[0].result.status, "unavailable");
+    assert.equal(results[0].result.text, "");
 }
 
 async function assertNarrationJobSubmission() {

@@ -18,13 +18,10 @@ Rules:
   the destination, eat at a local cafe, find accommodation or arrange a return
   journey. Do not add post-ride rest/recovery itinerary cards. Local places and
   customs can still be explained as background, without instructions to go there.
-- Keep useful how-to-ride cards: indoor cadence, smooth pedalling, pacing,
-  breathing, relaxed posture and steady effort. Frame them for a trainer and
-  avoid prescribing exact power targets without rider data. Uphill/downhill
-  technique is welcome: in slope-simulation mode the trainer follows route
-  grade, subject to smoothing, difficulty scaling and device limits. When the
-  active mode is unknown, phrase resistance-specific advice conditionally
-  ("坡度模拟时..."). In ERG mode, do not claim route grade overrides target power.
+- Pre-generate only scenery, geography, history, culture and ecology. Never
+  include training advice, cadence/power/heart-rate targets, pacing, posture,
+  breathing or fatigue conclusions in title, summary or tts_text. These depend
+  on the live ride and are supplied separately when a card is reached.
 - Do not give real-road manoeuvres (braking for bends, yielding at junctions,
   navigating traffic or choosing a roadside stopping place) as instructions
   for this indoor rider. A recap may summarize the virtual scenery and ride
@@ -39,8 +36,7 @@ Rules:
 - Use content_scope=place only when the subject is physically near that sample;
   place cards are limited by generation_policy.place_card_maximum.
 - Use content_scope=route for route overview, regional geography, water systems,
-  ecology, history, culture, local life, indoor riding technique and virtual
-  route recap. Keep scenery/culture central; technique cards are optional.
+  ecology, history, culture, local life and virtual route recap. Keep scenery/culture central.
 - Treat density.minimum as the normal lower bound and density.target as the
   desired count. If the supplied places and your reliable general knowledge
   cannot support density.minimum, submit the strongest partial plan with a

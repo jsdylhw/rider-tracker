@@ -96,6 +96,19 @@ def create_narration_browser_router(backend):
     async def prepare(request: Request):
         return await invoke(request, lambda body: backend.prepare_route_narration_endpoint(body, request), prepare=True, status=202)
 
+    @router.post('/api/route-narrations/ride-hint')
+    async def ride_hint(request: Request):
+        from services.narration.ride_hint import RideHintRequest
+        try:
+            backend._require_api_access(request)
+            body = RideHintRequest.model_validate(await request.json())
+            result = await run_in_threadpool(backend.route_narration_ride_hint_endpoint, body, request)
+            return JSONResponse({'ok': True, 'result': result}, headers={'Cache-Control': 'no-store'})
+        except HTTPException as exc:
+            return JSONResponse({'ok': False, 'error': 'Ride hint unavailable.'}, status_code=exc.status_code)
+        except (ValueError, TypeError):
+            return JSONResponse({'ok': False, 'error': 'Invalid ride hint snapshot.'}, status_code=422)
+
     @router.get('/api/route-narrations/jobs/{job_id}')
     async def job(job_id: str, request: Request):
         return await invoke(request, lambda: backend.get_route_narration_endpoint(job_id, request))

@@ -226,6 +226,7 @@ def test_current_internal_api_surface_is_explicit(tmp_path, monkeypatch):
         "/api/chat-sessions/{session_id}",
             "/api/route-narrations/photo",
             "/api/route-narrations/prepare",
+            "/api/route-narrations/ride-hint",
             "/api/route-narrations/jobs/{job_id}",
         "/api/route-plans/command",
         "/api/route-plans/select",

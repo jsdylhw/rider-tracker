@@ -37,6 +37,7 @@
     { "method": "POST", "path": "/api/agent/route-plans/select" },
     { "method": "POST", "path": "/api/agent/route-plans/command" },
     { "method": "POST", "path": "/api/route-narrations/prepare" },
+    { "method": "POST", "path": "/api/route-narrations/ride-hint" },
     { "method": "GET", "path": "/api/route-narrations/jobs/{jobId}" },
     { "method": "GET", "path": "/api/route-narrations/photo" },
     { "method": "GET", "path": "/api/strava/config" },

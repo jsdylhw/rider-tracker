@@ -49,6 +49,29 @@ export const suite = {
     name: "route-narration-renderer",
     tests: [
         {
+            name: "independent safe hint element displays captured minute and hides stale content",
+            run() {
+                const elements = createElements();
+                const hint = createFakeElement();
+                elements.routeNarrationSummary.ownerDocument = { createElement: () => hint };
+                let attached = false;
+                elements.routeNarrationSummary.after = (node) => { attached = node === hint; };
+                const renderer = createRouteNarrationRenderer({ elements });
+                const state = { ...createState(), status: "ready", rideHint: { elapsed_s: 1200, text: "<script>保持平顺</script>" } };
+                renderer.render(state, { visible: true });
+                assertEqual(attached, true);
+                assertEqual(hint.hidden, false);
+                assertEqual(hint.textContent, "骑行提示 · 第20分钟\n<script>保持平顺</script>");
+                assertEqual(hint.innerHTML, "");
+                assertEqual(elements.routeNarrationSummary.textContent, state.item.summary);
+                renderer.render(state, { visible: true, agentCapabilities: { capabilities: { route_narration: false } } });
+                assertEqual(hint.hidden, true);
+                renderer.render({ ...state, rideHint: null }, { visible: true });
+                assertEqual(hint.hidden, true);
+                assertEqual(hint.textContent, "");
+            }
+        },
+        {
             name: "shows consent before any narration request",
             run() {
                 const elements = createElements();

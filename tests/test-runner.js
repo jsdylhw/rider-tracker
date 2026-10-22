@@ -1,3 +1,4 @@
+import { suite as rideHintSuite } from "./unit/ride-hint.test.js";
 import { suite as liveMetricPreferencesSuite } from "./unit/live-metric-preferences.test.js";
 import { suite as pythonRuntimeSuite } from "./unit/python-runtime.test.js";
 import { suite as runtimeDoctorSuite } from "./unit/runtime-doctor.test.js";
@@ -89,6 +90,7 @@ import { suite as routeNarrationClientSuite } from "./unit/route-narration-clien
 const app = typeof document !== 'undefined' ? document.getElementById("app") : null;
 installDomParserPolyfill();
 const suites = [
+    rideHintSuite,
     routeSuite,
     routeElevationSuite,
     mapDrawRouteSuite,

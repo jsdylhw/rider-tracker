@@ -25,6 +25,16 @@ export function createNarrationRoutes({ agentClient }) {
         }
     });
 
+    router.post("/api/route-narrations/ride-hint", async (req, res) => {
+        try {
+            const result = await agentClient.refreshRouteNarrationHint(req.body);
+            return res.set("Cache-Control", "no-store").json({ ok: true, result });
+        } catch (error) {
+            if (sendAgentUnavailable(res, error, { capability: "route_narration" })) return;
+            return res.status(error.statusCode || 502).json({ ok: false, error: "Ride hint unavailable." });
+        }
+    });
+
     router.post("/api/route-narrations/prepare", async (req, res) => {
         try {
             const request = normalizeNarrationRequest(req.body);
